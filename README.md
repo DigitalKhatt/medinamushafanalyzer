@@ -9,3 +9,5 @@ Go to `File/Save all pages` to parse the pages and segment the text into lines a
 However, you only have to perform the operation once. The segmentation result is saved in the pages folder.
 
 Please file an issue if you encounter a problem.
+
+This project is sponsored by [@tarteelAI](https://github.com/TarteelAI) [<img src="https://assets-global.website-files.com/6167e862f6dfba5084eb5554/61680717c50ec79defcdb062_logo-group.svg">](https://www.tarteel.ai/)
