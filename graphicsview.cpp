@@ -158,7 +158,7 @@ void GraphicsView::contextMenuEvent(QContextMenuEvent* event) {
 
 				painter.setPen(Qt::NoPen);
 
-				painter.setBrush(Qt::gray);
+				painter.setBrush(QBrush(qRgba(174, 234, 174, 255)));
 				painter.drawPath(wordPath);
 				painter.end();
 

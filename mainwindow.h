@@ -45,7 +45,7 @@ private slots:
 	bool saveFont();
 	bool saveThisPage();
 	bool saveAllPages();
-	bool saveAllPages2();
+	bool exportPageToSVG(int pageNumber);
 	bool saveAll();
 	void searchText();
 	
@@ -56,8 +56,7 @@ private slots:
 private:
 	QString fontFileName = "./input/font.dat";
 	QString fontSubwordsFileName = "./input/font.subwords.dat";
-	void createActions();
-	void initRexpClasses();
+	void createActions();	
 	void createStatusBar();
 	void createDockWindows();
 	void readSettings();
@@ -67,12 +66,12 @@ private:
 	void createSearchWindows();
 	PageAnalysisResult& getPageResult(int pageNumber);
 	void findExpandables();
-	void detectSubWords();
+	void detectSubWords(bool characterSegmentation, int pPageIndex = -1);
 	void handleContextMenu(const QPoint& pos);
 	
 	
 	void searchStretching();
-	void searchStretchingBySubWord();
+	void searchKashidas();
 	void savePageFile(int pageNumber, bool overrideFile);
 
 	int maxSubWords = 0;

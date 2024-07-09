@@ -13,6 +13,7 @@
 #include <QVector>
 #include "shapeItem.h"
 #include "pathdelegate.h"
+#include "worditem.h"
 #pragma warning(pop)
 
 #endif // CMAKE_COMMON_PCH 

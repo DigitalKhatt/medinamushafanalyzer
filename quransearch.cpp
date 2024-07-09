@@ -271,9 +271,9 @@ std::vector<WordMatch> QuranSearch::searchText(QString textToSearch, bool checkB
 				auto line = page[lineIndex];
 				for (int wordIndex = 0; wordIndex < line.size(); wordIndex++) {
 					auto word = line[wordIndex];
-					auto match = re.match(word);
-					if (match.hasMatch()) {
-						matches.push_back(WordMatch{ pageIndex ,lineIndex,wordIndex,match });
+					auto matchIterator = re.globalMatch(word);
+					while (matchIterator.hasNext()) {
+						matches.push_back(WordMatch{ pageIndex ,lineIndex,wordIndex,0,matchIterator.next() });
 					}
 				}
 			}

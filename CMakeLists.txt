@@ -22,10 +22,6 @@ set(CMAKE_AUTOUIC ON)
 
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/Zc:__cplusplus;/permissive->")
 
-
-
-
-
 find_package(Qt5 COMPONENTS Core Widgets Xml REQUIRED)
 # The 4 following package are needed by Poppler
 find_package(PkgConfig REQUIRED)
@@ -41,10 +37,11 @@ pkg_check_modules(Poppler REQUIRED poppler IMPORTED_TARGET)
 
 set(ALL_FILES   mainwindow.h mainwindow.cpp CustomOutputDev.h CustomOutputDev.cpp application.qrc renderarea.h renderarea.cpp graphicsview.h graphicsview.cpp
 constants.h aglyph.h aglyph.cpp afont.h afont.cpp pageanalysisresult.h pageanalysisresult.cpp quran.h quran.cpp
-shapeitem.h shapeitem.cpp quransearch.h quransearch.cpp "pathdelegate.h"
+shapeitem.h shapeitem.cpp quransearch.h quransearch.cpp "pathdelegate.h" worditem.h worditem.cpp segmentsubword.cpp
 test.natvis qt5.natvis
 )
 set(LIBRARIES  Qt5::Core  Qt5::CorePrivate Qt5::GuiPrivate Qt5::Xml Qt5::Widgets  PkgConfig::Poppler JPEG::JPEG PNG::PNG  ${OPENJPEG_LIBRARIES})
+
 
 set(TFMatcherCpp TFMatcherCpp/AlignedTF.cpp TFMatcherCpp/AlignedTF.h TFMatcherCpp/Matcher.cpp TFMatcherCpp/Matcher.h 
 	TFMatcherCpp/Polygon.cpp TFMatcherCpp/Polygon.h TFMatcherCpp/SharedDefinitions.h 
@@ -61,6 +58,12 @@ target_link_libraries(${PROJECT_NAME} PUBLIC  ${LIBRARIES})
 
 
 target_compile_options(${PROJECT_NAME} PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+
+
+if(MSVC)
+  target_compile_options(${PROJECT_NAME} PUBLIC "/ZI")
+  target_link_options(${PROJECT_NAME} PUBLIC "/INCREMENTAL")
+endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:MYDEBUG> )
 target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:RelWithDebInfo>:MYDEBUG> )

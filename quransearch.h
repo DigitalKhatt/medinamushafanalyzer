@@ -6,7 +6,8 @@
 struct WordMatch {
 	int pageIndex;
 	int lineIndex;
-	int wordIndex;
+	int wordIndex;	
+	int subWordIndex;
 	QRegularExpressionMatch match;
 	QPainterPath path;
 };

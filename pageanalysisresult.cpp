@@ -160,10 +160,10 @@ void PageAnalysisResult::initQuranText()
 	for (auto textLines : PageAnalysisResult::quranText) {
 		pageNumber++;
 		QVector<QStringList> page;
-		if (pageNumber < 3) {
-			QuranTextByWord.append(page);
-			continue;
-		}
+		//if (pageNumber < 3) {
+		//	QuranTextByWord.append(page);
+		//	continue;
+		//}
 
 		for (int i = 0; i < textLines.size(); i++) {
 			auto textLine = textLines[i];
@@ -791,11 +791,12 @@ WordResultInfo PageAnalysisResult::detectSubWords(int pageIndex, int lineIndex, 
 	auto& line = page.lines[lineIndex];
 	auto& word = line.words[wordIndex];
 
+	auto wordText = QuranTextByWord[pageIndex][lineIndex][wordIndex];
+	word.text = wordText;
+
 	if (word.wordResultInfo.subWords.size() > 0 && !recompute) {
 		return word.wordResultInfo;
-	}
-
-	auto wordText = QuranTextByWord[pageIndex][lineIndex][wordIndex];
+	}	
 
 	auto joining = PageAnalysisResult::arabic_joining(wordText);
 	std::vector<int> nbContourBySubWords;
@@ -1094,7 +1095,7 @@ WordResultInfo PageAnalysisResult::detectSubWords(int pageIndex, int lineIndex, 
 
 	}
 
-	analyzeSubwords(pageIndex, lineIndex, wordIndex, wordInfo, font);
+	//analyzeSubwords(pageIndex, lineIndex, wordIndex, wordInfo, font);
 
 	return wordInfo;
 
@@ -1114,13 +1115,13 @@ void PageAnalysisResult::analyzeSubwords(int pageIndex, int lineIndex, int wordI
 			for (int shapeIndex = 0; shapeIndex < subWord.paths.size(); shapeIndex++) {
 				auto shapePathIndex = subWord.paths[shapeIndex];
 				auto& shape = word.paths[shapePathIndex];
-				double value;				
+				double value;
 				if (font->checkGlyph(shape.path, "alef", CompareMethod::TF, 0.2, &value) != -1) {
 					found = true;
 					if (shapeIndex != 0) {
 						rotateVector(subWord.paths, shapeIndex, 0);
 						std::cout << "Alef found, minValue=" << value << ",Index=" << shapeIndex << ",at " << pageIndex + 1 << "-" << lineIndex + 1 << "-" << wordIndex + 1 << std::endl;
-					}					
+					}
 					break;
 				}
 				else if (value < minValue) {
@@ -1255,6 +1256,12 @@ int PageAnalysisResult::loadPage(int pageNumber, AFont* font, bool debug, QGraph
 	}
 	else {
 		detectWords(pageNumber, font, scene);
+		for (int lineIndex = 0; lineIndex < page.lines.length(); lineIndex++) {
+			auto& line = page.lines[lineIndex];
+			for (int wordIndex = 0; wordIndex < line.words.length(); wordIndex++) {
+				detectSubWords(pageNumber - 1, lineIndex, wordIndex, font);
+			}
+		}
 	}
 
 	return 0;

@@ -11,10 +11,11 @@ ShapeItem::ShapeItem(const QPainterPath& path,
 	QGraphicsItem* parent)
 	: QGraphicsPathItem(path, parent) {
 
-	this->extrema = getExtrema(path, subPaths);
-	ALine line;
+	std::vector<QPainterPath> subPaths;
 
-	searchStretchings(path, this->stretchings, line, constants::SCALE_GLYPH);
+	getExtrema(path, subPaths, this->extrema);
+
+	searchStretchings(path, this->stretchings, constants::SCALE_GLYPH);
 
 }
 
@@ -112,9 +113,8 @@ static QVector<PathExtrema> qt_painterpath_bezier_extrema(int pathIndex, qreal c
 	}
 	return extrema;
 }
-QVector<PathExtrema> ShapeItem::getExtrema(const QPainterPath& path, std::vector<QPainterPath>& subPaths) {
+QVector<PathExtrema> ShapeItem::getExtrema(const QPainterPath& path, std::vector<QPainterPath>& subPaths, QVector<PathExtrema>& extrema) {
 
-	QVector<PathExtrema> extrema;
 	qreal curveIndex = -1;
 	int pathIndex = -1;
 	qreal nextXSlope = 0;
@@ -294,13 +294,13 @@ void ShapeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
 			painter->setPen(pen);
 			painter->setBrush(brush);
 			QRectF  rect = QRectF(control1.x - radius, control1.y - radius, 2 * radius, 2 * radius);
-			painter->drawEllipse(rect);
+			//painter->drawEllipse(rect);
 
 			pen.setColor(Qt::magenta);
 			painter->setPen(pen);
 			rect = QRectF(control2.x - radius, control2.y - radius, 2 * radius, 2 * radius);
 
-			painter->drawEllipse(rect);
+			//painter->drawEllipse(rect);
 
 			pen.setColor(blue);
 			painter->setPen(pen);
@@ -370,7 +370,7 @@ void ShapeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
 		}
 
 		QRectF  rect = QRectF(xextr.point.x() - radius, xextr.point.y() - radius, 2 * radius, 2 * radius);
-		painter->drawEllipse(rect);
+		//painter->drawEllipse(rect);
 
 	}
 
@@ -379,7 +379,7 @@ void ShapeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
 
 }
 
-void ShapeItem::searchStretchings(const QPainterPath& path, Stretchings& stretchings, ALine& line, double scaled) {
+void ShapeItem::searchStretchings(const QPainterPath& path, Stretchings& stretchings, double scaled) {
 
 
 	double scale = std::abs(scaled);
@@ -394,7 +394,9 @@ void ShapeItem::searchStretchings(const QPainterPath& path, Stretchings& stretch
 
 	std::vector<QPainterPath> subPaths;
 
-	auto extr = ShapeItem::getExtrema(path, subPaths);
+	QVector<PathExtrema> extr;
+
+	ShapeItem::getExtrema(path, subPaths, extr);
 
 	int currentPathIndex = 0;
 
@@ -416,7 +418,7 @@ void ShapeItem::searchStretchings(const QPainterPath& path, Stretchings& stretch
 			}
 		}
 
-		for (auto xiter = xSorted.size() != 0 ?  std::next(xSorted.begin()) : xSorted.end(); xiter != xSorted.end(); xiter++) {
+		for (auto xiter = xSorted.size() != 0 ? std::next(xSorted.begin()) : xSorted.end(); xiter != xSorted.end(); xiter++) {
 			auto& curr = *xiter;
 
 			int lookbackward = 2;

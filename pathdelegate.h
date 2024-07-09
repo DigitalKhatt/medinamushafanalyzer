@@ -1,12 +1,12 @@
 #pragma once
 
 
-class StarRating
+class PathImage
 {
 public:
 	enum class EditMode { Editable, ReadOnly };
 
-	explicit StarRating(QPainterPath path = QPainterPath{}) {
+	explicit PathImage(QPainterPath path = QPainterPath{}) {
 		this->setPath(path);
 
 	}
@@ -41,11 +41,15 @@ public:
 		this->path = this->path.translated(-box.left(), -box.top());
 	}
 
+	QPainterPath getPath() {
+		return path;
+	}
+
 private:
 	QPainterPath path;
 	QTransform transform{ 3,0,0,3,0,0 };
 };
-Q_DECLARE_METATYPE(StarRating)
+Q_DECLARE_METATYPE(PathImage)
 
 class PathDelegate : public QStyledItemDelegate
 {
@@ -55,11 +59,11 @@ public:
 
 	void paint(QPainter* painter, const QStyleOptionViewItem& option,
 		const QModelIndex& index) const override {
-		if (index.data().canConvert<StarRating>()) {
-			StarRating starRating = qvariant_cast<StarRating>(index.data());
+		if (index.data().canConvert<PathImage>()) {
+			PathImage pathImage = qvariant_cast<PathImage>(index.data());
 
-			starRating.paint(painter, option.rect, option.palette,
-				StarRating::EditMode::ReadOnly);
+			pathImage.paint(painter, option.rect, option.palette,
+				PathImage::EditMode::ReadOnly);
 		}
 		else {
 			QStyledItemDelegate::paint(painter, option, index);
@@ -68,9 +72,9 @@ public:
 	}
 	QSize sizeHint(const QStyleOptionViewItem& option,
 		const QModelIndex& index) const override {
-		if (index.data().canConvert<StarRating>()) {
-			StarRating starRating = qvariant_cast<StarRating>(index.data());
-			return starRating.sizeHint();
+		if (index.data().canConvert<PathImage>()) {
+			PathImage pathImage = qvariant_cast<PathImage>(index.data());
+			return pathImage.sizeHint();
 		}
 		return QStyledItemDelegate::sizeHint(option, index);
 	}

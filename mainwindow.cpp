@@ -138,9 +138,9 @@ void MainWindow::createDockWindows() {
 
 	jutifyToolbar->addWidget(button);
 
-	button = new QPushButton(tr("&Search Stretching By SubWords"));
+	button = new QPushButton(tr("&Search Kashidas"));
 	connect(button, &QPushButton::clicked, [&](bool checked) {
-		searchStretchingBySubWord();
+		searchKashidas();
 	});
 
 	jutifyToolbar->addWidget(button);
@@ -152,14 +152,45 @@ void MainWindow::createDockWindows() {
 
 	jutifyToolbar->addWidget(button2);
 
-	auto button3 = new QPushButton(tr("&Detect SubWords"));
+	auto button3 = new QPushButton(tr("&Display All SubWords"));
 	connect(button3, &QPushButton::clicked, [&](bool checked) {
-		detectSubWords();
+		if (!maxSubWords) {
+			detectSubWords(false);
+		}
+
+		for (int i = 0; i < 6; i++) {
+			WordResultFlags state = (WordResultFlags)(1 << i);
+			displaySubWords(-1, -1, -1, state);
+		}
+
 	});
 
 	jutifyToolbar->addWidget(button3);
 
+	button3 = new QPushButton(tr("&Display Current SubWords"));
+	connect(button3, &QPushButton::clicked, [&](bool checked) {
 
+		auto pageIndex = integerSpinBox->value() - 1;
+
+		detectSubWords(true, pageIndex);
+
+
+		for (int i = 0; i < 1; i++) {
+			WordResultFlags state = (WordResultFlags)(1 << i);
+			displaySubWords(pageIndex, -1, -1, state);
+		}
+
+	});
+
+	jutifyToolbar->addWidget(button3);
+
+	auto segmentSubwordsButton = new QPushButton(tr("&Segment Subwords"));
+	connect(segmentSubwordsButton, &QPushButton::clicked, [&](bool checked) {
+		detectSubWords(true);
+
+	});
+
+	jutifyToolbar->addWidget(segmentSubwordsButton);
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
@@ -200,50 +231,194 @@ bool MainWindow::saveThisPage() {
 	return true;
 
 }
-bool MainWindow::saveAllPages2() {
+
+static void drawPath(QTextStream& out, const QPainterPath& path, bool newPath, QString classes, QString fill = "") {
+	if (newPath) {
+		out << "<path ";
+		if (!classes.isEmpty()) {
+			out << "class=\"" << classes << "\" ";
+		}
+		if (!fill.isEmpty()) {
+			out << "fill=\"" << fill << "\" ";
+		}
+		out << "d = \"";
+	}
+	for (int i = 0; i < path.elementCount(); ++i) {
+		const QPainterPath::Element& e = path.elementAt(i);
+		switch (e.type) {
+		case QPainterPath::MoveToElement:
+			out << 'M' << e.x << ',' << e.y;
+			break;
+		case QPainterPath::LineToElement:
+			out << 'L' << e.x << ',' << e.y;
+			break;
+		case QPainterPath::CurveToElement:
+			out << 'C' << e.x << ',' << e.y;
+			++i;
+			while (i < path.elementCount()) {
+				const QPainterPath::Element& e = path.elementAt(i);
+				if (e.type != QPainterPath::CurveToDataElement) {
+					--i;
+					break;
+				}
+				else
+					out << ' ';
+				out << e.x << ',' << e.y;
+				++i;
+			}
+			break;
+		default:
+			break;
+		}
+		if (i != path.elementCount() - 1) {
+			out << ' ';
+		}
+	}
+	if (newPath) {
+		out << "\"/>" << Qt::endl;
+	}
+}
+
+struct Color
+{
+	int r, g, b;
+
+	QString toCss() {
+		return QString("#%1%2%3").arg(r, 2, 16, QLatin1Char('0')).arg(g, 2, 16, QLatin1Char('0')).arg(b, 2, 16, QLatin1Char('0'));
+	}
+};
+static int blend(int a, int b, float alpha)
+{
+	return (1.f - alpha) * a + alpha * b;
+}
+
+static Color color_blend(Color a, Color b, float alpha)
+{
+	struct Color x;
+
+	x.r = blend(a.r, b.r, alpha);
+	x.g = blend(a.g, b.g, alpha);
+	x.b = blend(a.b, b.b, alpha);
+
+	return x;
+}
+
+bool MainWindow::exportPageToSVG(int pageNumber) {
+
+	auto fileName = QString("./svg/page%1.svg").arg(pageNumber);
 
 
-	std::vector<QThread*> threads;
+	QFile file(fileName);
 
-	int totalpageNb = 604;
+	double ayaWidth = 13.04205;
+	double ayaHeight = 17.036715;
 
-	int nbthreads = 32;
-	int pageperthread = totalpageNb / nbthreads;
-	int remainingPages = totalpageNb;
+	double width = 260;
+	double height = 410;
+	double leftViewBox = 40;
+	if (pageNumber % 2 == 0) {
+		leftViewBox = 85;
+	}
+	QRegExp reNumber("\\d*");
+	bool openend = file.open(QIODevice::WriteOnly);
+	if (openend) {
+		int pageIndex = pageNumber - 1;
+		QTextStream  out(&file);
+		out << "<?xml-stylesheet type=\"text/css\" href=\"svg-stylesheet.css\"?>" << Qt::endl;
+		out << "<svg version=\"1.1\"" << Qt::endl;
+		out << "width=\"" << width * 8 << "\" height=\"" << height * 8 << "\"" << Qt::endl;
+		out << "viewBox=\"" << leftViewBox << " 70 " << width << " " << height << "\"" << Qt::endl;
+		out << "onload=\"makeDraggable(evt)\"" << Qt::endl;
+		out << "xmlns=\"http://www.w3.org/2000/svg\"" << Qt::endl;
+		out << "xmlns:xlink=\"http://www.w3.org/1999/xlink\">" << Qt::endl;
+		out << "<script xlink:href=\"myscript.js\"/>" << Qt::endl;
+		//out<< "<style>" <<  Qt::endl;
+		//out << "<![CDATA[" << Qt::endl;
+		//out << ".lgray {fill:   #999999;}" << Qt::endl;
+		//out << "]]>" << Qt::endl;
+		//out << "</style>" << Qt::endl;
+		auto& page = getPageResult(pageNumber);
+		for (int lineIndex = 0; lineIndex < page.page.lines.length(); lineIndex++) {
+			auto& line = page.page.lines[lineIndex];
+			for (int wordIndex = 0; wordIndex < line.words.length(); wordIndex++) {
+				auto& word = line.words[wordIndex];
+				auto wordText = page.QuranTextByWord[pageIndex][lineIndex][wordIndex];
+				if (reNumber.exactMatch(wordText)) {
+					QPainterPath wordPath;
+					for (auto& shape : word.paths) {
+						auto itemPath = shape.path;
+						auto pos = shape.pos;
+						itemPath = itemPath * shape.transform;
+						itemPath.translate(pos.x(), pos.y());
+						wordPath.addPath(itemPath);
+					}
+					auto bbox = wordPath.boundingRect();
 
-	while (remainingPages != 0) {
+					double heightop = 1;
 
-		int begin = totalpageNb - remainingPages;
-		if (pageperthread == 0 || remainingPages < pageperthread) {
-			pageperthread = remainingPages;
+					double x = bbox.left() - (ayaWidth - bbox.width()) / 2;
+					double y = bbox.top() - (ayaHeight - heightop - bbox.height()) / 2 - heightop;
+
+					out << "<use href=\"aya.svg#aya\" x=\"" << x << "\" y=\"" << y << "\"/>" << Qt::endl;
+				}
+				page.detectSubWords(pageIndex, lineIndex, wordIndex, &font);
+				for (int subWordIndex = 0; subWordIndex < word.wordResultInfo.subWords.size(); subWordIndex++) {
+					auto& subWord = word.wordResultInfo.subWords[subWordIndex];
+					bool CharacterSegCorrect = page.segmentSubword(pageIndex, lineIndex, wordIndex, subWordIndex, &font);
+					QString classes = "draggable";
+					classes = "";
+					if (subWord.text == "و۟" || subWord.text == "ا۟") {
+						classes += " lgray";
+					}
+					else if (subWord.text.contains("ٓ")) {
+						//classes += " medd6saturated";
+					}
+
+
+					Color start{ 255,0,0 };
+					Color end{ 0,0,255 };
+					float step = subWord.baseGlyphs.size() != 0 ? 1.0 / subWord.baseGlyphs.size() : 1;
+					float alpha = 0;
+					int iter = 0;
+					auto& shape = word.paths[subWord.paths[0]];
+					for (auto baseGlyphInfo : subWord.baseGlyphs) {
+						QPainterPath baseGlyph;
+						auto itemPath = baseGlyphInfo.path;
+						auto pos = shape.pos;
+						itemPath = itemPath * shape.transform;
+						itemPath.translate(pos.x(), pos.y());
+						auto color = color_blend(start, end, alpha);
+						auto fill = color.toCss();
+						fill = iter % 2 ? "#3200cc" : "#17B169";
+						//fill = "";
+						drawPath(out, itemPath, true, classes, fill);
+						alpha += step;
+						iter++;
+					}
+
+
+					for (int i = 1; i < subWord.paths.size(); i++) {
+						QPainterPath marksPath;
+						auto& shape = word.paths[subWord.paths[i]];
+						auto itemPath = shape.path;
+						auto pos = shape.pos;
+						itemPath = itemPath * shape.transform;
+						itemPath.translate(pos.x(), pos.y());
+						marksPath.addPath(itemPath);
+						drawPath(out, marksPath, true, classes);
+					}
+				}
+
+			}
 		}
 
-		remainingPages -= pageperthread;
 
-		QVector<int>* set = new QVector<int>();
 
-		QThread* thread = QThread::create([this, begin, pageperthread] {
-			for (int i = begin; i < begin + pageperthread; i++) {
-				int pageNumber = i + 1;
-				savePageFile(pageNumber, false);
-			}
-		});
-
-		threads.push_back(thread);
-
-		thread->start();
+		out << "</svg>";
 	}
 
-
-	for (auto t : threads) {
-		t->wait();
-		delete t;
-	}
-
-	pagesCache.clear();
 
 	return true;
-
 }
 bool MainWindow::saveAllPages() {
 
@@ -350,6 +525,15 @@ void MainWindow::createActions() {
 	fileMenu->addAction(saveAction);
 	fileToolBar->addAction(saveAction);
 
+	saveAction = new QAction(tr("&Export this page to SVG"), this);
+	saveAction->setStatusTip(tr("Export this page to SVG"));
+	connect(saveAction, &QAction::triggered, [this]() {
+		int pageNumber = this->integerSpinBox->value();
+		this->exportPageToSVG(pageNumber);
+	});
+	fileMenu->addAction(saveAction);
+	fileToolBar->addAction(saveAction);
+
 
 
 	fileMenu->addSeparator();
@@ -408,8 +592,8 @@ void MainWindow::loadFile(const QString& fileName)
 
 void MainWindow::setMousePosition(const QPointF& point) {
 	QString string = QString("%1, %2")
-		.arg(point.x())
-		.arg(point.y());
+		.arg(point.x() * 100 / constants::SCALE_GLYPH)
+		.arg(point.y() * 100 / constants::SCALE_GLYPH);
 	pointerPosition->setText(string);
 }
 
@@ -610,29 +794,52 @@ void MainWindow::searchText() {
 
 }
 
-void MainWindow::searchStretchingBySubWord() {
+void MainWindow::searchKashidas() {
 
-	int nbWords = 0;
-	int nbSubWords = 0;
-	for (int pageIndex = 2; pageIndex < PageAnalysisResult::QuranTextByWord.size(); pageIndex++) {
+	detectSubWords(true);
+
+	std::multimap<qreal, WordMatch, std::greater <qreal> > results;
+
+	for (int pageIndex = 0; pageIndex < PageAnalysisResult::QuranTextByWord.size(); pageIndex++) {
 		int pageNumber = pageIndex + 1;
 		auto& page = getPageResult(pageNumber);
 		for (int lineIndex = 0; lineIndex < page.page.lines.length(); lineIndex++) {
-			auto& line = page.page.lines[lineIndex];
+			auto line = page.page.lines[lineIndex];
 			for (int wordIndex = 0; wordIndex < line.words.length(); wordIndex++) {
-				nbWords++;
-				auto  info = page.detectSubWords(pageIndex, lineIndex, wordIndex, &font);
-				nbSubWords += info.subWords.size();
+				auto& word = line.words[wordIndex];
+				for (auto subWord = word.wordResultInfo.subWords.begin(); subWord != word.wordResultInfo.subWords.end(); ++subWord) {
+					if (subWord->baseGlyphs.size() < 2) continue;
+					if (subWord->correct && (subWord->joins.size() + 1) == subWord->baseGlyphs.size()) {
+						int baseGlyphIndex = 0;
+						for (auto& join : subWord->joins) {
+							QPainterPath chartacterPath;
+							auto& shape = word.paths[0];
+							auto itemPath = subWord->baseGlyphs[baseGlyphIndex].path;
+							auto pos = shape.pos;
+							itemPath = itemPath * shape.transform;
+							itemPath.translate(pos.x(), pos.y());
+							chartacterPath.addPath(itemPath);
+							results.insert({ join.length, WordMatch{ pageIndex ,lineIndex,wordIndex,0,{},chartacterPath } });
+
+							baseGlyphIndex++;
+						}
+					}
+					else {
+						QPainterPath subWordPath;
+						auto& shape = word.paths[0];
+						auto itemPath = shape.path;
+						auto pos = shape.pos;
+						itemPath = itemPath * shape.transform;
+						itemPath.translate(pos.x(), pos.y());
+						subWordPath.addPath(itemPath);
+						results.insert({ 0, WordMatch{ pageIndex ,lineIndex,wordIndex,0,{},subWordPath } });
+					}
+				}
 			}
 		}
 	}
 
-	std::cout << "nbWords=" << nbWords << std::endl;
-	std::cout << "nbSubWords=" << nbSubWords << std::endl;
-
-	std::multimap<qreal, WordMatch, std::greater <qreal> > results;
-
-
+	/*
 	for (int pageIndex = 0; pageIndex < PageAnalysisResult::QuranTextByWord.size(); pageIndex++) {
 		int pageNumber = pageIndex + 1;
 		auto& page = getPageResult(pageNumber);
@@ -661,7 +868,8 @@ void MainWindow::searchStretchingBySubWord() {
 						subWordPath.addPath(itemPath);
 						qreal maxDistShape = 0.0;
 						std::vector<QPainterPath> subPaths;
-						auto extr = ShapeItem::getExtrema(itemPath, subPaths);
+						QVector<PathExtrema> extr;
+						ShapeItem::getExtrema(itemPath, subPaths, extr);
 						std::sort(extr.begin(), extr.end(), [](const PathExtrema& a, const PathExtrema& b) { return a.point.x() > b.point.x(); });
 						for (int extIndex = 1; extIndex < extr.length(); extIndex++) {
 							if (!extr[extIndex].isX && std::abs(extr[extIndex].point.y() - line.baseline) < 3) {
@@ -679,11 +887,12 @@ void MainWindow::searchStretchingBySubWord() {
 						i++;
 					}
 
-					results.insert({ sordByWidth->isChecked() ? maxDist : maxSubWordPath.boundingRect().width(), WordMatch{ pageIndex ,lineIndex,wordIndex,{},maxSubWordPath } });
+					results.insert({ sordByWidth->isChecked() ? maxDist : maxSubWordPath.boundingRect().width(), WordMatch{ pageIndex ,lineIndex,wordIndex,0,{},maxSubWordPath } });
 				}
 			}
 		}
 	}
+	*/
 
 	showResuts("St Sub", results);
 
@@ -711,7 +920,7 @@ void MainWindow::searchStretching() {
 					itemPath.translate(pos.x(), pos.y());
 
 					Stretchings stretchings;
-					ShapeItem::searchStretchings(itemPath, stretchings, line);
+					ShapeItem::searchStretchings(itemPath, stretchings);
 
 					for (auto& stretching : stretchings) {
 						results.insert({ stretching.length, WordMatch{ pageIndex ,lineIndex,wordIndex } });
@@ -736,23 +945,94 @@ void MainWindow::displaySubWords(int ppageIndex, int plineIndex, int pwordIndex,
 	tableWidget->horizontalHeader()->setResizeContentsPrecision(-1);
 	tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
+	connect(tableWidget, &QTableWidget::cellClicked, [this, tableWidget](int row, int column) {
+
+
+		auto item = tableWidget->item(row, column);
+
+		if (item == nullptr) return;
+
+		auto vardata = item->data(Qt::UserRole);
+
+		if (vardata.canConvert<WordMatch>()) {
+			auto data = qvariant_cast<WordMatch>(vardata);
+			int pageNumber = data.pageIndex + 1;
+			auto& page = getPageResult(pageNumber);
+			if (column == 0) {
+				auto word = page.page.lines[data.lineIndex].words[data.wordIndex];
+				QPainterPath wordPath;
+				for (auto shape : word.paths) {
+					auto itemPath = shape.path;
+					auto pos = shape.pos;
+					itemPath = itemPath * shape.transform;
+					itemPath.translate(pos.x(), pos.y());
+					wordPath.addPath(itemPath);
+				}
+
+				auto bbox = wordPath.boundingRect();
+				wordPath.translate(-bbox.x(), -bbox.y());
+
+				QTransform transform{ constants::SCALE_GLYPH,0,0,constants::SCALE_GLYPH,0,0 };
+
+
+				delete shapeScene;
+
+				shapeScene = new QGraphicsScene(this);
+
+				this->shapeScene->addItem(new ShapeItem(wordPath * transform));
+
+				shapeView->setScene(shapeScene);
+
+				/*
+				this->shapeScene->clear();
+				this->shapeScene->addItem(new ShapeItem(wordPath * transform));
+
+				this->shapeScene->setSceneRect(QRectF());
+				this->shapeView->setSceneRect(QRectF());*/
+
+
+			}
+			else if (column == 1) {
+				integerSpinBox->setValue(pageNumber);
+			}
+			else if (column > 1) {
+
+				page.segmentSubword(data.pageIndex, data.lineIndex, data.wordIndex, data.subWordIndex, &font, true);
+
+				auto& word = page.page.lines[data.lineIndex].words[data.wordIndex];
+
+
+				this->shapeScene->clear();
+
+				this->shapeScene->setSceneRect(QRectF());
+
+				this->shapeScene->addItem(new WordItem(word, data.subWordIndex));
+
+			}
+
+		}
+
+
+	});
+
+	int maxIndex = ppageIndex == -1 ? PageAnalysisResult::QuranTextByWord.size() : ppageIndex + 1;
+
 	int rowIndex = 0;
-	for (int pageIndex = 2; pageIndex < PageAnalysisResult::QuranTextByWord.size(); pageIndex++) {
-		if (ppageIndex != -1 && !(ppageIndex == pageIndex))  continue;
+	for (int pageIndex = ppageIndex == -1 ? 0 : ppageIndex; pageIndex < maxIndex; pageIndex++) {
 		int pageNumber = pageIndex + 1;
 		auto& page = getPageResult(pageNumber);
 		for (int lineIndex = 0; lineIndex < page.page.lines.length(); lineIndex++) {
 			auto line = page.page.lines[lineIndex];
 			for (int wordIndex = 0; wordIndex < line.words.length(); wordIndex++) {
 
-				if (ppageIndex != -1) {
-					if (!(ppageIndex == pageIndex && plineIndex == lineIndex && pwordIndex == wordIndex)) continue;
-				}
+
+				if (!((plineIndex == -1 || plineIndex == lineIndex) && (pwordIndex == -1 || pwordIndex == wordIndex))) continue;
+
 
 				page.detectSubWords(pageIndex, lineIndex, wordIndex, &font);
 				auto& word = line.words[wordIndex];
 
-				if (ppageIndex == -1 && (word.wordResultInfo.state & state) != state) continue;
+				if ((word.wordResultInfo.state & state) != state) continue;
 
 				QPainterPath wordPath;
 				for (auto shape : word.paths) {
@@ -768,7 +1048,7 @@ void MainWindow::displaySubWords(int ppageIndex, int plineIndex, int pwordIndex,
 				tableWidget->insertRow(rowIndex);
 
 				auto pathItem = new QTableWidgetItem();
-				pathItem->setData(Qt::DisplayRole, QVariant::fromValue(StarRating(wordPath)));
+				pathItem->setData(Qt::DisplayRole, QVariant::fromValue(PathImage(wordPath)));
 				pathItem->setData(Qt::UserRole, QVariant::fromValue(match));
 				tableWidget->setItem(rowIndex, 0, pathItem);
 
@@ -777,6 +1057,7 @@ void MainWindow::displaySubWords(int ppageIndex, int plineIndex, int pwordIndex,
 				pathItem->setData(Qt::UserRole, QVariant::fromValue(match));
 				tableWidget->setItem(rowIndex, 1, pathItem);
 				int colIndex = 2;
+				int subWordIndex = word.wordResultInfo.subWords.size() - 1;;
 				for (auto it = word.wordResultInfo.subWords.rbegin(); it != word.wordResultInfo.subWords.rend(); ++it) {
 					auto& subWord = *it;
 					QPainterPath subWordPath;
@@ -801,11 +1082,13 @@ void MainWindow::displaySubWords(int ppageIndex, int plineIndex, int pwordIndex,
 
 
 					pathItem = new QTableWidgetItem();
-					pathItem->setData(Qt::DisplayRole, QVariant::fromValue(StarRating(subWordPath)));
+					pathItem->setData(Qt::DisplayRole, QVariant::fromValue(PathImage(subWordPath)));
+					match.subWordIndex = subWordIndex;
 					pathItem->setData(Qt::UserRole, QVariant::fromValue(match));
 					tableWidget->setItem(rowIndex, colIndex, pathItem);
 
 					colIndex++;
+					subWordIndex--;
 
 				}
 				rowIndex++;
@@ -833,29 +1116,49 @@ void MainWindow::displaySubWords(int ppageIndex, int plineIndex, int pwordIndex,
 	newDock->raise();
 }
 
-void MainWindow::detectSubWords() {
+void MainWindow::detectSubWords(bool characterSegmentation, int pPageIndex) {
 
-	if (!maxSubWords) {
-		for (int pageIndex = 2; pageIndex < PageAnalysisResult::QuranTextByWord.size(); pageIndex++) {
-			int pageNumber = pageIndex + 1;
-			auto& page = getPageResult(pageNumber);
-			for (int lineIndex = 0; lineIndex < page.page.lines.length(); lineIndex++) {
-				auto& line = page.page.lines[lineIndex];
-				for (int wordIndex = 0; wordIndex < line.words.length(); wordIndex++) {
-					page.detectSubWords(pageIndex, lineIndex, wordIndex, &font);
-					auto& word = line.words[wordIndex];
-					if (maxSubWords < word.wordResultInfo.subWords.size()) {
-						maxSubWords = word.wordResultInfo.subWords.size();
+	int maxIndex = pPageIndex == -1 ? PageAnalysisResult::QuranTextByWord.size() : pPageIndex + 1;
+
+	int nbWords = 0;
+	int nbSubWords = 0;
+	int totalCorrect = 0;
+	int totalIncorrect = 0;
+
+	for (int pageIndex = pPageIndex == -1 ? 0 : pPageIndex; pageIndex < maxIndex; pageIndex++) {
+		int pageNumber = pageIndex + 1;
+		auto& page = getPageResult(pageNumber);
+		for (int lineIndex = 0; lineIndex < page.page.lines.length(); lineIndex++) {
+			auto& line = page.page.lines[lineIndex];
+			for (int wordIndex = 0; wordIndex < line.words.length(); wordIndex++) {
+				nbWords++;
+				page.detectSubWords(pageIndex, lineIndex, wordIndex, &font);
+				auto& word = line.words[wordIndex];
+				nbSubWords += word.wordResultInfo.subWords.size();
+				if (maxSubWords < word.wordResultInfo.subWords.size()) {
+					maxSubWords = word.wordResultInfo.subWords.size();
+				}
+				if (characterSegmentation) {
+					for (int subWordIndex = 0; subWordIndex < word.wordResultInfo.subWords.size(); subWordIndex++) {
+						bool correct = page.segmentSubword(pageIndex, lineIndex, wordIndex, subWordIndex, &font);
+						if (correct) {
+							totalCorrect++;
+						}
+						else {
+							totalIncorrect++;
+						}
 					}
 				}
 			}
 		}
 	}
 
-	for (int i = 0; i < 6; i++) {
-		WordResultFlags state = (WordResultFlags)(1 << i);
-		displaySubWords(-1, -1, -1, state);
-	}
+	std::cout << "nbWords=" << nbWords << std::endl;
+	std::cout << "nbSubWords=" << nbSubWords << std::endl;
+	std::cout << "totalCorrect=" << totalCorrect << std::endl;
+	std::cout << "totalIncorrect=" << totalIncorrect << std::endl;
+
+
 }
 void MainWindow::handleContextMenu(const QPoint& pos)
 {
@@ -871,72 +1174,72 @@ void MainWindow::showResuts(QString dockName, const std::multimap<qreal, WordMat
 	tableWidget->setColumnCount(4);
 	tableWidget->horizontalHeader()->setResizeContentsPrecision(-1);
 	tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
-	tableWidget->setContextMenuPolicy(Qt::CustomContextMenu);	
+	tableWidget->setContextMenuPolicy(Qt::CustomContextMenu);
 
 	connect(tableWidget, &QTableWidget::customContextMenuRequested, this, [this, tableWidget](const QPoint& pos) {
 		//auto gloPos = mapToGlobal(pos);
 		QTableWidgetItem* item = tableWidget->itemAt(pos);
-	if (item) {
-		auto vardata = item->data(Qt::UserRole);
-		if (vardata.canConvert<WordMatch>()) {
-			auto data = qvariant_cast<WordMatch>(vardata);
-			int pageNumber = data.pageIndex + 1;
+		if (item) {
+			auto vardata = item->data(Qt::UserRole);
+			if (vardata.canConvert<WordMatch>()) {
+				auto data = qvariant_cast<WordMatch>(vardata);
+				int pageNumber = data.pageIndex + 1;
 
-			QMenu menu;
-			menu.addAction("Save Picture");
-			QAction* a = menu.exec(QCursor::pos());
-			if (a != NULL) {
-				if (a->text() == "Save Picture") {
+				QMenu menu;
+				menu.addAction("Save Picture");
+				QAction* a = menu.exec(QCursor::pos());
+				if (a != NULL) {
+					if (a->text() == "Save Picture") {
 
-					QFileDialog dialog(this);
-					dialog.setFileMode(QFileDialog::AnyFile);
+						QFileDialog dialog(this);
+						dialog.setFileMode(QFileDialog::AnyFile);
 
-					QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"),
-						"test.jpg",
-						tr("Images (*.jpg)"));
+						QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"),
+							"test.jpg",
+							tr("Images (*.jpg)"));
 
-					if (fileName.isEmpty()) return;
+						if (fileName.isEmpty()) return;
 
-					auto& page = getPageResult(pageNumber);
-					auto word = page.page.lines[data.lineIndex].words[data.wordIndex];
-					QPainterPath wordPath;
-					for (auto shape : word.paths) {
-						auto itemPath = shape.path;
-						auto pos = shape.pos;
-						itemPath = itemPath * shape.transform;
-						itemPath.translate(pos.x(), pos.y());
-						wordPath.addPath(itemPath);
+						auto& page = getPageResult(pageNumber);
+						auto word = page.page.lines[data.lineIndex].words[data.wordIndex];
+						QPainterPath wordPath;
+						for (auto shape : word.paths) {
+							auto itemPath = shape.path;
+							auto pos = shape.pos;
+							itemPath = itemPath * shape.transform;
+							itemPath.translate(pos.x(), pos.y());
+							wordPath.addPath(itemPath);
+						}
+
+						QTransform transform{ constants::SCALE_GLYPH,0,0,constants::SCALE_GLYPH ,0,0 };
+
+						wordPath = wordPath * transform;
+						auto box1 = wordPath.boundingRect();
+						wordPath.translate(-box1.left() + 50, -box1.top() + 50);
+
+						auto bbox = wordPath.boundingRect();
+
+						QImage image(bbox.size().toSize() + QSize(100, 100), QImage::Format_ARGB32_Premultiplied);
+						image.fill(qRgba(255, 255, 255, 255));
+						QPainter painter(&image);
+
+						painter.setRenderHint(QPainter::Antialiasing, true);
+
+						painter.setPen(Qt::NoPen);
+
+						painter.setBrush(QBrush(qRgba(174, 234, 174, 255)));
+						painter.drawPath(wordPath);
+						painter.end();
+
+
+
+						image.save(fileName, "jpeg");
+
+
 					}
-
-					QTransform transform{ constants::SCALE_GLYPH,0,0,constants::SCALE_GLYPH ,0,0 };
-
-					wordPath = wordPath * transform;
-					auto box1 = wordPath.boundingRect();
-					wordPath.translate(-box1.left() + 50, -box1.top() + 50);
-
-					auto bbox = wordPath.boundingRect();
-
-					QImage image(bbox.size().toSize() + QSize(100, 100), QImage::Format_ARGB32_Premultiplied);
-					image.fill(qRgba(255, 255, 255, 255));
-					QPainter painter(&image);
-
-					painter.setRenderHint(QPainter::Antialiasing, true);
-
-					painter.setPen(Qt::NoPen);
-
-					painter.setBrush(Qt::gray);
-					painter.drawPath(wordPath);
-					painter.end();
-
-
-
-					image.save(fileName, "jpeg");
-
-
 				}
 			}
 		}
-	}
 	});
 
 	connect(tableWidget, &QTableWidget::cellClicked, [this, tableWidget](int row, int column) {
@@ -944,54 +1247,54 @@ void MainWindow::showResuts(QString dockName, const std::multimap<qreal, WordMat
 
 		auto item = tableWidget->item(row, column);
 
-	auto vardata = item->data(Qt::UserRole);
+		auto vardata = item->data(Qt::UserRole);
 
-	if (vardata.canConvert<WordMatch>()) {
-		auto data = qvariant_cast<WordMatch>(vardata);
-		int pageNumber = data.pageIndex + 1;
-		auto& page = getPageResult(pageNumber);
-		if (column == 0) {
-			auto word = page.page.lines[data.lineIndex].words[data.wordIndex];
-			QPainterPath wordPath;
-			for (auto shape : word.paths) {
-				auto itemPath = shape.path;
-				auto pos = shape.pos;
-				itemPath = itemPath * shape.transform;
-				itemPath.translate(pos.x(), pos.y());
-				wordPath.addPath(itemPath);
+		if (vardata.canConvert<WordMatch>()) {
+			auto data = qvariant_cast<WordMatch>(vardata);
+			int pageNumber = data.pageIndex + 1;
+			auto& page = getPageResult(pageNumber);
+			if (column == 0) {
+				auto word = page.page.lines[data.lineIndex].words[data.wordIndex];
+				QPainterPath wordPath;
+				for (auto shape : word.paths) {
+					auto itemPath = shape.path;
+					auto pos = shape.pos;
+					itemPath = itemPath * shape.transform;
+					itemPath.translate(pos.x(), pos.y());
+					wordPath.addPath(itemPath);
+				}
+
+				auto bbox = wordPath.boundingRect();
+				wordPath.translate(-bbox.x(), -bbox.y());
+
+				QTransform transform{ constants::SCALE_GLYPH,0,0,constants::SCALE_GLYPH,0,0 };
+
+				delete shapeScene;
+
+				shapeScene = new QGraphicsScene(this);
+
+				this->shapeScene->addItem(new ShapeItem(wordPath * transform));
+
+				shapeView->setScene(shapeScene);
+			}
+			else if (column == 1) {
+				integerSpinBox->setValue(pageNumber);
+				auto info = page.detectSubWords(data.pageIndex, data.lineIndex, data.wordIndex, &this->font, true);
+				this->displaySubWords(data.pageIndex, data.lineIndex, data.wordIndex, WordResultFlags::NONE);
 			}
 
-			auto bbox = wordPath.boundingRect();
-			wordPath.translate(-bbox.x(), -bbox.y());
-
-			QTransform transform{ constants::SCALE_GLYPH,0,0,constants::SCALE_GLYPH,0,0 };
-
-			this->shapeScene->clear();
-
-			this->shapeScene->setSceneRect(QRectF());
-
-			//this->shapeScene->setSceneRect(QRectF());
-
-			this->shapeScene->addItem(new ShapeItem(wordPath * transform));
 		}
-		else if (column == 1) {
-			integerSpinBox->setValue(pageNumber);
-			auto info = page.detectSubWords(data.pageIndex, data.lineIndex, data.wordIndex, &this->font, true);
-			this->displaySubWords(data.pageIndex, data.lineIndex, data.wordIndex, WordResultFlags::NONE);
-		}
-
-	}
 
 
 	});
 
 	for (auto& result : results) {
 
-		auto match = result.second;
+		auto wordMatch = result.second;
 
-		int pageNumber = match.pageIndex + 1;
+		int pageNumber = wordMatch.pageIndex + 1;
 		auto& page = getPageResult(pageNumber);
-		auto word = page.page.lines[match.lineIndex].words[match.wordIndex];
+		auto word = page.page.lines[wordMatch.lineIndex].words[wordMatch.wordIndex];
 		QPainterPath wordPath;
 		for (auto shape : word.paths) {
 			auto itemPath = shape.path;
@@ -1004,23 +1307,23 @@ void MainWindow::showResuts(QString dockName, const std::multimap<qreal, WordMat
 		//tableWidget->insertRow(rowIndex);
 
 		auto pathItem = new QTableWidgetItem();
-		pathItem->setData(Qt::DisplayRole, QVariant::fromValue(StarRating(wordPath)));
-		pathItem->setData(Qt::UserRole, QVariant::fromValue(match));
+		pathItem->setData(Qt::DisplayRole, QVariant::fromValue(PathImage(wordPath)));
+		pathItem->setData(Qt::UserRole, QVariant::fromValue(wordMatch));
 		tableWidget->setItem(rowIndex, 0, pathItem);
 
 		pathItem = new QTableWidgetItem();
-		pathItem->setData(Qt::DisplayRole, QString("%1-%2-%3").arg(pageNumber).arg(match.lineIndex + 1).arg(match.wordIndex + 1));
-		pathItem->setData(Qt::UserRole, QVariant::fromValue(match));
+		pathItem->setData(Qt::DisplayRole, QString("%1-%2-%3").arg(pageNumber).arg(wordMatch.lineIndex + 1).arg(wordMatch.wordIndex + 1));
+		pathItem->setData(Qt::UserRole, QVariant::fromValue(wordMatch));
 		tableWidget->setItem(rowIndex, 1, pathItem);
 
 		pathItem = new QTableWidgetItem();
-		pathItem->setData(Qt::DisplayRole, QVariant::fromValue(StarRating(match.path)));
-		pathItem->setData(Qt::UserRole, QVariant::fromValue(match));
+		pathItem->setData(Qt::DisplayRole, QVariant::fromValue(PathImage(wordMatch.path)));
+		pathItem->setData(Qt::UserRole, QVariant::fromValue(wordMatch));
 		tableWidget->setItem(rowIndex, 2, pathItem);
 
 		pathItem = new QTableWidgetItem();
-		pathItem->setData(Qt::DisplayRole, match.path.boundingRect().width());
-		pathItem->setData(Qt::UserRole, QVariant::fromValue(match));
+		pathItem->setData(Qt::DisplayRole, wordMatch.path.boundingRect().width());
+		pathItem->setData(Qt::UserRole, QVariant::fromValue(wordMatch));
 		tableWidget->setItem(rowIndex, 3, pathItem);
 
 		rowIndex++;
@@ -1053,30 +1356,32 @@ void MainWindow::displaySearch(QString textToSearch, const std::vector<WordMatch
 	std::multimap<qreal, WordMatch, std::greater <qreal> > results;
 	int index = 0;
 
-	for (auto match : matches) {
+	for (auto wordMatch : matches) {
 
 		/*
 		if (match.pageIndex == 29 && match.lineIndex == 10 && match.wordIndex == 8) {
 			std::cout << "stop at " << match.pageIndex + 1 << "-" << match.lineIndex + 1 << "-" << match.wordIndex + 1 << std::endl;
 		}*/
 
-		auto pageNumber = match.pageIndex + 1;
+		auto pageNumber = wordMatch.pageIndex + 1;
 
 
 		auto& page = getPageResult(pageNumber);
-		auto& line = page.page.lines[match.lineIndex];
-		auto& word = line.words[match.wordIndex];
+		auto& line = page.page.lines[wordMatch.lineIndex];
+		auto& word = line.words[wordMatch.wordIndex];
 
-		auto wordInfo = page.detectSubWords(pageNumber - 1, match.lineIndex, match.wordIndex, &font);
+		page.detectSubWords(pageNumber - 1, wordMatch.lineIndex, wordMatch.wordIndex, &font);
+
+		auto& wordInfo = word.wordResultInfo;
 
 
 		int start = -1;
 		int end = -1;
 		for (int captType = 0; captType < 4; captType++) {
 			auto captName = (QString("capt%1").arg(captType));
-			start = match.match.capturedStart(captName);
+			start = wordMatch.match.capturedStart(captName);
 			if (start != -1) {
-				end = match.match.capturedEnd(captName);
+				end = wordMatch.match.capturedEnd(captName);
 				break;
 			}
 		}
@@ -1092,23 +1397,77 @@ void MainWindow::displaySearch(QString textToSearch, const std::vector<WordMatch
 			subWords.insert(charInfo.subWord);
 		}
 
+		bool correct = true;
 
-
-		QPainterPath wordPath;
 		for (auto subWordIndex : subWords) {
-			auto subword = wordInfo.subWords[subWordIndex];
-
-			auto& shape = word.paths[subword.paths[0]];
-			auto itemPath = shape.path;
-			auto pos = shape.pos;
-			itemPath = itemPath * shape.transform;
-			itemPath.translate(pos.x(), pos.y());
-			wordPath.addPath(itemPath);
+			correct = correct && page.segmentSubword(wordMatch.pageIndex, wordMatch.lineIndex, wordMatch.wordIndex, subWordIndex, &font);
 		}
 
-		auto bbox = wordPath.boundingRect();
-		match.path = wordPath;
-		results.insert({ sortByWidth ? bbox.width() : index,match });
+		wordMatch.path.clear();
+		if (!correct) {
+			for (auto subWordIndex : subWords) {
+				auto& subword = wordInfo.subWords[subWordIndex];
+
+				auto& shape = word.paths[subword.paths[0]];
+				auto itemPath = shape.path;
+				auto pos = shape.pos;
+				itemPath = itemPath * shape.transform;
+				itemPath.translate(pos.x(), pos.y());
+				wordMatch.path.addPath(itemPath);
+			}
+			results.insert({ sortByWidth ? 0 : index,wordMatch });
+		}
+		else {
+
+			int currentCharIndex = 0;
+			for (auto& subWord : wordInfo.subWords) {
+
+				//if (start >= currentCharIndex + subword.text.size()) continue;
+
+				//if (end < currentCharIndex) continue;
+
+				int baseGlyphIndex = 0;
+				auto endSubWord = currentCharIndex + subWord.text.size();
+				auto& shape = word.paths[subWord.paths[0]];
+
+				for (int charIndex = currentCharIndex; charIndex < endSubWord; charIndex++) {
+
+					auto isMark = word.text[charIndex].isMark();
+
+					if (charIndex >= start && charIndex < end && !isMark) {
+						if (baseGlyphIndex < subWord.baseGlyphs.size()) {
+							auto& baseGlyphInfo = subWord.baseGlyphs[baseGlyphIndex];
+							auto itemPath = baseGlyphInfo.path;
+							auto pos = shape.pos;
+							itemPath = itemPath * shape.transform;
+							itemPath.translate(pos.x(), pos.y());
+							wordMatch.path.addPath(itemPath);
+						}
+						else {
+							std::cout << "Problem displaySearch at pageNumber=" << pageNumber
+								<< ",lineNumber=" << wordMatch.lineIndex + 1
+								<< ",wordNumber=" << wordMatch.wordIndex + 1
+								<< ",wordText=" << word.text.toStdString()
+								<< std::endl;
+						}
+
+					}
+
+					if (!isMark) {
+						baseGlyphIndex++;
+					}
+
+				}
+
+				currentCharIndex = endSubWord;
+
+			}
+
+			auto bbox = wordMatch.path.boundingRect();
+			results.insert({ sortByWidth ? bbox.width() : index,wordMatch });
+		}
+
+
 
 		index--;
 
@@ -1222,14 +1581,12 @@ void MainWindow::loadPage(int pageNumber) {
 		result.loadPage(pageNumber, &font, true, scene);
 		added = true;
 	}
-	else {
+	else if (!cached) {
 		QString cacheFileName = QString("./pages/page%1.dat").arg(pageNumber);
 
 		QFile cacheFile(cacheFileName);
 		if (cacheFile.exists()) {
-			if (!cached) {
-				pagesCache[pageNumber].page = loadCache(cacheFileName);
-			}
+			pagesCache[pageNumber].page = loadCache(cacheFileName);
 		}
 		else {
 			auto& tt = pagesCache[pageNumber];

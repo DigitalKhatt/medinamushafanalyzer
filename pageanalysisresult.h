@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "CommonPCH.h"
-
+#include <set>
+#include <vector>
 struct AFont;
 
 template <typename t> void rotateVector(std::vector<t>& v, size_t oldIndex, size_t newIndex)
@@ -37,6 +38,52 @@ struct ShapeExceptionRecord {
 	ShapeException shapeException;
 	int subWordPosition;
 };
+
+struct PathExtrema {
+	int pathIndex;
+	qreal time;
+	QPointF point;
+	bool isX;
+	bool isY;
+	bool isSharp = false;
+};
+
+struct Stretching {
+	double length;
+	PathExtrema topLeft;
+	PathExtrema topBaseLine;
+	PathExtrema topRight;
+	PathExtrema bottomRight;
+	PathExtrema bottomBaseLine;
+	PathExtrema bottomLeft;
+	bool clockWise;
+
+	struct cmpbyx {
+		bool operator()(Stretching a, Stretching b) const {
+			if (a.bottomBaseLine.point.x() != b.bottomBaseLine.point.x()) {
+				return a.bottomBaseLine.point.x() > b.bottomBaseLine.point.x();
+			}
+			else return a.topBaseLine.point.x() > b.topBaseLine.point.x();
+		}
+	};
+
+	struct cmpbylength {
+		bool operator()(Stretching a, Stretching b) const {
+			if (a.length != b.length) {
+				return a.length > b.length;
+			}
+			else if (a.bottomBaseLine.point.x() != b.bottomBaseLine.point.x()) {
+				return a.bottomBaseLine.point.x() > b.bottomBaseLine.point.x();
+			}
+			else return a.topBaseLine.point.x() > b.topBaseLine.point.x();
+		}
+	};
+
+};
+
+
+using Stretchings = std::set < Stretching, Stretching::cmpbylength>;
+using Joins = std::set < Stretching, Stretching::cmpbyx>;
 
 
 
@@ -75,10 +122,6 @@ struct Apath {
 	}
 };
 
-struct ASubWord {
-	QVector<Apath> paths;
-	QString text;
-};
 
 enum class WordResultFlags : int
 {
@@ -104,21 +147,107 @@ inline WordResultFlags& operator |=(WordResultFlags& a, WordResultFlags b)
 	return a = a | b;
 }
 
+template<typename T>
+inline QDataStream& operator<< (QDataStream& out, const std::vector<T>& args)
+{
+	out << (int)args.size();
+	for (const auto& val : args)
+	{
+		out << val;
+	}
+	return out;
+}
+template<typename T>
+inline QDataStream& operator>> (QDataStream& in, std::vector<T>& args)
+{
+	int length = 0;
+	in >> length;
+	args.clear();
+	args.reserve(length);
+	for (int i = 0; i < length; ++i)
+	{
+		typedef typename std::vector<T>::value_type valType;
+		valType obj;
+		in >> obj;
+		args.push_back(obj);
+	}
+	return in;
+}
+
+struct GlyphInfo {
+	QString text;
+	QPainterPath path;
+};
+
+enum class Orientation {
+	None,
+	ClockWise,
+	CounterClockwise
+};
+
 struct WordResultInfo {
 	struct SubWordInfo {
 		QString text;
 		//int startIndex;
 		//int endIndex;
 		std::vector<int> paths;
+		std::vector<GlyphInfo> baseGlyphs;
+		QVector<PathExtrema> extrema;
+		Joins joins;
+		bool correct;
+		QPainterPath debugPath;
+		Orientation basePathOrientation;
+		/* overload the operators */
+		friend QDataStream& operator<< (QDataStream& out, const SubWordInfo& rhs) {
+			out << rhs.text;
+			out << rhs.paths;
+			return out;
+		}
+
+		friend QDataStream& operator>> (QDataStream& in, SubWordInfo& rhs) {
+			in >> rhs.text;
+			in >> rhs.paths;
+
+			return in;
+		}
 	};
 	struct CharInfo {
 		int subWord;
-		//int startIndex;
-		//int endIndex;
+		/* overload the operators */
+		friend QDataStream& operator<< (QDataStream& out, const CharInfo& rhs)
+		{
+			out << rhs.subWord;
+			return out;
+		}
+
+		friend QDataStream& operator>> (QDataStream& in, CharInfo& rhs)
+		{
+			in >> rhs.subWord;
+			return in;
+		}
 	};
 	std::vector<SubWordInfo> subWords;
 	std::vector<CharInfo> charInfos;
 	WordResultFlags state = WordResultFlags::NONE;
+
+	/* overload the operators */
+	friend QDataStream& operator<< (QDataStream& out, const WordResultInfo& rhs)
+	{
+		out << rhs.state;
+		out << rhs.subWords;
+		out << rhs.charInfos;
+
+		return out;
+	}
+
+	friend QDataStream& operator>> (QDataStream& in, WordResultInfo& rhs)
+	{
+		in >> rhs.state;
+		in >> rhs.subWords;
+		in >> rhs.charInfos;
+
+		return in;
+	}
 };
 
 struct Word {
@@ -131,6 +260,7 @@ struct Word {
 	{
 		out << rhs.paths;
 		out << rhs.text;
+		out << rhs.wordResultInfo;
 		return out;
 	}
 
@@ -138,6 +268,7 @@ struct Word {
 	{
 		in >> rhs.paths;
 		in >> rhs.text;
+		in >> rhs.wordResultInfo;
 		return in;
 	}
 };
@@ -188,15 +319,19 @@ struct APage {
 	/* overload the operators */
 	friend QDataStream& operator<< (QDataStream& out, const APage& rhs)
 	{
+		out << rhs.version;
 		out << rhs.lines;
 		return out;
 	}
 
 	friend QDataStream& operator>> (QDataStream& in, APage& rhs)
 	{
+		in >> rhs.version;
 		in >> rhs.lines;
 		return in;
 	}
+private:
+	double version = 1;
 };
 
 struct Mushaf {
@@ -267,26 +402,29 @@ struct PageAnalysisResult {
 
 	static void initQuranText();
 
-	struct NotMatched {
-		int lineIndex;
-		Apath item;
-	};
-	int loadPage(int pageNumber, AFont* font, bool debug, QGraphicsScene* extScene = nullptr);
-	APage page;
-
-	WordResultInfo detectSubWords(int pageIndex, int lineIndex, int wordIndex, AFont* font, bool recompute = false);
-
 	static const arabic_state_table_entry arabic_state_table[][4];
 
 	static const unsigned int joining_mapping[6];
 
 	static QVector<TextInfo> arabic_joining(QString text);
 
+	struct NotMatched {
+		int lineIndex;
+		Apath item;
+	};
+
+	int loadPage(int pageNumber, AFont* font, bool debug, QGraphicsScene* extScene = nullptr);
+	APage page;
+
+	WordResultInfo detectSubWords(int pageIndex, int lineIndex, int wordIndex, AFont* font, bool recompute = false);
+
+	bool segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font, bool refresh = false);
+
 
 private:
 
 	void analyzeSubwords(int pageIndex, int lineIndex, int wordIndex, WordResultInfo& wordResultInfo, AFont* font);
-
+	bool cutSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font, bool refresh = false);	
 	QVector<NotMatched> notMatchedItems;
 	void analyzePage(int pageNumber, AFont* font, QGraphicsScene* scene, QVector<QSet<QGraphicsPathItem*>>& lines);
 	void analyzeTextPage(int pageNumber);
@@ -317,4 +455,5 @@ private:
 	qreal lineWidth = 260;
 	qreal leftEvent = 80;
 	qreal leftOdd = 40;
+
 };
