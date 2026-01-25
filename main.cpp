@@ -12,9 +12,6 @@
 
 int main(int argc, char** argv) {
 
-    SetConsoleOutputCP(65001);
-    //setlocale(LC_ALL, ".UTF8");
-
     Q_INIT_RESOURCE(application);
 #ifdef Q_OS_ANDROID
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);

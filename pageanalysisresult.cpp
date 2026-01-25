@@ -6,6 +6,7 @@
 #include "quran.h"
 #include <format>
 #include "qfile.h"
+#include <climits>
 
 
 QMap<int, QMap<int, QMap<int, ShapeExceptionRecord>>> PageAnalysisResult::nbShapeExceptions
@@ -169,7 +170,7 @@ void PageAnalysisResult::initQuranText()
 			auto textLine = textLines[i];
 			auto match = re.match(textLine);
 			if (match.hasMatch()) {
-				page.append({});
+				page.append(QStringList{});
 				continue;
 			}
 			auto words = textLine.split(char(0x20), Qt::SkipEmptyParts);
@@ -1110,7 +1111,7 @@ void PageAnalysisResult::analyzeSubwords(int pageIndex, int lineIndex, int wordI
 		auto& subWord = wordResultInfo.subWords[subWordIndex];
 		if (subWord.text.contains("إ")) {
 			bool found = false;
-			double minValue = MAXINT;
+			double minValue = INT_MAX;
 			double minIndex = -1;
 			for (int shapeIndex = 0; shapeIndex < subWord.paths.size(); shapeIndex++) {
 				auto shapePathIndex = subWord.paths[shapeIndex];
@@ -1165,9 +1166,9 @@ int PageAnalysisResult::loadPage(int pageNumber, AFont* font, bool debug, QGraph
 	notMatchedItems.clear();
 
 
-	auto filename_g = new GooString(fileName.toStdString());
+	auto filename_g = std::make_unique<GooString>(fileName.toStdString()); 
 
-	PDFDoc doc(filename_g, nullptr, nullptr);
+	PDFDoc doc(std::move(filename_g));
 
 	//SplashColor sc = { 255, 255, 255 };
 
@@ -1295,7 +1296,7 @@ QVector<TextInfo> PageAnalysisResult::arabic_joining(QString text) {
 	for (unsigned int i = 0; i < text.size(); i++)
 	{
 
-		info.append({});
+		info.append(TextInfo{});
 		auto qchar = text[i];
 
 		auto qjoining = qchar.joiningType();
@@ -1446,7 +1447,7 @@ void PageAnalysisResult::analyzeTextPage(int pageNumber) {
 
 	for (int i = 0; i < textLines.size(); i++) {
 
-		LinesInfo.append({});
+		LinesInfo.append(LineInfo{});
 
 		LinesInfo[i].text = textLines[i];
 

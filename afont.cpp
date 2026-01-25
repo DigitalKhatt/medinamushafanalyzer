@@ -1,6 +1,7 @@
 #include "afont.h"
 
 #include "TFMatcherCpp/Matcher.h"
+#include <climits>
 
 long AFont::getArea(QPainterPath path) {
 	auto region = QRegion(path.toFillPolygon().toPolygon());
@@ -32,7 +33,7 @@ int AFont::checkGlyph(const QPainterPath& inpath, QString glyphName, CompareMeth
 	auto box = path.boundingRect();
 	path.translate(-box.left(), -box.top());
 
-	double minValue = MAXINT;
+	double minValue = INT_MAX;
 	int index = -1;
 	QMultiMap<QString, AGlyph>::iterator minValueIter = glyphs.end();
 

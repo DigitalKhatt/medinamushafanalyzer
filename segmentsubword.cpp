@@ -1622,6 +1622,15 @@ bool static searchHah(SearchContext& context, bool behhahinit) {
 	return getJoin(context, joinCheck);
 
 }
+
+auto lambdaPrev = [](timesortedtype::iterator it, typename std::iterator_traits<timesortedtype::iterator>::difference_type n) {
+      return std::prev(it, n);
+    };
+
+	auto lambdaNext = [](timesortedtype::iterator it, typename std::iterator_traits<timesortedtype::iterator>::difference_type n) {
+      return std::next(it, n);
+    };
+
 bool static searchYehFinaOld(SearchContext& context) {
 
 	JoinCheck joinCheck;
@@ -1640,8 +1649,13 @@ bool static searchYehFinaOld(SearchContext& context) {
 		context.nextIter = nextIter;
 		return true;
 	}
+	
 
-	auto nextFunc = res.clockWise ? std::prev <timesortedtype::iterator> : std::next< timesortedtype::iterator>;
+	//auto nextFunc = res.clockWise ? std::prev <timesortedtype::iterator> : std::next< timesortedtype::iterator>;
+
+	
+
+	auto nextFunc = res.clockWise  ? lambdaPrev  : lambdaNext;
 
 	auto item = context.timeSorted.find(res.topBaseLine);
 	auto prev = item;
@@ -1657,7 +1671,7 @@ bool static searchYehFinaOld(SearchContext& context) {
 	if (nbXExtremum != 0) return false;
 	PathExtrema topBaseLine = *prev;
 
-	nextFunc = !res.clockWise ? std::prev <timesortedtype::iterator> : std::next< timesortedtype::iterator>;
+	nextFunc = !res.clockWise ? lambdaPrev : lambdaNext;
 	item = context.timeSorted.find(res.bottomBaseLine);
 	prev = item;
 	curr = nextFunc(item, 1);
@@ -1710,7 +1724,7 @@ bool static searchNoonFina(SearchContext& context) {
 		return true;
 	}
 
-	auto nextFunc = res.clockWise ? std::prev <timesortedtype::iterator> : std::next< timesortedtype::iterator>;
+	auto nextFunc = res.clockWise ? lambdaPrev: lambdaNext;
 
 	auto item = context.timeSorted.find(res.topBaseLine);
 	auto prev = item;
