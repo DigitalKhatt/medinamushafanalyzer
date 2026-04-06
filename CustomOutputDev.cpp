@@ -139,7 +139,7 @@ void CustomOutputDev::updateAll(GfxState* state)
 	OutputDev::updateAll(state);
 	//std::cout << "updateAll" << std::endl;
 }
-void CustomOutputDev::setDefaultCTM(const double* ctm)
+void CustomOutputDev::setDefaultCTM(const std::array<double, 6> &ctm)
 {
 	//std::cout << "setDefaultCTM " << ctm[0] << " " << ctm[1] << " " << ctm[2] << " " << ctm[3] << " " << ctm[4] << " " << ctm[5] << std::endl;
 

@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "configurePresets": [
+    {
+      "name": "ninja-nmc",
+      "displayName": "Multi Ninja",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm/bin/clang",
+        "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm/bin/clang++",
+        "CMAKE_PREFIX_PATH": "/opt/homebrew/opt/llvm;/opt/homebrew/Cellar/qt@5/5.15.18;.",
+        "ZLIB_ROOT":"/opt/homebrew/opt/zlib"
+      },
+      "environment": {
+        "PATH": "/opt/homebrew/bin:$penv{PATH}"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "displayName": "Ninja Release",
+      "configurePreset": "ninja-nmc",
+      "configuration": "Release"
+    },
+    {
+      "name": "debug",
+      "displayName": "Ninja Debug",
+      "configurePreset": "ninja-nmc",
+      "configuration": "Debug"
+    }
+  ]
+}

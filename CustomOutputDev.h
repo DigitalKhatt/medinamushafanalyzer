@@ -36,7 +36,7 @@ public:
     //----- initialization and control
 
     // Set Current Transformation Matrix to a fixed matrix given in ctm[0],...,ctm[5]
-    void setDefaultCTM(const double* ctm) override;
+    void setDefaultCTM(const std::array<double, 6> &ctm) override;
 
     // Start a page.
     void startPage(int pageNum, GfxState* state, XRef* xref) override;
