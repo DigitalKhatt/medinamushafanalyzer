@@ -46,6 +46,7 @@ private slots:
 	bool saveThisPage();
 	bool saveAllPages();
 	bool exportPageToSVG(int pageNumber);
+	void exportSurahNames();
 	bool saveAll();
 	void searchText();
 	

@@ -8,6 +8,7 @@
 #include "renderarea.h"
 #include "graphicsview.h"
 #include <iostream>
+#include "qvector.h"
 
 MainWindow::MainWindow()
 {
@@ -303,6 +304,197 @@ static Color color_blend(Color a, Color b, float alpha)
 	return x;
 }
 
+static QString numToSvg(qreal v)
+{
+    return QString::number(v, 'f', 3);
+}
+
+static QString painterPathToSvgD(const QPainterPath& path)
+{
+    QString d;
+    QTextStream s(&d);
+
+    int i = 0;
+    while (i < path.elementCount()) {
+        const QPainterPath::Element e = path.elementAt(i);
+
+        if (e.isMoveTo()) {
+            s << "M " << numToSvg(e.x) << " " << numToSvg(e.y) << " ";
+            ++i;
+        } else if (e.isLineTo()) {
+            s << "L " << numToSvg(e.x) << " " << numToSvg(e.y) << " ";
+            ++i;
+        } else if (e.type == QPainterPath::CurveToElement) {
+            if (i + 2 >= path.elementCount())
+                break;
+
+            const QPainterPath::Element c1 = path.elementAt(i);
+            const QPainterPath::Element c2 = path.elementAt(i + 1);
+            const QPainterPath::Element end = path.elementAt(i + 2);
+
+            s << "C "
+              << numToSvg(c1.x) << " " << numToSvg(c1.y) << " "
+              << numToSvg(c2.x) << " " << numToSvg(c2.y) << " "
+              << numToSvg(end.x) << " " << numToSvg(end.y) << " ";
+
+            i += 3;
+        } else {
+            ++i;
+        }
+    }
+
+    if (!d.isEmpty())
+        d += "Z";
+
+    return d.trimmed();
+}
+
+static QRectF computePathsBounds(const std::vector<QPainterPath>& paths)
+{
+    QRectF bounds;
+    bool first = true;
+
+    for (const auto& path : paths) {
+        if (path.isEmpty())
+            continue;
+
+        QRectF b = path.boundingRect();
+        if (first) {
+            bounds = b;
+            first = false;
+        } else {
+            bounds = bounds.united(b);
+        }
+    }
+
+    return bounds;
+}
+
+bool writePathsToSvg(const std::vector<QPainterPath>& paths,
+                     const QString& fileName,
+                     bool flipY = false,
+                     qreal margin = 0.0)
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+
+    std::vector<QPainterPath> outPaths;
+    outPaths.reserve(paths.size());
+
+    for (const auto& p : paths) {
+        if (p.isEmpty())
+            continue;
+
+        QPainterPath out = p;
+        if (flipY) {
+            out = QTransform::fromScale(1.0, -1.0).map(out);
+        }
+        outPaths.push_back(out);
+    }
+
+    QRectF bounds = computePathsBounds(outPaths);
+    if (bounds.isEmpty())
+        bounds = QRectF(0, 0, 100, 100);
+
+    const qreal minX = bounds.left() - margin;
+    const qreal minY = bounds.top() - margin;
+    const qreal width = bounds.width() + 2 * margin;
+    const qreal height = bounds.height() + 2 * margin;
+
+    QTextStream ts(&file);
+    ts.setCodec("UTF-8");
+
+    ts << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    ts << "<svg xmlns=\"http://www.w3.org/2000/svg\" "
+       << "version=\"1.1\" "
+       << "viewBox=\""
+       << numToSvg(minX) << " "
+       << numToSvg(minY) << " "
+       << numToSvg(width) << " "
+       << numToSvg(height) << "\">\n";
+
+    ts << "  <g fill=\"black\" stroke=\"none\">\n";
+
+    for (size_t i = 0; i < outPaths.size(); ++i) {
+        const QString d = painterPathToSvgD(outPaths[i]);
+        if (d.isEmpty())
+            continue;
+
+        ts << "    <path id=\"path_" << i << "\" d=\"" << d << "\"/>\n";
+    }
+
+    ts << "  </g>\n";
+    ts << "</svg>\n";
+
+    return true;
+}
+
+void MainWindow::exportSurahNames(){
+
+	QString suraWord = "سُورَةُ";
+
+	QString surapattern = "^("
+		+ suraWord + " .*"	
+		+ ")$";
+
+	QRegularExpression re(surapattern, QRegularExpression::MultilineOption);
+
+	int pageNumber = 0;
+	
+	std::map<int,std::vector<bool>> linesWithSurah;
+
+	std::vector<int> pagesWithSurah;
+	
+
+	for (auto textLines : PageAnalysisResult::quranText) {
+		pageNumber++;		
+		bool exists = false;
+		for (int i = 0; i < textLines.size(); i++) {
+			auto textLine = textLines[i];
+			auto match = re.match(textLine);
+			if (match.hasMatch()) {
+				linesWithSurah[pageNumber].push_back(true);	
+				exists = true;			
+			} else  {
+				linesWithSurah[pageNumber].push_back(false);			
+			}
+		}
+		if(exists){
+			pagesWithSurah.push_back(pageNumber);
+		}
+	}
+
+	std::vector<QPainterPath> surahs;
+
+	for(auto pageNumber : pagesWithSurah){		
+
+		//if (pageNumber > 3) break;
+		PageAnalysisResult pageResult;
+		pageResult.loadPage(pageNumber, &font, true);	
+		auto& lines = linesWithSurah[pageNumber]	;
+
+		for (int i = 0; i < pageResult.page.lines.size(); i++) {
+			if(!lines[i]) continue;
+
+			QPainterPath path;
+			auto& line = pageResult.page.lines[i];
+			for(auto& word :  line.words){
+				for(auto& apath: word.paths){
+					path.addPath(apath.path);
+				}
+			}
+			surahs.push_back(path);
+		}
+	}
+	
+	auto fileName = QString("./svg/surahs.svg");
+
+	bool ok = writePathsToSvg(surahs, fileName, true);
+	
+
+}
+
 bool MainWindow::exportPageToSVG(int pageNumber) {
 
 	auto fileName = QString("./svg/page%1.svg").arg(pageNumber);
@@ -533,6 +725,13 @@ void MainWindow::createActions() {
 	});
 	fileMenu->addAction(saveAction);
 	fileToolBar->addAction(saveAction);
+
+	saveAction = new QAction(tr("&Export Surah Names"), this);
+	saveAction->setStatusTip(tr("Export Surah Names"));
+	connect(saveAction, &QAction::triggered, [this]() {		
+		this->exportSurahNames();
+	});
+	fileMenu->addAction(saveAction);
 
 
 

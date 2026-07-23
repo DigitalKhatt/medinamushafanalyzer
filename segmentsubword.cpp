@@ -41,11 +41,16 @@ struct SearchContext {
 	Orientation orientation;
 
 	timesortedtype::iterator prev(timesortedtype::iterator time) {
-		auto prev = std::prev(time);
+		if(time == timeSorted.begin()){			
+			return --timeSorted.end();
+		}else{			
+			return std::prev(time);
+		}
+		/*auto prev = std::prev(time);
 		if (prev == timeSorted.end()) {
 			prev = --timeSorted.end();
 		}
-		return prev;
+		return prev;*/
 	}
 
 	timesortedtype::iterator next(timesortedtype::iterator time) {
