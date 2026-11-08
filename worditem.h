@@ -13,7 +13,7 @@ class WordItem : public QGraphicsItem {
 
 public:
 
-	explicit WordItem(Word word, int subWordIndex);
+	explicit WordItem(Word word, int subWordIndex, bool colorBodies = false);
 	~WordItem();
 
 	QRectF boundingRect() const override {
@@ -29,5 +29,6 @@ private:
 	QPainterPath itemPath;
 	QTransform	transform;
 	bool showControls = false;
+	bool colorBodies;
 
 };

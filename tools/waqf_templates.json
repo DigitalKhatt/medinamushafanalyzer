@@ -1,0 +1,86 @@
+{
+  "policy": "Frozen geometric templates only. No learned labels, saved owner assignments, reviews or training approvals. One-pixel signature tolerance changes matching only; source ink is never dilated.",
+  "schemaVersion": 1,
+  "signatureSize": 16,
+  "templates": [
+    {
+      "aspect": 0.8098074155208869,
+      "heightPdf": 4.947951144148069,
+      "name": "hah.waqf",
+      "signature": "3ff87ff8c7c00e00180030006000400040004000c000400060003e011ffe07f8",
+      "source": {
+        "file": "input/font.dat",
+        "glyph": "hah.waqf",
+        "sha256": "28ffbdd55f5cc58c315f755f5cd4d8d6cc69bfe108476981cf59341445ee4b97"
+      }
+    },
+    {
+      "aspect": 1.0198912040054149,
+      "heightPdf": 4.963585538343011,
+      "name": "meem.waqf",
+      "signature": "0038003c007e0066004300ff00ff007e00c000c0018003000e001c003000c000",
+      "source": {
+        "geometrySha256": "92fff66ae9ebb8c2644dc516d43122a8a538f2592744a1b358f11c8c969f358c",
+        "pageId": "page130",
+        "pathId": "l4-w9-p13",
+        "rawInputSha256": "517d18b2a1b43fcf1009161a8eba63cbe5549d065277a3fdf988dec6b2edc088"
+      }
+    },
+    {
+      "aspect": 1.0072406212540816,
+      "heightPdf": 1.7712688079795162,
+      "name": "onedot",
+      "signature": "060007800fc01ff01ffc3ffe3fff7fff7ffefffcfffc7ff81ff807f001e00060",
+      "source": {
+        "file": "input/font.dat",
+        "glyph": "onedot",
+        "sha256": "28ffbdd55f5cc58c315f755f5cd4d8d6cc69bfe108476981cf59341445ee4b97"
+      }
+    },
+    {
+      "aspect": 1.006703910614505,
+      "heightPdf": 0.8950000000000231,
+      "name": "onedot.waqf",
+      "signature": "060007800fc01ff03ff83ffc7fff7ffffffffffe3ffc1ff807f803f001e00060",
+      "source": {
+        "file": "input/font.dat",
+        "glyph": "onedot.waqf",
+        "sha256": "28ffbdd55f5cc58c315f755f5cd4d8d6cc69bfe108476981cf59341445ee4b97"
+      }
+    },
+    {
+      "aspect": 0.9647511683148416,
+      "heightPdf": 5.5290760565803225,
+      "name": "qaf.waqf.body",
+      "signature": "00001000100009c009e0082009e008900c001fe037c0600040008007e3fe7f00",
+      "source": {
+        "geometrySha256": "ef5c7a11399d1daea339eec1f96af546484a382edd837c234e1896acdb47a66c",
+        "pageId": "page100",
+        "pathId": "l14-w10-p8",
+        "rawInputSha256": "5e12e2d718def3f7c0c2affb1f22207052da164e799508f74c7467e1b2c890c8"
+      }
+    },
+    {
+      "aspect": 1.2742873007275337,
+      "heightPdf": 5.199294797306521,
+      "name": "sad.waqf",
+      "signature": "0000000010001000100e101e1022110211dc1ef82e6040008000807ffff8fc00",
+      "source": {
+        "file": "input/font.dat",
+        "glyph": "sad.waqf",
+        "sha256": "28ffbdd55f5cc58c315f755f5cd4d8d6cc69bfe108476981cf59341445ee4b97"
+      }
+    },
+    {
+      "aspect": 1.7353405346686537,
+      "heightPdf": 0.8089899814163154,
+      "name": "twodots.waqf",
+      "signature": "000000300038307c387e3c7f7eff7ffe7ffeff7efe3c7e3c3e1c1c080c000400",
+      "source": {
+        "file": "input/font.dat",
+        "glyph": "twodots.waqf",
+        "sha256": "28ffbdd55f5cc58c315f755f5cd4d8d6cc69bfe108476981cf59341445ee4b97"
+      }
+    }
+  ]
+}

@@ -7,6 +7,7 @@
 #include "GlobalParams.h"
 #include "renderarea.h"
 #include "graphicsview.h"
+#include "lettersegmentationcache.h"
 #include <iostream>
 #include "qvector.h"
 
@@ -22,10 +23,22 @@ MainWindow::MainWindow()
 	createDockWindows();
 
 	readSettings();
+    if (!qEnvironmentVariableIsSet("MEDINA_LETTER_FORMS")) {
+        letterFormsSavePath = QSettings().value("letterFormsPath").toString();
+        QFile file(letterFormsSavePath);
+        if (!letterFormsSavePath.isEmpty() && file.open(QIODevice::ReadOnly)) {
+            auto config = QJsonDocument::fromJson(file.readAll()).object();
+            const auto problem = PageAnalysisResult::prepareLetterForms(config);
+            if (problem.isEmpty()) PageAnalysisResult::activateLetterForms(config);
+            else statusBar()->showMessage(tr("Saved templates could not be loaded. %1").arg(problem), 8000);
+        }
+    }
 
 	setUnifiedTitleAndToolBarOnMac(true);
 
-	integerSpinBox->setValue(3);
+    const int startPage = std::clamp(QSettings().value("lastPage", 3).toInt(), 1, 604);
+    if (integerSpinBox->value() == startPage) loadPage(startPage);
+    else integerSpinBox->setValue(startPage);
 
 
 }
@@ -51,7 +64,10 @@ void MainWindow::createDockWindows() {
 
 
 
-	pathListDock->raise();
+	pathListDock->hide();
+    connect(pathListDock, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+        if (visible && !pathListWidget->widget()) loadPage(integerSpinBox->value());
+    });
 
 
 	createSearchWindows();
@@ -85,21 +101,45 @@ void MainWindow::createDockWindows() {
 	integerSpinBox->setValue(1);
 	integerSpinBox->setKeyboardTracking(false);
 
-	connect(integerSpinBox, static_cast<void(QSpinBox::*)(int)>(&QSpinBox::valueChanged),
-		[=](int i) {
-		loadPage(i);
-	});
+    connect(integerSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int number) {
+        QSettings().setValue("lastPage", number);
+        loadPage(number);
+    });
 
 	auto jutifyToolbar = addToolBar(tr("Quran"));
 	jutifyToolbar->addWidget(integerSpinBox);
 
-	showWordBBButton = new QPushButton(tr("&ShowWordBB"));
-	showWordBBButton->setCheckable(true);
-	showWordBBButton->setChecked(true);
+    inspectCutsButton = new QPushButton(tr("Inspect cuts"), this);
+    inspectCutsButton->setCheckable(true);
+    inspectCutsButton->setChecked(QSettings().value("inspectCuts", false).toBool());
+    jutifyToolbar->addWidget(inspectCutsButton);
+    connect(inspectCutsButton, &QPushButton::toggled, this, [this](bool enabled) {
+        QSettings().setValue("inspectCuts", enabled);
+        if (enabled) {
+            tabWidget->setCurrentWidget(view);
+            statusBar()->showMessage(tr("Click a subword on the page to inspect its cuts."));
+        } else {
+            statusBar()->clearMessage();
+        }
+    });
 
-	connect(showWordBBButton, &QPushButton::toggled, [&](bool checked) {
-		loadPage(integerSpinBox->value());
-	});
+    showWordBBButton = new QPushButton(tr("Word boxes"), this);
+    showWordBBButton->setCheckable(true);
+    showWordBBButton->setChecked(QSettings().value("showWordBoxes", false).toBool());
+    connect(showWordBBButton, &QPushButton::toggled, this, [this](bool checked) {
+        QSettings().setValue("showWordBoxes", checked);
+        loadPage(integerSpinBox->value());
+    });
+    jutifyToolbar->addWidget(showWordBBButton);
+
+    showLetterSegmentationButton = new QPushButton(tr("Letter segmentation"), this);
+    showLetterSegmentationButton->setCheckable(true);
+    showLetterSegmentationButton->setChecked(QSettings().value("showLetterSegmentation", true).toBool());
+    connect(showLetterSegmentationButton, &QPushButton::toggled, this, [this](bool checked) {
+        QSettings().setValue("showLetterSegmentation", checked);
+        loadPage(integerSpinBox->value());
+    });
+    jutifyToolbar->addWidget(showLetterSegmentationButton);
 
 
 
@@ -186,9 +226,9 @@ void MainWindow::createDockWindows() {
 	jutifyToolbar->addWidget(button3);
 
 	auto segmentSubwordsButton = new QPushButton(tr("&Segment Subwords"));
-	connect(segmentSubwordsButton, &QPushButton::clicked, [&](bool checked) {
-		detectSubWords(true);
-
+	segmentSubwordsButton->setToolTip(tr("Recompute and save letter cuts for the current page"));
+	connect(segmentSubwordsButton, &QPushButton::clicked, this, [this] {
+		loadPage(integerSpinBox->value(), true);
 	});
 
 	jutifyToolbar->addWidget(segmentSubwordsButton);
@@ -490,7 +530,7 @@ void MainWindow::exportSurahNames(){
 	
 	auto fileName = QString("./svg/surahs.svg");
 
-	bool ok = writePathsToSvg(surahs, fileName, true);
+	writePathsToSvg(surahs, fileName, true);
 	
 
 }
@@ -556,7 +596,7 @@ bool MainWindow::exportPageToSVG(int pageNumber) {
 				page.detectSubWords(pageIndex, lineIndex, wordIndex, &font);
 				for (int subWordIndex = 0; subWordIndex < word.wordResultInfo.subWords.size(); subWordIndex++) {
 					auto& subWord = word.wordResultInfo.subWords[subWordIndex];
-					bool CharacterSegCorrect = page.segmentSubword(pageIndex, lineIndex, wordIndex, subWordIndex, &font);
+					page.segmentSubword(pageIndex, lineIndex, wordIndex, subWordIndex, &font);
 					QString classes = "draggable";
 					classes = "";
 					if (subWord.text == "و۟" || subWord.text == "ا۟") {
@@ -589,7 +629,16 @@ bool MainWindow::exportPageToSVG(int pageNumber) {
 					}
 
 
+                    for (const auto& kashida : subWord.kashidaPaths) {
+                        if (kashida.isEmpty()) continue;
+                        auto itemPath = shape.transform.map(kashida);
+                        itemPath.translate(shape.pos);
+                        drawPath(out, itemPath, true, classes + " kashida", "#df8b27");
+                    }
+
+
 					for (int i = 1; i < subWord.paths.size(); i++) {
+						if (subWord.paths[i] == subWord.secondaryBodyPath) continue;
 						QPainterPath marksPath;
 						auto& shape = word.paths[subWord.paths[i]];
 						auto itemPath = shape.path;
@@ -726,6 +775,21 @@ void MainWindow::createActions() {
 	fileMenu->addAction(saveAction);
 	fileToolBar->addAction(saveAction);
 
+    auto* exportSegmentation = fileMenu->addAction(tr("Export letter segmentation as JSON…"));
+    connect(exportSegmentation, &QAction::triggered, this, [this] {
+        const int number = integerSpinBox->value();
+        const auto filename = QFileDialog::getSaveFileName(this, tr("Export letter segmentation"),
+            QString("page%1-segmentation.json").arg(number, 3, 10, QLatin1Char('0')), tr("JSON files (*.json)"));
+        if (filename.isEmpty()) return;
+        const auto data = loadLetterSegmentation(getPageResult(number), number, font);
+        QString error;
+        if (!saveLetterSegmentation(filename, data, &error)) {
+            QMessageBox::warning(this, tr("Export failed"), error);
+        } else {
+            statusBar()->showMessage(tr("Exported segmentation to %1").arg(filename), 6000);
+        }
+    });
+
 	saveAction = new QAction(tr("&Export Surah Names"), this);
 	saveAction->setStatusTip(tr("Export Surah Names"));
 	connect(saveAction, &QAction::triggered, [this]() {		
@@ -809,8 +873,6 @@ bool MainWindow::saveFile(const QString& fileName)
 
 void MainWindow::scaleView(qreal scaleFactor)
 {
-
-	auto app = QApplication::instance();
 
 	QWidget* fw = qApp->focusWidget();
 
@@ -948,6 +1010,7 @@ PageAnalysisResult& MainWindow::getPageResult(int pageNumber) {
 		QFile cacheFile(cacheFileName);
 		if (cacheFile.exists()) {
 			pagesCache[pageNumber].page = loadCache(cacheFileName);
+			pagesCache[pageNumber].resolveWordBoundaries(pageNumber, &font);
 		}
 		else {
 			auto& tt = pagesCache[pageNumber];
@@ -1009,29 +1072,27 @@ void MainWindow::searchKashidas() {
 				for (auto subWord = word.wordResultInfo.subWords.begin(); subWord != word.wordResultInfo.subWords.end(); ++subWord) {
 					if (subWord->baseGlyphs.size() < 2) continue;
 					if (subWord->correct && (subWord->joins.size() + 1) == subWord->baseGlyphs.size()) {
-						int baseGlyphIndex = 0;
-						for (auto& join : subWord->joins) {
-							QPainterPath chartacterPath;
-							auto& shape = word.paths[0];
-							auto itemPath = subWord->baseGlyphs[baseGlyphIndex].path;
-							auto pos = shape.pos;
-							itemPath = itemPath * shape.transform;
-							itemPath.translate(pos.x(), pos.y());
-							chartacterPath.addPath(itemPath);
-							results.insert({ join.length, WordMatch{ pageIndex ,lineIndex,wordIndex,0,{},chartacterPath } });
-
-							baseGlyphIndex++;
-						}
+                        const auto& shape = word.paths[subWord->paths[0]];
+                        const auto subwordIndex = static_cast<int>(subWord - word.wordResultInfo.subWords.begin());
+                        for (size_t index = 0; index < subWord->kashidaPaths.size(); ++index) {
+                            const auto& kashida = subWord->kashidaPaths[index];
+                            if (kashida.isEmpty()) continue;
+                            const auto& endpoints = subWord->kashidaCuts[index];
+                            const double span = std::abs(endpoints.first.center().x() - endpoints.second.center().x());
+                            auto itemPath = shape.transform.map(kashida);
+                            itemPath.translate(shape.pos);
+                            results.insert({span, WordMatch{pageIndex, lineIndex, wordIndex, subwordIndex, {}, itemPath}});
+                        }
 					}
 					else {
 						QPainterPath subWordPath;
-						auto& shape = word.paths[0];
+						const auto shape = word.bodyShape(*subWord);
 						auto itemPath = shape.path;
 						auto pos = shape.pos;
 						itemPath = itemPath * shape.transform;
 						itemPath.translate(pos.x(), pos.y());
 						subWordPath.addPath(itemPath);
-						results.insert({ 0, WordMatch{ pageIndex ,lineIndex,wordIndex,0,{},subWordPath } });
+						results.insert({ 0, WordMatch{ pageIndex ,lineIndex,wordIndex,static_cast<int>(subWord - word.wordResultInfo.subWords.begin()),{},subWordPath } });
 					}
 				}
 			}
@@ -1111,7 +1172,6 @@ void MainWindow::searchStretching() {
 			// find max distance between y extremmum
 			for (int wordIndex = 0; wordIndex < line.words.length(); wordIndex++) {
 				auto& word = line.words[wordIndex];
-				qreal maxDist = 0.0;
 				for (auto& shape : word.paths) {
 					auto pos = shape.pos;
 					auto itemPath = shape.path;
@@ -1262,7 +1322,8 @@ void MainWindow::displaySubWords(int ppageIndex, int plineIndex, int pwordIndex,
 					QPainterPath subWordPath;
 					if (showSubWordMarks->isChecked()) {
 						for (auto shapeIndex : subWord.paths) {
-							auto& shape = word.paths[shapeIndex];
+							if (shapeIndex == subWord.secondaryBodyPath) continue;
+							const auto shape = shapeIndex == subWord.paths.front() ? word.bodyShape(subWord) : word.paths[shapeIndex];
 							auto itemPath = shape.path;
 							auto pos = shape.pos;
 							itemPath = itemPath * shape.transform;
@@ -1271,7 +1332,7 @@ void MainWindow::displaySubWords(int ppageIndex, int plineIndex, int pwordIndex,
 						}
 					}
 					else if (subWord.paths.size() > 0) {
-						auto& shape = word.paths[subWord.paths[0]];
+						const auto shape = word.bodyShape(subWord);
 						auto itemPath = shape.path;
 						auto pos = shape.pos;
 						itemPath = itemPath * shape.transform;
@@ -1359,10 +1420,348 @@ void MainWindow::detectSubWords(bool characterSegmentation, int pPageIndex) {
 
 
 }
-void MainWindow::handleContextMenu(const QPoint& pos)
-{
+namespace {
+class CutPreviewView final : public QGraphicsView {
+public:
+    explicit CutPreviewView(QWidget* parent) : QGraphicsView(parent) {
+        setDragMode(QGraphicsView::ScrollHandDrag);
+        setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+        setResizeAnchor(QGraphicsView::AnchorViewCenter);
+    }
 
+protected:
+    void wheelEvent(QWheelEvent* event) override {
+        const int delta = event->angleDelta().y();
+        if (delta == 0 || scene()->items().isEmpty()) {
+            QGraphicsView::wheelEvent(event);
+            return;
+        }
+        const double current = transform().m11();
+        const double next = std::clamp(current * std::pow(1.2, delta / 120.0), 0.02, 32.0);
+        scale(next / current, next / current);
+        event->accept();
+    }
+};
+} // namespace
+
+void MainWindow::inspectSubword(const QPoint& pos) {
+    WordMatch hit{};
+    int pathIndex = -1;
+    for (const auto* item : view->items(pos)) {
+        if (item->data(0).canConvert<WordMatch>() && item->data(1).isValid()) {
+            hit = item->data(0).value<WordMatch>();
+            pathIndex = item->data(1).toInt();
+            break;
+        }
+    }
+    if (pathIndex < 0) {
+        statusBar()->showMessage(tr("Click the ink of a subword in the standard page view."), 3000);
+        return;
+    }
+    auto& original = getPageResult(hit.pageIndex + 1);
+    original.detectSubWords(hit.pageIndex, hit.lineIndex, hit.wordIndex, &font);
+    const auto& word = original.page.lines[hit.lineIndex].words[hit.wordIndex];
+    const auto& subwords = word.wordResultInfo.subWords;
+    const auto subword = std::find_if(subwords.begin(), subwords.end(), [pathIndex](const auto& sub) {
+        return std::find(sub.paths.begin(), sub.paths.end(), pathIndex) != sub.paths.end();
+    });
+    if (subword == subwords.end() || subword->paths.empty()) {
+        statusBar()->showMessage(tr("This ink is outside the detected subwords."), 3000);
+        return;
+    }
+    const int subwordIndex = static_cast<int>(subword - subwords.begin());
+
+    // Use a private copy of the word for both views so a draft cannot update the page cache.
+    PageAnalysisResult sample;
+    sample.page.lines.resize(1);
+    sample.page.lines[0].words.append(word);
+    const auto& sampleWord = sample.page.lines[0].words[0];
+    const auto& result = sampleWord.wordResultInfo.subWords[subwordIndex];
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Segmentation · Page %1 · Line %2 · Word %3 · %4")
+        .arg(hit.pageIndex + 1).arg(hit.lineIndex + 1).arg(hit.wordIndex + 1).arg(subword->text));
+    dialog.resize(1050, 700);
+    auto* layout = new QHBoxLayout(&dialog);
+    auto* comparisons = new QVBoxLayout;
+    auto* editing = new QVBoxLayout;
+    layout->addLayout(comparisons, 1);
+    layout->addLayout(editing, 1);
+
+    auto makeView = [&](const QString& title) {
+        auto* heading = new QHBoxLayout;
+        heading->addWidget(new QLabel(title, &dialog), 1);
+        auto* fit = new QPushButton(tr("Fit"), &dialog);
+        fit->setToolTip(tr("Fit %1 to the pane").arg(title));
+        heading->addWidget(fit);
+        comparisons->addLayout(heading);
+        auto* graphics = new CutPreviewView(&dialog);
+        graphics->setScene(new QGraphicsScene(graphics));
+        graphics->setRenderHint(QPainter::Antialiasing);
+        graphics->setMinimumHeight(140);
+        graphics->setToolTip(tr("Scroll to zoom. Drag to pan."));
+        comparisons->addWidget(graphics, 1);
+        connect(fit, &QPushButton::clicked, &dialog, [graphics] {
+            if (!graphics->scene()->items().isEmpty())
+                graphics->fitInView(graphics->sceneRect(), Qt::KeepAspectRatio);
+        });
+        return graphics;
+    };
+    auto* current = makeView(tr("Current cuts"));
+    auto* preview = makeView(tr("Draft preview"));
+    auto* trace = new QPlainTextEdit(&dialog);
+    trace->setReadOnly(true);
+    trace->setMaximumHeight(135);
+    comparisons->addWidget(trace);
+    auto* rules = new QComboBox(&dialog);
+    editing->addWidget(new QLabel(tr("Template used by the current cuts"), &dialog));
+    editing->addWidget(rules);
+    auto* editor = new QPlainTextEdit(&dialog);
+    editor->setObjectName("letterFormsDraft");
+    editor->setLineWrapMode(QPlainTextEdit::NoWrap);
+    editor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    editor->setPlainText(QString::fromUtf8(QJsonDocument(PageAnalysisResult::letterForms()).toJson()));
+    editing->addWidget(editor, 1);
+    auto* status = new QLabel(tr("Edit the JSON and preview it before saving."), &dialog);
+    status->setWordWrap(true);
+    editing->addWidget(status);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    auto* add = buttons->addButton(tr("Add template"), QDialogButtonBox::ActionRole);
+    auto* duplicate = buttons->addButton(tr("Duplicate template"), QDialogButtonBox::ActionRole);
+    auto* run = buttons->addButton(tr("Preview"), QDialogButtonBox::ActionRole);
+    auto* save = buttons->addButton(tr("Save templates…"), QDialogButtonBox::ActionRole);
+    save->setEnabled(false);
+    editing->addWidget(buttons);
+
+    const auto render = [&](QGraphicsView* target) {
+        target->scene()->clear();
+        if (result.baseGlyphs.empty()) return;
+        auto* item = new WordItem(sampleWord, subwordIndex, true);
+        target->scene()->addItem(item);
+        target->setSceneRect(item->boundingRect());
+        target->fitInView(item->boundingRect(), Qt::KeepAspectRatio);
+    };
+    const auto describe = [&](bool complete) {
+        const auto spans = std::count_if(result.kashidaPaths.begin(), result.kashidaPaths.end(),
+                                         [](const QPainterPath& path) { return !path.isEmpty(); });
+        return tr("%1 · %2 body regions · %3 kashida spans\n%4")
+            .arg(complete ? tr("Complete") : result.provisional() ? tr("Provisional — needs review") : tr("Partial"))
+            .arg(result.baseGlyphs.size()).arg(spans)
+            .arg(result.templateTrace.join('\n'));
+    };
+    const bool complete = sample.segmentSubword(hit.pageIndex, 0, 0, subwordIndex, &font, true);
+    render(current);
+    const auto currentTrace = describe(complete);
+    trace->setPlainText(currentTrace);
+    auto ids = result.matchedTemplates;
+    ids.removeDuplicates();
+    rules->addItems(ids);
+    duplicate->setEnabled(!ids.isEmpty());
+    auto* locate = new QPushButton(tr("Locate template in JSON"), &dialog);
+    locate->setEnabled(!ids.isEmpty());
+    editing->insertWidget(2, locate);
+    const auto focusRule = [&](const QString& id) {
+        auto cursor = editor->textCursor();
+        cursor.movePosition(QTextCursor::Start);
+        editor->setTextCursor(cursor);
+        editor->find('"' + id + '"');
+        editor->setFocus();
+    };
+    connect(locate, &QPushButton::clicked, &dialog, [&] { focusRule(rules->currentText()); });
+
+    const auto readDraft = [&]() {
+        QJsonParseError parse;
+        auto config = QJsonDocument::fromJson(editor->toPlainText().toUtf8(), &parse).object();
+        const auto problem = parse.error == QJsonParseError::NoError
+            ? PageAnalysisResult::prepareLetterForms(config) : parse.errorString();
+        if (!problem.isEmpty()) {
+            status->setText(problem);
+            return QJsonObject{};
+        }
+        return config;
+    };
+
+    connect(duplicate, &QPushButton::clicked, &dialog, [&] {
+        auto config = readDraft();
+        if (config.isEmpty()) return;
+        const QString sourceId = rules->currentText();
+        for (const auto* phase : {"initial", "medial", "final"}) {
+            auto entries = config.value(phase).toArray();
+            for (int index = 0; index < entries.size(); ++index) {
+                auto rule = entries[index].toObject();
+                if (rule.value("id").toString() != sourceId) continue;
+                QString id;
+                for (int suffix = 1; ; ++suffix) {
+                    id = sourceId + "-variant-" + QString::number(suffix);
+                    bool exists = false;
+                    for (const auto* list : {"initial", "medial", "final"}) {
+                        for (const auto& entry : config.value(list).toArray())
+                            exists |= entry.toObject().value("id").toString() == id;
+                    }
+                    if (!exists) break;
+                }
+                rule.insert("id", id);
+                if (QString(phase) != "medial") rule.insert("tryNext", true);
+                entries.insert(index, rule);
+                config.insert(phase, entries);
+                editor->setPlainText(QString::fromUtf8(QJsonDocument(config).toJson()));
+                focusRule(id);
+                status->setText(tr("Draft variant added before %1. Edit its constraints, then preview.").arg(sourceId));
+                return;
+            }
+        }
+    });
+
+    connect(add, &QPushButton::clicked, &dialog, [&] {
+        auto config = readDraft();
+        if (config.isEmpty()) return;
+        const auto baseText = PageAnalysisResult::bodyLetters(subword->text);
+        if (baseText.size() < 2) {
+            status->setText(tr("This subword has no join. Select a subword with two or more letters."));
+            return;
+        }
+        QStringList choices;
+        for (int index = 0; index < baseText.size(); ++index) {
+            const auto position = index == 0 ? QStringLiteral("initial") :
+                index + 1 == baseText.size() ? QStringLiteral("final") : QStringLiteral("medial");
+            choices.append(QString("%1 · %2 · %3").arg(index + 1).arg(baseText.mid(index, 1), position));
+        }
+        int defaultLetter = 0;
+        for (const auto& value : result.letterDiagnostics) {
+            const auto diagnostic = value.toObject();
+            if (diagnostic.value("status") != "matched" && diagnostic.value("status") != "not-required") {
+                defaultLetter = diagnostic.value("letterIndex").toInt() - 1;
+                break;
+            }
+        }
+        bool accepted = false;
+        const auto selected = QInputDialog::getItem(&dialog, tr("Add letter form"),
+            tr("Letter and position"), choices, defaultLetter, false, &accepted);
+        if (!accepted) return;
+        const int letter = choices.indexOf(selected);
+        const auto position = letter == 0 ? QStringLiteral("initial") :
+            letter + 1 == baseText.size() ? QStringLiteral("final") : QStringLiteral("medial");
+        const auto suffix = position == "initial" ? "init" : position == "medial" ? "medi" : "fina";
+        const auto id = QString("form-%1-%2").arg(QUuid::createUuid().toString(QUuid::WithoutBraces).left(8), suffix);
+        QJsonObject rule{{"id", id}, {"current", baseText.mid(letter, 1)}};
+        if (position == "medial") {
+            rule.insert("right", QJsonObject{{"walk", QJsonArray{"down", "right"}}});
+            rule.insert("left", QJsonObject{{"walk", QJsonArray{"down", "left"}}});
+        } else {
+            rule.insert("method", "walk");
+            rule.insert("top", QJsonArray{"down", "left"});
+            rule.insert("bottomProbe", "down");
+            rule.insert("tryNext", true);
+            if (position == "final") rule.insert("start", "left");
+        }
+        auto entries = config.value(position).toArray();
+        entries.prepend(rule);
+        config.insert(position, entries);
+        editor->setPlainText(QString::fromUtf8(QJsonDocument(config).toJson()));
+        focusRule(id);
+        status->setText(tr("Draft %1 body template added. Define its landmarks, then preview.").arg(position));
+    });
+
+    auto* copyReview = new QPushButton(tr("Copy review details"), &dialog);
+    comparisons->addWidget(copyReview);
+    connect(copyReview, &QPushButton::clicked, &dialog, [&] {
+        const auto& active = PageAnalysisResult::letterForms();
+        QJsonObject activeRules;
+        QJsonArray selectedRules;
+        for (const auto* phase : {"initial", "medial", "final"}) {
+            for (const auto& entry : active.value(phase).toArray()) {
+                const auto id = entry.toObject().value("id").toString();
+                activeRules.insert(id, entry);
+                if (ids.contains(id) || currentTrace.contains(QStringLiteral(" · %1 · ").arg(id)))
+                    selectedRules.append(entry);
+            }
+        }
+
+        QString report = tr("Medina Mushaf Analyzer · Page %1 · Line %2 · Word %3 · Subword %4\nText: %5\n\n%6")
+            .arg(hit.pageIndex + 1).arg(hit.lineIndex + 1).arg(hit.wordIndex + 1)
+            .arg(subwordIndex + 1).arg(subword->text, trace->toPlainText());
+        if (!selectedRules.isEmpty()) {
+            report += tr("\n\nTemplates tried\n");
+            report += QString::fromUtf8(QJsonDocument(selectedRules).toJson());
+        }
+
+        QJsonParseError parse;
+        const auto draft = QJsonDocument::fromJson(editor->toPlainText().toUtf8(), &parse).object();
+        if (parse.error == QJsonParseError::NoError) {
+            QJsonObject changes;
+            for (const auto* phase : {"initial", "medial", "final"}) {
+                QJsonArray changed;
+                for (const auto& entry : draft.value(phase).toArray()) {
+                    if (activeRules.value(entry.toObject().value("id").toString()) != entry)
+                        changed.append(entry);
+                }
+                if (!changed.isEmpty()) changes.insert(phase, changed);
+            }
+            for (const auto* key : {"joinDefaults", "kashidaDefaults"}) {
+                if (draft.value(key) != active.value(key)) changes.insert(key, draft.value(key));
+            }
+            if (!changes.isEmpty()) {
+                report += tr("\n\nEdited or added rules and defaults\n");
+                report += QString::fromUtf8(QJsonDocument(changes).toJson());
+            }
+        }
+        QApplication::clipboard()->setText(report);
+        statusBar()->showMessage(tr("Review details copied."), 3000);
+        copyReview->setText(tr("Review details copied"));
+        QTimer::singleShot(1500, copyReview, [copyReview] { copyReview->setText(tr("Copy review details")); });
+    });
+
+    QJsonObject previewed;
+    connect(editor, &QPlainTextEdit::textChanged, &dialog, [&] {
+        previewed = {};
+        save->setEnabled(false);
+        preview->scene()->clear();
+        trace->setPlainText(currentTrace);
+        status->setText(tr("Preview the edited JSON to enable saving."));
+    });
+    connect(run, &QPushButton::clicked, &dialog, [&] {
+        previewed = readDraft();
+        save->setEnabled(!previewed.isEmpty());
+        if (previewed.isEmpty()) return;
+        const bool ok = sample.segmentSubword(hit.pageIndex, 0, 0, subwordIndex, &font, true, &previewed);
+        render(preview);
+        trace->setPlainText(tr("Current\n%1\n\nDraft\n%2").arg(currentTrace, describe(ok)));
+        status->setText(ok ? tr("Preview ready.") : tr("Preview is partial. Check the rule trace before saving."));
+    });
+    connect(save, &QPushButton::clicked, &dialog, [&] {
+        const auto initialPath = letterFormsSavePath.isEmpty()
+            ? qEnvironmentVariable("MEDINA_LETTER_FORMS", QDir::home().filePath("letter-forms.json"))
+            : letterFormsSavePath;
+        const auto path = QFileDialog::getSaveFileName(&dialog, tr("Save letter templates"), initialPath,
+                                                       tr("JSON files (*.json)"));
+        if (path.isEmpty()) return;
+        QSaveFile file(path);
+        const auto bytes = QJsonDocument(previewed).toJson();
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
+            status->setText(tr("Could not save templates. %1").arg(file.errorString()));
+            return;
+        }
+        letterFormsSavePath = path;
+        QSettings().setValue("letterFormsPath", path);
+        PageAnalysisResult::activateLetterForms(previewed);
+        for (auto& cached : pagesCache)
+            for (auto& line : cached.page.lines)
+                for (auto& cachedWord : line.words)
+                    for (auto& sub : cachedWord.wordResultInfo.subWords)
+                        sub.baseGlyphs.clear();
+        dialog.accept();
+    });
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    QTimer::singleShot(0, &dialog, [current] {
+        if (!current->scene()->items().isEmpty())
+            current->fitInView(current->sceneRect(), Qt::KeepAspectRatio);
+    });
+    if (dialog.exec() == QDialog::Accepted) {
+        loadPage(hit.pageIndex + 1);
+        statusBar()->showMessage(tr("Saved and activated templates. %1").arg(letterFormsSavePath), 6000);
+    }
 }
+
 void MainWindow::showResuts(QString dockName, const std::multimap<qreal, WordMatch, std::greater <qreal> >& results) {
 
 
@@ -1607,7 +2006,7 @@ void MainWindow::displaySearch(QString textToSearch, const std::vector<WordMatch
 			for (auto subWordIndex : subWords) {
 				auto& subword = wordInfo.subWords[subWordIndex];
 
-				auto& shape = word.paths[subword.paths[0]];
+				const auto shape = word.bodyShape(subword);
 				auto itemPath = shape.path;
 				auto pos = shape.pos;
 				itemPath = itemPath * shape.transform;
@@ -1727,8 +2126,6 @@ void MainWindow::testAnalyze() {
 
 		remainingPages -= pageperthread;
 
-		QVector<int>* set = new QVector<int>();
-
 		QThread* thread = QThread::create([this, begin, pageperthread] {
 			for (int i = begin; i < begin + pageperthread; i++) {
 				PageAnalysisResult pageResult;
@@ -1756,8 +2153,59 @@ void MainWindow::testAnalyze() {
 		pageResult.loadPage2(i, &font, scene);
 	}*/
 }
-void MainWindow::loadPage(int pageNumber) {
+static int drawLetterSegmentation(QGraphicsScene& scene, const QJsonObject& segmentation, int& provisionalCount) {
+    const QColor colors[]{QColor("#24618e"), QColor("#39734c"), QColor("#705194")};
+    int incomplete = 0;
+    provisionalCount = 0;
+    const auto coordinate = [](const QJsonValue& value) {
+        const auto xy = value.toArray();
+        return QPointF(xy.at(0).toDouble(), xy.at(1).toDouble());
+    };
+    for (const auto& item : segmentation.value("subwords").toArray()) {
+        const auto subword = item.toObject();
+        const bool complete = subword.value("complete").toBool();
+        const bool provisional = subword.value("provisional").toBool();
+        int index = 0;
+        for (const auto& body : subword.value("bodies").toArray()) {
+            auto* path = scene.addPath(letterSegmentationPath(body.toObject()), Qt::NoPen, colors[index++ % 3]);
+            path->setZValue(1);
+        }
+        for (const auto& item : subword.value("joins").toArray()) {
+            const auto join = item.toObject();
+            if (join.contains("kashida")) {
+                auto* path = scene.addPath(letterSegmentationPath(join.value("kashida").toObject()), Qt::NoPen, QColor("#df8b27"));
+                path->setZValue(2);
+            }
+            const auto cuts = join.contains("endpoints") ? join.value("endpoints").toArray()
+                                                        : QJsonArray{join.value("anchor")};
+            for (const auto& value : cuts) {
+                const auto cut = value.toArray();
+                if (cut.size() != 2) continue;
+                QPen pen(QColor("#ffffff"), 0);
+                auto* line = scene.addLine(QLineF(coordinate(cut.at(0)), coordinate(cut.at(1))), pen);
+                line->setZValue(3);
+            }
+        }
+        if (!complete) {
+            if (provisional) ++provisionalCount;
+            else ++incomplete;
+            const auto bounds = subword.value("bounds").toArray();
+            if (bounds.size() != 4) continue;
+            const QRectF box(bounds.at(0).toDouble(), bounds.at(1).toDouble(),
+                             bounds.at(2).toDouble(), bounds.at(3).toDouble());
+            QPen pen(QColor(provisional ? "#b57912" : "#bd3d37"), 0, Qt::DashLine);
+            auto* warning = scene.addRect(box.adjusted(-0.4, -0.4, 0.4, 0.4), pen);
+            warning->setZValue(4);
+            warning->setToolTip(provisional ? QObject::tr("Provisional remainder — needs review") : QObject::tr("Partial segmentation"));
+        }
+    }
+    return incomplete;
+}
 
+void MainWindow::loadPage(int pageNumber, bool forceSegmentation) {
+
+    const auto oldCenter = view->scene() ? view->mapToScene(view->viewport()->rect().center()) : QPointF();
+    const bool samePage = scene->property("pageNumber").toInt() == pageNumber;
 	view->setScene(nullptr);
 
 	//testAnalyze();
@@ -1766,6 +2214,7 @@ void MainWindow::loadPage(int pageNumber) {
 	delete scene;
 
 	scene = new QGraphicsScene(this);
+    scene->setProperty("pageNumber", pageNumber);
 
 	PageAnalysisResult result;
 
@@ -1786,11 +2235,11 @@ void MainWindow::loadPage(int pageNumber) {
 		QFile cacheFile(cacheFileName);
 		if (cacheFile.exists()) {
 			pagesCache[pageNumber].page = loadCache(cacheFileName);
+			pagesCache[pageNumber].resolveWordBoundaries(pageNumber, &font);
 		}
 		else {
 			auto& tt = pagesCache[pageNumber];
-			tt.loadPage(pageNumber, &font, debugBBButton->isChecked(), scene);
-			added = true;
+			tt.loadPage(pageNumber, &font, false);
 		}
 	}
 
@@ -1798,7 +2247,9 @@ void MainWindow::loadPage(int pageNumber) {
 
 	PageAnalysisResult& pageResult = takeFromCache ? pagesCache[pageNumber] : result;
 
-	QVBoxLayout* layout = new QVBoxLayout();
+    const bool showPathList = !pathListDock->isHidden();
+    const bool showBoxes = showWordBBButton->isChecked();
+    auto* layout = showPathList ? new QVBoxLayout : nullptr;
 
 	int lineIndex = -1;
 	for (auto& line : pageResult.page.lines) {
@@ -1808,7 +2259,8 @@ void MainWindow::loadPage(int pageNumber) {
 		for (auto& word : line.words) {
 			wordIndex++;
 			if (!added) {
-				for (auto path : word.paths) {
+				for (int pathIndex = 0; pathIndex < word.paths.size(); ++pathIndex) {
+					const auto& path = word.paths[pathIndex];
 					auto item = new QGraphicsPathItem(path.path);
 					item->setFlag(QGraphicsItem::ItemIsSelectable, true);
 					item->setFlag(QGraphicsItem::ItemIsMovable, true);
@@ -1817,67 +2269,54 @@ void MainWindow::loadPage(int pageNumber) {
 					item->setPen(Qt::NoPen);
 					item->setBrush(Qt::black);
 					item->setData(0, QVariant::fromValue(WordMatch{ pageNumber - 1,lineIndex,wordIndex }));
+					item->setData(1, pathIndex);
 					scene->addItem(item);
 				}
 
 			}
-			if (showWordBBButton->isChecked()) {
-				QPainterPath wordPath;
-				for (auto shape : word.paths) {
-					auto pos = shape.pos;
-					auto itemPath = shape.path;
-					itemPath = itemPath * shape.transform;
-					itemPath.translate(pos.x(), pos.y());
-					wordPath.addPath(itemPath);
-				}
-				auto bbox = wordPath.boundingRect();
-				auto item = new QGraphicsRectItem(bbox);
-				//item->setFlag(QGraphicsItem::ItemIsSelectable, true);
-				//item->setFlag(QGraphicsItem::ItemIsMovable, true);
-				//item->setTransform(path.transform);
-				//item->setPos(path.pos);
-				QPen pen;
-				pen.setWidth(0);
-				item->setPen(pen);
-				//item->setBrush(Qt::black);
-				scene->addItem(item);
+            if (showBoxes || showPathList) {
+                QPainterPath wordPath;
+                for (const auto& shape : word.paths) {
+                    auto path = shape.transform.map(shape.path);
+                    path.translate(shape.pos);
+                    wordPath.addPath(path);
+                }
+                if (showBoxes && !wordPath.isEmpty()) {
+                    const auto bounds = wordPath.boundingRect();
+                    scene->addRect(bounds, QPen(Qt::black, 0));
+                    scene->addLine(bounds.left(), line.baseline, bounds.right(), line.baseline, QPen(Qt::blue, 0));
+                }
+                if (showPathList) linePath.addPath(wordPath);
+            }
+        }
+        if (layout) layout->addWidget(new RenderArea(linePath));
+    }
 
-				auto itemLline = new QGraphicsLineItem(bbox.left(), line.baseline, bbox.right(), line.baseline);
-				itemLline->setPen(QPen(Qt::blue, 0));
-				scene->addItem(itemLline);
-			}
-
-			QPainterPath wordPath;
-			for (auto shape : word.paths) {
-				auto itemPath = shape.path;
-				auto pos = shape.pos;
-				itemPath = itemPath * shape.transform;
-				itemPath.translate(pos.x(), pos.y());
-				wordPath.addPath(itemPath);
-			}
-			if (showWordBBButton->isChecked()) {
-				auto bbox = wordPath.boundingRect();
-				auto penWidth = 0.1;
-				wordPath.addRect(bbox.x(), bbox.y() - penWidth, bbox.width(), penWidth);
-				wordPath.addRect(bbox.x(), bbox.y() + bbox.height(), bbox.width(), penWidth);
-				wordPath.addRect(bbox.x(), bbox.y(), penWidth, bbox.height());
-				wordPath.addRect(bbox.x() + bbox.width(), bbox.y(), penWidth, bbox.height());
-			}
-
-			linePath.addPath(wordPath);
-
-		}
-		layout->addWidget(new RenderArea(linePath));
-	}
-
-
+    QString message = tr("Page %1 loaded").arg(pageNumber);
+    if (takeFromCache && (forceSegmentation || showLetterSegmentationButton->isChecked())) {
+        bool cacheHit = false;
+        const auto segmentation = loadLetterSegmentation(pageResult, pageNumber, font, &cacheHit, forceSegmentation);
+        if (showLetterSegmentationButton->isChecked()) {
+            int provisional = 0;
+            const int incomplete = drawLetterSegmentation(*scene, segmentation, provisional);
+            message = tr("Page %1 · %2 incomplete · %3 provisional subwords · %4")
+                .arg(pageNumber).arg(incomplete).arg(provisional)
+                .arg(cacheHit ? tr("cached segmentation") : tr("segmentation computed"));
+        } else {
+            message = tr("Page %1 · segmentation computed").arg(pageNumber);
+        }
+    }
 	view->setScene(scene);
+    if (samePage) view->centerOn(oldCenter);
 
-	auto widget = new QWidget(this);
-	widget->setLayout(layout);
+    if (layout) {
+        auto* widget = new QWidget(this);
+        widget->setLayout(layout);
+        pathListWidget->setWidget(widget);
+    } else {
+        delete pathListWidget->takeWidget();
+    }
 
-	pathListWidget->setWidget(widget);
-
-	statusBar()->showMessage(tr("File loaded"), 2000);
+	statusBar()->showMessage(message, 5000);
 
 }

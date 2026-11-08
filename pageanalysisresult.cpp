@@ -1,4 +1,5 @@
 ﻿#include "pageanalysisresult.h"
+#include "pathmask.h"
 #include "CustomOutputDev.h"
 #include "PDFDoc.h"
 #include "GlobalParams.h"
@@ -157,14 +158,8 @@ void PageAnalysisResult::initQuranText()
 		+ ")$";
 
 	QRegularExpression re(surapattern, QRegularExpression::MultilineOption);
-	int pageNumber = 0;
 	for (auto textLines : PageAnalysisResult::quranText) {
-		pageNumber++;
 		QVector<QStringList> page;
-		//if (pageNumber < 3) {
-		//	QuranTextByWord.append(page);
-		//	continue;
-		//}
 
 		for (int i = 0; i < textLines.size(); i++) {
 			auto textLine = textLines[i];
@@ -181,6 +176,16 @@ void PageAnalysisResult::initQuranText()
 	}
 }
 
+
+static bool isWaqfSad(const QPainterPath& path, AFont* font, double* distance = nullptr) {
+	if (!font) return false;
+	double exact = 1, scaled = 1;
+	const bool matched = font->checkGlyph(path, "sad.waqf", CompareMethod::AREA,
+	                                      constants::MATCHING_ERROR_RATIO, &exact) != -1;
+	if (!matched) font->checkGlyphScaled(path, "sad.waqf", constants::MATCHING_ERROR_RATIO, &scaled);
+	if (distance) *distance = qMin(exact, scaled);
+	return matched || scaled < constants::MATCHING_ERROR_RATIO;
+}
 
 static bool checkGlyph(QGraphicsPathItem* pathItem, AFont* font, QGraphicsScene* scene, QSet<QGraphicsPathItem*>& removedItems) {
 	auto itemPath = pathItem->path(); // *pathItem->sceneTransform();
@@ -213,7 +218,7 @@ static bool checkGlyph(QGraphicsPathItem* pathItem, AFont* font, QGraphicsScene*
 			found = true;
 		}
 	}
-	else if (font->checkGlyph(itemPath, "sad.waqf") != -1) {
+	else if (isWaqfSad(itemPath, font)) {
 		pathItem->setData((int)CustomData::TYPE, (int)CustomDataType::WAQF);
 	}
 	else if (font->checkGlyph(itemPath, "onedot.waqf") != -1) {
@@ -522,6 +527,8 @@ void PageAnalysisResult::detectWords(int pageNumber, AFont* font, QGraphicsScene
 
 			if (bismLine) {
 				for (int ip = 0; ip < nbBismShapes; ip++) {
+					auto item = current->second;
+					headingPaths[i].append(item->mapToScene(item->path()));
 					scene->removeItem(current->second);
 					current++;
 				}
@@ -549,6 +556,8 @@ void PageAnalysisResult::detectWords(int pageNumber, AFont* font, QGraphicsScene
 					}**/
 
 				for (auto& item : removedItems) {
+					auto pathItem = static_cast<QGraphicsPathItem*>(item);
+					headingPaths[i].append(pathItem->mapToScene(pathItem->path()));
 					scene->removeItem(item);
 					current++;
 				}
@@ -692,6 +701,125 @@ void PageAnalysisResult::detectWords(int pageNumber, AFont* font, QGraphicsScene
 		page.lines.append(newline);
 	}
 }
+namespace {
+QPainterPath boundaryWorldPath(const Apath& shape) {
+	auto path = shape.transform.map(shape.path);
+	path.translate(shape.pos);
+	return path;
+}
+
+bool boundaryHasLetters(const QString& text) {
+	for (const auto ch : text)
+		if (ch.isLetter() && (ch.unicode() < 0x06D6 || ch.unicode() > 0x06ED)) return true;
+	return false;
+}
+
+struct BoundaryWord {
+	QRectF body;
+	QSet<int> bodies;
+	QVector<QRectF> boxes;
+	QVector<int> lowerStrokes;
+	int expectedLower = 0;
+	int observedLower = 0;
+	bool valid = true;
+};
+
+BoundaryWord boundaryWord(const Word& word, const QString& text, qreal baseline, AFont* font) {
+	BoundaryWord result;
+	result.expectedLower = text.count(QChar(0x0650)) + 2 * text.count(QChar(0x064D));
+	result.valid = !(int(word.wordResultInfo.state) &
+		(int(WordResultFlags::DIFFERENT_PATH_NUMBER) | int(WordResultFlags::NBPATH_OVERFLOW)));
+	for (const auto& sub : word.wordResultInfo.subWords) {
+		if (sub.paths.empty() || !boundaryHasLetters(sub.text)) continue;
+		const int index = sub.paths.front();
+		if (index < 0 || index >= word.paths.size()) { result.valid = false; continue; }
+		result.bodies.insert(index);
+		if (sub.secondaryBodyPath >= 0) result.bodies.insert(sub.secondaryBodyPath);
+		result.body = result.body.united(boundaryWorldPath(word.bodyShape(sub)).boundingRect());
+	}
+	for (int index = 0; index < word.paths.size(); ++index) {
+		const auto& shape = word.paths[index];
+		const auto box = boundaryWorldPath(shape).boundingRect();
+		result.boxes.append(box);
+		if (result.bodies.contains(index) || box.center().y() <= baseline) continue;
+		if (int(shape.type) == 0 && shape.nbpath == 0 && box.width() > box.height() &&
+			font->checkGlyph(shape.path, QChar(0x064E), constants::MATCHING_ERROR_RATIO) != -1) {
+			result.lowerStrokes.append(index);
+			++result.observedLower;
+		}
+		else if (shape.type == CustomDataType::SIMILAR) {
+			// Count a packed kasratan only when both outlines match the stroke template.
+			const auto parts = shape.path.toSubpathPolygons();
+			bool strokes = parts.size() == 2 && shape.nbpath == 1;
+			for (const auto& part : parts) {
+				QPainterPath path; path.addPolygon(part); path.closeSubpath();
+				strokes = strokes && font->checkGlyph(path, QChar(0x064E), constants::MATCHING_ERROR_RATIO) != -1;
+			}
+			if (strokes) result.observedLower += 2;
+			else result.valid = false; // Grouping uncertainty cannot justify moving another mark.
+		}
+	}
+	result.valid = result.valid && !result.body.isEmpty();
+	return result;
+}
+}
+
+QJsonArray PageAnalysisResult::resolveWordBoundaries(int pageNumber, AFont* font) {
+	QJsonArray repairs;
+	if (!font || pageNumber < 1 || pageNumber > QuranTextByWord.size()) return repairs;
+	const auto& transcript = QuranTextByWord[pageNumber - 1];
+	for (int li = 0; li < page.lines.size() && li < transcript.size(); ++li) {
+		auto& line = page.lines[li];
+		if (line.words.size() != transcript[li].size() || line.baseline <= 0) continue;
+		QVector<BoundaryWord> evidence;
+		for (int wi = 0; wi < line.words.size(); ++wi) {
+			detectSubWords(pageNumber - 1, li, wi, font);
+			evidence.append(boundaryWord(line.words[wi], transcript[li][wi], line.baseline, font));
+		}
+		for (int wi = 0; wi + 1 < line.words.size(); ++wi) {
+			const auto& right = evidence[wi];
+			const auto& left = evidence[wi + 1];
+			if (!right.valid || !left.valid) continue;
+			const int rightDebt = right.observedLower - right.expectedLower;
+			const int leftDebt = left.observedLower - left.expectedLower;
+			if (rightDebt * leftDebt != -1) continue;
+			const qreal gap = right.body.left() - left.body.right();
+			// Body order must already be sound. Do not repair overlapping letter bodies here.
+			if (gap < 0) continue;
+			const qreal boundary = (right.body.left() + left.body.right()) / 2;
+			auto nearBoundary = [=](const QRectF& box) {
+				return qAbs(box.center().x() - boundary) <= qMax(box.width(), box.height()) + gap / 2;
+			};
+			const int overIndex = rightDebt == 1 ? wi : wi + 1;
+			const int underIndex = rightDebt == 1 ? wi + 1 : wi;
+			const auto& over = evidence[overIndex];
+			const auto& under = evidence[underIndex];
+			QVector<int> lower, upper;
+			for (int pi : over.lowerStrokes)
+				if (nearBoundary(over.boxes[pi])) lower.append(pi);
+			for (int pi = 0; pi < under.boxes.size(); ++pi) {
+				const auto& shape = line.words[underIndex].paths[pi];
+				if (!under.bodies.contains(pi) && int(shape.type) == 0 && shape.nbpath == 0 &&
+					under.boxes[pi].bottom() < line.baseline && nearBoundary(under.boxes[pi]) &&
+					font->checkGlyph(shape.path, "onedot") == -1 &&
+					font->checkGlyph(shape.path, "twodots") == -1) upper.append(pi);
+			}
+			// Counts alone cannot choose ink: require one unique candidate on each side.
+			if (lower.size() != 1 || upper.size() != 1) continue;
+			const int lowerPath = lower.front(), upperPath = upper.front();
+			std::swap(line.words[overIndex].paths[lowerPath], line.words[underIndex].paths[upperPath]);
+			for (int index : {overIndex, underIndex}) {
+				detectSubWords(pageNumber - 1, li, index, font, true);
+				evidence[index] = boundaryWord(line.words[index], transcript[li][index], line.baseline, font);
+			}
+			repairs.append(QJsonObject{{"line",li + 1},{"lowerFromWord",overIndex + 1},
+				{"lowerPath",lowerPath},{"upperFromWord",underIndex + 1},{"upperPath",upperPath},
+				{"reason","reciprocal lower-stroke quota; unique boundary exchange"}});
+		}
+	}
+	return repairs;
+}
+
 qreal PageAnalysisResult::detectBaseline(const ALine& line, AFont* font) {
 	QPainterPath linePath;
 	for (int wordIndex = 0; wordIndex < line.words.length(); wordIndex++) {
@@ -787,6 +915,371 @@ qreal PageAnalysisResult::detectBaseline2(const ALine& line, AFont* font) {
 	return bestLine;
 }
 
+int PageAnalysisResult::expectedLowerPathCount(ushort u, arabic_joining_t joining) {
+    if (u==0x0650 || u==0x0655 || u==0x0625 || u==0x06ED || u==0x06E3) return 1;
+    if (u==0x064D || u==0x08F2) return 2;
+    if (u==0x0628 || u==0x062C) return 1;
+    if (u==0x064A && (joining==INIT || joining==MEDI)) return 1;
+    return 0;
+}
+
+namespace {
+enum class NativeMarkFamily { Unknown, Stroke, Damma, SingleDot, DoubleDot };
+
+int lastBoundaryLetter(const QString& text) {
+    for (int i=text.size()-1; i>=0; --i)
+        if (text[i].isLetter() && text[i].unicode()!=0x0640 &&
+            (text[i].unicode()<0x06D6 || text[i].unicode()>0x06ED)) return i;
+    return -1;
+}
+
+int expectedLowerPaths(const QString& text) {
+    int count=0;
+    const auto joins=PageAnalysisResult::arabic_joining(text);
+    for (int i=0; i<text.size(); ++i) {
+        count+=PageAnalysisResult::expectedLowerPathCount(text[i].unicode(),joins[i].joining);
+    }
+    return count;
+}
+
+int expectedLowerStrokePaths(const QString& text) {
+    return text.count(QChar(0x0650)) + 2 * (text.count(QChar(0x064D)) + text.count(QChar(0x08F2)));
+}
+}
+
+void PageAnalysisResult::repairSubwordBoundaries(int pageIndex, int lineIndex, int wordIndex, AFont* font) {
+    if (!font) return;
+    auto& line=page.lines[lineIndex];
+    auto& word=line.words[wordIndex];
+    auto& subs=word.wordResultInfo.subWords;
+    if (subs.size()<2 || (int(word.wordResultInfo.state) &
+        (int(WordResultFlags::DIFFERENT_PATH_NUMBER)|int(WordResultFlags::NBPATH_OVERFLOW)))) return;
+    QString joined;
+    for (const auto& sub:subs) joined+=sub.text;
+    if (joined!=word.text) return;
+    bool applicable=false;
+    for (const auto& sub:subs) {
+        const int last=lastBoundaryLetter(sub.text);
+        if (last<0) continue;
+        const auto u=sub.text[last].unicode();
+        const auto tail=sub.text.mid(last+1);
+        applicable|=(u==0x0623 || (u==0x0627 && tail.contains(QChar(0x0653))) ||
+                                  (u==0x0648 && tail.contains(QChar(0x0670))));
+    }
+    if (!applicable) return;
+    QVector<QRectF> boxes;
+    QVector<int> owners(word.paths.size(),-1), families(word.paths.size(),-1);
+    QSet<int> bodies;
+    for (int si=0; si<int(subs.size()); ++si) {
+        if (subs[si].paths.empty()) return;
+        if (boundaryHasLetters(subs[si].text)) bodies.insert(subs[si].paths.front());
+        for (int pi:subs[si].paths) {
+            if (pi<0 || pi>=word.paths.size() || owners[pi]!=-1) return;
+            owners[pi]=si;
+        }
+    }
+    for (const auto& path:word.paths) boxes.append(boundaryWorldPath(path).boundingRect());
+    auto eligible=[&](int pi) {
+        return !bodies.contains(pi) && word.paths[pi].type!=CustomDataType::WAQF && word.paths[pi].nbpath==0;
+    };
+    auto lowerCount=[&](int si) {
+        int n=0;
+        for (int pi:subs[si].paths)
+            if (!bodies.contains(pi) && word.paths[pi].type!=CustomDataType::WAQF &&
+                boxes[pi].center().y()>line.baseline) n+=1+word.paths[pi].nbpath;
+        return n;
+    };
+    auto family=[&](int pi) {
+        if (families[pi]>=0) return NativeMarkFamily(families[pi]);
+        const auto& path=word.paths[pi].path;
+        const auto box=boxes[pi];
+        const qreal ratio=box.width()/qMax(box.height(),qreal(.0001));
+        NativeMarkFamily f=NativeMarkFamily::Unknown;
+        if (ratio>1.3 && font->checkGlyph(path,QChar(0x064E),constants::MATCHING_ERROR_RATIO)!=-1) f=NativeMarkFamily::Stroke;
+        else if (ratio>.8 && ratio<1.2 && font->checkGlyph(path,"onedot")!=-1) f=NativeMarkFamily::SingleDot;
+        else if (ratio>1.2 && ratio<2.1 && font->checkGlyph(path,"twodots")!=-1) f=NativeMarkFamily::DoubleDot;
+        else if (ratio>.7 && ratio<1.1 && font->checkGlyph(path,"damma")!=-1) f=NativeMarkFamily::Damma;
+        families[pi]=int(f); return f;
+    };
+    for (int si=0; si+1<int(subs.size()); ++si) {
+        auto& right=subs[si]; auto& left=subs[si+1];
+        if (!bodies.contains(right.paths.front()) || !bodies.contains(left.paths.front())) continue;
+        const int last=lastBoundaryLetter(right.text);
+        if (last<0) continue;
+        const auto tail=right.text.mid(last+1);
+        const auto rb=boxes[right.paths.front()], lb=boxes[left.paths.front()];
+        if (rb.center().x()<=lb.center().x()) continue;
+        const qreal gap=rb.left()-lb.right(), boundary=(rb.left()+lb.right())/2;
+        auto near=[&](int pi) {
+            const auto b=boxes[pi];
+            return qAbs(b.center().x()-boundary)<=qMax(b.width(),b.height())+qMax(qreal(0),gap)/2;
+        };
+        auto exchange=[&](int fromRight,int fromLeft,const QString& reason) {
+            auto a=std::find(right.paths.begin(),right.paths.end(),fromRight);
+            auto b=std::find(left.paths.begin(),left.paths.end(),fromLeft);
+            if (a==right.paths.end() || b==left.paths.end()) return;
+            std::swap(*a,*b); owners[fromRight]=si+1; owners[fromLeft]=si;
+            subwordBoundaryRepairs.append(QJsonObject{{"page",pageIndex+1},{"line",lineIndex+1},{"word",wordIndex+1},
+                {"rightSubword",si+1},{"leftSubword",si+2},{"pathToLeft",fromRight},{"pathToRight",fromLeft},{"reason",reason}});
+        };
+        const int excess=lowerCount(si)-expectedLowerPaths(right.text);
+        if (right.text[last].unicode()==0x0623) {
+            const bool stroke=tail.contains(QChar(0x064E)) || tail.contains(QChar(0x0653));
+            const bool damma=tail.contains(QChar(0x064F));
+            const bool sukun=tail.contains(QChar(0x0652)) || tail.contains(QChar(0x06E1));
+            if (!stroke && !damma && !sukun) continue;
+            QVector<int> possible;
+            for (int side:{si,si+1}) for (int pi:subs[side].paths) {
+                if (!eligible(pi)) continue;
+                const auto b=boxes[pi]; const qreal ratio=b.width()/qMax(b.height(),qreal(.0001));
+                if (ratio>=.8 && ratio<=1.3 && b.height()>=.1*rb.height() && b.height()<=.4*rb.height() &&
+                    qAbs(b.center().x()-rb.left())<=b.width() && qAbs(b.bottom()-rb.top())<=b.height()) possible.append(pi);
+            }
+            // A healthy stack needs no template work. Only a displaced lower
+            // path or a hamza on the neighbour can justify an exchange.
+            if (excess!=1 && std::all_of(possible.begin(),possible.end(),[&](int pi){return owners[pi]==si;})) continue;
+            QVector<int> anchors;
+            for (int pi:possible) if (family(pi)==NativeMarkFamily::Unknown) anchors.append(pi);
+            if (anchors.size()!=1) continue;
+            const int anchor=anchors.front(); const auto ab=boxes[anchor];
+            if (owners[anchor]==si && excess==1) {
+                QVector<int> lower,upper;
+                for (int pi:right.paths) if (eligible(pi) && near(pi) && boxes[pi].center().y()>line.baseline) lower.append(pi);
+                for (int pi:left.paths) {
+                    if (!eligible(pi) || !near(pi) || boxes[pi].bottom()>ab.top()+.3*ab.height()) continue;
+                    const auto f=family(pi);
+                    if ((stroke && f==NativeMarkFamily::Stroke) || (damma && f==NativeMarkFamily::Damma) ||
+                        (sukun && f==NativeMarkFamily::Unknown && boxes[pi].width()>boxes[pi].height())) upper.append(pi);
+                }
+                if (lower.size()==1 && upper.size()==1) exchange(lower.front(),upper.front(),"alif hamza/vowel stack; neighbour lower mark");
+            }
+            else if (owners[anchor]==si+1 && stroke) {
+                QVector<int> outgoing;
+                int rightStrokes=0,leftStrokes=0;
+                for (int side:{si,si+1}) for (int pi:subs[side].paths)
+                    if (eligible(pi) && boxes[pi].center().y()<line.baseline && family(pi)==NativeMarkFamily::Stroke) {
+                        if (side==si) {
+                            ++rightStrokes;
+                            if (near(pi) && boxes[pi].top()>ab.bottom()) outgoing.append(pi);
+                        } else ++leftStrokes;
+                    }
+                if (outgoing.size()==1 && rightStrokes==right.text.count(QChar(0x064E))+1 &&
+                    leftStrokes+1==left.text.count(QChar(0x064E))) exchange(outgoing.front(),anchor,"hamza anchor above alif; neighbour fatha below stack");
+            }
+        }
+        else if (excess==1) {
+            const bool maddah=right.text[last].unicode()==0x0627 && tail.contains(QChar(0x0653));
+            const bool smallAlif=right.text[last].unicode()==0x0648 && tail.contains(QChar(0x0670));
+            if (!maddah && !smallAlif) continue;
+            const bool reciprocalLower=lowerCount(si+1)+1==expectedLowerPaths(left.text);
+            // A hamza above a low tooth may itself sit below the line baseline.
+            // It must not satisfy a missing kasra quota. For an alif maddah,
+            // also permit a reciprocal deficit of geometrically recognized
+            // lower strokes. Keep the broader existing rule for other cases.
+            auto lowerStrokes=[&](int side) {
+                int count=0;
+                for (int pi:subs[side].paths)
+                    if (eligible(pi) && boxes[pi].center().y()>line.baseline &&
+                        family(pi)==NativeMarkFamily::Stroke) ++count;
+                return count;
+            };
+            const bool reciprocalStroke=!reciprocalLower && maddah &&
+                lowerStrokes(si)==expectedLowerStrokePaths(right.text)+1 &&
+                lowerStrokes(si+1)+1==expectedLowerStrokePaths(left.text);
+            if (!reciprocalLower && !reciprocalStroke) continue;
+            auto modifier=[&](int pi) {
+                const auto b=boxes[pi];
+                return eligible(pi) && b.center().y()<line.baseline && family(pi)==NativeMarkFamily::Unknown &&
+                    ((maddah && b.width()>1.6*b.height()) || (smallAlif && b.height()>2*b.width()));
+            };
+            bool already=false;
+            for (int pi:right.paths) if (modifier(pi)) already=true;
+            if (already) continue;
+            QVector<int> lower,upper;
+            for (int pi:right.paths)
+                if (eligible(pi) && near(pi) && boxes[pi].center().y()>line.baseline &&
+                    (!reciprocalStroke || family(pi)==NativeMarkFamily::Stroke)) lower.append(pi);
+            for (int pi:left.paths) {
+                const auto b=boxes[pi];
+                if (near(pi) && modifier(pi) && (!reciprocalStroke ||
+                    (b.bottom()<rb.top() && b.left()<rb.right() && b.right()>rb.left()))) upper.append(pi);
+            }
+            if (lower.size()==1 && upper.size()==1) exchange(lower.front(),upper.front(),reciprocalStroke ?
+                "raised alif maddah; reciprocal lower-stroke quota" : "raised alif modifier; reciprocal lower-mark quota");
+        }
+    }
+}
+
+void PageAnalysisResult::restoreWaqfTypes(int pageIndex, int lineIndex, int wordIndex, AFont* font) {
+	if (!font) return;
+	auto& word = page.lines[lineIndex].words[wordIndex];
+	for (int pi = 0; pi < word.paths.size(); ++pi) {
+		auto& shape = word.paths[pi];
+		if (int(shape.type) != 0 || shape.nbpath != 0) continue;
+		double distance = 1;
+		if (!isWaqfSad(shape.path, font, &distance)) continue;
+		shape.type = CustomDataType::WAQF;
+		waqfTypeRepairs.append(QJsonObject{{"page",pageIndex+1},{"line",lineIndex+1},
+			{"word",wordIndex+1},{"path",pi},{"previousType",0},{"type",int(CustomDataType::WAQF)},
+			{"template","sad.waqf"},{"distance",distance},
+			{"reason","native stop-sign template; uniform scale fallback"}});
+	}
+}
+
+ShapeExceptionRecord PageAnalysisResult::wordShapeException(int page, int line, int word, int wordsInLine) {
+    const auto pageIt = nbShapeExceptions.constFind(page);
+    if (pageIt == nbShapeExceptions.constEnd()) return {};
+    const auto lineIt = pageIt->constFind(line);
+    if (lineIt == pageIt->constEnd()) return {};
+    if (lineIt->contains(word)) return lineIt->value(word);
+    if (word < 1 || word > wordsInLine) return {};
+    return lineIt->value(word - wordsInLine - 1, {});
+}
+
+static bool endsInLamAlef(const QString& text) {
+    int i = text.size() - 1;
+    while (i >= 0 && text[i].isMark()) --i;
+    if (i < 0 || !QStringLiteral("اأإآٱ").contains(text[i])) return false;
+    --i;
+    while (i >= 0 && text[i].isMark()) --i;
+    return i >= 0 && text[i] == QChar(0x0644);
+}
+
+// The separate arm of a final lam-alef tapers from the upper left to the lower right.
+// Measure the actual ink in the outer thirds so a nearby vowel or dot stays a mark.
+static bool isLamAlefArm(const QRegion& ink) {
+    const auto bounds = ink.boundingRect();
+    const int third = bounds.height() / 3;
+    if (!third || bounds.width() < .6 * bounds.height() || bounds.width() > 1.3 * bounds.height()) return false;
+    const auto band = [&](int y) {
+        double area = 0, moment = 0;
+        for (const auto& r : ink.intersected(QRect(bounds.left(), y, bounds.width(), third))) {
+            const double pixels = r.width() * r.height();
+            area += pixels;
+            moment += pixels * (r.left() - bounds.left() + .5 * r.width());
+        }
+        return std::pair{area, area ? moment / (area * bounds.width()) : 0.};
+    };
+    const auto [head, headX] = band(bounds.top());
+    const auto [tip, tipX] = band(bounds.bottom() - third + 1);
+    return headX < .35 && tipX > .8 && tip * 2 < head;
+}
+
+int PageAnalysisResult::secondaryBodyContour(ShapeException exception, const QString& text, int markQuota, double baseline,
+        double scale, const std::vector<BodyContourInput>& members, const std::function<QRegion(int)>& inkRegion) {
+    if (exception == ShapeException::NONE || exception == ShapeException::AlefHamzaJoined ||
+        members.size() < 2 || members.front().contours != 1 || !members.front().untyped ||
+        !std::isfinite(baseline) || !std::isfinite(scale) || scale <= 0) return -1;
+    int contours = 0;
+    for (const auto& member : members) contours += member.contours;
+    if (contours != markQuota + 2) return -1;
+
+    const bool counter = exception == ShapeException::InnerContourCollidingProblem;
+    const auto& primary = members.front().bounds;
+    const double reach = scale * 0.5; // half a PDF point, also the native baseline band
+    const auto spansBand = [&](const QRectF& b) { return b.top() <= baseline - reach && b.bottom() >= baseline + reach; };
+    if (!counter && !spansBand(primary)) return -1;
+    const bool lamAlef = !counter && endsInLamAlef(text);
+    QRegion body;
+    int selected = -1;
+    for (size_t i = 1; i < members.size(); ++i) {
+        const auto& [box, count, untyped] = members[i];
+        if (!untyped || count != 1) continue;
+        const bool upperArm = lamAlef && box.bottom() <= baseline &&
+            std::abs(box.left() - primary.left()) <= .5 * box.width();
+        const double gap = upperArm ? scale : reach;
+        if (counter) {
+            if (!primary.contains(box) || box.top() > baseline || box.bottom() < baseline) continue;
+        } else {
+            if (!upperArm && (!spansBand(box) || (box.left() >= primary.left() && box.right() <= primary.right()))) continue;
+            if (!primary.adjusted(-gap, -gap, gap, gap).intersects(box)) continue;
+        }
+        if (body.isEmpty()) body = inkRegion(0);
+        const auto candidate = inkRegion(i);
+        if (body.isEmpty() || candidate.isEmpty()) continue;
+        if (counter) {
+            if (candidate == body || !candidate.subtracted(body).isEmpty()) continue;
+        } else {
+            if (upperArm) {
+                if (!isLamAlefArm(candidate)) continue;
+                // Rasterization can paint the contact pixel in both source contours.
+                const auto contact = body.intersected(candidate).boundingRect();
+                if (!contact.isEmpty() && (contact.left() < box.right() - gap || contact.top() < box.bottom() - gap))
+                    continue;
+            } else if (body.intersects(candidate)) continue;
+            bool adjacent = false;
+            const int pixels = static_cast<int>(std::floor(gap));
+            for (int dy = -pixels; dy <= pixels && !adjacent; ++dy)
+                for (int dx = -pixels; dx <= pixels && !adjacent; ++dx)
+                    if (dx*dx + dy*dy <= gap*gap)
+                        adjacent = body.intersects(candidate.translated(dx, dy));
+            if (!adjacent) continue;
+        }
+        if (selected >= 0) return -1;
+        selected = static_cast<int>(i);
+    }
+    return selected;
+}
+
+void PageAnalysisResult::resolveCompoundBody(int pageIndex, int lineIndex, int wordIndex) {
+    auto& line = page.lines[lineIndex];
+    const auto record = wordShapeException(pageIndex + 1, lineIndex + 1, wordIndex + 1, line.words.size());
+    auto& word = line.words[wordIndex];
+    if (record.subWordPosition <= 0 || record.subWordPosition > int(word.wordResultInfo.subWords.size())) return;
+    auto& sub = word.wordResultInfo.subWords[record.subWordPosition - 1];
+    int quota = -1; // one connected base body in the transcript's contour count
+    const auto joining = arabic_joining(sub.text);
+    for (int i = 0; i < sub.text.size(); ++i) {
+        const auto form = joining[i].joining;
+        quota += charProps.value(sub.text[i].unicode()).nb_paths[form] - (form == FINA || form == MEDI);
+    }
+    constexpr double scale = 16.0 / 3.0; // four SVG pixels per unit at 96 / 72 units per PDF point
+    const auto toRaster = QTransform::fromScale(scale, scale);
+    std::vector<BodyContourInput> members;
+    for (const int index : sub.paths) {
+        const auto& shape = word.paths[index];
+        members.push_back({toRaster.mapRect(boundaryWorldPath(shape).boundingRect()), 1 + shape.nbpath, int(shape.type) == 0});
+    }
+    const int candidate = secondaryBodyContour(record.shapeException, sub.text, quota, line.baseline * scale, scale, members,
+        [&](int i) {
+            const auto scaled = toRaster.map(boundaryWorldPath(word.paths[sub.paths[i]]));
+            QRegion ink;
+            visitSourceInk(scaled, scaled.boundingRect().toAlignedRect().adjusted(-2,-2,2,2),
+                [&](int x, int y, int length) { ink += QRect(x, y, length, 1); });
+            return ink;
+        });
+    sub.secondaryBodyPath = candidate >= 0 ? sub.paths[candidate] : -1;
+    sub.bodyCounter = candidate >= 0 && record.shapeException == ShapeException::InnerContourCollidingProblem;
+}
+
+Apath Word::bodyShape(const WordResultInfo::SubWordInfo& sub) const {
+    auto body = paths[sub.paths.front()];
+    if (sub.secondaryBodyPath < 0) return body;
+    const auto& part = paths[sub.secondaryBodyPath];
+    auto secondary = part.path;
+    if (part.pos != body.pos || part.transform != body.transform) {
+        secondary = boundaryWorldPath(part).translated(-body.pos);
+        secondary = body.transform.inverted().map(secondary);
+    }
+    if (sub.bodyCounter) {
+        // Append the original Béziers. A boolean subtraction can flatten the exterior.
+        // Choose the inner direction for consumers that paint with nonzero winding.
+        const auto bounds = secondary.boundingRect();
+        const double scale = 64.0 / std::max(bounds.width(), bounds.height());
+        const auto normalized = QTransform::fromScale(scale, scale);
+        const auto inner = normalized.map(secondary);
+        auto winding = normalized.map(body.path);
+        winding.setFillRule(Qt::WindingFill);
+        winding.addPath(inner);
+        // A colliding edge can leave a sliver even when the opening is clear.
+        if (2 * AFont::getArea(winding.intersected(inner)) > AFont::getArea(inner))
+            secondary = secondary.toReversed();
+        body.path.setFillRule(Qt::OddEvenFill);
+    }
+    body.path.addPath(secondary);
+    return body;
+}
+
 WordResultInfo PageAnalysisResult::detectSubWords(int pageIndex, int lineIndex, int wordIndex, AFont* font, bool recompute) {
 
 	auto& line = page.lines[lineIndex];
@@ -794,8 +1287,13 @@ WordResultInfo PageAnalysisResult::detectSubWords(int pageIndex, int lineIndex, 
 
 	auto wordText = QuranTextByWord[pageIndex][lineIndex][wordIndex];
 	word.text = wordText;
+	// Legacy caches preserve their old type flags. Restore missing stop-sign
+	// flags with the same geometric matcher as fresh parsing, without changing ink.
+	restoreWaqfTypes(pageIndex, lineIndex, wordIndex, font);
 
 	if (word.wordResultInfo.subWords.size() > 0 && !recompute) {
+		repairSubwordBoundaries(pageIndex, lineIndex, wordIndex, font);
+		resolveCompoundBody(pageIndex, lineIndex, wordIndex);
 		return word.wordResultInfo;
 	}	
 
@@ -808,21 +1306,8 @@ WordResultInfo PageAnalysisResult::detectSubWords(int pageIndex, int lineIndex, 
 	word.wordResultInfo = WordResultInfo();
 	WordResultInfo& wordInfo = word.wordResultInfo;
 
-	ShapeExceptionRecord wordExc{};
-	int pageNumber = pageIndex + 1;
-	if (nbShapeExceptions.contains(pageNumber)) {
-		auto pageExce = nbShapeExceptions.value(pageNumber);
-		if (pageExce.contains(lineIndex + 1)) {
-			auto lineExce = pageExce.value(lineIndex + 1);
-
-			if (lineExce.contains(wordIndex + 1)) {
-				wordExc = lineExce.value(wordIndex + 1);
-			}
-			else if (lineExce.contains(wordIndex - line.words.size())) {
-				wordExc = lineExce.value(wordIndex - line.words.size());
-			}
-		}
-	}
+	const int pageNumber = pageIndex + 1;
+	const auto wordExc = wordShapeException(pageNumber, lineIndex + 1, wordIndex + 1, line.words.size());
 
 	for (int charInd = 0; charInd < wordText.size(); charInd++) {
 
@@ -996,14 +1481,13 @@ WordResultInfo PageAnalysisResult::detectSubWords(int pageIndex, int lineIndex, 
 			auto& last = transformedPaths[lastShapeIndex];
 			auto brect = last.boundingRect;
 			auto diff = curect.x() - brect.x();
-			auto diff2 = brect.right() - curect.right();
 			if (pageIndex == 584 && lineIndex == 11 && wordIndex == 0 && subWordIndex == 2) {
 			}
 			else if (pageIndex == 118 && lineIndex == 1 && wordIndex == 1 && subWordIndex == 1) {
 			}
 			else if (curect.bottom() < brect.top() && last.intersectBaseLine && nbContourBySubWord == 1) {
 			}
-			else if (diff > 5 || (word.paths[lastShapeIndex].type == CustomDataType::WAQF)) { //|| (diff > 0 && !last.intersectBaseLine && diff > diff2)
+			else if (diff > 5 || (word.paths[lastShapeIndex].type == CustomDataType::WAQF)) {
 				auto& paths = wordInfo.subWords[subWordIndex].paths;
 				paths.erase(paths.begin() + lastIndex);
 				paths.push_back(currentIndex);
@@ -1097,6 +1581,8 @@ WordResultInfo PageAnalysisResult::detectSubWords(int pageIndex, int lineIndex, 
 	}
 
 	//analyzeSubwords(pageIndex, lineIndex, wordIndex, wordInfo, font);
+	repairSubwordBoundaries(pageIndex, lineIndex, wordIndex, font);
+	resolveCompoundBody(pageIndex, lineIndex, wordIndex);
 
 	return wordInfo;
 
@@ -1110,28 +1596,17 @@ void PageAnalysisResult::analyzeSubwords(int pageIndex, int lineIndex, int wordI
 	for (int subWordIndex = 0; subWordIndex < wordResultInfo.subWords.size(); subWordIndex++) {
 		auto& subWord = wordResultInfo.subWords[subWordIndex];
 		if (subWord.text.contains("إ")) {
-			bool found = false;
-			double minValue = INT_MAX;
-			double minIndex = -1;
 			for (int shapeIndex = 0; shapeIndex < subWord.paths.size(); shapeIndex++) {
 				auto shapePathIndex = subWord.paths[shapeIndex];
 				auto& shape = word.paths[shapePathIndex];
 				double value;
 				if (font->checkGlyph(shape.path, "alef", CompareMethod::TF, 0.2, &value) != -1) {
-					found = true;
 					if (shapeIndex != 0) {
 						rotateVector(subWord.paths, shapeIndex, 0);
 						std::cout << "Alef found, minValue=" << value << ",Index=" << shapeIndex << ",at " << pageIndex + 1 << "-" << lineIndex + 1 << "-" << wordIndex + 1 << std::endl;
 					}
 					break;
 				}
-				else if (value < minValue) {
-					minValue = value;
-					minIndex = shapeIndex;
-				}
-			}
-			if (!found) {
-				//std::cout << "Alef not found, minValue=" << minValue << ",Index=" << minIndex << ",at " << pageIndex + 1 << "-" << lineIndex + 1 << "-" << wordIndex + 1 << std::endl;
 			}
 
 
@@ -1147,6 +1622,9 @@ int PageAnalysisResult::loadPage(int pageNumber, AFont* font, bool debug, QGraph
 
 	LinesInfo.clear();
 	page.lines.clear();
+	subwordBoundaryRepairs=QJsonArray();
+	waqfTypeRepairs=QJsonArray();
+	headingPaths.clear();
 
 	QString fileName = "./input/1441-AI-hafs/";
 	char str[4];
@@ -1187,11 +1665,8 @@ int PageAnalysisResult::loadPage(int pageNumber, AFont* font, bool debug, QGraph
 
 	//std::cout << "**************************PAGE=" << pageNumber << std::endl;	
 
-	int i = -1;
 	for (auto& path : paths) {
-		//if (path->brush() == QBrush(Qt::SolidPattern)) {
 		auto color = path.brush.color();
-		auto red = color.red();
 		if (color.red() == 35) {
 			auto item = new QGraphicsPathItem(path.path);
 			item->setFlag(QGraphicsItem::ItemIsSelectable, true);
@@ -1263,6 +1738,7 @@ int PageAnalysisResult::loadPage(int pageNumber, AFont* font, bool debug, QGraph
 				detectSubWords(pageNumber - 1, lineIndex, wordIndex, font);
 			}
 		}
+		resolveWordBoundaries(pageNumber, font);
 	}
 
 	return 0;
@@ -1435,16 +1911,6 @@ void PageAnalysisResult::analyzeTextPage(int pageNumber) {
 
 	QRegularExpression re(surapattern, QRegularExpression::MultilineOption);
 
-	const char* JoiningTypes[] =
-	{
-		"Joining_None",
-		"Joining_Causing",
-		"Joining_Dual",
-		"Joining_Right",
-		"Joining_Left",
-		"Joining_Transparent"
-	};
-
 	for (int i = 0; i < textLines.size(); i++) {
 
 		LinesInfo.append(LineInfo{});
@@ -1458,10 +1924,7 @@ void PageAnalysisResult::analyzeTextPage(int pageNumber) {
 
 		auto& textLine = LinesInfo[i].text;
 
-		int lineTextPathCount = 0;
-
 		auto words = textLine.split(char(0x20), Qt::SkipEmptyParts);
-		QVector<WordInfo> wordInfos;
 		for (int wordIndex = 0; wordIndex < words.size(); wordIndex++) {
 			int wordNb = wordIndex + 1;
 			int wordnbpath = 0;
@@ -1471,8 +1934,6 @@ void PageAnalysisResult::analyzeTextPage(int pageNumber) {
 
 				auto qchar = word[charInd];
 				if (charProps.contains(qchar.unicode())) {
-					auto test = charProps.value(qchar.unicode());
-
 					auto nbpath = charProps.value(qchar.unicode()).nb_paths[info[charInd].joining];
 					if (info[charInd].joining == FINA || info[charInd].joining == MEDI) {
 						--nbpath;
@@ -1480,38 +1941,15 @@ void PageAnalysisResult::analyzeTextPage(int pageNumber) {
 
 					wordnbpath += nbpath;
 
-					//auto joining = info[charInd].joining == NONE ? "NONE" : info[charInd].joining == ISOL ? "ISOL" : info[charInd].joining == FINA ? "FINA" : info[charInd].joining == MEDI ? "MEDI" : "INIT";
-					//std::cout << std::format("U+{:04X}({:s}-{:s}-{:s}, total={:d}, nbpath={:d})", qchar.unicode(), JoiningTypes[qchar.joiningType()], qchar.isMark() ? "Mark" : "Base", joining, textPathCount, nbpath) << std::endl;
 				}
 				else {
 					throw new std::runtime_error("Unicode not found");
 				}
 			}
-			if (nbShapeExceptions.contains(pageNumber)) {
-				auto pageExce = nbShapeExceptions.value(pageNumber);
-				if (pageExce.contains(i + 1)) {
-					auto lineExce = pageExce.value(i + 1);
-					ShapeExceptionRecord wordExc{};
-					if (lineExce.contains(wordNb)) {
-						wordExc = lineExce.value(wordNb);
-					}
-					else if (lineExce.contains(wordIndex - words.size())) {
-						wordExc = lineExce.value(wordIndex - words.size());
-					}
-					if (wordExc.shapeException != ShapeException::NONE) {
-						if (wordExc.shapeException == ShapeException::AlefHamzaJoined) {
-							wordnbpath--;
-						}
-						else {
-							wordnbpath++;
-						}
-					}
-
-				}
-			}
+			const auto exception = wordShapeException(pageNumber, i + 1, wordNb, words.size()).shapeException;
+			if (exception != ShapeException::NONE)
+				wordnbpath += exception == ShapeException::AlefHamzaJoined ? -1 : 1;
 			LinesInfo[i].wordInfos.append({ wordnbpath });
-			lineTextPathCount += wordnbpath;
-			//std::cout << "WORD " << wordNb << " , wordnbpath=" << wordnbpath << ", lineTextPathCount = " << lineTextPathCount << std::endl;
 		}
 	}
 

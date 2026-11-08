@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Page 600 · Mask2Former and template cuts</title>
+  <link rel="stylesheet" href="review.css">
+</head>
+<body>
+  <header>
+    <div class="heading"><div><h1 id="heading">Whole-page segmentation review</h1><p id="subtitle"></p></div><a href="../report.html">Six-word benchmark ↗</a></div>
+    <div class="summary" id="summary"></div>
+    <p class="explanation">Click a subword to compare its cuts. Predictions use isolated subword ink, without the transcript. Gray dots and marks are context. Template agreement is not verified accuracy.</p>
+  </header>
+  <div class="toolbar">
+    <label>View <select id="mode"><option value="difference">Highlighted differences</option><option value="model">Mask2Former regions</option><option value="template">Template regions</option><option value="cuts">Both cut boundaries</option><option value="input">Source ink</option></select></label>
+    <label><input type="checkbox" id="raw"> Raw model output</label>
+    <label><input type="checkbox" id="boxes" checked> Flagged boxes</label>
+    <div class="zoom"><button id="out" aria-label="Zoom out">−</button><span id="zoom-value">100%</span><button id="in" aria-label="Zoom in">+</button><button id="fit">Fit page</button><button id="actual">100%</button></div>
+    <span class="hint">Ctrl/⌘ + wheel to zoom</span>
+  </div>
+  <div class="legend" id="legend"></div>
+  <main>
+    <section class="page-pane" aria-label="Whole page">
+      <div class="viewport" id="viewport"><div class="sheet" id="sheet"><img id="page-image" alt="Whole page with segmentation overlay"><svg id="hit-map" aria-label="Selectable subwords"></svg></div></div>
+    </section>
+    <aside>
+      <section class="queue">
+        <div class="row"><label>Show <select id="filter"><option value="review">Review queue</option><option value="all">All subwords</option><option value="count">Region count differs</option><option value="boundary">Boundary shifted &gt; 2 px</option><option value="unresolved">Incomplete / unassigned</option><option value="minor">Small boundary differences</option><option value="same">Exact agreement</option></select></label><label class="grow">Find <input id="find" placeholder="لْقُبُو or l2-w10-s2"></label></div>
+        <div class="row"><label>Order <select id="sort"><option value="severity">Largest differences first</option><option value="page">Page reading order</option></select></label><span id="queue-count"></span></div>
+        <div class="row"><button id="previous">← Previous</button><button id="next">Next →</button><select id="items" aria-label="Subword review queue"></select></div>
+      </section>
+      <section id="detail" aria-live="polite"></section>
+      <section class="notes">
+        <h2>Review notes</h2>
+        <label>Decision <select id="decision"><option value="unreviewed">Unreviewed</option><option value="template">Template looks better</option><option value="model">Model looks better</option><option value="both">Both acceptable</option><option value="correct">Both need correction</option></select></label>
+        <textarea id="note" rows="2" placeholder="Describe where the cut should move…" aria-label="Review note"></textarea>
+        <div class="row"><button id="copy">Copy selected case</button><button id="export">Export review notes</button></div><small id="save-state">Notes are saved in this browser. Training labels are unchanged.</small>
+      </section>
+      <footer><a href="comparison.json" download>Download comparison data</a> · <a href="page-comparison.png" target="_blank">Full-page comparison image</a><p id="scope-note"></p></footer>
+    </aside>
+  </main>
+  <script src="comparison-data.js"></script>
+  <script type="module" src="review.mjs"></script>
+</body>
+</html>

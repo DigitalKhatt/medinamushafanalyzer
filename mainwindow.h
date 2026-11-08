@@ -68,7 +68,7 @@ private:
 	PageAnalysisResult& getPageResult(int pageNumber);
 	void findExpandables();
 	void detectSubWords(bool characterSegmentation, int pPageIndex = -1);
-	void handleContextMenu(const QPoint& pos);
+	void inspectSubword(const QPoint& pos);
 	
 	
 	void searchStretching();
@@ -81,6 +81,9 @@ private:
 	QString curFile;
 	QSpinBox* integerSpinBox;
 	QPushButton* showWordBBButton;
+	QPushButton* showLetterSegmentationButton;
+	QPushButton* inspectCutsButton;
+	QString letterFormsSavePath;
 	QPushButton* showSubWordMarks;
 	QPushButton* sordByWidth;
 	QPushButton* debugBBButton;
@@ -117,7 +120,7 @@ private:
 	void zoomIn();
 	void zoomOut();
 	void scaleView(qreal scaleFactor);
-	void loadPage(int pageNumber);
+	void loadPage(int pageNumber, bool forceSegmentation = false);
 
 	void  testAnalyze();
 

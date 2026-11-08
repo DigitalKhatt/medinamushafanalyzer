@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mushaf · Ink segmentation</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="brand-mark">م</span><div><strong>Mushaf</strong><span class="subtitle">Ink segmentation workbench</span></div></div>
+    <div class="navigation"><button id="previous" aria-label="Previous page">←</button><label for="page">Page</label><select id="page"></select><button id="next" aria-label="Next page">→</button><span id="split" class="badge"></span></div>
+    <div class="save-area"><span id="save-status" role="status">Starting…</span><button id="approve" class="approve" disabled>Approve selected <kbd>R</kbd></button><button id="save" class="primary">Save <kbd>⌘S</kbd></button></div>
+  </header>
+  <main>
+    <aside>
+      <section class="intro"><span class="eyebrow">01 / ANNOTATE THE INK</span><h1>A foundation for<br>the handwritten font.</h1><p>Select an ink region, assign its role, then approve it. A transcript is optional.</p><p><a href="/corpus.html">Explore automatic corpus ↗</a></p><p><a id="vector-review" href="/review.html">Validate vector proposals ↗</a></p></section>
+      <section><div class="section-title"><h2>Ink roles</h2><span id="selection-count">No selection</span></div><div id="roles"></div><p class="hint">Labels are drafts until approved. Unlabelled and draft ink is excluded from training.</p></section>
+      <section class="mark-section"><h2>Dots &amp; marks pilot</h2><p class="hint">Label dots and marks without identifying any letters. Use Other ink for a reviewed negative example.</p><label class="field-label" for="mark-type">Mark or dot type · optional</label><input id="mark-type" list="mark-type-options" placeholder="fatha, shadda, double-dot…"><datalist id="mark-type-options"><option value="single-dot"><option value="double-dot"><option value="triple-dot"><option value="fatha"><option value="kasra"><option value="damma"><option value="shadda"><option value="sukun"><option value="tanwin-fath"><option value="tanwin-kasr"><option value="tanwin-damm"></datalist><button id="mark-type-save">Apply type to selected</button><p class="hint">For one mark made of several regions, Shift-select them and use Merge regions before labelling. Letter ownership can be added later.</p></section>
+      <section class="character-section"><h2>Character &amp; form</h2><p class="hint">Each letter cut belongs to a character instance. Body, connection, dots and marks share its details.</p>
+        <div id="transcript-labeling" hidden>
+          <label class="field-label" for="transcript-letter" id="transcript-context"></label>
+          <select id="transcript-letter"></select>
+          <div class="row"><button id="transcript-body">Assign body</button><button id="transcript-join">Assign join</button></div>
+          <p class="hint">Choose the letter that owns the selected ink. For a join, choose the preceding letter in reading order. Approve each cut after checking it.</p>
+        </div>
+        <div class="row"><button id="group">New character <kbd>G</kbd></button><button id="select-group">Select character</button></div>
+        <select id="owner" aria-label="Assign character group"><option value="">No character assigned</option></select>
+        <label class="field-label" for="identity">Character</label><input id="identity" list="character-options" placeholder="Choose or type a letter · ك" aria-label="Character identity" dir="auto"><datalist id="character-options"></datalist>
+        <label class="field-label" for="character-position">Joining position</label><select id="character-position"><option value="unknown">Not specified</option><option value="initial">Initial</option><option value="medial">Medial</option><option value="final">Final</option><option value="isolated">Isolated</option></select>
+        <label class="field-label" for="character-form">Letter form</label><input id="character-form" list="form-options" placeholder="Choose a form or enter a custom tag"><datalist id="form-options"></datalist>
+        <button id="identity-save" class="details-apply">Apply character details</button>
+        <p id="character-status" class="hint">Body/connection ink requires a character and position. Dots and marks can be reviewed independently.</p>
+        <p class="hint">Initial/final describe joining, not the word index. For another letter after a split, choose New character.</p>
+        <div class="row line-row"><label for="line">Line</label><input id="line" type="number" min="1" max="200" placeholder="—"><button id="line-save">Assign</button></div>
+      </section>
+      <section class="subword-section"><h2>Subword context</h2><p class="hint">Correct vector proposals or create a subword manually. Its body can contain several uncut letters.</p><select id="subword-owner" aria-label="Subword instance"></select><input id="subword-label" dir="rtl" lang="ar" placeholder="Subword text" aria-label="Subword text"><label><input id="subword-body" type="checkbox"> Selected ink is subword body</label><div class="row"><button id="subword-new">New subword</button><button id="subword-assign">Apply assignment</button></div><button id="subword-approve">Approve body &amp; text</button><p id="subword-status" class="hint">Subword targets are separate from individual letter targets.</p></section>
+      <section><h2>Region editing</h2><div class="tool-grid"><button id="select-tool" class="active">Select <kbd>V</kbd></button><button id="box-tool">Box select <kbd>B</kbd></button><button id="polygon-tool">Split polygon <kbd>P</kbd></button><button id="pan-tool">Pan <kbd>H</kbd></button></div><div class="row"><button id="finish-split">Finish split ↵</button><button id="cancel-split">Cancel</button></div><div class="row"><button id="merge">Merge regions</button><button id="undo">Undo <kbd>⌘Z</kbd></button></div><p id="tool-hint" class="hint">Click ink to select. Shift-click adds regions. Scroll to zoom; hold Space to pan.</p></section>
+      <section id="landmark-panel" hidden>
+        <h2>Letter landmarks</h2>
+        <p id="landmark-status" class="hint"></p>
+        <label class="field-label" for="landmark-region">Letter body</label>
+        <select id="landmark-region"></select>
+        <div class="row landmark-layers">
+          <label><input id="landmark-contour" type="checkbox" checked> Contour</label>
+          <label><input id="landmark-skeleton" type="checkbox" checked> Skeleton</label>
+        </div>
+        <div id="landmark-list" aria-label="Landmarks on this letter"></div>
+        <label class="field-label" for="landmark-kind">Missing landmark type</label>
+        <select id="landmark-kind"></select>
+        <button id="landmark-add" aria-pressed="false">Place landmark</button>
+      </section>
+      <section class="progress-section"><h2>Page progress</h2><div class="progress-track"><div id="progress"></div></div><div class="progress-label"><strong id="reviewed">0% approved</strong><span id="region-count">— regions</span></div><p id="coverage" class="hint"></p><button id="export">Export training masks</button><p class="hint">Exports include approved roles, optional character instances, and original page coordinates.</p></section>
+    </aside>
+    <div class="workspace">
+      <div class="workspace-toolbar"><div class="row"><button id="fit">Fit page</button><button id="fit-selection">Fit selection</button><span id="zoom">100%</span></div><div class="row"><label><input id="overlay" type="checkbox" checked> Role colours</label><label><input id="landmarks" type="checkbox"> Landmarks</label><label><input id="line-guides" type="checkbox"> Line proposals</label></div></div>
+      <div id="canvas-host"><div id="page-scroll" tabindex="0" aria-label="Manuscript scroll area"><div id="page-spacer"></div></div><canvas id="canvas" aria-label="Mushaf page annotation canvas"></canvas><div id="loading"><div class="spinner"></div><strong>Opening manuscript…</strong><span>Preparing ink regions from the source SVG</span></div><div id="empty-selection">SOURCE SVG · ORIGINAL POSITIONS PRESERVED</div></div>
+      <footer><span id="page-info">604 pages · transcript-free annotation</span><span>Body <i class="dot blue"></i> Connection <i class="dot orange"></i> Dot <i class="dot purple"></i> Mark <i class="dot teal"></i></span></footer>
+    </div>
+  </main>
+  <div id="toast" role="status" hidden></div>
+  <script type="module" src="/app.mjs"></script>
+</body>
+</html>

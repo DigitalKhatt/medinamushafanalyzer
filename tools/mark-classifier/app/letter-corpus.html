@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mask2Former letter corpus</title>
+  <link rel="stylesheet" href="/letter-corpus.css">
+</head>
+<body>
+  <header>
+    <div><p class="eyebrow">MUSHAF · LETTER CORPUS</p><h1>Letter bodies &amp; their marks</h1>
+      <p id="subtitle">Loading corpus…</p></div>
+    <span class="model-tag">Mask2Former</span>
+  </header>
+  <section id="summary" aria-label="Corpus counts"></section>
+  <p class="policy">Single-letter bodies use original ink. Mask2Former cuts only multi-letter bodies. Attachments remain proposals until reviewed.</p>
+  <div id="error" role="alert" hidden></div>
+  <main>
+    <section class="browser" aria-label="Search corpus">
+      <form id="filters">
+        <div class="tabs" aria-label="Browse kind">
+          <button type="button" data-kind="letters" aria-pressed="true">Letters</button>
+          <button type="button" data-kind="subwords" aria-pressed="false">Subwords</button>
+          <button type="button" data-kind="marks" aria-pressed="false">Marks &amp; dots</button>
+        </div>
+        <div class="filter-row">
+          <label class="grow">Word or location<input id="q" placeholder="Arabic text or l3-w4" autocomplete="off"></label>
+          <label>Page<select id="page"><option value="">All pages</option></select></label>
+          <label>Letter<select id="char"><option value="">Any letter</option></select></label>
+          <label>Form<select id="form"><option value="">Any form</option><option>initial</option><option>medial</option><option>final</option><option>isolated</option></select></label>
+        </div>
+        <div class="filter-row">
+          <label>Body class<select id="class"><option value="">Any shape</option></select></label>
+          <label>Transcript mark<select id="type"><option value="">Any mark</option></select></label>
+          <label>Status<select id="status"><option value="">All statuses</option><option value="unresolved">Unresolved ownership</option><option value="proposed">Proposed</option><option value="type-unresolved">Unresolved transcript mark</option><option value="classifier-difference">Classifier differences</option><option value="reviewed">Reviewed attachments</option><option value="stale-review">Changed since review</option><option value="word-sign">Word-level signs</option></select></label>
+          <label>Sort<select id="sort"><option value="reading">Reading order</option><option value="width">Widest first</option><option value="height">Tallest first</option><option value="area">Most ink first</option></select></label>
+          <button type="button" id="reset">Reset</button>
+        </div>
+      </form>
+      <div class="results-bar"><span id="result-count" aria-live="polite"></span>
+        <label class="check"><input id="raw" type="checkbox">Raw masks</label>
+        <label class="check"><input id="context" type="checkbox">Word context</label>
+      </div>
+      <div id="grid" aria-label="Search results"></div>
+      <nav class="pagination" aria-label="Result pages"><button id="previous">← Previous</button><span id="pagination"></span><button id="next">Next →</button></nav>
+    </section>
+    <aside id="inspector" aria-label="Selected item">
+      <div class="empty"><h2>Inspect a letter</h2><p>Choose a result to see its source word, body mask, and assigned marks.</p></div>
+    </aside>
+  </main>
+  <footer><span id="database"></span><details><summary>Provenance</summary><pre id="provenance"></pre></details></footer>
+  <script type="module" src="/letter-corpus.mjs"></script>
+</body>
+</html>

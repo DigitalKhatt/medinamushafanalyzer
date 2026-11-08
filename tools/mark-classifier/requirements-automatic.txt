@@ -1,0 +1,7 @@
+# Optional offline corpus/learning runner; the workbench server remains stdlib-only.
+numpy
+opencv-python
+Pillow
+scipy
+svgpathtools
+PySide6

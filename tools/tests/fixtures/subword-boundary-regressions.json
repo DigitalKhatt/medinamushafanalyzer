@@ -1,0 +1,2095 @@
+[
+  {
+    "leftSubword": 3,
+    "line": 10,
+    "page": 23,
+    "pathToLeft": 4,
+    "pathToRight": 6,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 6,
+    "id": "page023:l10-w6",
+    "boxToLeft": [
+      117.44786681823378,
+      333.5250987631248,
+      5.280081215618054,
+      2.668424850573274
+    ],
+    "boxToRight": [
+      117.81161466975126,
+      313.4499266919569,
+      3.989385330248737,
+      4.9920469703620824
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 12,
+    "page": 26,
+    "pathToLeft": 1,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page026:l12-w5",
+    "boxToLeft": [
+      202.13786849171305,
+      387.74112218536703,
+      4.700079542138724,
+      2.532392298989464
+    ],
+    "boxToRight": [
+      202.05286849171304,
+      368.4719703603865,
+      4.700447827830516,
+      2.5325559255259122
+    ]
+  },
+  {
+    "leftSubword": 4,
+    "line": 10,
+    "page": 52,
+    "pathToLeft": 6,
+    "pathToRight": 8,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 3,
+    "word": 2,
+    "id": "page052:l10-w2",
+    "boxToLeft": [
+      263.77498860981996,
+      332.57306620902926,
+      5.279803405065707,
+      2.6692574046687696
+    ],
+    "boxToRight": [
+      263.47419735775344,
+      312.88872669195683,
+      3.9902026422465724,
+      4.9920469703620824
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 11,
+    "page": 59,
+    "pathToLeft": 4,
+    "pathToRight": 6,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 1,
+    "id": "page059:l11-w1",
+    "boxToLeft": [
+      275.72646681823375,
+      361.13974900297245,
+      4.2120812156180705,
+      2.3362746107255816
+    ],
+    "boxToRight": [
+      273.77189614205105,
+      341.4294280244727,
+      3.989703857948996,
+      4.992209061309893
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 15,
+    "page": 61,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 6,
+    "id": "page061:l15-w6",
+    "boxToLeft": [
+      159.59243084701143,
+      469.63924900297246,
+      4.212117186840402,
+      2.336469721243361
+    ],
+    "boxToRight": [
+      159.09743084701142,
+      449.4002662090292,
+      4.70019590560895,
+      2.532960076883171
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 7,
+    "page": 73,
+    "pathToLeft": 1,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 4,
+    "id": "page073:l7-w4",
+    "boxToLeft": [
+      203.2582886098199,
+      253.84846620902923,
+      4.699809627893103,
+      2.5326974643147935
+    ],
+    "boxToRight": [
+      203.1628430359015,
+      234.27885199641835,
+      4.700447111528803,
+      2.5315742894940456
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 11,
+    "page": 80,
+    "pathToLeft": 1,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page080:l11-w5",
+    "boxToLeft": [
+      201.76676849171307,
+      362.87689876312476,
+      5.27952974599998,
+      2.6684248505733876
+    ],
+    "boxToRight": [
+      202.00748676432343,
+      342.47062218536706,
+      4.699445842562454,
+      2.5321414879769577
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 13,
+    "page": 90,
+    "pathToLeft": 8,
+    "pathToRight": 9,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 2,
+    "word": 8,
+    "id": "page090:l13-w8",
+    "boxToLeft": [
+      188.63654671000714,
+      411.8024987631248,
+      4.6994858968788265,
+      2.5318649102192126
+    ],
+    "boxToRight": [
+      188.28794808595228,
+      398.13959580909477,
+      4.991679932496538,
+      2.3650311139822406
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 14,
+    "page": 92,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 4,
+    "id": "page092:l14-w4",
+    "boxToLeft": [
+      226.07623669653103,
+      442.6040678855107,
+      3.411073596963007,
+      2.0472751934944995
+    ],
+    "boxToRight": [
+      225.3385701609826,
+      422.3927490029725,
+      4.700162445903288,
+      2.531714670371514
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 3,
+    "page": 96,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 2,
+    "id": "page096:l3-w2",
+    "boxToLeft": [
+      300.5304668182337,
+      147.72774900297247,
+      4.700081215618013,
+      2.531714670371514
+    ],
+    "boxToRight": [
+      300.40646681823375,
+      128.10717036038645,
+      4.700004528315617,
+      2.5318532533115956
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 11,
+    "page": 118,
+    "pathToLeft": 3,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 9,
+    "id": "page118:l11-w9",
+    "boxToLeft": [
+      141.95388050753763,
+      362.5382120899762,
+      3.4106297859563313,
+      2.0468203770616924
+    ],
+    "boxToRight": [
+      140.98604153372733,
+      342.81105199641837,
+      4.700448613702889,
+      2.531871617279762
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 9,
+    "page": 122,
+    "pathToLeft": 6,
+    "pathToRight": 4,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 8,
+    "id": "page122:l9-w8",
+    "boxToLeft": [
+      109.68588398449707,
+      306.64152307952224,
+      3.3848769095441753,
+      2.1576717872036966
+    ],
+    "boxToRight": [
+      108.9673308470114,
+      288.68754900297256,
+      4.700117186840387,
+      2.531714670371514
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 10,
+    "page": 123,
+    "pathToLeft": 1,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 8,
+    "id": "page123:l10-w8",
+    "boxToLeft": [
+      104.73443084701148,
+      335.36125199641833,
+      4.700195905608922,
+      2.53062781165238
+    ],
+    "boxToRight": [
+      105.24346869161212,
+      314.69688037006017,
+      3.670563331823118,
+      1.94061240405847
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 15,
+    "page": 125,
+    "pathToLeft": 3,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 1,
+    "id": "page125:l15-w1",
+    "boxToLeft": [
+      285.72569446715744,
+      468.7983175001003,
+      3.4107792473758423,
+      2.046095537046199
+    ],
+    "boxToRight": [
+      284.8020308470114,
+      449.29034900297245,
+      4.699764535923691,
+      2.532274610725608
+    ]
+  },
+  {
+    "leftSubword": 4,
+    "line": 7,
+    "page": 126,
+    "pathToLeft": 8,
+    "pathToRight": 6,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 3,
+    "word": 5,
+    "id": "page126:l7-w5",
+    "boxToLeft": [
+      183.5068037486268,
+      254.82542012242018,
+      1.7839211513691566,
+      1.7715648248397713
+    ],
+    "boxToRight": [
+      181.51884153372737,
+      237.46394900297247,
+      5.279885218892957,
+      2.6689772829399487
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 14,
+    "page": 127,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 2,
+    "id": "page127:l14-w2",
+    "boxToLeft": [
+      266.77456699948397,
+      442.19312307952225,
+      1.784725154798707,
+      1.7710618677377283
+    ],
+    "boxToRight": [
+      265.2859867643234,
+      422.51014900297247,
+      4.700439988296978,
+      2.532030805098259
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 7,
+    "page": 130,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 6,
+    "id": "page130:l7-w6",
+    "boxToLeft": [
+      219.83129446715748,
+      254.6806487581813,
+      3.410551120065776,
+      2.0469527066780984
+    ],
+    "boxToRight": [
+      218.55662911381043,
+      235.43367036038646,
+      4.700197638809954,
+      2.5315559255259075
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 14,
+    "page": 131,
+    "pathToLeft": 5,
+    "pathToRight": 7,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 8,
+    "id": "page131:l14-w8",
+    "boxToLeft": [
+      127.89314671000714,
+      444.1367221853671,
+      4.700043437423105,
+      2.532701428330995
+    ],
+    "boxToRight": [
+      128.3222064465671,
+      422.63800494116055,
+      3.2873935534329064,
+      2.2228398271337824
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 6,
+    "page": 136,
+    "pathToLeft": 3,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 2,
+    "id": "page136:l6-w2",
+    "boxToLeft": [
+      295.6322839844971,
+      225.4130201224202,
+      1.784127070490399,
+      1.7714868387729439
+    ],
+    "boxToRight": [
+      294.4110159055563,
+      205.62922669195683,
+      3.9888840944436765,
+      4.992046970362111
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 7,
+    "page": 136,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 2,
+    "id": "page136:l7-w2",
+    "boxToLeft": [
+      294.7897291138105,
+      253.73212218536707,
+      4.211197638809892,
+      2.3367014283310823
+    ],
+    "boxToRight": [
+      294.43573084701137,
+      233.65154900297247,
+      4.70011718684043,
+      2.5320308050982874
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 1,
+    "page": 137,
+    "pathToLeft": 2,
+    "pathToRight": 4,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page137:l1-w5",
+    "boxToLeft": [
+      201.63514861968113,
+      93.12512218536708,
+      4.699478132939248,
+      2.5314576227036696
+    ],
+    "boxToRight": [
+      198.83370627102198,
+      74.4119703603865,
+      5.279841762829847,
+      2.668609447684233
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 3,
+    "page": 141,
+    "pathToLeft": 7,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 2,
+    "id": "page141:l3-w2",
+    "boxToLeft": [
+      243.27241961050996,
+      146.70822307952227,
+      1.783705289486079,
+      1.7719838816708489
+    ],
+    "boxToRight": [
+      241.74264861968115,
+      129.31924900297253,
+      4.7004781329392245,
+      2.5312746107256032
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 1,
+    "page": 150,
+    "pathToLeft": 3,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page150:l1-w5",
+    "boxToLeft": [
+      250.34070627102201,
+      94.05757036038652,
+      4.699841762829806,
+      2.5316094476842466
+    ],
+    "boxToRight": [
+      250.68020644656715,
+      72.93218057587019,
+      3.2873935534328496,
+      2.2236250722253885
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 14,
+    "page": 154,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 4,
+    "id": "page154:l14-w4",
+    "boxToLeft": [
+      238.1268366965311,
+      441.0018117094759,
+      3.411014242269573,
+      2.0473207575620336
+    ],
+    "boxToRight": [
+      237.26940470992963,
+      421.22674900297244,
+      4.699485437500641,
+      2.5317146703715707
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 9,
+    "page": 165,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 1,
+    "id": "page165:l9-w1",
+    "boxToLeft": [
+      286.27611574941443,
+      306.00932307952223,
+      1.7844451446268295,
+      1.7720618677377047
+    ],
+    "boxToRight": [
+      284.29312911381044,
+      287.6299221853671,
+      5.2791189200413555,
+      2.6691638804670106
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 3,
+    "page": 167,
+    "pathToLeft": 9,
+    "pathToRight": 8,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 2,
+    "word": 9,
+    "id": "page167:l3-w9",
+    "boxToLeft": [
+      71.51923084701143,
+      145.38784900297247,
+      4.212111615174365,
+      2.3362746107256385
+    ],
+    "boxToRight": [
+      71.08209646480086,
+      132.00779580909486,
+      4.9918152160788765,
+      2.36503111398207
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 5,
+    "page": 169,
+    "pathToLeft": 5,
+    "pathToRight": 7,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 7,
+    "id": "page169:l5-w7",
+    "boxToLeft": [
+      146.15196849171306,
+      200.3614662090292,
+      5.280158260907314,
+      2.6689482753272955
+    ],
+    "boxToRight": [
+      145.56792911381046,
+      181.06287036038648,
+      4.699761033619808,
+      2.5316094476842466
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 5,
+    "page": 188,
+    "pathToLeft": 7,
+    "pathToRight": 6,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 4,
+    "id": "page188:l5-w4",
+    "boxToLeft": [
+      188.59868398449703,
+      200.46961613928048,
+      1.783508169785705,
+      1.7712688079795669
+    ],
+    "boxToRight": [
+      187.63990644656712,
+      181.17389151451232,
+      3.287393553432878,
+      2.223653253782061
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 8,
+    "page": 192,
+    "pathToLeft": 1,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page192:l8-w5",
+    "boxToLeft": [
+      192.0955430359015,
+      279.7997662090292,
+      5.2798049979502935,
+      2.668960076883195
+    ],
+    "boxToRight": [
+      192.0075430359015,
+      259.1891703603865,
+      4.700447111528774,
+      2.5325559255258554
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 6,
+    "page": 199,
+    "pathToLeft": 1,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 3,
+    "id": "page199:l6-w3",
+    "boxToLeft": [
+      235.95670627102203,
+      228.3723490029725,
+      4.699489111913067,
+      2.53197728293992
+    ],
+    "boxToRight": [
+      235.80414671000716,
+      208.65877036038648,
+      4.69948589687877,
+      2.531555925525936
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 10,
+    "page": 200,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 10,
+    "id": "page200:l10-w10",
+    "boxToLeft": [
+      134.834866999484,
+      333.20960668650076,
+      1.7840938945572589,
+      1.7713745995640124
+    ],
+    "boxToRight": [
+      132.62484153372736,
+      313.7246221853671,
+      5.279806500124437,
+      2.6688434396329512
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 7,
+    "page": 205,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 4,
+    "id": "page205:l7-w4",
+    "boxToLeft": [
+      155.10413084701142,
+      254.92417036038648,
+      4.699201759874484,
+      2.5322933129575063
+    ],
+    "boxToRight": [
+      153.50744153372736,
+      235.2401703603865,
+      5.860256703985641,
+      2.7718532533116047
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 11,
+    "page": 208,
+    "pathToLeft": 1,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 6,
+    "id": "page208:l11-w6",
+    "boxToLeft": [
+      203.05883084701142,
+      362.50966620902926,
+      4.699759300418833,
+      2.532399415970815
+    ],
+    "boxToRight": [
+      203.03486849171304,
+      341.64149876312484,
+      4.700158260907301,
+      2.5314248505733303
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 9,
+    "page": 210,
+    "pathToLeft": 8,
+    "pathToRight": 9,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 2,
+    "word": 7,
+    "id": "page210:l9-w7",
+    "boxToLeft": [
+      136.2410684917131,
+      304.9677519964184,
+      5.280158260907285,
+      2.6685742894940745
+    ],
+    "boxToRight": [
+      136.15967680109117,
+      289.75288757396453,
+      4.991901035053303,
+      2.364530415886577
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 14,
+    "page": 218,
+    "pathToLeft": 6,
+    "pathToRight": 7,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 2,
+    "word": 9,
+    "id": "page218:l14-w9",
+    "boxToLeft": [
+      106.68282911381046,
+      438.8595490029724,
+      4.211755825985563,
+      2.3362746107256385
+    ],
+    "boxToRight": [
+      109.15298252874634,
+      431.54415657640703,
+      1.549300505264398,
+      4.536071546454764
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 9,
+    "page": 230,
+    "pathToLeft": 9,
+    "pathToRight": 8,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 2,
+    "word": 5,
+    "id": "page230:l9-w5",
+    "boxToLeft": [
+      191.80644153372737,
+      304.82319876312476,
+      4.7004434060686435,
+      2.531424850573387
+    ],
+    "boxToRight": [
+      191.54788937828252,
+      291.1168140864485,
+      4.992788457861906,
+      2.364512836628478
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 14,
+    "page": 235,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 7,
+    "id": "page235:l14-w7",
+    "boxToLeft": [
+      137.13484153372738,
+      443.6430917987461,
+      5.279806500124437,
+      2.668831814951943
+    ],
+    "boxToRight": [
+      136.11852911381047,
+      423.5524987631248,
+      5.27912452139779,
+      2.668864910219213
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 7,
+    "page": 236,
+    "pathToLeft": 1,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 2,
+    "id": "page236:l7-w2",
+    "boxToLeft": [
+      315.65242911381046,
+      255.9276987631248,
+      4.700118920041348,
+      2.531181044946038
+    ],
+    "boxToRight": [
+      315.22846849171304,
+      236.19486620902927,
+      4.211721655717213,
+      2.336960076883173
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 8,
+    "page": 236,
+    "pathToLeft": 2,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 9,
+    "id": "page236:l8-w9",
+    "boxToLeft": [
+      113.49774153372732,
+      283.22701264912075,
+      4.699891073158611,
+      2.5321109645773845
+    ],
+    "boxToRight": [
+      112.98642911381046,
+      262.87284900297254,
+      5.280113348375309,
+      2.6690308050982594
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 1,
+    "page": 238,
+    "pathToLeft": 6,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 9,
+    "id": "page238:l1-w9",
+    "boxToLeft": [
+      111.82570374862676,
+      92.16871613928043,
+      1.7841571454144969,
+      1.7715839978925487
+    ],
+    "boxToRight": [
+      109.63943084701144,
+      73.66552218536702,
+      4.700117186840387,
+      2.5321414879769577
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 9,
+    "page": 242,
+    "pathToLeft": 0,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 9,
+    "id": "page242:l9-w9",
+    "boxToLeft": [
+      121.68756849171301,
+      310.1005703603864,
+      5.280073970472756,
+      2.6685559255259363
+    ],
+    "boxToRight": [
+      121.5838430359015,
+      288.2451662090292,
+      4.699883716718858,
+      2.5312574046688496
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 14,
+    "page": 242,
+    "pathToLeft": 0,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 4,
+    "id": "page242:l14-w4",
+    "boxToLeft": [
+      257.553568491713,
+      443.9655703603865,
+      5.280158260907342,
+      2.6685559255258795
+    ],
+    "boxToRight": [
+      257.38828676432337,
+      422.25114900297245,
+      4.7003612695284005,
+      2.531714670371514
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 5,
+    "page": 245,
+    "pathToLeft": 0,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page245:l5-w5",
+    "boxToLeft": [
+      202.29244861968112,
+      201.2535519964183,
+      4.699849618031891,
+      2.5315742894941025
+    ],
+    "boxToRight": [
+      200.67276849171307,
+      179.69114900297248,
+      4.700158260907244,
+      2.5319772829399767
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 6,
+    "page": 245,
+    "pathToLeft": 0,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 3,
+    "id": "page245:l6-w3",
+    "boxToLeft": [
+      224.0617308470114,
+      227.5571490029725,
+      5.280117186840386,
+      2.668714670371486
+    ],
+    "boxToRight": [
+      223.47644671000714,
+      206.70755199641832,
+      5.279401323844638,
+      2.6686278116524136
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 12,
+    "page": 246,
+    "pathToLeft": 0,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 7,
+    "id": "page246:l12-w7",
+    "boxToLeft": [
+      126.45494303590151,
+      391.03132218536706,
+      5.279883716718857,
+      2.6694041005453073
+    ],
+    "boxToRight": [
+      126.11862911381047,
+      367.8907490029724,
+      5.280118920041332,
+      2.6692746107256653
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 2,
+    "page": 248,
+    "pathToLeft": 4,
+    "pathToRight": 6,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 1,
+    "id": "page248:l2-w1",
+    "boxToLeft": [
+      304.60917016098256,
+      121.36597036038648,
+      5.2795280767304575,
+      2.6692933129574925
+    ],
+    "boxToRight": [
+      304.9211291138105,
+      101.51656620902922,
+      4.211755825985506,
+      2.336697464314767
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 8,
+    "page": 253,
+    "pathToLeft": 3,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 10,
+    "id": "page253:l8-w10",
+    "boxToLeft": [
+      73.04232911381047,
+      281.2443221853671,
+      4.211755825985563,
+      2.3361414879769313
+    ],
+    "boxToRight": [
+      73.4125690950954,
+      260.1957805758702,
+      3.286930904904594,
+      2.2231807245359505
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 3,
+    "page": 256,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 2,
+    "id": "page256:l3-w2",
+    "boxToLeft": [
+      273.730666999484,
+      145.48691011123702,
+      1.7840938945572589,
+      1.771290025935997
+    ],
+    "boxToRight": [
+      271.66132911381044,
+      126.13786620902926,
+      5.279481243019632,
+      2.668948275327267
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 5,
+    "page": 256,
+    "pathToLeft": 2,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 3,
+    "id": "page256:l5-w3",
+    "boxToLeft": [
+      254.35504671000714,
+      200.68686620902923,
+      4.699845304878437,
+      2.532013599041534
+    ],
+    "boxToRight": [
+      253.2963308470114,
+      180.3992703603865,
+      5.280117186840357,
+      2.6692933129574783
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 8,
+    "page": 262,
+    "pathToLeft": 3,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 6,
+    "id": "page262:l8-w6",
+    "boxToLeft": [
+      189.04354671000715,
+      280.7965519964183,
+      4.211406925201089,
+      2.336574289494081
+    ],
+    "boxToRight": [
+      189.39460644656714,
+      260.47818057587017,
+      3.2883935534328543,
+      2.2231807245359505
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 13,
+    "page": 270,
+    "pathToLeft": 3,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 1,
+    "id": "page270:l13-w1",
+    "boxToLeft": [
+      325.81698860981993,
+      415.6513662090292,
+      4.699809627893103,
+      2.5316974643147887
+    ],
+    "boxToRight": [
+      326.40337816329577,
+      395.0473805758702,
+      3.2870218367041844,
+      2.222934915293081
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 8,
+    "page": 275,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 1,
+    "id": "page275:l8-w1",
+    "boxToLeft": [
+      283.88351961050995,
+      279.3690230795222,
+      3.5330890445094383,
+      2.1929582065426416
+    ],
+    "boxToRight": [
+      282.69406849171304,
+      259.64689876312474,
+      5.279716448082979,
+      2.668864910219213
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 4,
+    "page": 279,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 3,
+    "id": "page279:l4-w3",
+    "boxToLeft": [
+      222.61484671000716,
+      173.9410490029725,
+      4.699485896878713,
+      2.5319772829398914
+    ],
+    "boxToRight": [
+      222.604406271022,
+      153.11689876312482,
+      4.6999204815984115,
+      2.532127522787647
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 14,
+    "page": 280,
+    "pathToLeft": 1,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 3,
+    "id": "page280:l14-w3",
+    "boxToLeft": [
+      279.2349430359015,
+      442.62191264912065,
+      4.2124419038945575,
+      2.336551024223297
+    ],
+    "boxToRight": [
+      278.5349415337273,
+      422.6571519964183,
+      4.7004434060687,
+      2.531627811652413
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 4,
+    "page": 291,
+    "pathToLeft": 5,
+    "pathToRight": 4,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 10,
+    "id": "page291:l4-w10",
+    "boxToLeft": [
+      78.99198398449711,
+      174.40728672898283,
+      1.7840081728626274,
+      1.77169821827718
+    ],
+    "boxToRight": [
+      77.19842911381048,
+      154.15896620902927,
+      4.700118920041362,
+      2.531960076883138
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 2,
+    "page": 298,
+    "pathToLeft": 3,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 11,
+    "id": "page298:l2-w11",
+    "boxToLeft": [
+      109.45362911381048,
+      119.77549876312483,
+      4.700197638809897,
+      2.531864910219184
+    ],
+    "boxToRight": [
+      108.280906271022,
+      100.32322218536709,
+      4.699926335863935,
+      2.5321414879769435
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 10,
+    "page": 307,
+    "pathToLeft": 3,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 2,
+    "id": "page307:l10-w2",
+    "boxToLeft": [
+      261.63728793831035,
+      333.23469460743866,
+      1.7841369616856468,
+      1.7719107776404144
+    ],
+    "boxToRight": [
+      260.33593376798086,
+      311.3285640093007,
+      3.989466232019197,
+      4.992339876609265
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 3,
+    "page": 308,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 12,
+    "id": "page308:l3-w12",
+    "boxToLeft": [
+      102.54702911381047,
+      148.26502218536706,
+      4.699569123902563,
+      2.5324041005453637
+    ],
+    "boxToRight": [
+      101.18706849171303,
+      128.15946620902926,
+      4.700158260907344,
+      2.532013599041534
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 12,
+    "page": 309,
+    "pathToLeft": 2,
+    "pathToRight": 4,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page309:l12-w5",
+    "boxToLeft": [
+      179.8895308470114,
+      388.7330662090293,
+      4.700122788196836,
+      2.531960076883138
+    ],
+    "boxToRight": [
+      180.47230644656713,
+      367.99892722254566,
+      3.287393553432878,
+      2.2234919930180013
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 11,
+    "page": 314,
+    "pathToLeft": 3,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 1,
+    "id": "page314:l11-w1",
+    "boxToLeft": [
+      327.3944415337273,
+      363.2505490029725,
+      4.700443406068757,
+      2.531737062861623
+    ],
+    "boxToRight": [
+      328.06627816329575,
+      342.43641611237854,
+      3.287021836704241,
+      2.2230589203803106
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 11,
+    "page": 319,
+    "pathToLeft": 3,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 6,
+    "id": "page319:l11-w6",
+    "boxToLeft": [
+      193.97924299713299,
+      361.94871170947584,
+      3.411207396771772,
+      2.046764140443088
+    ],
+    "boxToRight": [
+      193.1253308470114,
+      342.88251664211083,
+      4.700117186840345,
+      2.5321096438015616
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 7,
+    "page": 325,
+    "pathToLeft": 3,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page325:l7-w5",
+    "boxToLeft": [
+      176.69032911381046,
+      257.0456490029725,
+      5.280118920041389,
+      2.6687146703715143
+    ],
+    "boxToRight": [
+      177.58548467792568,
+      236.97468057587017,
+      3.287015322074325,
+      2.2229163552776754
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 10,
+    "page": 326,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 6,
+    "id": "page326:l10-w6",
+    "boxToLeft": [
+      229.51723084701143,
+      336.42059876312476,
+      5.280117186840414,
+      2.668424850573331
+    ],
+    "boxToRight": [
+      228.21023084701145,
+      317.59559876312477,
+      5.279759300418874,
+      2.6684248505733876
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 15,
+    "page": 337,
+    "pathToLeft": 6,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 3,
+    "id": "page337:l15-w3",
+    "boxToLeft": [
+      239.77841574941442,
+      467.76064827735865,
+      1.7839587873174594,
+      1.771525064662626
+    ],
+    "boxToRight": [
+      238.10014861968114,
+      450.28596620902925,
+      4.699483987204758,
+      2.532399415970758
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 9,
+    "page": 350,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 6,
+    "id": "page350:l9-w6",
+    "boxToLeft": [
+      221.89332698631776,
+      307.77474519714013,
+      1.7524342344543413,
+      1.771373506912198
+    ],
+    "boxToRight": [
+      220.4228273761268,
+      289.3903987631247,
+      4.61721111722855,
+      2.5314248505732735
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 15,
+    "page": 355,
+    "pathToLeft": 8,
+    "pathToRight": 6,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 9,
+    "id": "page355:l15-w9",
+    "boxToLeft": [
+      79.54248793831042,
+      467.63441613928046,
+      1.7841369616855616,
+      1.7716892457985978
+    ],
+    "boxToRight": [
+      77.25274153372733,
+      450.68964900297243,
+      5.279885218893028,
+      2.6692746107256085
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 7,
+    "page": 363,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page363:l7-w5",
+    "boxToLeft": [
+      137.43984671000712,
+      254.7985703603865,
+      4.21148004261326,
+      2.336555925525971
+    ],
+    "boxToRight": [
+      137.22216849171303,
+      235.29716620902923,
+      4.211721655717213,
+      2.3369600768832015
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 7,
+    "page": 370,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 8,
+    "id": "page370:l7-w8",
+    "boxToLeft": [
+      195.07314671000714,
+      255.08584900297245,
+      4.699969812267909,
+      2.53197728293992
+    ],
+    "boxToRight": [
+      193.7371867643234,
+      236.0032703603865,
+      4.700361269528372,
+      2.532293312957478
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 2,
+    "page": 371,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 4,
+    "id": "page371:l2-w4",
+    "boxToLeft": [
+      212.83436849171306,
+      120.90954900297247,
+      4.212079542138753,
+      2.3360308050983036
+    ],
+    "boxToRight": [
+      211.86504671000716,
+      100.90239876312478,
+      4.69948589687877,
+      2.5311810449459813
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 7,
+    "page": 388,
+    "pathToLeft": 2,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 6,
+    "id": "page388:l7-w6",
+    "boxToLeft": [
+      186.24043084701142,
+      254.80318073561105,
+      4.700117186840373,
+      2.5311455503013747
+    ],
+    "boxToRight": [
+      185.88914861968115,
+      233.8407703603865,
+      5.279843395204466,
+      2.6692933129574783
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 4,
+    "page": 449,
+    "pathToLeft": 2,
+    "pathToRight": 3,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 12,
+    "id": "page449:l4-w12",
+    "boxToLeft": [
+      57.84892911381046,
+      173.4014490029725,
+      4.700118920041355,
+      2.5319772829399483
+    ],
+    "boxToRight": [
+      56.98796849171304,
+      154.515022185367,
+      5.280079542138772,
+      2.669404100545364
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 5,
+    "page": 449,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page449:l5-w5",
+    "boxToLeft": [
+      176.1589211725246,
+      200.65891021578997,
+      3.669610850910601,
+      1.9402255612509691
+    ],
+    "boxToRight": [
+      175.33292911381045,
+      179.88002218536707,
+      5.28011892004136,
+      2.6691414879769013
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 14,
+    "page": 453,
+    "pathToLeft": 8,
+    "pathToRight": 9,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 2,
+    "word": 8,
+    "id": "page453:l14-w8",
+    "boxToLeft": [
+      117.15752911381048,
+      441.0552490029725,
+      4.211118920041372,
+      2.3361549285951924
+    ],
+    "boxToRight": [
+      116.2126480859523,
+      426.26064928403645,
+      4.991679932496524,
+      2.3639637904840356
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 1,
+    "page": 454,
+    "pathToLeft": 7,
+    "pathToRight": 4,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 9,
+    "id": "page454:l1-w9",
+    "boxToLeft": [
+      167.19695783921017,
+      92.66457330330307,
+      3.4111270655561725,
+      2.047602546615906
+    ],
+    "boxToRight": [
+      166.17952911381047,
+      74.49034900297252,
+      5.28011892004136,
+      2.6689772829399345
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 14,
+    "page": 455,
+    "pathToLeft": 3,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 5,
+    "id": "page455:l14-w5",
+    "boxToLeft": [
+      197.27109894565393,
+      441.7836487581812,
+      3.411251993146692,
+      2.046427091737712
+    ],
+    "boxToRight": [
+      196.695668491713,
+      422.22926620902916,
+      4.21172165571727,
+      2.3369600768832015
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 4,
+    "page": 456,
+    "pathToLeft": 6,
+    "pathToRight": 5,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 1,
+    "id": "page456:l4-w1",
+    "boxToLeft": [
+      323.0360805075377,
+      172.88541170947587,
+      3.4109698863669564,
+      2.0470884167711745
+    ],
+    "boxToRight": [
+      322.4869291138105,
+      155.51375199641836,
+      4.211197638809892,
+      2.336311676925618
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 7,
+    "page": 456,
+    "pathToLeft": 6,
+    "pathToRight": 4,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 8,
+    "id": "page456:l7-w8",
+    "boxToLeft": [
+      156.4397712380256,
+      252.1891161392805,
+      1.7834711718157052,
+      1.7716892457986262
+    ],
+    "boxToRight": [
+      154.6176057943141,
+      235.4713490029725,
+      4.699447840894123,
+      2.53197728293992
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 14,
+    "page": 486,
+    "pathToLeft": 3,
+    "pathToRight": 1,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 2,
+    "id": "page486:l14-w2",
+    "boxToLeft": [
+      298.9968061796222,
+      441.3461868262711,
+      3.3702194952401783,
+      2.1863201349219707
+    ],
+    "boxToRight": [
+      297.68172911381043,
+      423.0099703603865,
+      5.279203493075443,
+      2.6686094476842754
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 5,
+    "page": 491,
+    "pathToLeft": 2,
+    "pathToRight": 4,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 8,
+    "id": "page491:l5-w8",
+    "boxToLeft": [
+      107.95044303590151,
+      201.42004900297243,
+      5.279883716718857,
+      2.6689772829399203
+    ],
+    "boxToRight": [
+      106.95084671000716,
+      181.53947036038647,
+      5.279406925201101,
+      2.6692933129575067
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 14,
+    "page": 495,
+    "pathToLeft": 9,
+    "pathToRight": 8,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 2,
+    "word": 9,
+    "id": "page495:l14-w9",
+    "boxToLeft": [
+      64.3931211725246,
+      438.59819655217194,
+      3.6696188274753894,
+      1.9399244734773902
+    ],
+    "boxToRight": [
+      63.72624808595227,
+      424.15428757396455,
+      4.9920635799322,
+      2.3645379573823675
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 10,
+    "page": 496,
+    "pathToLeft": 1,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 3,
+    "id": "page496:l10-w3",
+    "boxToLeft": [
+      281.35974671000713,
+      335.5780807356111,
+      4.211480042613232,
+      2.336199072459692
+    ],
+    "boxToRight": [
+      281.065306271022,
+      314.3432490029725,
+      4.211291966691078,
+      2.3364166220275138
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 3,
+    "page": 497,
+    "pathToLeft": 9,
+    "pathToRight": 8,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 2,
+    "word": 4,
+    "id": "page497:l3-w4",
+    "boxToLeft": [
+      211.74396826946904,
+      144.39849655217193,
+      3.670360581399791,
+      1.939481439640872
+    ],
+    "boxToRight": [
+      210.63863830506008,
+      131.16958757396452,
+      4.991539531084356,
+      2.364439349112473
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 1,
+    "page": 510,
+    "pathToLeft": 3,
+    "pathToRight": 5,
+    "reason": "hamza anchor above alif; neighbour fatha below stack",
+    "rightSubword": 1,
+    "word": 3,
+    "id": "page510:l1-w3",
+    "boxToLeft": [
+      284.3064701609826,
+      85.68906620902925,
+      4.212156591637779,
+      2.3369600768831447
+    ],
+    "boxToRight": [
+      285.2085090975783,
+      78.04669185791714,
+      3.0087142835197938,
+      2.920589966416202
+    ]
+  },
+  {
+    "leftSubword": 4,
+    "line": 4,
+    "page": 534,
+    "pathToLeft": 6,
+    "pathToRight": 5,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 3,
+    "word": 1,
+    "id": "page534:l4-w1",
+    "boxToLeft": [
+      317.1828686916121,
+      170.26951021579004,
+      3.6697952954290827,
+      1.9401825583286723
+    ],
+    "boxToRight": [
+      316.4326964648008,
+      157.03299580909484,
+      4.991681371343645,
+      2.3645122210560885
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 13,
+    "page": 549,
+    "pathToLeft": 2,
+    "pathToRight": 4,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 6,
+    "id": "page549:l13-w6",
+    "boxToLeft": [
+      180.38056849171303,
+      415.9569832769265,
+      5.280073970472756,
+      2.6696803964175047
+    ],
+    "boxToRight": [
+      179.23653084701144,
+      396.4527987631248,
+      4.211759300418834,
+      2.336127522787649
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 4,
+    "page": 553,
+    "pathToLeft": 4,
+    "pathToRight": 6,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 7,
+    "id": "page553:l4-w7",
+    "boxToLeft": [
+      160.27853084701144,
+      173.3055662090292,
+      4.700117186840373,
+      2.5316974643147603
+    ],
+    "boxToRight": [
+      159.19023376798083,
+      154.30126023338616,
+      3.989466232019197,
+      4.992013428932779
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 6,
+    "page": 569,
+    "pathToLeft": 6,
+    "pathToRight": 7,
+    "reason": "raised alif modifier; reciprocal lower-mark quota",
+    "rightSubword": 2,
+    "word": 7,
+    "id": "page569:l6-w7",
+    "boxToLeft": [
+      141.9469207666723,
+      223.50739655217194,
+      3.6323192333277063,
+      1.940196221946735
+    ],
+    "boxToRight": [
+      143.54079553191082,
+      216.56713803866043,
+      1.5332908745042744,
+      4.535525329317011
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 12,
+    "page": 577,
+    "pathToLeft": 2,
+    "pathToRight": 0,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 2,
+    "id": "page577:l12-w2",
+    "boxToLeft": [
+      262.12523669653103,
+      386.4211487581813,
+      3.410848208235336,
+      2.04739599726679
+    ],
+    "boxToRight": [
+      260.5615291138105,
+      366.87776620902923,
+      5.279562901075167,
+      2.6686974643147323
+    ]
+  },
+  {
+    "leftSubword": 3,
+    "line": 15,
+    "page": 578,
+    "pathToLeft": 6,
+    "pathToRight": 4,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 2,
+    "word": 5,
+    "id": "page578:l15-w5",
+    "boxToLeft": [
+      245.39631961050998,
+      466.3695867289827,
+      1.7833228025483834,
+      1.7712783247176844
+    ],
+    "boxToRight": [
+      243.50458676432345,
+      449.57169179874614,
+      4.699811473389559,
+      2.5317121328215535
+    ]
+  },
+  {
+    "leftSubword": 2,
+    "line": 13,
+    "page": 603,
+    "pathToLeft": 1,
+    "pathToRight": 2,
+    "reason": "alif hamza/vowel stack; neighbour lower mark",
+    "rightSubword": 1,
+    "word": 3,
+    "id": "page603:l13-w3",
+    "boxToLeft": [
+      246.08353084701142,
+      417.54352253495375,
+      5.279117186840381,
+      2.668741138390203
+    ],
+    "boxToRight": [
+      245.70284153372734,
+      395.4625490029725,
+      5.2798121014809,
+      2.668274610725632
+    ]
+  },
+  {
+    "page": 583,
+    "line": 1,
+    "word": 5,
+    "rightSubword": 2,
+    "leftSubword": 3,
+    "pathToLeft": 4,
+    "pathToRight": 3,
+    "id": "page583:l1-w5",
+    "reason": "raised alif maddah; reciprocal lower-stroke quota",
+    "boxToLeft": [
+      186.28786826946902,
+      95.77329655217191,
+      3.668360581399781,
+      1.939752572954262
+    ],
+    "boxToRight": [
+      185.50264808595227,
+      76.84538757396449,
+      4.98942975019213,
+      2.3645379573824528
+    ]
+  }
+]

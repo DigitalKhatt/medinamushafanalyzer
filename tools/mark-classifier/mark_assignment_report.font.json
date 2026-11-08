@@ -1,0 +1,15 @@
+{
+  "source": "otf2ttf/fonts/DigitalKhattV2.ttf",
+  "sourceSha256": "7a91b3dbea4a117d5f8c104623385c3c811dab14e47c8f4278edc8f2ad4a1870",
+  "fontBytes": 331592,
+  "fontSha256": "d15ad4742c343dbe1a1d98d9442781067b91a69a10cd397cac074d42586d0518",
+  "unicodes": [
+    "0600-06FF",
+    "0750-077F",
+    "08A0-08FF",
+    "0020",
+    "200C-200F"
+  ],
+  "layoutFeatures": "all",
+  "purpose": "Display only; never an assignment input"
+}

@@ -1,0 +1,23 @@
+body { margin: 0; height: 100dvh; display: flex; flex-direction: column; }
+header, .info { background: var(--panel); padding: .65rem 1.2rem; border-bottom: 1px solid var(--line); }
+header, nav, label { display: flex; align-items: center; gap: .45rem; }
+header { flex-wrap: wrap; gap: .7rem 1.1rem; }
+#number { width: 4.5rem; } #zoom { width: min(12rem, 65vw); }
+.info { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem; font-size: .88rem; }
+#selection { color: var(--muted); }
+main { flex: 1; min-height: 0; overflow: auto; padding: 1rem; }
+#sheet { position: relative; width: calc(min(100%, 47rem) * var(--zoom, 1)); margin: 0 auto; background: var(--surface); box-shadow: 0 1px 8px #253c2a2e; }
+#sheet svg { width: 100%; height: auto; display: block; }
+.letter:hover, .waqf:hover, .kashida:hover { fill: #000; }
+#glyph-tooltip {
+  position: fixed; z-index: 1; pointer-events: none;
+  max-width: calc(100vw - 16px); padding: .25rem .5rem;
+  background: var(--surface); color: #000; border: 1px solid var(--control-line);
+  border-radius: .3rem; box-shadow: 0 1px 6px #253c2a2e;
+  font: 1.35rem/1.4 "Geeza Pro", "Noto Naskh Arabic", serif;
+}
+#glyph-tooltip:not([hidden]) { display: flex; direction: ltr; align-items: center; gap: .75rem; }
+#glyph-tooltip :is(.tooltip-complete, .tooltip-character) { flex: none; }
+#glyph-tooltip .tooltip-letter { flex: none; width: min(5.25rem, 24vw); height: 4.5rem; }
+#glyph-tooltip .unicode-name { min-width: 0; overflow-wrap: anywhere; font: 11px/1.4 system-ui, sans-serif; }
+@media (max-width: 650px) { header { gap: .45rem .75rem; } main { padding: .4rem; } }

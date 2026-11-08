@@ -1,38 +1,9 @@
-#include "CustomOutputDev.h";
-#include "PDFDoc.h";
+#include "CustomOutputDev.h"
+#include "PDFDoc.h"
 #include <iostream>
 #include <QPainterPath>
 #include "afont.h"
 
-
-static QPainterPath convertPath(GfxState* state, const GfxPath* path, Qt::FillRule fillRule)
-{
-	int i, j;
-
-	QPainterPath qPath;
-	qPath.setFillRule(fillRule);
-	for (i = 0; i < path->getNumSubpaths(); ++i) {
-		const GfxSubpath* subpath = path->getSubpath(i);
-		if (subpath->getNumPoints() > 0) {
-			qPath.moveTo(subpath->getX(0), subpath->getY(0));
-			j = 1;
-			while (j < subpath->getNumPoints()) {
-				if (subpath->getCurve(j)) {
-					qPath.cubicTo(subpath->getX(j), subpath->getY(j), subpath->getX(j + 1), subpath->getY(j + 1), subpath->getX(j + 2), subpath->getY(j + 2));
-					j += 3;
-				}
-				else {
-					qPath.lineTo(subpath->getX(j), subpath->getY(j));
-					++j;
-				}
-			}
-			if (subpath->isClosed()) {
-				qPath.closeSubpath();
-			}
-		}
-	}
-	return qPath;
-}
 
 static std::vector<APathItem> convertPaths(GfxState* state, const GfxPath* path, Qt::FillRule fillRule, QBrush m_currentBrush)
 {
@@ -151,31 +122,6 @@ void CustomOutputDev::updateCTM(GfxState* state, double m11, double m12, double 
 void CustomOutputDev::stroke(GfxState* state) {
 	//std::cout << "stroke" << std::endl;
 }
-/*
-void CustomOutputDev::fill(GfxState* state) {
-	std::cout << "fill" << std::endl;
-	auto ctm = state->getCTM();
-	auto transform = QTransform(ctm[0], ctm[1], ctm[2], ctm[3], 0, 0);
-	auto item = new QGraphicsPathItem(convertPath(state, state->getPath(), Qt::WindingFill) );
-	item->setTransform(transform);
-	item->setBrush(m_currentBrush);
-	item->setPen(Qt::NoPen);
-	item->setPos(ctm[4], ctm[5]);
-	paths.push_back(item);
-}
-void CustomOutputDev::eoFill(GfxState* state) {
-	std::cout << "eoFill" << std::endl;
-	auto ctm = state->getCTM();
-	auto transform = QTransform(ctm[0], ctm[1], ctm[2], ctm[3], 0, 0);
-	auto path = convertPath(state, state->getPath(), Qt::OddEvenFill);
-	//path = path * transform;
-	auto item = new QGraphicsPathItem(path);
-	item->setTransform(transform);
-	item->setBrush(m_currentBrush);
-	item->setPen(Qt::NoPen);
-	item->setPos(ctm[4], ctm[5]);
-	paths.push_back(item);
-}*/
 void CustomOutputDev::fill(GfxState* state) {
 
 	auto tt = convertPaths(state, state->getPath(), Qt::WindingFill, m_currentBrush);

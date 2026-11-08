@@ -13,6 +13,9 @@ struct AFont {
 	int checkGlyph(const QPainterPath& path, QString glyphName, CompareMethod compareMethod = CompareMethod::AREA, double errorRatio = constants::MATCHING_ERROR_RATIO, double* value = nullptr);
 
 	int checkGlyph(const QPainterPath& inpath, QChar qchar, double errorRatio);	
+	// Uniform scale only; preserve shape/aspect ratio and use the native area tolerance.
+	int checkGlyphScaled(const QPainterPath& path, const QString& glyphName,
+	                     double errorRatio = constants::MATCHING_ERROR_RATIO, double* value = nullptr) const;
 
 	static double compareQPainterPath(const QPainterPath& path1, const QPainterPath& path2);
 

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mask2Former · Cutter comparison</title>
+  <link rel="stylesheet" href="/audit.css">
+</head>
+<body>
+  <header>
+    <h1>Mask2Former · Cutter comparison</h1>
+    <p id="summary" role="status">Loading results…</p>
+    <form id="filters">
+      <label>Search<input name="q" type="search" placeholder="Subword, text or template"></label>
+      <label>Rank by<select name="sort">
+        <option value="difference">Ink disagreement</option>
+        <option value="letter">Worst letter disagreement</option>
+        <option value="boundary">Boundary displacement</option>
+        <option value="count">Body count difference</option>
+        <option value="raw">Raw prediction disagreement</option>
+        <option value="original">Original disagreement rank</option>
+      </select></label>
+      <label>Review batch<select name="reviewBatch" id="reviewBatch"><option value="all">Whole corpus</option></select></label>
+      <label>Subwords<select name="bases">
+        <option value="multi">Two or more letters</option>
+        <option value="all">All</option><option value="single">Single letter</option>
+      </select></label>
+      <label>Training example<select name="training">
+        <option value="all">All</option><option value="unused">Unused</option><option value="used">Used</option>
+      </select></label>
+      <label>Page split<select name="split">
+        <option value="all">All</option><option value="train">Train</option>
+        <option value="validation">Validation</option><option value="test">Test</option>
+      </select></label>
+      <label>Comparison reference<select name="reference">
+        <option value="all">All</option><option value="complete">Complete</option>
+        <option value="provisional">Provisional</option><option value="partial">Partial / raster issue</option>
+      </select></label>
+      <label>Items per page<select name="limit"><option>1000</option><option>100</option></select></label>
+      <label class="toggle"><input type="checkbox" id="raw">View raw masks</label>
+      <label class="toggle"><input type="checkbox" id="before" disabled>Original cutter snapshot</label>
+      <button type="submit">Apply</button>
+    </form>
+    <nav>
+      <button id="previous" type="button">Previous</button>
+      <span id="count" role="status"></span>
+      <button id="next" type="button">Next</button>
+      <span class="legend"><i class="changed"></i>Changed owner <i class="role"></i>Body / kashida <i class="unknown"></i>Unknown</span>
+    </nav>
+  </header>
+  <main id="grid" aria-busy="true"></main>
+  <p id="message" role="status"></p>
+  <footer>Ranked differences compare two automatic results. Partial and raster-invalid cutter references appear after comparable results when ranked by ink disagreement. <a href="/api/timings" target="_blank" rel="noopener">Execution times</a></footer>
+  <dialog id="detail">
+    <button id="close" type="button">Close</button>
+    <h2 id="title"></h2>
+    <img id="large" alt="Cutter, Mask2Former and highlighted differences">
+    <p id="facts"></p>
+    <a id="pageLink" target="_blank" rel="noopener">Open in page viewer</a>
+    <pre id="diagnostics"></pre>
+  </dialog>
+  <script type="module" src="/audit.mjs"></script>
+</body>
+</html>

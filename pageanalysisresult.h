@@ -1,5 +1,8 @@
 ﻿#pragma once
 #include "CommonPCH.h"
+#include <QJsonObject>
+#include <QRegion>
+#include <functional>
 #include <set>
 #include <vector>
 struct AFont;
@@ -39,6 +42,12 @@ struct ShapeExceptionRecord {
 	int subWordPosition;
 };
 
+struct BodyContourInput {
+    QRectF bounds;
+    int contours;
+    bool untyped;
+};
+
 struct PathExtrema {
 	int pathIndex;
 	qreal time;
@@ -57,6 +66,35 @@ struct Stretching {
 	PathExtrema bottomBaseLine;
 	PathExtrema bottomLeft;
 	bool clockWise;
+	QJsonObject kashidaOverrides;
+	bool fixedRightBoundary = false;
+	bool fixedLeftBoundary = false;
+	double topEndpointTolerance = 0;
+	// Keep the template's measurement scale when its cut is rotated or shifted.
+	double referenceWidth = 0;
+
+	// A closed-loop ligature has two ink bridges to the same inner contour.
+	// Baseline endpoints stay on the outer contour for reading-order tests.
+	PathExtrema counterEntry{};
+	PathExtrema counterExit{};
+
+        // Recovery may place a cut on a returning stroke to the right of its predecessor.
+        int readingOrder = -1;
+        // Affine coordinates relative to the two corners of the same counter.
+        // Zero denotes a straight upper bridge.
+        QPointF counterBendWeights;
+        QPointF counterBendPoint(QPointF outer, QPointF inner, QPointF other) const {
+            return outer + counterBendWeights.x() * (inner - outer) + counterBendWeights.y() * (other - outer);
+        }
+    std::vector<QLineF> cutSegments() const {
+        if (counterEntry.pathIndex <= 0)
+            return {QLineF(topBaseLine.point, bottomBaseLine.point)};
+        const QLineF lower(counterExit.point, bottomBaseLine.point);
+        if (counterBendWeights.isNull())
+            return {QLineF(topBaseLine.point, counterEntry.point), lower};
+        const auto bend = counterBendPoint(topBaseLine.point, counterEntry.point, counterExit.point);
+        return {QLineF(topBaseLine.point, bend), QLineF(bend, counterEntry.point), lower};
+    }
 
 	struct cmpbyx {
 		bool operator()(Stretching a, Stretching b) const {
@@ -83,9 +121,16 @@ struct Stretching {
 
 
 using Stretchings = std::set < Stretching, Stretching::cmpbylength>;
-using Joins = std::set < Stretching, Stretching::cmpbyx>;
-
-
+struct JoinReadingOrder {
+    bool operator()(const Stretching& a, const Stretching& b) const {
+        if (a.readingOrder != b.readingOrder)
+            return a.readingOrder < b.readingOrder;
+        if (a.readingOrder >= 0)
+            return false;
+        return Stretching::cmpbyx{}(a, b);
+    }
+};
+using Joins = std::set<Stretching, JoinReadingOrder>;
 
 struct Apath {
 	QPainterPath path;
@@ -191,7 +236,21 @@ struct WordResultInfo {
 		//int startIndex;
 		//int endIndex;
 		std::vector<int> paths;
+        // Derived from source geometry after loading. Legacy page-cache layout stays readable.
+        int secondaryBodyPath = -1;
+        bool bodyCounter = false;
 		std::vector<GlyphInfo> baseGlyphs;
+		// Join ink in the same local coordinates as baseGlyphs, indexed in reading order.
+		std::vector<QPainterPath> kashidaPaths;
+		QStringList templateTrace;
+		QStringList matchedTemplates;
+		QJsonArray letterDiagnostics;
+		bool provisional() const {
+			for (const auto& letter : letterDiagnostics)
+				if (letter.toObject().value("status") == "remainder") return true;
+			return false;
+		}
+		std::vector<std::pair<QLineF, QLineF>> kashidaCuts;
 		QVector<PathExtrema> extrema;
 		Joins joins;
 		bool correct;
@@ -254,6 +313,7 @@ struct Word {
 	QVector<Apath> paths;
 	QString text;
 	WordResultInfo wordResultInfo;
+    Apath bodyShape(const WordResultInfo::SubWordInfo& sub) const;
 
 	/* overload the operators */
 	friend QDataStream& operator<< (QDataStream& out, const Word& rhs)
@@ -390,11 +450,21 @@ struct arabic_state_table_entry {
 
 
 
+struct ToothSearchPlan;
+struct SeenExitRetry;
+struct OutlineSearchCache;
+
 struct PageAnalysisResult {
 
 	static QMap<ushort, UnicodeProp> charProps;
 
 	static QMap<int, QMap<int, QMap<int, ShapeExceptionRecord>>> nbShapeExceptions;
+    static ShapeExceptionRecord wordShapeException(int page, int line, int word, int wordsInLine);
+    // First path is the primary body. Result indexes this list, or -1 if inconclusive.
+    static int secondaryBodyContour(ShapeException exception, const QString& text, int markQuota, double baseline,
+        double scale, const std::vector<BodyContourInput>& members,
+        const std::function<QRegion(int)>& inkRegion);
+    void resolveCompoundBody(int pageIndex, int lineIndex, int wordIndex);
 
 	static QVector<QStringList> quranText;
 
@@ -407,6 +477,7 @@ struct PageAnalysisResult {
 	static const unsigned int joining_mapping[6];
 
 	static QVector<TextInfo> arabic_joining(QString text);
+	static int expectedLowerPathCount(ushort codepoint, arabic_joining_t joining);
 
 	struct NotMatched {
 		int lineIndex;
@@ -417,14 +488,40 @@ struct PageAnalysisResult {
 	APage page;
 
 	WordResultInfo detectSubWords(int pageIndex, int lineIndex, int wordIndex, AFont* font, bool recompute = false);
+	// Conservative ownership repair, shared by fresh segmentation and legacy cache readers.
+	QJsonArray resolveWordBoundaries(int pageNumber, AFont* font);
+	QJsonArray subwordBoundaryRepairs;
+	QJsonArray waqfTypeRepairs;
+	QMap<int, QVector<QPainterPath>> headingPaths;
 
-	bool segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font, bool refresh = false);
+	static const QJsonObject& letterForms();
+	static QString prepareLetterForms(QJsonObject& config);
+	static void activateLetterForms(const QJsonObject& config);
+	// Letters with body slots in the connected outline; keep the source text intact.
+	static QString bodyLetters(const QString& text);
+	bool segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
+	                    bool refresh = false, const QJsonObject* draft = nullptr);
 
 
 private:
+    void refineLipCuts(int line, int word, int subword, const QJsonObject& config);
+    void refineBodyOwnership(int line, int word, int subword, const QJsonObject& config);
+    bool segmentWithRecovery(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
+                             const QJsonObject& config);
+    bool segmentConfigured(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
+                           const QJsonObject& config);
+    static bool recoverFoldedArm(Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config, bool attached);
+    bool segmentWithLetterForms(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
+                                const QJsonObject& config, bool expand);
+    bool segmentSubwordPass(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
+                            bool refresh, const QJsonObject* draft, bool recoverTeeth, OutlineSearchCache& outlineCache,
+                            ToothSearchPlan* plan = nullptr,
+                            const SeenExitRetry* seenRetry = nullptr);
+	void restoreWaqfTypes(int pageIndex, int lineIndex, int wordIndex, AFont* font);
+	void repairSubwordBoundaries(int pageIndex, int lineIndex, int wordIndex, AFont* font);
 
 	void analyzeSubwords(int pageIndex, int lineIndex, int wordIndex, WordResultInfo& wordResultInfo, AFont* font);
-	bool cutSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font, bool refresh = false);	
+	bool cutSubword(int lineIndex, int wordIndex, int subWordIndex, const QJsonObject& config);
 	QVector<NotMatched> notMatchedItems;
 	void analyzePage(int pageNumber, AFont* font, QGraphicsScene* scene, QVector<QSet<QGraphicsPathItem*>>& lines);
 	void analyzeTextPage(int pageNumber);

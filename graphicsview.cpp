@@ -14,6 +14,11 @@ void GraphicsView::mousePressEvent(QMouseEvent* event) {
 		event->accept();
 		return;
 	}
+    if (this == mainView->view && mainView->inspectCutsButton->isChecked()) {
+        event->accept();
+        mainView->inspectSubword(event->pos());
+        return;
+    }
 	QGraphicsView::mousePressEvent(event);
 }
 

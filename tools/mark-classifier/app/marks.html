@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Search marks · Mushaf vector corpus</title>
+  <link rel="stylesheet" href="/marks.css">
+</head>
+<body>
+  <header><a href="/corpus.html">Mushaf vector corpus</a><span>1441 Hafs</span></header>
+  <main>
+    <h1>Search marks and dots</h1>
+    <p id="coverage" aria-live="polite">Loading the mark index…</p>
+    <form id="filters">
+      <label class="wide">Mark, word, location or Unicode<input id="q" dir="auto" type="search" placeholder="kasra, an Arabic word, page579:l9-w9 or U+0650"></label>
+      <label>Page<input id="page" type="number" min="1" max="604" placeholder="All pages"></label>
+      <label>Base letter<select id="base"><option value="">Any letter</option></select></label>
+      <label>Expected mark<select id="expected"><option value="">Any type</option></select></label>
+      <label>Classifier prediction<select id="predicted"><option value="">Any type</option></select></label>
+      <label>Validation<select id="verdict">
+        <option value="">All assigned masks</option><option value="issues">All differences</option>
+        <option value="different">Classifier disagrees</option><option value="missing">No separate mask</option>
+        <option value="accepted-form">Accepted form</option><option value="match">Exact match</option>
+      </select></label>
+      <button type="reset">Clear filters</button>
+    </form>
+    <p id="error" role="alert" hidden></p>
+    <div class="workspace">
+      <section aria-label="Search results">
+        <nav aria-label="Result pages"><strong id="count" aria-live="polite"></strong>
+          <button id="prev" type="button">Previous</button><button id="next" type="button">Next</button></nav>
+        <div id="grid"></div>
+      </section>
+      <aside id="detail" aria-label="Selected mark"><h2>Mark details</h2><p>Select a mask to see its ink in the source word.</p></aside>
+    </div>
+  </main>
+  <script type="module" src="/marks.mjs"></script>
+</body></html>

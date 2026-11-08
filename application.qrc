@@ -6,5 +6,9 @@
     <file>images/open.png</file>
     <file>images/paste.png</file>
     <file>images/save.png</file>
+    <file>templates/letter-forms.json</file>
+    <file>templates/mark-shapes.json</file>
+    <file>tools/waqf_templates.json</file>
+
 </qresource>
 </RCC>

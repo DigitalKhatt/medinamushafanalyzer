@@ -1,0 +1,452 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Mushaf Catalog: Full pipeline and serve",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Mushaf Catalog: Full pipeline",
+        "Mushaf Catalog: Serve catalog"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Full pipeline",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Mushaf Catalog: Set up validation",
+        "Mushaf Catalog: Configure native segmenter",
+        "Mushaf Catalog: Compile native segmenter",
+        "Mushaf Catalog: Regenerate native assignments and validate",
+        "Mushaf Catalog: Build search index",
+        "Mushaf Catalog: Segment letters and update database",
+        "Mushaf Catalog: Compact verified vectors",
+        "Mushaf Catalog: Verify corpus"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Serve catalog",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "serve",
+        "--port",
+        "8770"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mark Classifier: Replay saved assignments",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py", "replay-marks",
+        "--inputs", "${input:markClassifierInputs}",
+        "--report", "${input:markClassifierReplayReport}"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "Mushaf Catalog: Set up validation",
+      "problemMatcher": []
+    },
+    {
+      "label": "Mark Classifier: Compare native assignments",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py", "audit-marks",
+        "--pages", "${input:markClassifierPages}",
+        "--report", "${input:markClassifierReport}"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Mushaf Catalog: Set up validation",
+        "Mushaf Catalog: Configure native segmenter",
+        "Mushaf Catalog: Compile native segmenter"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Set up validation",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "setup"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Configure native segmenter",
+      "type": "process",
+      "command": "cmake",
+      "args": [
+        "--preset",
+        "ninja-nmc"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Compile native segmenter",
+      "type": "process",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "release",
+        "--target",
+        "medinamushafanalyzer"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Regenerate native assignments and validate",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "fresh",
+        "--pages",
+        "all"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Build search index",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Segment letters and update database",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "segment-letters",
+        "--pages",
+        "all"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Segment letters on selected pages",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "segment-letters",
+        "--pages",
+        "${input:catalogPages}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Check empty-database rebuild",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "check-rebuild"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Verify corpus",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "verify"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Run catalog tests",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/mushafcatalog",
+        "-p",
+        "test_*.py",
+        "-v"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Query corpus",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "query",
+        "--kind",
+        "${input:catalogKind}",
+        "--q",
+        "${input:catalogSearch}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Import letter-body splits",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "attach",
+        "${input:catalogImport}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Export letter-body splits",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "export-bodies",
+        "${input:catalogExport}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Compact verified vectors",
+      "type": "process",
+      "command": "python3",
+      "args": ["tools/mushafcatalog/catalog.py", "--db", "output/catalog.sqlite", "compact-vectors"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Verify source inputs",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "check-inputs"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Inspect subword body source",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "--db", "output/catalog.sqlite",
+        "body-source",
+        "${input:catalogSubword}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mushaf Catalog: Full pipeline with saved letter bodies",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Mushaf Catalog: Set up validation",
+        "Mushaf Catalog: Configure native segmenter",
+        "Mushaf Catalog: Compile native segmenter",
+        "Mushaf Catalog: Regenerate native assignments and validate",
+        "Mushaf Catalog: Build search index",
+        "Mushaf Catalog: Segment letters and update database",
+        "Mushaf Catalog: Import letter-body splits",
+        "Mushaf Catalog: Verify corpus"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Mask2Former: Set up Python environment",
+      "type": "process",
+      "command": "python3.14",
+      "args": ["tools/mask2former/run.py", "setup"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mask2Former: Prepare native cuts",
+      "type": "process",
+      "command": "python3",
+      "args": ["tools/mask2former/run.py", "snapshot"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mask2Former: Repeat training",
+      "type": "process",
+      "command": "${workspaceFolder}/output/mask2former-env/bin/python",
+      "args": ["tools/mask2former/run.py", "repeat", "--run", "${input:mask2formerRun}", "--device", "${input:mask2formerDevice}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mask2Former: Predict connected corpus",
+      "type": "process",
+      "command": "${workspaceFolder}/output/mask2former-env/bin/python",
+      "args": ["tools/mask2former/run.py", "predict", "--run", "${input:mask2formerRun}", "--device", "${input:mask2formerDevice}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mask2Former: Launch Cutter comparison",
+      "type": "process",
+      "command": "${workspaceFolder}/output/mask2former-env/bin/python",
+      "args": ["tools/mask2former/run.py", "serve", "--run", "${input:mask2formerComparisonRun}", "--port", "8793"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "markClassifierInputs",
+      "type": "promptString",
+      "description": "Inputs directory of the saved native mark report",
+      "default": "output/mark-classifier/inputs"
+    },
+    {
+      "id": "markClassifierReplayReport",
+      "type": "promptString",
+      "description": "New directory for the classifier replay report",
+      "default": "output/mark-classifier-replay"
+    },
+    {
+      "id": "markClassifierPages",
+      "type": "promptString",
+      "description": "Page numbers, ranges, or all",
+      "default": "3"
+    },
+    {
+      "id": "markClassifierReport",
+      "type": "promptString",
+      "description": "Report directory relative to medinamushafanalyzer",
+      "default": "output/mark-classifier"
+    },
+    {
+      "id": "catalogPages",
+      "type": "promptString",
+      "description": "Page numbers or ranges to segment, for example 3,8-12",
+      "default": "4"
+    },
+    {
+      "id": "catalogKind",
+      "type": "pickString",
+      "description": "Collection to query",
+      "options": [
+        "subwords",
+        "words",
+        "letters",
+        "marks",
+        "parts"
+      ],
+      "default": "subwords"
+    },
+    {
+      "id": "catalogSearch",
+      "type": "promptString",
+      "description": "Arabic text or native address",
+      "default": "page003:l1-w1"
+    },
+    {
+      "id": "catalogImport",
+      "type": "promptString",
+      "description": "Path to a letter-body JSONL bundle"
+    },
+    {
+      "id": "catalogExport",
+      "type": "promptString",
+      "description": "Destination of the letter-body replay bundle",
+      "default": "output/letter-bodies.jsonl"
+    },
+    {
+      "id": "catalogSubword",
+      "type": "promptString",
+      "description": "Letter-bearing native subword ID",
+      "default": "page003:l1-w1-s1"
+    },
+    {
+      "id": "mask2formerRun",
+      "type": "promptString",
+      "description": "New run name for training, or the same name for prediction",
+      "default": "seen-retrial"
+    },
+    {
+      "id": "mask2formerDevice",
+      "type": "pickString",
+      "description": "Mask2Former training and inference device",
+      "options": ["mps", "cpu", "cuda"],
+      "default": "mps"
+    },
+    {
+      "id": "mask2formerComparisonRun",
+      "type": "promptString",
+      "description": "Run to compare, latest for the last completed comparison",
+      "default": "latest"
+    }
+  ]
+}

@@ -384,7 +384,6 @@ void ShapeItem::searchStretchings(const QPainterPath& path, Stretchings& stretch
 
 	double scale = std::abs(scaled);
 
-	double maxYDiffWithBaseLine = 3 * scale;
 	double maxXBaseDiff = 1 * scale;
 	double minXBaseDiff = 0.0 * scale;
 	double maxYBaseDiff = 1.5 * scale;

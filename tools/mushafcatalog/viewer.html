@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mushaf Pages · 1441 Hafs</title>
+  <link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/viewer.css">
+</head>
+<body>
+  <header>
+    <h1>Mushaf Pages</h1>
+    <a class="toolbar-link" href="/">Mushaf Catalog</a>
+    <nav aria-label="Mushaf page">
+      <button id="prev" aria-label="Previous page">‹</button>
+      <label>Page <input id="number" type="number" min="1" max="604" value="1"></label>
+      <button id="next" aria-label="Next page">›</button>
+    </nav>
+    <label><input id="palette" type="checkbox" checked> Color letters</label>
+    <label>Kashida <select id="kashida">
+      <option value="middle">Middle</option><option value="left">Left</option>
+      <option value="right">Right</option><option value="standalone">Standalone</option>
+    </select></label>
+    <label>Zoom <input id="zoom" type="range" min="70" max="1000" step="10" value="100"></label>
+  </header>
+  <div class="info"><span id="summary" role="status">Loading page…</span>
+    <span id="selection" aria-live="polite">Hover over the ink to inspect it.</span></div>
+  <main id="viewport"><div id="sheet" aria-label="Mushaf page"></div></main>
+  <div id="glyph-tooltip" role="tooltip" dir="rtl" lang="ar" hidden></div>
+  <script type="module" src="/viewer.js"></script>
+</body>
+</html>

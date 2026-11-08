@@ -11,18 +11,10 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-#add_compile_options($<$<C_COMPILER_ID:MSVC>:/utf-8>)
-#add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
-
-#file(GLOB OTHERS files/*.mp files/*.fea  files/images/*.jpg files/*.json)
-
-#add_custom_target(files SOURCES ${OTHERS})
-
-
-
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/Zc:__cplusplus;/permissive->")
 
 find_package(Qt5 COMPONENTS Core Widgets Xml REQUIRED)
+find_package(nlohmann_json 3.11 REQUIRED)
 # The 4 following package are needed by Poppler
 find_package(PkgConfig REQUIRED)
 find_package(JPEG REQUIRED)
@@ -37,7 +29,7 @@ pkg_check_modules(Poppler REQUIRED poppler IMPORTED_TARGET)
 
 set(ALL_FILES   mainwindow.h mainwindow.cpp CustomOutputDev.h CustomOutputDev.cpp application.qrc renderarea.h renderarea.cpp graphicsview.h graphicsview.cpp
 constants.h aglyph.h aglyph.cpp afont.h afont.cpp pageanalysisresult.h pageanalysisresult.cpp quran.h quran.cpp
-shapeitem.h shapeitem.cpp quransearch.h quransearch.cpp "pathdelegate.h" worditem.h worditem.cpp segmentsubword.cpp
+shapeItem.h shapeitem.cpp quransearch.h quransearch.cpp "pathdelegate.h" worditem.h worditem.cpp segmentsubword.cpp lettersegmentationcache.cpp lettersegmentationcache.h
 test.natvis qt5.natvis
 )
 set(LIBRARIES  Qt5::Core  Qt5::CorePrivate Qt5::GuiPrivate Qt5::Xml Qt5::Widgets  PkgConfig::Poppler JPEG::JPEG PNG::PNG  ${OPENJPEG_LIBRARIES})
@@ -49,12 +41,14 @@ set(TFMatcherCpp TFMatcherCpp/AlignedTF.cpp TFMatcherCpp/AlignedTF.h TFMatcherCp
 	TFMatcherCpp/Vector2.cpp TFMatcherCpp/Vector2.h)
 
 
-add_executable(${PROJECT_NAME} ${ALL_FILES} ${TFMatcherCpp} main.cpp)
+add_executable(${PROJECT_NAME} ${ALL_FILES} ${TFMatcherCpp} main.cpp proposalexport.cpp proposalexport.h
+    markassignment.cpp markassignment.h markassignment_p.h markgeometry.cpp markcharacterlinks.cpp waqfrecognition.cpp)
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE CommonPCH.h)
 
 
 target_link_libraries(${PROJECT_NAME} PUBLIC  ${LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
 
 
 target_compile_options(${PROJECT_NAME} PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)

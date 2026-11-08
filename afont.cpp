@@ -21,6 +21,28 @@ long AFont::getArea(QPolygon poly) {
 	return area;
 }
 
+int AFont::checkGlyphScaled(const QPainterPath& path, const QString& glyphName,
+                           double errorRatio, double* value) const {
+    double best = 1;
+    const auto box = path.boundingRect();
+    if (box.width() > 0 && box.height() > 0) {
+        for (auto it = glyphs.constFind(glyphName); it != glyphs.cend() && it.key() == glyphName; ++it) {
+            const auto& reference = it.value().path;
+            const auto target = reference.boundingRect();
+            if (target.width() <= 0 || target.height() <= 0) continue;
+            const auto aspectRatio = (box.width() / box.height()) / (target.width() / target.height());
+            if (qAbs(aspectRatio - 1) > errorRatio) continue;
+            const auto scale = target.width() / box.width();
+            auto normalized = QTransform::fromScale(scale, -scale).map(path);
+            const auto bounds = normalized.boundingRect();
+            normalized.translate(target.left() - bounds.left(), target.top() - bounds.top());
+            best = qMin(best, compareQPainterPath(reference, normalized));
+        }
+    }
+    if (value) *value = best;
+    return best < errorRatio ? 0 : -1;
+}
+
 int AFont::checkGlyph(const QPainterPath& inpath, QString glyphName, CompareMethod compareMethod, double errorRatio, double* value)
 {
 	// add 0.1 to avoid error
@@ -141,9 +163,6 @@ double AFont::scaleAndCompareQPainterPath(QPainterPath path1, QPainterPath path2
 	auto diff1 = path1.subtracted(path2);
 	auto diff2 = path2.subtracted(path1);
 
-	auto region1 = QRegion(diff1.toFillPolygon().toPolygon()).rects();
-	auto region2 = QRegion(diff2.toFillPolygon().toPolygon()).rects();
-
 	double diffArea = getArea(diff1) + getArea(diff2);
 	double oriArea = getArea(path1) + getArea(path2);
 
@@ -152,14 +171,6 @@ double AFont::scaleAndCompareQPainterPath(QPainterPath path1, QPainterPath path2
 
 }
 
-static double perimeter(const QPolygonF& polygon) {
-	double peri = 0.0;
-	for (int i = 1; i < polygon.length(); i++) {
-		peri += QLineF(polygon[i - 1], polygon[i]).length();
-	}
-
-	return peri;
-}
 //TODO : USE centroid distance signature with FD (best result) : See A Comparative Study of Curvature Scale Space and Fourier Descriptors
 // see https://www.math.uci.edu/icamp/summer/research_11/park/shape_descriptors_survey_part3.pdf
 // see docs\CurveMatching\Centroid\Burger-Burge2013_Book_PrinciplesOfDigitalImageProces.pdf for fourier implementation details in JAVA

@@ -1,0 +1,32 @@
+:root {
+  color-scheme: light;
+  font: 14px/1.45 system-ui, sans-serif;
+  --bg: #eaece6;
+  --panel: #fbfcf8;
+  --surface: #fff;
+  --line: #ccd4c8;
+  --control-line: #bac6bc;
+  --text: #26332d;
+  --muted: #46594e;
+  --accent: #316758;
+  --focus: #246d72;
+  --selected: #e1eee6;
+  color: var(--text);
+  background: var(--bg);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+h1 { font: 600 1.22rem/1.2 Georgia, serif; margin: 0; }
+a { color: var(--accent); }
+button, input, select { color: inherit; font: inherit; accent-color: var(--accent); }
+button, input:not([type=checkbox], [type=range]), select, a.toolbar-link {
+  background: var(--surface);
+  border: 1px solid var(--control-line);
+  border-radius: .3rem;
+  padding: .3rem .55rem;
+}
+a.toolbar-link { color: inherit; text-decoration: none; white-space: nowrap; }
+button, select, label:has(input[type=checkbox]) { cursor: pointer; }
+button:hover:not(:disabled), a.toolbar-link:hover, select:hover { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

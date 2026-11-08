@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mushaf · incomplete template cuts</title><link rel="stylesheet" href="incomplete_corpus.css"></head>
+<body><header><div class="eyebrow">MEDINA MUSHAF ANALYZER · TEMPLATE AUDIT</div><h1>Where the cutting is incomplete</h1>
+<p id="intro">Loading corpus coverage…</p><div id="stats" class="stats"></div>
+<p class="note">“Complete” means the cutter accepted the required templates. It does not certify the visual correctness of every cut. Automatic report · kashida tracker disabled.</p>
+<nav><a href="incomplete-words.json" download>All incomplete words · JSON</a><a href="items.json" download>All unresolved subwords · JSON</a><a href="index.json" download>Coverage and groups · JSON</a><button id="copyLink" class="quiet">Copy current view link</button></nav></header>
+<main><section class="card"><div class="sectionHead"><div><h2>Forms to investigate first</h2><p>Grouped by position and applicable templates. One group may contain several visual forms.</p></div><button id="allGroups" class="quiet">Show all groups</button></div>
+<div class="tableScroll"><table><thead><tr><th>Shape / position</th><th>Reason</th><th>First unresolved</th><th>All affected</th><th>Pages</th></tr></thead><tbody id="groupRows"></tbody></table></div>
+<p class="note">First unresolved counts each subword once. All affected includes later failures and can overlap across groups. Blocked letters were not tested independently; resolving the first failure may reveal another.</p></section>
+<details class="card"><summary>Coverage by page · all 604 pages</summary><div id="pageGrid" class="pageGrid"></div><p class="note">Darker cells have more incomplete connected subwords. Click a page to filter the list.</p></details>
+<section class="card" id="examples"><div class="sectionHead"><div><h2 id="examplesTitle">Incomplete subwords</h2><p id="groupDescription">Select a form above, or search the whole corpus.</p></div><button id="reset" class="quiet">Clear filters</button></div>
+<div class="filters"><label>Page<select id="page"><option value="all">All pages</option></select></label>
+<label>Reason<select id="status"><option value="all">All reasons</option><option value="no-match">Template did not match</option><option value="no-template">No template</option><option value="remainder">Provisional remainder</option><option value="blocked">Blocked later letter</option><option value="cut-conflict">Cut assembly conflict</option><option value="input-issue">Input / diagnostics</option></select></label>
+<label>Selected form<select id="groupScope" disabled><option value="first">First unresolved</option><option value="any">Anywhere in subword</option></select></label>
+<label>Search text or location<input id="search" placeholder="لْحَمِيدِ or page590:l7-w7-s2" autocomplete="off"></label>
+<label>Items per page<select id="size"><option value="50">50</option><option value="100" selected>100</option><option value="1000">1000</option><option value="all">All</option></select></label></div>
+<div id="groupSamples" class="samples"></div><div class="listHead"><span id="count" aria-live="polite"></span><div><button id="previous">← Previous</button><span id="pagination"></span><button id="next">Next →</button></div></div>
+<div class="inspection"><div class="listPane"><div id="items" role="list" aria-label="Incomplete subwords"></div></div>
+<aside id="detail" aria-live="polite"><p>Select a subword to inspect its source ink, current cuts, and failed forms.</p></aside></div></section>
+<footer id="provenance"></footer><div id="error" role="alert" hidden></div></main>
+<script type="module" src="incomplete_corpus.mjs"></script></body></html>

@@ -1,0 +1,8 @@
+{
+  "name": "Mushaf Ink Segmentation",
+  "source_dir": "../../input/1441-SVG-hafs",
+  "page_pattern": "page[0-9][0-9][0-9].svg",
+  "raster_scale": 4,
+  "ink_threshold": 170,
+  "max_chroma": 45
+}

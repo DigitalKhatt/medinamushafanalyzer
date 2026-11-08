@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mushaf Catalog · 1441 Hafs</title>
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/catalog.css">
+</head>
+<body>
+<header>
+  <form id="filters" aria-label="Corpus search">
+    <h1>Mushaf Catalog</h1>
+    <a class="toolbar-link" href="/viewer.html" target="_blank" rel="noopener" aria-label="Mushaf Pages (opens in a new tab)">Mushaf Pages</a>
+    <select id="kind" aria-label="Collection">
+      <option value="letters">letters</option><option value="marks">marks &amp; dots</option>
+      <option value="subwords">subwords</option><option value="words">words</option><option value="parts">letter-body parts</option>
+    </select>
+    <input id="char" class="ar" type="search" dir="rtl" placeholder="بَت" aria-label="Search text" aria-describedby="searchHelp" autocomplete="off">
+    <select id="match" name="match" data-kinds="letters" aria-label="Match letters">
+      <option value="class">by shape class</option><option value="letter">by letter</option>
+    </select>
+    <select id="cls" data-kinds="letters marks parts" aria-label="Class"><option value="">any class</option></select>
+    <span class="sep" aria-hidden="true"></span>
+    <span id="forms" data-kinds="letters marks parts" role="group" aria-label="Joining forms" title="Where the match sits in its subword. Select any combination.">
+      <button type="button" data-form="isolated" aria-label="Isolated" aria-pressed="false">isol</button>
+      <button type="button" data-form="initial" aria-label="Initial" aria-pressed="false">init</button>
+      <button type="button" data-form="medial" aria-label="Medial" aria-pressed="false">medi</button>
+      <button type="button" data-form="final" aria-label="Final" aria-pressed="false">fina</button>
+    </span>
+    <span class="sep" aria-hidden="true"></span>
+    <select id="metric" name="metric" aria-label="Measurement" title="Metric used for the bounds, sort and distribution (raster pixels)">
+      <option value="width">ink width</option><option value="height">ink height</option>
+      <optgroup label="Letter geometry">
+        <option value="kashida">kashida (all)</option><option value="kashidaLeft">kashida left</option><option value="kashidaRight">kashida right</option>
+      </optgroup>
+    </select>
+    <input name="min" id="min" aria-label="Minimum measurement" placeholder="min" type="number" step="any" min="0">
+    <input name="max" id="max" aria-label="Maximum measurement" placeholder="max" type="number" step="any" min="0">
+    <input name="page" id="pages" aria-label="Pages" placeholder="pages 3-20">
+    <div hidden>
+      <input name="minConfidence" id="conf" data-kinds="letters marks" aria-label="Minimum confidence" title="Recorded cut confidence for the first letter, or classifier confidence for marks" placeholder="min conf" type="number" min="0" max="1" step="any">
+      <select name="quality" data-kinds="letters" aria-label="Cut quality" title="Quality recorded on the first letter; any quality includes pending cuts">
+        <option value="">any quality</option>
+      </select>
+    </div>
+    <select id="sort" name="sort" aria-label="Sort">
+      <option value="location">page order</option><option value="largest">widest first</option><option value="smallest">narrowest first</option><option value="confidence" hidden>confidence ↑</option>
+    </select>
+    <select id="limit" aria-label="Results per page" title="All matches share one scrollbar. Optionally restrict the results per page.">
+      <option>24</option><option>100</option><option>200</option><option selected>400</option><option>1000</option><option>2000</option><option>10000</option><option>50000</option><option value="max">all</option>
+    </select>
+    <span class="toggles">
+      <label data-kinds="letters" title="Highlight the connector leaving the last letter"><input id="kleft" type="checkbox"> k‹</label>
+      <label data-kinds="letters" title="Highlight the connector entering the first letter"><input id="kright" type="checkbox"> k›</label>
+      <label data-kinds="letters" title="Show the next letter in the same subword"><input id="pair" type="checkbox"> pair</label>
+      <label data-kinds="letters" title="Show the rest of the subword behind the matched letters"><input id="subword" type="checkbox"> subword</label>
+      <label title="Show the whole word behind the match"><input id="context" type="checkbox"> word</label>
+    </span>
+    <button id="prev" type="button" aria-label="Previous results" disabled>‹</button>
+    <button id="next" type="button" aria-label="Next results" disabled>›</button>
+    <button id="apply" type="submit">Search</button>
+    <button id="more" type="button" aria-expanded="false" aria-controls="advanced" hidden>Filters</button>
+    <span class="status" id="summary" role="status"></span>
+    <div id="advanced" hidden>
+      <label data-kinds="letters">Within word or address <input name="within" placeholder="Arabic or page003:l1-w1" dir="auto"></label>
+      <label>Letter bodies <select name="coverage">
+        <option value="">any status</option><option value="pending">pending</option><option value="segmented">segmented</option>
+        <option value="partial">partial word</option><option value="sign">signs only</option></select></label>
+      <label data-kinds="subwords">Subword content <select name="category">
+        <option value="">all groups</option><option value="text">letter-bearing</option><option value="sign">standalone sign</option><option value="decoration">verse numeral / other</option></select></label>
+      <label data-kinds="letters marks parts">First base <input name="base" class="base" dir="rtl" maxlength="2"></label>
+      <label data-kinds="letters marks parts">Previous base <input name="prev" class="base" dir="rtl" maxlength="2"></label>
+      <label data-kinds="letters marks parts">Next base <input name="next" class="base" dir="rtl" maxlength="2"></label>
+      <label data-kinds="parts">Ink role <select name="role"><option value="">all parts</option><option>body</option><option>connection</option><option>kashida</option></select></label>
+      <label>Transcript expects <select name="expected"><option value="">any mark</option></select></label>
+      <label>Classifier predicts <select name="predicted"><option value="">any prediction</option></select></label>
+      <label>Validation <select name="verdict">
+        <option value="">any result</option><option value="issues">all differences</option><option value="different">different identity</option>
+        <option value="missing">missing ink</option><option value="accepted-form">accepted form</option><option value="match">exact match</option>
+        <option value="ambiguous">ambiguous</option><option value="unmatched">unmatched ink</option></select></label>
+      <label data-kinds="marks">Transcript character <input name="character" placeholder="page579:l9-w9:c6"></label>
+      <label data-kinds="marks">Owner <input name="owner" placeholder="page579:l9-w9:c5"></label>
+      <label data-kinds="marks">Owner shape class <select name="ownerClass"><option value="">any shape</option></select></label>
+      <label data-kinds="letters marks parts"><input type="checkbox" id="unknownForm"> unknown form</label>
+      <button type="button" id="reset">Reset filters</button>
+    </div>
+  </form>
+</header>
+<main class="app">
+  <section class="stage" id="stage" aria-label="Search results" tabindex="0" aria-describedby="summary">
+    <p class="empty" id="welcome">Loading catalog…</p>
+    <div class="virtual-results" id="cards"></div>
+  </section>
+  <aside class="side" aria-label="Corpus details">
+    <section><h2>Distribution</h2><div id="statsView" aria-live="polite"></div></section>
+    <section id="selected"><h2>Selected</h2><div id="selectedFacts"></div><div id="inspection"><p class="hint">Select a result to inspect its ink and transcript.</p></div></section>
+    <section><h2>Corpus</h2><div id="overview"></div></section>
+    <p id="searchHelp" class="hint">Type one or more letters, for example <b lang="ar" dir="rtl">بِس</b>. A diacritic belongs to the preceding letter. A match stays inside one subword.</p>
+  </aside>
+</main>
+<script type="module" src="/catalog.js"></script>
+</body>
+</html>

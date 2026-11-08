@@ -1,0 +1,7 @@
+# Tested build/inference environment. The corpus server needs only stdlib Python.
+numpy==2.5.4
+scipy==1.17.0
+Pillow==13.0.0
+scikit-image==0.26.0
+torch==2.15.0
+transformers==4.57.6

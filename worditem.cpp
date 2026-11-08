@@ -4,13 +4,14 @@
 
 
 
-WordItem::WordItem(Word word, int subWordIndex) : word{ word }, subWordIndex{ subWordIndex } {
+WordItem::WordItem(Word word, int subWordIndex, bool colorBodies)
+    : word{word}, subWordIndex{subWordIndex}, colorBodies{colorBodies} {
 
 	if (subWordIndex == -1) return;
 
 	auto& subWord = word.wordResultInfo.subWords[subWordIndex];
 
-	auto shape = word.paths[subWord.paths[0]];
+	auto shape = word.bodyShape(subWord);
 	auto pos = shape.pos;
 
 	itemPath = shape.path * shape.transform;
@@ -41,6 +42,22 @@ void WordItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 	auto& subWord = word.wordResultInfo.subWords[subWordIndex];
 
 	painter->drawPath(itemPath);
+    const auto& shape = word.paths[subWord.paths[0]];
+    if (colorBodies) {
+        const QColor colors[] = {QColor("#d7e9f2"), QColor("#e1eed9"), QColor("#e9dcf1")};
+        for (size_t index = 0; index < subWord.baseGlyphs.size(); ++index) {
+            auto body = shape.transform.map(subWord.baseGlyphs[index].path);
+            body.translate(shape.pos);
+            painter->fillPath(transform.map(body), colors[index % 3]);
+        }
+    }
+    for (const auto& kashida : subWord.kashidaPaths) {
+        if (kashida.isEmpty()) continue;
+        auto world = shape.transform.map(kashida);
+        world.translate(shape.pos);
+        painter->fillPath(transform.map(world), QColor(235, 145, 40, 170));
+    }
+
 
 	auto pen = QPen(Qt::cyan);
 	auto brush = QBrush(Qt::white);
@@ -155,7 +172,9 @@ void WordItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 	}
 
 
+	size_t joinIndex = 0;
 	for (auto& stretching : subWord.joins) {
+        const auto index = joinIndex++;
 
 
 		QPolygonF topPolygon{ { stretching.topLeft.point,stretching.topBaseLine.point,stretching.topRight.point} };
@@ -169,13 +188,19 @@ void WordItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 		painter->drawPolyline(topPolygon * transform);
 		painter->drawPolyline(bottomPolygon * transform);
 
-		QLineF  line = QLineF(stretching.bottomBaseLine.point, stretching.topBaseLine.point);
 		auto pen2 = QPen(Qt::darkCyan);
 		pen2.setCosmetic(true);
 		pen2.setWidthF(3);
-		painter->setPen(pen2);
+        const bool resolved = index < subWord.kashidaPaths.size() && !subWord.kashidaPaths[index].isEmpty();
+        if (!resolved && stretching.counterEntry.pathIndex == 0) pen2.setStyle(Qt::DashLine);
+        painter->setPen(pen2);
 
-		painter->drawLine(line * transform);
+        if (resolved) {
+            painter->drawLine(subWord.kashidaCuts[index].first * transform);
+            painter->drawLine(subWord.kashidaCuts[index].second * transform);
+        } else {
+            for (const auto& segment : stretching.cutSegments()) painter->drawLine(segment * transform);
+        }
 
 	}
 

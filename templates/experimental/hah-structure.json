@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "hah-open-structure-medi",
+  "status": "experimental",
+  "raster": {"longestSide": 768, "padding": 8},
+  "graph": {"maxLipJunctions": 4, "maxReturnEdges": 3},
+  "lip": {"minReach": 1.4, "maxReach": 12, "maxTipBelowRoot": 0.5},
+  "opening": {"stations": [0.35, 0.55, 0.75], "minClearance": 0.15, "minVisibleStations": 2},
+  "cap": {"maxLength": 6, "maxHeight": 2, "minWidthToHeight": 1.25, "maxEdges": 3},
+  "corners": {"minTurnDegrees": 25, "maxAttachmentDistance": 1.3},
+  "attachment": {"maxHeadLength": 4, "maxHeadRise": 1.5},
+  "entry": {
+    "offsets": [0.25, 0.55, 0.9],
+    "tangentWindow": 0.4,
+    "attachmentStroke": {
+      "maxLength": 6,
+      "minLength": 0.75,
+      "initialMinAngle": 45,
+      "turnAngle": 20,
+      "stabilityLength": 0.25,
+      "offsets": [0, 0.25, 0.5]
+    }
+  },
+  "return": {"outletOffsets": [-0.4, 0, 0.4], "tangentWindow": 0.4, "maxRightExcursion": 0.4},
+  "cut": {"halfLength": 3, "maxCenterDistance": 0.5},
+  "units": "All geometric distances are multiples of the detected lip stroke width. Angles are degrees; attachment turnAngle is measured from the rightward horizontal. Raster dimensions are pixels."
+}

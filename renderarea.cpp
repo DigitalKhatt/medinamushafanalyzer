@@ -59,13 +59,7 @@ void RenderArea::paintEvent(QPaintEvent *)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    auto widthh = width();
-    auto heighth = height();
-
-    //painter.scale(width() / 100.0, height() / 100.0);
-
     painter.setPen(Qt::NoPen);
-    QLinearGradient gradient(0, 0, 0, 100);
     painter.setBrush(brush);
     painter.drawPath(path);
 }

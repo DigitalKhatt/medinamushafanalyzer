@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mask2Former · Training review</title>
+  <link rel="stylesheet" href="./review.css">
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>Review training cuts</h1><p id="summary">Loading Mask2Former training subwords…</p></div>
+    <div class="counts" aria-live="polite"><span><b id="includedCount">—</b> included</span><span><b id="excludedCount">—</b> excluded</span></div>
+  </header>
+  <p class="instruction">Open a subword to inspect its cuts. Select <strong>Exclude</strong> to leave it out of training. Changes save automatically.</p>
+  <div class="tools">
+    <label class="search">Find a subword<input id="search" type="search" placeholder="Page, subword ID, Arabic text, or template" autocomplete="off"></label>
+    <label>Selection<select id="selection"><option value="all">All subwords</option><option value="included">Included</option><option value="excluded">Excluded</option></select></label>
+    <label>Cut source<select id="source"><option value="all">All sources</option><option value="machine-weak">Template cuts</option><option value="human-reviewed">Human-reviewed cuts</option></select></label>
+    <label id="compareControl" hidden>Previous training set<select id="change"><option value="all">All masks</option><option value="changed">Changed masks</option><option value="new">New subwords</option><option value="same">Same masks</option></select></label>
+    <label>Per page<select id="size"><option>48</option><option>96</option><option>192</option><option value="all">All · scroll</option></select></label>
+  </div>
+  <div class="results">
+    <div class="key"><span><i class="bodies"></i>Letter bodies</span><span><i class="gold"></i>Kashida</span></div>
+    <nav class="pager" aria-label="Results pages"><span id="range"></span><button class="prevPage" aria-label="Previous page">‹</button><button class="nextPage" aria-label="Next page">›</button></nav>
+  </div>
+  <p id="notice" role="status"></p>
+  <div id="grid" aria-label="Training subword grid"></div>
+  <p id="empty" hidden>No subwords match these filters.</p>
+  <nav class="pager bottom" aria-label="More results"><button class="prevPage">Previous page</button><button class="nextPage">Next page</button><button id="more" hidden>Show more subwords</button></nav>
+</main>
+<dialog id="detail" aria-labelledby="detailTitle">
+  <div class="detailTop"><div><h2 id="detailTitle" lang="ar" dir="rtl"></h2><code id="detailId"></code></div><button id="close" aria-label="Close details">Close</button></div>
+  <div class="detailControls"><label>View<select id="view"><option value="base">Training canvas</option><option value="native">Original mask resolution</option><option value="ink">Input ink</option></select></label><span id="detailMeta"></span></div>
+  <div class="large"><img id="detailImage" alt="Enlarged subword"></div>
+  <div class="key"><span><i class="bodies"></i>Letter bodies</span><span><i class="gold"></i>Kashida</span></div>
+  <p id="detailTemplates"></p>
+  <div class="detailBottom"><button id="detailPrevious" aria-label="Previous subword">‹ Previous</button><button id="detailNext" aria-label="Next subword">Next ›</button><button id="detailToggle"></button></div>
+  <p id="detailNotice" role="status"></p>
+</dialog>
+<script type="module" src="./review.mjs"></script>
+</body>
+</html>

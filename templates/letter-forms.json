@@ -1,0 +1,4389 @@
+{
+  "version": 2,
+  "provisionalFallbacks": {
+    "finalYehRemainder": true
+  },
+  "joinDefaults": {
+    "lookback": 4,
+    "previousOffset": 1,
+    "minX": 0,
+    "maxX": 1,
+    "minY": 0.8,
+    "maxY": 1.5
+  },
+  "kashidaDefaults": {
+    "enabled": true,
+    "trackingEnabled": false,
+    "minSpan": 0,
+    "minAnchorWidth": 0.05,
+    "samplesPerAnchorWidth": 5,
+    "steepAnchorRatio": 0.85,
+    "trackingDistanceRatio": 1.5,
+    "steepClearanceRatio": 0.35,
+    "obliqueClearanceRatio": 0.8,
+    "seedSteps": 10,
+    "minSeedWidthRatio": 0.6,
+    "maxSeedWidthRatio": 3,
+    "seedDistancePenalty": 0.15,
+    "maxTrackSteps": 80,
+    "minTrackWidthRatio": 0.65,
+    "maxTrackWidthRatio": 1.35,
+    "maxSteepSlope": 0.4,
+    "maxEdgeDriftRatio": 0.32,
+    "minSpanToStrokeRatio": 0.75,
+    "neighborSearchRatio": 0.8,
+    "sharedCutTolerance": 0.25
+  },
+  "initial": [
+    {
+      "id": "kaf-upright-bridge-init",
+      "current": "ك",
+      "method": "counter-ligature",
+      "ligatureWith": "اآأإٱل",
+      "maxBridgeRatio": 1.8,
+      "minAscenderRise": 0.65,
+      "lowerBridge": "stem-side",
+      "tryNext": true,
+      "forkRise": 0.28,
+      "maxBridgeBend": 0.16,
+      "onFinalRetry": true
+    },
+    {
+      "id": "feh-init",
+      "current": "ف",
+      "method": "initial-loop-head",
+      "head": {
+        "maxEdgeDistance": 1.5,
+        "maxNeckDistance": 3,
+        "maxProjectionInset": 2,
+        "normalCut": true
+      },
+      "tryNext": true
+    },
+    {
+      "id": "qaf-init",
+      "current": "ق",
+      "method": "initial-loop-head",
+      "head": {
+        "maxEdgeDistance": 1.5,
+        "maxNeckDistance": 3,
+        "maxProjectionInset": 2,
+        "normalCut": true
+      },
+      "tryNext": true
+    },
+    {
+      "id": "meem-init",
+      "current": "م",
+      "method": "initial-counter",
+      "counter": {
+        "maxNeckDistance": 1.5,
+        "maxOuterDistance": 1,
+        "normalNeck": true
+      },
+      "tryNext": true,
+      "retryOnPartial": true,
+      "bodyFeatures": {
+        "maxWidthToHeight": 2
+      }
+    },
+    {
+      "id": "heh-init",
+      "current": "ه",
+      "method": "heh-initial-counters",
+      "counterOffset": 0.35,
+      "baselineOffset": 0.6,
+      "tryNext": true,
+      "retryOnPartial": true
+    },
+    {
+      "id": "seen-init",
+      "current": "سش",
+      "method": "seen-teeth",
+      "retryBendOffset": 0.5,
+      "retryMaxLastPitch": 6,
+      "minToothRise": 0.55,
+      "minPitch": 1,
+      "maxPitch": 5,
+      "maxTipHeightSpreadRatio": 1,
+      "tryNext": true,
+      "retryOnPartial": true
+    },
+    {
+      "id": "ain-init",
+      "current": "عغ",
+      "method": "walk",
+      "top": [
+        "down",
+        "right",
+        "left",
+        {
+          "direction": "right",
+          "minY": 0,
+          "end": {
+            "sharp": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "down",
+      "retryWithVariants": true
+    },
+    {
+      "id": "ain-round-init",
+      "current": "عغ",
+      "method": "walk",
+      "top": [
+        "down",
+        "right",
+        "left",
+        {
+          "direction": "right",
+          "minY": 0,
+          "end": {
+            "sharp": true,
+            "xExtremum": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "down",
+      "bodyCounters": 0,
+      "tryNext": true,
+      "onIncomplete": true
+    },
+    {
+      "id": "lam-hah-stacked-init",
+      "current": "ل",
+      "ligatureWith": "جحخ",
+      "method": "descending-stem",
+      "descendingStem": {
+        "penWidth": 0.5,
+        "minRise": 4,
+        "headLip": {
+          "minRun": 2,
+          "maxRun": 8.5,
+          "maxDrop": 2.5
+        }
+      },
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.48
+      },
+      "tightJoin": true,
+      "tryNext": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "lam-init",
+      "current": "ل",
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.7
+      },
+      "method": "walk",
+      "top": [
+        {
+          "direction": "down",
+          "minY": 3
+        },
+        "left"
+      ],
+      "snapCurveStart": 0.05,
+      "snapEndpointTolerance": 0.05,
+      "bottomProbe": "down",
+      "tryNext": true,
+      "retryOnPartial": true
+    },
+    {
+      "id": "lam-normal-init",
+      "current": "ل",
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.7
+      },
+      "method": "walk",
+      "top": [
+        {
+          "direction": "down",
+          "minY": 3
+        },
+        "left"
+      ],
+      "snapCurveStart": 0.05,
+      "snapEndpointTolerance": 0.05,
+      "bottomProbe": "normal",
+      "tryNext": true,
+      "retryOnPartial": true
+    },
+    {
+      "id": "lam-stepped-flank-init",
+      "current": "ل",
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.7
+      },
+      "method": "walk",
+      "top": [
+        {
+          "direction": "down",
+          "minY": 3,
+          "accumulate": true
+        },
+        "left"
+      ],
+      "snapCurveStart": 0.05,
+      "snapEndpointTolerance": 0.05,
+      "bottomProbe": "down",
+      "tryNext": true,
+      "retryOnPartial": true,
+      "onIncomplete": true
+    },
+    {
+      "id": "lam-wide-step-init",
+      "current": "ل",
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.7
+      },
+      "method": "walk",
+      "top": [
+        "down",
+        {
+          "direction": "left",
+          "maxX": -1,
+          "minY": 0
+        }
+      ],
+      "bottomProbe": "down",
+      "tryNext": true
+    },
+    {
+      "id": "beh-sloping-init",
+      "current": "بتثنيئى",
+      "method": "walk",
+      "start": "top",
+      "traversal": "down",
+      "top": [
+        {
+          "direction": "down",
+          "minY": 3,
+          "maxX": -2,
+          "accumulate": true,
+          "end": {
+            "sharp": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "corner",
+      "oppositeCorner": {
+        "sharp": false,
+        "yExtremum": true,
+        "minX": -4,
+        "maxX": 0,
+        "minY": 0,
+        "maxY": 3,
+        "minDistance": 0.5,
+        "maxDistance": 4,
+        "flanks": {
+          "maxY": 0
+        }
+      },
+      "bodyFeatures": {
+        "minHeight": 3,
+        "minWidthToHeight": 0.7,
+        "maxWidthToHeight": 1.6,
+        "maxUpperPeaks": 1
+      },
+      "bodyCounters": 0,
+      "tryNext": true,
+      "retryOnPartial": true,
+      "tightJoin": true,
+      "anchorSide": "bottom"
+    },
+    {
+      "id": "beh-init",
+      "current": "بتثنيئى",
+      "method": "walk",
+      "top": [
+        "down",
+        {
+          "direction": "left",
+          "maxX": -1,
+          "minY": 0
+        }
+      ],
+      "bottomProbe": "down",
+      "tryNext": true,
+      "retryOnPartial": true,
+      "bodyFeatures": {
+        "maxWidthToHeight": 0.6
+      }
+    },
+    {
+      "id": "beh-shallow-step-init",
+      "current": "بتثنيئى",
+      "method": "walk",
+      "top": [
+        "down",
+        {
+          "direction": "left",
+          "maxX": -0.35,
+          "minY": 0
+        }
+      ],
+      "bottomProbe": "down",
+      "tryNext": true,
+      "retryOnPartial": true,
+      "bodyFeatures": {
+        "maxWidthToHeight": 0.6
+      }
+    },
+    {
+      "id": "beh-hook-init",
+      "current": "بتثنيئى",
+      "method": "walk",
+      "top": [
+        {
+          "direction": "down",
+          "minY": 1.5,
+          "accumulate": true
+        },
+        {
+          "direction": "left",
+          "maxX": -0.5,
+          "minY": 0
+        }
+      ],
+      "bottomProbe": "normal",
+      "bodyFeatures": {
+        "minHeight": 3,
+        "maxWidthToHeight": 0.6
+      },
+      "tryNext": true,
+      "topTraversal": "backward"
+    },
+    {
+      "id": "beh-foot-init",
+      "current": "بتثنيئى",
+      "method": "walk",
+      "top": [
+        "down",
+        "up"
+      ],
+      "bottomProbe": "normal",
+      "bodyFeatures": {
+        "minHeight": 1.5,
+        "maxWidthToHeight": 0.95
+      },
+      "tryNext": true
+    },
+    {
+      "id": "kaf-ascender-init",
+      "current": "ك",
+      "method": "counter-ligature",
+      "ligatureWith": "اآأإٱل",
+      "outer": {
+        "start": "top",
+        "traversal": "down",
+        "topTraversal": "forward",
+        "top": [
+          {
+            "direction": "left",
+            "end": {
+              "sharp": true,
+              "yExtremum": true
+            }
+          }
+        ],
+        "topUseStepEnd": true
+      },
+      "maxBridgeRatio": 1,
+      "minAscenderRise": 0.9,
+      "lowerBridge": "bottom-extrema",
+      "tryNext": true
+    },
+    {
+      "id": "kaf-fork-ascender-init",
+      "current": "ك",
+      "method": "counter-ligature",
+      "ligatureWith": "اآأإٱل",
+      "outer": {
+        "start": "top",
+        "traversal": "down",
+        "topTraversal": "forward",
+        "top": [
+          {
+            "direction": "left",
+            "end": {
+              "sharp": true,
+              "yExtremum": true
+            }
+          }
+        ],
+        "topUseStepEnd": true
+      },
+      "maxBridgeRatio": 1,
+      "minAscenderRise": 0.9,
+      "lowerBridge": "bottom-extrema",
+      "tryNext": true,
+      "forkRise": 0.8,
+      "onIncomplete": true,
+      "maxBridgeBend": 0.16
+    },
+    {
+      "id": "kaf-zigzag-init",
+      "current": "ك",
+      "method": "kaf-zigzag",
+      "probeWidth": 1,
+      "probeY": 0.1,
+      "edge": {
+        "minX": -5,
+        "maxX": 1,
+        "minY": -4,
+        "maxY": -1
+      },
+      "edgeFlank": {
+        "minX": 1
+      },
+      "tryNext": true,
+      "retryOnPartial": true
+    },
+    {
+      "id": "kaf-descending-hook-init",
+      "current": "ك",
+      "method": "walk",
+      "start": "top",
+      "traversal": "down",
+      "top": [
+        "left",
+        {
+          "direction": "right",
+          "minY": 2.1,
+          "minX": 2,
+          "accumulate": true
+        }
+      ],
+      "bottomProbe": "normal",
+      "topUseStepEnd": true,
+      "bodyCounters": 0,
+      "tryNext": true,
+      "topTraversal": "forward",
+      "retryOnPartial": true,
+      "onIncomplete": true,
+      "returningStroke": true
+    },
+    {
+      "id": "kaf-hook-init",
+      "current": "ك",
+      "method": "walk",
+      "start": "top",
+      "traversal": "down",
+      "top": [
+        "left",
+        {
+          "direction": "right",
+          "minY": 0.7,
+          "minX": 1.2
+        }
+      ],
+      "bottomProbe": "normal",
+      "topUseStepEnd": true,
+      "bodyCounters": 0,
+      "tryNext": true,
+      "topTraversal": "forward",
+      "retryOnPartial": true,
+      "onIncomplete": true,
+      "returningStroke": true
+    },
+    {
+      "id": "kaf-init",
+      "current": "ك",
+      "method": "kaf",
+      "probeWidth": 1,
+      "probeY": 0.1,
+      "tryNext": true,
+      "retryOnPartial": true,
+      "bodyFeatures": {
+        "minHeight": 2
+      }
+    },
+    {
+      "id": "hah-open-init",
+      "current": "جحخ",
+      "method": "walk",
+      "top": [
+        "left",
+        {
+          "direction": "right",
+          "minY": 0,
+          "start": {
+            "xExtremum": true
+          }
+        }
+      ],
+      "bottomProbe": "below",
+      "bodyCounters": 0,
+      "tryNext": true
+    },
+    {
+      "id": "hah-init",
+      "current": "جحخ",
+      "method": "hah",
+      "minExtrema": 8,
+      "ascenderProbeX": 6,
+      "counterProbeX": 0.6,
+      "ascenderCrossings": 4,
+      "counterCrossings": 2,
+      "tryNext": true
+    },
+    {
+      "id": "hah-counter-init",
+      "current": "جحخ",
+      "method": "walk",
+      "top": [
+        "up",
+        {
+          "direction": "down",
+          "end": {
+            "sharp": true,
+            "yExtremum": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "down",
+      "bodyCounters": 1,
+      "tryNext": true
+    },
+    {
+      "id": "hah-enclosed-head-init",
+      "current": "جحخ",
+      "method": "enclosed-head",
+      "head": {
+        "minAspect": 1.25
+      },
+      "bodyCounters": 1,
+      "tryNext": true,
+      "onIncomplete": true
+    },
+    {
+      "id": "kaf-flat-init",
+      "current": "ك",
+      "method": "walk",
+      "onPartial": true,
+      "top": [
+        "left",
+        {
+          "direction": "right",
+          "minY": 0,
+          "start": {
+            "xMinimum": true
+          }
+        }
+      ],
+      "bottomProbe": "below",
+      "normalCut": true,
+      "strokeOffsetX": -0.5,
+      "bodyCounters": 0,
+      "tryNext": true
+    },
+    {
+      "id": "ain-neck-init",
+      "current": "عغ",
+      "method": "walk",
+      "onPartial": true,
+      "top": [
+        "down",
+        "right",
+        "left",
+        {
+          "direction": "right",
+          "minX": 0.35,
+          "minY": 0,
+          "end": {
+            "sharp": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "down",
+      "bodyCounters": 0,
+      "tryNext": true
+    },
+    {
+      "id": "kaf-elbow-init",
+      "current": "ك",
+      "method": "walk",
+      "bodyCounters": 0,
+      "start": "top",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "left",
+        {
+          "direction": "right",
+          "minY": 0
+        }
+      ],
+      "bottomProbe": "below"
+    },
+    {
+      "id": "sad-init",
+      "current": "صض",
+      "method": "initial-loop-body",
+      "loopBoundaries": {
+        "minAspect": 1.5,
+        "entryWalk": {
+          "topTraversal": "forward",
+          "top": [
+            "right",
+            {
+              "direction": "left",
+              "minY": 0,
+              "end": {
+                "sharp": true,
+                "xExtremum": true
+              }
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down"
+        },
+        "exitTooth": {
+          "maxGap": 1.5,
+          "leftOffset": 0.45
+        }
+      }
+    },
+    {
+      "id": "tah-init",
+      "current": "طظ",
+      "method": "initial-loop-body",
+      "loopBoundaries": {
+        "minAspect": 1.5,
+        "sideOffset": 0.5,
+        "baselineOffset": 0.2,
+        "normalCut": true
+      }
+    },
+    {
+      "id": "feh-descending-init",
+      "current": "ف",
+      "method": "initial-loop-head",
+      "head": {
+        "maxNeckDistance": 4,
+        "neckWalk": {
+          "top": [
+            "down",
+            "left",
+            "right"
+          ],
+          "traversal": "down",
+          "bottomProbe": "left",
+          "anchorSide": "bottom"
+        }
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "tryNext": true
+    },
+    {
+      "id": "lam-outward-foot-init",
+      "current": "ل",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "walk",
+      "start": "top",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        {
+          "direction": "down",
+          "accumulate": true,
+          "minY": 3
+        },
+        "right"
+      ],
+      "bottomProbe": "normal",
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.7
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "lam-inward-foot-init",
+      "current": "ل",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "walk",
+      "start": "top",
+      "traversal": "down",
+      "topTraversal": "backward",
+      "top": [
+        {
+          "direction": "down",
+          "accumulate": true,
+          "minY": 3
+        },
+        "left"
+      ],
+      "bottomProbe": "normal",
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.7
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "lam-raised-foot-init",
+      "current": "ل",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "walk",
+      "start": "top",
+      "traversal": "down",
+      "topTraversal": "backward",
+      "top": [
+        {
+          "direction": "down",
+          "accumulate": true,
+          "minY": 3
+        },
+        "right"
+      ],
+      "bottomProbe": "up",
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.7
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "lam-descending-foot-init",
+      "current": "ل",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "walk",
+      "start": "top",
+      "top": [
+        "down",
+        "up"
+      ],
+      "topUseStepEnd": false,
+      "bottomProbe": "down",
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.7
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-sloping-neck-init",
+      "current": "م",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "initial-counter",
+      "counter": {
+        "maxNeckDistance": 3,
+        "maxOuterDistance": 2,
+        "normalNeck": true
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-lower-flank-init",
+      "current": "م",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "initial-loop-body",
+      "loopBoundaries": {
+        "exitCorner": {
+          "maxDistance": 2.1
+        },
+        "sideOffset": 0.3,
+        "normalCut": true
+      },
+      "bodyCounters": 1,
+      "onUnresolved": true
+    },
+    {
+      "id": "sad-wide-tooth-init",
+      "current": "صض",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "initial-loop-body",
+      "bodyCounters": 1,
+      "loopBoundaries": {
+        "minAspect": 1.15,
+        "entryWalk": {
+          "topTraversal": "forward",
+          "top": [
+            "right",
+            {
+              "direction": "left",
+              "minY": 0,
+              "end": {
+                "sharp": true,
+                "xExtremum": true
+              }
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down"
+        },
+        "exitTooth": {
+          "maxGap": 2.3,
+          "leftOffset": 0.45
+        }
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "tah-loop-corner-init",
+      "current": "طظ",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "initial-loop-body",
+      "bodyCounters": 1,
+      "loopBoundaries": {
+        "minAspect": 1.15,
+        "sideOffset": 0.35,
+        "baselineOffset": 0.2,
+        "normalCut": true,
+        "entryCorner": {
+          "maxDistance": 2
+        },
+        "exitCorner": {
+          "maxDistance": 2
+        }
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "tah-low-rim-init",
+      "current": "طظ",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "initial-loop-body",
+      "bodyCounters": 1,
+      "loopBoundaries": {
+        "minAspect": 1.15,
+        "sideOffset": 0.35,
+        "baselineOffset": 0.2,
+        "normalCut": true
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "heh-stacked-bridge-init",
+      "current": "ه",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "initial-counter",
+      "counter": {
+        "maxOuterDistance": 3.0,
+        "maxNeckDistance": 3.0,
+        "normalNeck": true
+      },
+      "bodyCounters": 2,
+      "tightJoin": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "ain-returning-cup-init",
+      "current": "عغ",
+      "method": "walk",
+      "start": "top",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        "right"
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "below",
+      "bodyFeatures": {
+        "minHeight": 1.9
+      },
+      "tryNext": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "hah-returning-lip-init",
+      "current": "جحخ",
+      "method": "walk",
+      "start": "top",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "left",
+        "down",
+        "right"
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "below",
+      "bodyFeatures": {
+        "minHeight": 1.5
+      },
+      "tryNext": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "heh-paired-rim-init",
+      "current": "ه",
+      "onUnresolved": true,
+      "bodyOutline": {
+        "counters": 2,
+        "aspect": [
+          0.6,
+          2.5
+        ],
+        "rim": {
+          "left": [
+            0.08,
+            0.65
+          ],
+          "top": [
+            0.38,
+            1.5
+          ],
+          "right": [
+            0.05,
+            0.75
+          ],
+          "bottom": [
+            0.18,
+            1.1
+          ]
+        },
+        "exit": {
+          "x": [
+            -0.36,
+            0.4
+          ],
+          "y": [
+            1,
+            1.85
+          ],
+          "width": [
+            0.12,
+            0.8
+          ]
+        }
+      }
+    },
+    {
+      "id": "lam-stacked-shaft-init",
+      "current": "ل",
+      "method": "descending-stem",
+      "descendingStem": {
+        "penWidth": 0.5,
+        "minRise": 4
+      },
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 0.48
+      },
+      "tryNext": true,
+      "tightJoin": true,
+      "onIncomplete": true,
+      "onUnresolved": true
+    }
+  ],
+  "medial": [
+    {
+      "id": "heh-exposed-head-medi",
+      "current": "ه",
+      "onUnresolved": true,
+      "exposedEntry": "shared",
+      "headForms": [
+        "heh-init",
+        "heh-paired-rim-init"
+      ]
+    },
+    {
+      "id": "hah-under-shaft-medi",
+      "current": "جحخ",
+      "exposedBy": "lam-hah-stacked-init",
+      "headForms": [
+        "hah-open-init",
+        "hah-init"
+      ],
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-hanging-medi",
+      "current": "م",
+      "bodyCounters": 1,
+      "sharedEntry": true,
+      "loopBoundaries": {
+        "normalCut": true,
+        "maxBodyHeight": 4,
+        "entryCorner": {
+          "placement": "upper",
+          "maxCounterY": 0.5,
+          "maxDistance": 1.5,
+          "required": true
+        },
+        "exitCorner": {
+          "maxDistance": 1.5,
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "meem-medi",
+      "current": "م",
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "loopBoundaries": {
+        "sideOffset": 0.5,
+        "baselineOffset": 0.3,
+        "normalCut": true,
+        "entryCorner": {
+          "maxDistance": 1.5
+        },
+        "exitCorner": {
+          "maxDistance": 1.5
+        }
+      }
+    },
+    {
+      "id": "sad-medi",
+      "current": "صض",
+      "loopBoundaries": {
+        "minAspect": 1.5,
+        "entryWalk": {
+          "topTraversal": "forward",
+          "top": [
+            "right",
+            {
+              "direction": "left",
+              "minY": 0,
+              "end": {
+                "sharp": true,
+                "xExtremum": true
+              }
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down"
+        },
+        "exitTooth": {
+          "maxGap": 1.5,
+          "leftOffset": 0.45
+        }
+      }
+    },
+    {
+      "id": "ain-medi",
+      "current": "عغ",
+      "openHead": {
+        "minFlankRise": 0.15,
+        "maxFlankRise": 0.8
+      }
+    },
+    {
+      "id": "seen-folded-medi",
+      "current": "سش",
+      "sharedFoldWithFinal": "يئى",
+      "sharedEntry": true,
+      "seenTeeth": {
+        "maxLastPitch": 8,
+        "rightOffset": 0.5,
+        "entryCornerOptional": true,
+        "convexTips": true
+      }
+    },
+    {
+      "id": "seen-medi",
+      "current": "سش",
+      "seenTeeth": {
+        "retryBendOffset": 0.5,
+        "retryMaxLastPitch": 6,
+        "minToothRise": 0.55,
+        "minPitch": 1,
+        "maxPitch": 5,
+        "maxTipHeightSpreadRatio": 1,
+        "rightOffset": 0.5,
+        "maxExitBendDistance": 2
+      }
+    },
+    {
+      "id": "lam-medi",
+      "current": "ل",
+      "bodyCounters": 0,
+      "lamBoundaries": {
+        "entryOverlap": 1.5,
+        "levelForkEntry": true,
+        "minRise": 3,
+        "turnAngle": 45,
+        "left": [
+          {
+            "top": [
+              {
+                "direction": "down",
+                "minY": 3,
+                "accumulate": true
+              },
+              "left"
+            ],
+            "snapCurveStart": 0.05,
+            "snapEndpointTolerance": 0.05,
+            "bottomProbe": "down",
+            "normalCut": true,
+            "strokeOffsetX": -0.5
+          },
+          {
+            "top": [
+              {
+                "direction": "down",
+                "minY": 3,
+                "accumulate": true
+              },
+              {
+                "direction": "left",
+                "minY": 0
+              }
+            ],
+            "bottomProbe": "normal"
+          },
+          {
+            "top": [
+              {
+                "direction": "down",
+                "minY": 3,
+                "accumulate": true
+              },
+              "left"
+            ],
+            "bottomProbe": "down",
+            "walkNormalOffset": 0.5,
+            "forkSide": "left"
+          },
+          {
+            "top": [
+              {
+                "direction": "down",
+                "minY": 3,
+                "accumulate": true
+              },
+              "left"
+            ],
+            "bottomProbe": "normal",
+            "walkNormalOffset": 0.5
+          }
+        ],
+        "right": {
+          "top": [
+            {
+              "direction": "down",
+              "minY": 3,
+              "accumulate": true
+            },
+            "up"
+          ],
+          "bottomProbe": "down",
+          "normalCut": true,
+          "strokeOffsetX": 0.5
+        },
+        "maxWidthToHeight": 0.75
+      }
+    },
+    {
+      "id": "feh-head-medi",
+      "current": "فق",
+      "headEdges": {
+        "crestToRight": {
+          "minY": 0.5,
+          "maxY": 3
+        },
+        "crestToLeft": {
+          "minY": 0.5,
+          "maxY": 3
+        },
+        "maxNeckDistance": 2
+      }
+    },
+    {
+      "id": "beh-upright-medi",
+      "current": "بتثنيئى",
+      "tightJoin": true,
+      "tooth": {
+        "baselineEntry": {
+          "minRise": 2.5,
+          "required": true,
+          "turnAngle": 45
+        },
+        "minPairDistance": 2.5,
+        "maxPairDistance": 4,
+        "flankDrop": 0.6,
+        "maxTipOverhang": 0.12,
+        "maxWidth": 3,
+        "minWidth": 0.2,
+        "rightOffset": 0.5,
+        "leftOffset": 0.45
+      }
+    },
+    {
+      "id": "beh-tooth-medi",
+      "current": "بتثنيئى",
+      "tooth": {
+        "baselineEntry": {
+          "minRise": 2.5,
+          "turnAngle": 45,
+          "minTurnRun": 4
+        },
+        "maxPairDistance": 2.5,
+        "flankDrop": 0.6,
+        "maxTipOverhang": 0.12,
+        "leftOffset": 0.45,
+        "rightOffset": 0.5,
+        "minWidth": 0.2,
+        "maxWidth": 3.25,
+        "allowFlatBend": true
+      },
+      "tightJoin": true
+    },
+    {
+      "id": "beh-low-medi",
+      "current": "بتثنيئى",
+      "tightJoin": true,
+      "tooth": {
+        "minPairDistance": 1.1,
+        "maxPairDistance": 1.75,
+        "minFlankRise": 0.5,
+        "minWidth": 3.25,
+        "maxWidth": 5.5,
+        "allowFlatBend": true,
+        "rightOffset": 0.5,
+        "leftOffset": 0.45
+      }
+    },
+    {
+      "id": "beh-bent-medi",
+      "current": "بتثنيئى",
+      "tightJoin": true,
+      "tooth": {
+        "flankOffset": 0.5,
+        "baselineEntry": {
+          "minRise": 2.25,
+          "turnAngle": 45
+        },
+        "minBendTurn": 0.12,
+        "maxPairDistance": 4
+      }
+    },
+    {
+      "id": "beh-shoulder-medi",
+      "current": "بتثنيئى",
+      "tightJoin": true,
+      "tooth": {
+        "projectFlanks": true,
+        "flankOffset": 0.5,
+        "baselineEntry": {
+          "minRise": 2.25,
+          "turnAngle": 45
+        },
+        "minBendTurn": 0.12,
+        "maxPairDistance": 5
+      }
+    },
+    {
+      "id": "beh-hook-medi",
+      "current": "بتثنيئى",
+      "tightJoin": true,
+      "tooth": {
+        "walkFlanks": true,
+        "flankOffset": 0.55,
+        "baselineEntry": {
+          "minRise": 2.25,
+          "turnAngle": 45
+        },
+        "minBendTurn": 0.12,
+        "maxPairDistance": 5
+      }
+    },
+    {
+      "id": "heh-body-medi",
+      "current": "ه",
+      "pairedCounterCorners": {
+        "maxCounterGap": 2,
+        "maxCornerDistance": 2,
+        "maxFootInwardAngle": 10,
+        "normalCut": true
+      }
+    },
+    {
+      "id": "feh-loop-medi",
+      "current": "فق",
+      "loopBoundaries": {
+        "sideOffset": 0.35,
+        "baselineOffset": 0.2,
+        "normalCut": true
+      }
+    },
+    {
+      "id": "tah-loop-medi",
+      "current": "طظ",
+      "loopBoundaries": {
+        "minAspect": 1.5,
+        "sideOffset": 0.5,
+        "baselineOffset": 0.2,
+        "entryWalk": {
+          "topTraversal": "forward",
+          "top": [
+            "right",
+            {
+              "direction": "left",
+              "minY": 0,
+              "end": {
+                "sharp": true
+              }
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down"
+        }
+      }
+    },
+    {
+      "id": "kaf-fork-medi",
+      "current": "ك",
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 1,
+              "minY": 1
+            },
+            {
+              "minX": 1,
+              "maxY": -3
+            }
+          ]
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            "left",
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down",
+          "normalCut": true
+        },
+        "left": {
+          "anchor": {
+            "sharp": true,
+            "offset": {
+              "minX": 0,
+              "minY": 0
+            },
+            "flanks": {
+              "minX": 0,
+              "minY": 0
+            }
+          },
+          "topTraversal": "forward",
+          "top": [
+            {
+              "direction": "down",
+              "minX": 0
+            }
+          ],
+          "bottomProbe": "normal",
+          "anchorSide": "bottom"
+        }
+      }
+    },
+    {
+      "id": "hah-oblique-folded-yeh-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 0.5,
+              "maxY": -0.5,
+              "accumulate": true
+            }
+          ]
+        },
+        "right": {
+          "anchor": {
+            "xExtremum": true,
+            "offset": {
+              "minX": 1.5,
+              "maxX": 12,
+              "minY": -6,
+              "maxY": -2
+            },
+            "flanks": {
+              "minX": 0
+            },
+            "sharp": true
+          },
+          "topAtAnchor": true,
+          "bottomProbe": "corner",
+          "oppositeCorner": {
+            "sharp": false,
+            "yExtremum": true,
+            "minX": -4,
+            "maxX": 0,
+            "minY": 0,
+            "maxY": 3,
+            "maxDistance": 4,
+            "flanks": {
+              "maxY": 0
+            }
+          }
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below"
+        },
+        "retain": [
+          {
+            "yExtremum": true,
+            "offset": {
+              "minX": 0,
+              "maxX": 3.5,
+              "minY": -6,
+              "maxY": -1
+            },
+            "flanks": {
+              "minY": 0
+            }
+          }
+        ],
+        "orientToBody": true
+      },
+      "sharedFoldWithFinal": "يئى",
+      "reclaimEntry": true,
+      "tightJoin": true
+    },
+    {
+      "id": "hah-folded-yeh-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 0.5,
+              "maxY": -0.5,
+              "accumulate": true
+            }
+          ]
+        },
+        "right": {
+          "anchor": {
+            "xExtremum": true,
+            "offset": {
+              "minX": 1.5,
+              "maxX": 12,
+              "minY": -6,
+              "maxY": -0.25
+            },
+            "flanks": {
+              "minX": 0
+            }
+          },
+          "topAtAnchor": true,
+          "bottomProbe": "normal",
+          "probeBothSides": true
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below"
+        },
+        "retain": [
+          {
+            "yExtremum": true,
+            "offset": {
+              "minX": 0,
+              "maxX": 3.5,
+              "minY": -6,
+              "maxY": -1
+            },
+            "flanks": {
+              "minY": 0
+            }
+          }
+        ],
+        "orientToBody": true
+      },
+      "sharedFoldWithFinal": "يئى",
+      "reclaimEntry": true,
+      "tightJoin": true
+    },
+    {
+      "id": "hah-wedge-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 2,
+              "maxY": -1
+            }
+          ]
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            "down",
+            "left",
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down",
+          "normalCut": true,
+          "strokeOffsetX": -0.5
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below"
+        }
+      }
+    },
+    {
+      "id": "heh-loop-medi",
+      "current": "ه",
+      "loopBoundaries": {
+        "counterPair": "horizontal",
+        "sideOffset": 0.15,
+        "baselineOffset": 0.15,
+        "normalCut": true,
+        "entryBelowCounter": true
+      }
+    },
+    {
+      "id": "hah-stacked-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "upperAttachment": {
+        "letters": "بتثنيىئ",
+        "headFlank": {
+          "minX": 3,
+          "minY": 0,
+          "maxY": 1.5
+        },
+        "risingFlank": {
+          "accumulate": true,
+          "minX": 1,
+          "maxY": -1.5
+        }
+      },
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 2,
+              "maxY": -1
+            }
+          ]
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            {
+              "direction": "left",
+              "minY": 0,
+              "end": {
+                "sharp": true
+              }
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "left",
+          "anchorSide": "bottom"
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below"
+        }
+      },
+      "sharedEntry": true
+    },
+    {
+      "id": "hah-rising-entry-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "sharedEntry": true,
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 2,
+              "maxY": -1
+            }
+          ]
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up"
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "normal"
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below"
+        }
+      }
+    },
+    {
+      "id": "hah-flat-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 0.5,
+              "maxY": -0.5,
+              "accumulate": true
+            }
+          ]
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            "down",
+            "left",
+            {
+              "direction": "down",
+              "end": {
+                "xExtremum": true
+              }
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "normal"
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below"
+        }
+      },
+      "tightJoin": true
+    },
+    {
+      "id": "hah-shoulder-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "sharedEntry": true,
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 2,
+              "maxY": -1,
+              "accumulate": true
+            }
+          ]
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            {
+              "direction": "right",
+              "end": {
+                "xExtremum": true
+              }
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "normal"
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below"
+        }
+      }
+    },
+    {
+      "id": "hah-compact-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 0.5,
+              "maxY": -0.5,
+              "accumulate": true
+            }
+          ]
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            "down",
+            "left",
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down",
+          "normalCut": true,
+          "strokeOffsetX": -0.5
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below"
+        }
+      }
+    },
+    {
+      "id": "hah-open-mouth-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "tightJoin": true,
+      "contourBody": {
+        "anchor": {
+          "sharp": true,
+          "xExtremum": true,
+          "flanks": [
+            {
+              "maxX": -2,
+              "maxY": -0.5
+            },
+            {
+              "maxX": -2,
+              "minY": 0.5
+            }
+          ]
+        },
+        "right": {
+          "anchor": {
+            "sharp": true,
+            "offset": {
+              "minX": -3,
+              "maxX": 0,
+              "minY": -3.5,
+              "maxY": -1
+            },
+            "flanks": {
+              "maxX": 0
+            }
+          },
+          "top": [
+            "left"
+          ],
+          "bottomProbe": "normal"
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "left",
+              "minY": 0.5
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down"
+        }
+      }
+    },
+    {
+      "id": "hah-enclosed-lips-medi",
+      "current": "جحخ",
+      "onIncomplete": true,
+      "tightJoin": true,
+      "reclaimEntry": true,
+      "bodyCounters": 1,
+      "enclosedHead": {
+        "minAspect": 1.6,
+        "radius": 1.7
+      }
+    },
+    {
+      "id": "hah-shallow-mouth-medi",
+      "current": "جحخ",
+      "bodyCounters": 0,
+      "tightJoin": true,
+      "contourBody": {
+        "anchor": {
+          "sharp": true,
+          "xExtremum": true,
+          "flanks": [
+            {
+              "maxX": -1,
+              "minY": 0.25,
+              "accumulate": true
+            },
+            {
+              "maxX": -1,
+              "maxY": -0.25,
+              "accumulate": true
+            }
+          ]
+        },
+        "right": {
+          "anchor": {
+            "sharp": true,
+            "offset": {
+              "minX": -5,
+              "maxX": 1.2,
+              "minY": -4,
+              "maxY": -0.35
+            },
+            "flanks": {
+              "maxX": 0
+            }
+          },
+          "top": [
+            "left"
+          ],
+          "bottomProbe": "normal"
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "left",
+              "minY": 0.2,
+              "accumulate": true
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down"
+        }
+      },
+      "onIncomplete": true,
+      "reclaimEntry": true
+    },
+    {
+      "id": "hah-returning-lips-medi",
+      "onHeadConflict": true,
+      "current": "جحخ",
+      "mouth": {
+        "minLipRun": 1.65,
+        "maxLipRun": 22,
+        "maxHeight": 5.5,
+        "projectExit": true,
+        "exitMargin": 0.25,
+        "maxThroat": 0.85,
+        "separateSharedEntry": true
+      },
+      "bodyCounters": 0,
+      "tightJoin": true,
+      "onIncomplete": true,
+      "reclaimEntry": true
+    },
+    {
+      "id": "kaf-flat-medi",
+      "current": "ك",
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 1,
+              "maxY": -1,
+              "accumulate": true
+            }
+          ],
+          "convex": true
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            "down",
+            "left",
+            "right",
+            "up",
+            "down",
+            {
+              "direction": "left",
+              "minY": 0,
+              "accumulate": true,
+              "end": {
+                "xMinimum": true
+              }
+            }
+          ],
+          "bottomProbe": "corner",
+          "topUseStepEnd": true,
+          "oppositeCorner": {
+            "maxX": 0,
+            "flanks": {
+              "minY": -0.1
+            }
+          },
+          "walkNormalOffset": 0.5
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below",
+          "normalCut": true,
+          "strokeOffsetX": -0.5
+        }
+      },
+      "bodyCounters": 0
+    },
+    {
+      "id": "heh-stacked-band-medi",
+      "current": "ه",
+      "loopBoundaries": {
+        "counterPair": "vertical",
+        "sideOffset": 0.06,
+        "normalCut": false
+      },
+      "tightJoin": true
+    },
+    {
+      "id": "kaf-zigzag-medi",
+      "current": "ك",
+      "bodyCounters": 0,
+      "tightJoin": true,
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 1,
+              "maxY": -3,
+              "accumulate": true,
+              "insideBody": true
+            }
+          ],
+          "convex": true
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            "down",
+            "left",
+            {
+              "direction": "right",
+              "minY": 1,
+              "accumulate": true
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down",
+          "normalCut": true
+        },
+        "left": {
+          "top": [
+            "right",
+            {
+              "direction": "left",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "normal"
+        }
+      }
+    },
+    {
+      "id": "seen-compact-medi",
+      "current": "سش",
+      "seenTeeth": {
+        "minToothRise": 0.55,
+        "minPitch": 1,
+        "maxPitch": 5,
+        "retryMaxLastPitch": 6,
+        "maxTipHeightSpreadRatio": 1,
+        "maxExitBendDistance": 2,
+        "exitBendFirst": true,
+        "exitOffset": 0.45,
+        "convexTips": true,
+        "rightOffset": 0.5,
+        "entryCornerOptional": true
+      },
+      "tightJoin": true,
+      "sharedEntry": true
+    },
+    {
+      "id": "kaf-bent-neck-medi",
+      "current": "ك",
+      "bodyCounters": 0,
+      "tightJoin": true,
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 1,
+              "maxY": -3,
+              "accumulate": true,
+              "insideBody": true
+            }
+          ],
+          "convex": true
+        },
+        "right": {
+          "anchor": {
+            "sharp": true,
+            "offset": {
+              "minX": 0,
+              "minY": 0
+            },
+            "flanks": {
+              "minY": 0
+            }
+          },
+          "top": [
+            "right"
+          ],
+          "bottomProbe": "normal",
+          "anchorSide": "bottom"
+        },
+        "left": {
+          "top": [
+            "right",
+            {
+              "direction": "left",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "normal"
+        },
+        "orientToBody": true
+      }
+    },
+    {
+      "id": "kaf-upright-bridge-medi",
+      "current": "ك",
+      "counterLigature": {
+        "letters": "اأإآٱل",
+        "forkRise": 0.25,
+        "maxBridgeRatio": 1,
+        "minAscenderRise": 0.55,
+        "lowerBridge": "stem-side",
+        "shoulder": {
+          "radius": 2.25
+        },
+        "maxBridgeBend": 0.16
+      },
+      "tightJoin": true,
+      "onIncomplete": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "kaf-fork-ascender-medi",
+      "current": "ك",
+      "tightJoin": true,
+      "counterLigature": {
+        "letters": "اأإآٱل",
+        "forkRise": 0.8,
+        "maxBridgeRatio": 1,
+        "minAscenderRise": 0.9,
+        "lowerBridge": "bottom-extrema",
+        "shoulder": {
+          "radius": 2.25
+        },
+        "maxBridgeBend": 0.16
+      },
+      "onIncomplete": true
+    },
+    {
+      "id": "kaf-descending-blade-medi",
+      "current": "ك",
+      "bodyCounters": 0,
+      "tightJoin": true,
+      "blade": {
+        "minReach": 3.5,
+        "minRise": 3,
+        "margin": 0.5
+      },
+      "onIncomplete": true,
+      "reclaimEntry": true
+    },
+    {
+      "id": "lam-detached-arm-medi",
+      "current": "ل",
+      "onIncomplete": true,
+      "detachedExit": "اأإآٱ",
+      "prefixTail": {
+        "method": "tail-entry",
+        "start": "left",
+        "ownsLeftTip": true,
+        "tailEntry": {
+          "minRise": 3,
+          "minRun": 0.75,
+          "maxRun": 75,
+          "walkWidths": 0.5
+        }
+      }
+    },
+    {
+      "id": "kaf-parallel-return-medi",
+      "current": "ك",
+      "contourBody": {
+        "anchor": {
+          "xExtremum": true,
+          "flanks": [
+            {
+              "minX": 0,
+              "minY": 0
+            },
+            {
+              "minX": 1,
+              "maxY": -1,
+              "accumulate": true
+            }
+          ],
+          "convex": true
+        },
+        "right": {
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            "down",
+            "left",
+            "right",
+            "up",
+            "down",
+            {
+              "direction": "left",
+              "minY": 0,
+              "accumulate": true,
+              "end": {
+                "xMinimum": true
+              }
+            }
+          ],
+          "bottomProbe": "corner",
+          "topUseStepEnd": true,
+          "oppositeCorner": {
+            "maxX": 0,
+            "flanks": {
+              "minY": -0.1
+            }
+          },
+          "walkNormalOffset": 0.5
+        },
+        "left": {
+          "top": [
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ],
+          "bottomProbe": "below",
+          "normalCut": true,
+          "strokeOffsetX": -0.5
+        }
+      },
+      "bodyCounters": 0,
+      "onIncomplete": true,
+      "reclaimEntry": true
+    },
+    {
+      "id": "lam-turning-flanks-medi",
+      "current": "ل",
+      "bodyCounters": 0,
+      "tightJoin": true,
+      "onIncomplete": true,
+      "shaft": {
+        "minRise": 3,
+        "maxWidthToHeight": 0.8
+      }
+    },
+    {
+      "id": "kaf-parallel-fold-medi",
+      "current": "ك",
+      "bodyCounters": 0,
+      "onIncomplete": true,
+      "parallelReturn": {
+        "minRun": 4,
+        "margin": 0.5
+      },
+      "reclaimEntry": true,
+      "tightJoin": true
+    },
+    {
+      "id": "hah-overhanging-entry-medi",
+      "current": "جحخ",
+      "onIncomplete": true,
+      "overhangingEntry": {
+        "maxGap": 0.8,
+        "maxEntryToHead": 1.1
+      }
+    },
+    {
+      "id": "lam-returning-bowl-medi",
+      "current": "ل",
+      "onIncomplete": true,
+      "terminalArm": "alef-tapered-arm-fina",
+      "entryTurnAngle": 45
+    },
+    {
+      "id": "meem-corner-rim-medi",
+      "current": "م",
+      "tryNext": true,
+      "onIncomplete": true,
+      "loopBoundaries": {
+        "sideOffset": 0.35,
+        "normalCut": true,
+        "baselineOffset": 0.15,
+        "entryCorner": {
+          "placement": "top-right",
+          "maxDistance": 2
+        },
+        "exitCorner": {
+          "maxDistance": 2
+        }
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "sad-wide-tooth-medi",
+      "current": "صض",
+      "tryNext": true,
+      "onIncomplete": true,
+      "bodyCounters": 1,
+      "loopBoundaries": {
+        "minAspect": 1.15,
+        "entryWalk": {
+          "topTraversal": "forward",
+          "top": [
+            "right",
+            {
+              "direction": "left",
+              "minY": 0,
+              "end": {
+                "sharp": true,
+                "xExtremum": true
+              }
+            }
+          ],
+          "topUseStepEnd": true,
+          "bottomProbe": "down"
+        },
+        "exitTooth": {
+          "maxGap": 2.3,
+          "leftOffset": 0.45
+        }
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "sad-corner-tooth-medi",
+      "current": "صض",
+      "tryNext": true,
+      "onIncomplete": true,
+      "bodyCounters": 1,
+      "loopBoundaries": {
+        "minAspect": 1.15,
+        "sideOffset": 0.35,
+        "normalCut": true,
+        "entryCorner": {
+          "maxDistance": 2
+        },
+        "exitTooth": {
+          "maxGap": 2.3,
+          "leftOffset": 0.45
+        }
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "tah-loop-corner-medi",
+      "current": "طظ",
+      "tryNext": true,
+      "onIncomplete": true,
+      "bodyCounters": 1,
+      "loopBoundaries": {
+        "minAspect": 1.15,
+        "sideOffset": 0.35,
+        "baselineOffset": 0.2,
+        "normalCut": true,
+        "entryCorner": {
+          "maxDistance": 2
+        },
+        "exitCorner": {
+          "maxDistance": 2
+        }
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "tah-low-rim-medi",
+      "current": "طظ",
+      "tryNext": true,
+      "onIncomplete": true,
+      "bodyCounters": 1,
+      "loopBoundaries": {
+        "minAspect": 1.15,
+        "sideOffset": 0.35,
+        "baselineOffset": 0.2,
+        "normalCut": true
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-upper-neck-medi",
+      "current": "م",
+      "tryNext": true,
+      "onIncomplete": true,
+      "bodyCounters": 1,
+      "sharedEntry": true,
+      "tightJoin": true,
+      "loopBoundaries": {
+        "entryCorner": {
+          "placement": "upper",
+          "maxDistance": 2.4,
+          "normalCut": true
+        },
+        "exitCorner": {
+          "maxDistance": 2.2
+        },
+        "sideOffset": 0.4,
+        "baselineOffset": 0.2,
+        "normalCut": true
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "tah-upper-neck-medi",
+      "current": "طظ",
+      "tryNext": true,
+      "onIncomplete": true,
+      "bodyCounters": 1,
+      "sharedEntry": true,
+      "tightJoin": true,
+      "loopBoundaries": {
+        "entryCorner": {
+          "placement": "upper",
+          "maxDistance": 2.4,
+          "normalCut": true
+        },
+        "exitCorner": {
+          "maxDistance": 2.2
+        },
+        "sideOffset": 0.4,
+        "baselineOffset": 0.2,
+        "normalCut": true,
+        "minAspect": 1.1
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "feh-upper-neck-medi",
+      "current": "فق",
+      "tryNext": true,
+      "onIncomplete": true,
+      "bodyCounters": 1,
+      "sharedEntry": true,
+      "tightJoin": true,
+      "loopBoundaries": {
+        "entryCorner": {
+          "placement": "upper",
+          "maxDistance": 2.4,
+          "normalCut": true
+        },
+        "exitCorner": {
+          "maxDistance": 2.2
+        },
+        "sideOffset": 0.4,
+        "baselineOffset": 0.2,
+        "normalCut": true
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "ain-paired-neck-medi",
+      "current": "عغ",
+      "tryNext": true,
+      "onIncomplete": true,
+      "tightJoin": true,
+      "loopBoundaries": {
+        "sideOffset": 0.4,
+        "entryCorner": {
+          "maxDistance": 1.5
+        },
+        "exitCorner": {
+          "maxDistance": 1.5
+        },
+        "normalCut": true
+      },
+      "bodyCounters": 1,
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-stacked-rim-medi",
+      "current": "م",
+      "onIncomplete": true,
+      "tightJoin": true,
+      "tryNext": true,
+      "bodyCounters": 1,
+      "loopBoundaries": {
+        "rimAnchors": {
+          "entry": [
+            0.86,
+            -0.35
+          ],
+          "exit": [
+            -0.35,
+            1.1
+          ],
+          "radius": 1.4,
+          "rimMargin": 1.7
+        }
+      },
+      "sharedEntry": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "tah-rising-rim-medi",
+      "current": "طظ",
+      "loopBoundaries": {
+        "rimAnchors": {
+          "entry": [
+            1.1,
+            0.7
+          ],
+          "exit": [
+            -0.25,
+            1
+          ],
+          "rimMargin": 1.9,
+          "radius": 1.6,
+          "shaftRise": 1.65
+        }
+      },
+      "onIncomplete": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "seen-lifted-exit-medi",
+      "current": "سش",
+      "onUnresolved": true,
+      "penLift": {
+        "side": "exit",
+        "forms": [
+          "seen-bowl-entry-fina",
+          "seen-fina"
+        ]
+      }
+    },
+    {
+      "id": "heh-lifted-entry-medi",
+      "current": "ه",
+      "onUnresolved": true,
+      "penLift": {
+        "side": "entry",
+        "forms": [
+          "heh-init",
+          "heh-paired-rim-init"
+        ]
+      }
+    },
+    {
+      "id": "heh-crowned-pair-medi",
+      "current": "ه",
+      "onUnresolved": true,
+      "bodyOutline": {
+        "counters": 2,
+        "aspect": [
+          1.4,
+          2.25
+        ],
+        "rim": {
+          "left": [
+            0.4,
+            1.15
+          ],
+          "top": [
+            0.55,
+            1.55
+          ],
+          "right": [
+            0.1,
+            0.55
+          ],
+          "bottom": [
+            0.28,
+            0.95
+          ]
+        },
+        "entry": {
+          "x": [
+            0.25,
+            0.7
+          ],
+          "y": [
+            -1.15,
+            -0.3
+          ],
+          "width": [
+            0.45,
+            1.2
+          ]
+        },
+        "exit": {
+          "x": [
+            -0.65,
+            0.05
+          ],
+          "y": [
+            0.95,
+            1.65
+          ],
+          "width": [
+            0.3,
+            0.8
+          ]
+        }
+      }
+    },
+    {
+      "id": "meem-sloping-rim-medi",
+      "current": "م",
+      "onUnresolved": true,
+      "bodyOutline": {
+        "counters": 1,
+        "aspect": [
+          1.2,
+          2.2
+        ],
+        "rim": {
+          "left": [
+            0.25,
+            0.9
+          ],
+          "top": [
+            0.28,
+            0.95
+          ],
+          "right": [
+            0.2,
+            0.85
+          ],
+          "bottom": [
+            0.45,
+            1.2
+          ]
+        },
+        "entry": {
+          "x": [
+            0.85,
+            1.5
+          ],
+          "y": [
+            -0.4,
+            0.35
+          ],
+          "width": [
+            0.42,
+            1.1
+          ]
+        },
+        "exit": {
+          "x": [
+            -0.6,
+            0.1
+          ],
+          "y": [
+            0.5,
+            1.2
+          ],
+          "width": [
+            0.2,
+            0.85
+          ]
+        }
+      }
+    },
+    {
+      "id": "feh-descending-rim-medi",
+      "current": "فق",
+      "onUnresolved": true,
+      "rimOffset": 0.65,
+      "requiresExitTemplate": "yeh-first-turn-fina",
+      "bodyOutline": {
+        "counters": 1,
+        "aspect": [
+          0.95,
+          1.85
+        ],
+        "rim": {
+          "left": [
+            0.25,
+            0.85
+          ],
+          "top": [
+            0.85,
+            1.55
+          ],
+          "right": [
+            0.45,
+            3.3
+          ],
+          "bottom": [
+            2.7,
+            4.15
+          ]
+        },
+        "entry": {
+          "x": [
+            1.3,
+            3.3
+          ],
+          "y": [
+            0.25,
+            1.7
+          ],
+          "width": [
+            0.65,
+            1.65
+          ]
+        },
+        "exit": {
+          "x": [
+            0.1,
+            0.9
+          ],
+          "y": [
+            3.4,
+            4.7
+          ],
+          "width": [
+            1.75,
+            2.7
+          ]
+        }
+      }
+    },
+    {
+      "id": "tah-upright-rim-medi",
+      "current": "طظ",
+      "onUnresolved": true,
+      "bodyOutline": {
+        "counters": 1,
+        "aspect": [
+          1.4,
+          4.5
+        ],
+        "rim": {
+          "left": [
+            0.25,
+            1.85
+          ],
+          "top": [
+            2,
+            5
+          ],
+          "right": [
+            0.3,
+            1.6
+          ],
+          "bottom": [
+            0.2,
+            0.9
+          ]
+        },
+        "entry": {
+          "x": [
+            0.95,
+            1.8
+          ],
+          "y": [
+            0.3,
+            1.25
+          ],
+          "width": [
+            0.22,
+            1.0
+          ]
+        },
+        "exit": {
+          "x": [
+            -0.8,
+            0.15
+          ],
+          "y": [
+            0.3,
+            1.65
+          ],
+          "width": [
+            0.22,
+            1.0
+          ]
+        }
+      }
+    }
+  ],
+  "final": [
+    {
+      "id": "reh-shouldered-fina",
+      "current": "رز",
+      "ownsLeftTip": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "minX": 2,
+          "maxY": -1.5,
+          "accumulate": true,
+          "end": {
+            "sharp": true,
+            "yExtremum": true
+          }
+        },
+        {
+          "direction": "right",
+          "minX": 2.4,
+          "minY": -0.25,
+          "maxY": 0.85,
+          "immediate": true
+        }
+      ],
+      "topUseStepEnd": false,
+      "bottomProbe": "up",
+      "tryNext": true,
+      "onUnresolved": true,
+      "retainBodyFeatures": true
+    },
+    {
+      "id": "reh-rising-tail-fina",
+      "current": "رز",
+      "method": "rising-tail",
+      "tail": {
+        "minRun": 4,
+        "minRise": 2,
+        "maxChord": 1.5
+      },
+      "sharedBoundary": true,
+      "tightJoin": true,
+      "onUnresolved": true,
+      "tryNext": true
+    },
+    {
+      "id": "reh-fina",
+      "current": "رز",
+      "ownsLeftTip": true,
+      "retainEntryCrest": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "minX": 0,
+          "maxY": -1,
+          "accumulate": true
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "up",
+      "tryNext": true
+    },
+    {
+      "id": "feh-fina",
+      "current": "ف",
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "placement": "right-corner-pair",
+          "maxDistance": 1.5,
+          "strokeOffsetX": 0.5,
+          "normalCut": true,
+          "required": true
+        }
+      },
+      "tryNext": true
+    },
+    {
+      "id": "qaf-fina",
+      "method": "qaf",
+      "probeX": 0.2,
+      "probeRadius": 2,
+      "minCrossings": 2,
+      "current": "ق",
+      "ownsLeftTip": true,
+      "start": "left",
+      "bodyCounters": 1
+    },
+    {
+      "id": "yeh-first-turn-fina",
+      "current": "يئى",
+      "method": "folded-bowl",
+      "start": "left",
+      "ownsLeftTip": true,
+      "retainBodyFeatures": true,
+      "fold": {
+        "minBowlRun": 2.5,
+        "minFoldRun": 0.65,
+        "minReturn": 0.45,
+        "maxChord": 3
+      },
+      "sharedBoundary": true,
+      "tightJoin": true,
+      "tryNext": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "yeh-fina",
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "bottom": [
+        "up",
+        "left",
+        "right"
+      ],
+      "top": [
+        "down",
+        "up",
+        "left",
+        "right"
+      ],
+      "current": "يئى",
+      "tryNext": true,
+      "tightJoin": true
+    },
+    {
+      "id": "noon-raised-entry-fina",
+      "current": "ن",
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "top": [
+        {
+          "direction": "up",
+          "maxY": -1
+        },
+        {
+          "direction": "down",
+          "minY": 1,
+          "minX": 1
+        },
+        {
+          "direction": "up",
+          "maxY": -1.3,
+          "minX": 1
+        },
+        {
+          "direction": "up",
+          "maxY": -1,
+          "maxX": 0
+        },
+        {
+          "direction": "up",
+          "maxY": -0.5,
+          "minX": 0,
+          "end": {
+            "yExtremum": true
+          }
+        },
+        {
+          "direction": "down",
+          "minX": 0.2,
+          "minY": 0.6,
+          "maxX": 1.5,
+          "maxY": 3,
+          "end": {
+            "sharp": true
+          }
+        },
+        {
+          "direction": "right",
+          "minX": 2.4,
+          "minY": 0,
+          "maxY": 0.85,
+          "start": {
+            "sharp": true
+          },
+          "immediate": true
+        }
+      ],
+      "topUseStepEnd": false,
+      "bottomProbe": "corner",
+      "oppositeCorner": {
+        "minX": -0.25,
+        "maxX": 0.9,
+        "minY": 0.7,
+        "maxY": 2.5,
+        "maxDistance": 2.7
+      },
+      "ownsLeftTip": true,
+      "bodyCounters": 0,
+      "tryNext": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "retainBodyFeatures": true,
+      "bodyFeatures": {
+        "maxWidthToHeight": 1.6,
+        "maxUpperPeaks": 2
+      }
+    },
+    {
+      "id": "noon-flared-bowl-fina",
+      "current": "ن",
+      "retainEntryCrest": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "minX": 1,
+          "end": {
+            "sharp": true,
+            "yExtremum": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "normal",
+      "ownsLeftTip": true,
+      "bodyCounters": 0,
+      "tryNext": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "retainBodyFeatures": true,
+      "topTraversal": "forward",
+      "bodyFeatures": {
+        "maxWidthToHeight": 1.6,
+        "maxUpperPeaks": 2
+      }
+    },
+    {
+      "id": "noon-corner-fina",
+      "current": "ن",
+      "retainEntryCrest": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "end": {
+            "sharp": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "up",
+      "normalCut": true,
+      "strokeOffsetX": 0.5,
+      "tryNext": true,
+      "retryOnPartial": true,
+      "ownsLeftTip": true
+    },
+    {
+      "id": "noon-fina",
+      "method": "noon",
+      "lookahead": 14,
+      "probeX": 1.2,
+      "minCrossings": 2,
+      "current": "ن",
+      "tryNext": true
+    },
+    {
+      "id": "waw-corner-bridge-fina",
+      "current": "وؤ",
+      "method": "final-counter",
+      "tryNext": true,
+      "bodyCounters": 1,
+      "bridge": {
+        "maxWidth": 3
+      },
+      "terminalAttachment": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "onFinalRetry": true
+    },
+    {
+      "id": "waw-fina",
+      "method": "waw",
+      "probeHalfWidth": 0.2,
+      "crossings": 2,
+      "neighbors": [
+        {
+          "to": "bottomLeft",
+          "maxX": 0,
+          "minY": 0,
+          "from": "bottom"
+        },
+        {
+          "to": "bottomRight",
+          "minX": 0,
+          "maxY": 0,
+          "from": "bottom"
+        }
+      ],
+      "current": "وؤ",
+      "tryNext": true,
+      "ownsLeftTip": true,
+      "start": "left",
+      "bodyCounters": 1
+    },
+    {
+      "id": "dal-fina",
+      "tailEntry": {
+        "walkWidths": 1,
+        "minRise": 2
+      },
+      "pairedOnly": true,
+      "tightJoin": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "minX": 1
+        },
+        {
+          "direction": "down",
+          "minX": 1
+        }
+      ],
+      "bottomProbe": "walk-stroke-normal",
+      "current": "دذ"
+    },
+    {
+      "id": "seen-bowl-entry-fina",
+      "method": "seen-teeth",
+      "side": "right",
+      "minToothRise": 0.18,
+      "minPitch": 0.32,
+      "maxPitch": 8,
+      "maxTipHeightSpreadRatio": 2,
+      "tryNext": true,
+      "current": "سش",
+      "rightOffset": 0.35,
+      "entryCornerOptional": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "terminalBowl": true,
+      "terminalAttachment": true,
+      "onFinalRetry": true
+    },
+    {
+      "id": "seen-rounded-entry-fina",
+      "method": "seen-teeth",
+      "side": "right",
+      "minToothRise": 0.18,
+      "minPitch": 0.32,
+      "maxPitch": 8,
+      "maxTipHeightSpreadRatio": 2,
+      "tryNext": true,
+      "current": "سش",
+      "rightOffset": 0.35,
+      "entryCornerOptional": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "terminalBowl": true,
+      "terminalAttachment": true,
+      "roundedEntry": true,
+      "onFinalRetry": true
+    },
+    {
+      "id": "seen-fina",
+      "method": "seen-teeth",
+      "side": "right",
+      "minToothRise": 0.55,
+      "minPitch": 1,
+      "maxPitch": 5,
+      "maxTipHeightSpreadRatio": 1,
+      "tryNext": true,
+      "current": "سش"
+    },
+    {
+      "id": "heh-counter-fina",
+      "method": "final-counter",
+      "counter": {
+        "offset": 0.45,
+        "baselineOffset": 0.2,
+        "normalCut": true
+      },
+      "tryNext": true,
+      "current": "هة"
+    },
+    {
+      "id": "meem-counter-fina",
+      "method": "final-counter",
+      "counter": {
+        "offset": 0.5,
+        "baselineOffset": 0.3,
+        "entryCorner": {
+          "maxDistance": 1.5,
+          "normalCut": true
+        }
+      },
+      "tryNext": true,
+      "current": "م"
+    },
+    {
+      "id": "alef-open-fina",
+      "current": "اآأإٱ",
+      "method": "lam-alef",
+      "lamPosition": "medial",
+      "sameDirectionCheck": false,
+      "join": {
+        "minX": 0.2,
+        "maxX": 0.5,
+        "minY": 0.25,
+        "maxY": 0.8
+      },
+      "minCrossings": 2,
+      "neighbors": [
+        {
+          "from": "bottom",
+          "to": "bottomLeft",
+          "maxX": 0,
+          "minY": 0
+        },
+        {
+          "from": "bottom",
+          "to": "bottomRight",
+          "maxX": 0,
+          "maxY": 0
+        }
+      ],
+      "tryNext": true
+    },
+    {
+      "id": "alef-folded-fina",
+      "current": "اآأإٱ",
+      "method": "lam-alef",
+      "join": {
+        "minX": 0.2,
+        "maxX": 0.5,
+        "minY": 0.3,
+        "maxY": 0.8
+      },
+      "minCrossings": 4,
+      "neighbors": [
+        {
+          "from": "bottom",
+          "to": "bottomLeft",
+          "maxX": 0,
+          "maxY": 0
+        },
+        {
+          "from": "bottom",
+          "to": "bottomRight",
+          "maxX": 0,
+          "minY": 0
+        }
+      ],
+      "tryNext": true
+    },
+    {
+      "id": "alef-fina",
+      "method": "alef-stem",
+      "shaftTurn": true,
+      "turnAngle": 45,
+      "stemWidthLimit": 1.7,
+      "current": "اآأإٱ",
+      "tryNext": true
+    },
+    {
+      "id": "sad-tah-fina",
+      "method": "sad-tah",
+      "join": {
+        "lookback": 14,
+        "minX": 3,
+        "maxX": 6.5,
+        "minY": 1,
+        "maxY": 2
+      },
+      "crossings": 4,
+      "probeX": 1.5,
+      "neighbors": [
+        {
+          "to": "topLeft",
+          "minX": 0,
+          "maxY": 0,
+          "from": "top"
+        },
+        {
+          "to": "topRight",
+          "minX": 0,
+          "maxY": 0,
+          "from": "top"
+        }
+      ],
+      "current": "صضطظ"
+    },
+    {
+      "id": "beh-return-fina",
+      "current": "بتث",
+      "method": "tail-entry",
+      "start": "left",
+      "ownsLeftTip": true,
+      "tailEntry": {
+        "minRise": 0.35,
+        "minRun": 0.4,
+        "maxRun": 75,
+        "walkWidths": 0.5
+      },
+      "tryNext": true,
+      "tightJoin": true,
+      "returningStroke": true
+    },
+    {
+      "id": "beh-bowl-fina",
+      "current": "بتث",
+      "method": "noon",
+      "lookahead": 14,
+      "probeX": 1.2,
+      "minCrossings": 2
+    },
+    {
+      "id": "lam-stem-fork-fina",
+      "current": "ل",
+      "start": "left",
+      "method": "bowl-fork",
+      "walkWidths": 0.5,
+      "minRise": 3,
+      "bodyCounters": 0,
+      "ownsLeftTip": true,
+      "tryNext": true,
+      "returningStroke": true,
+      "tightJoin": true,
+      "stemFoot": true,
+      "penWidth": 0.5,
+      "terminalAttachment": true,
+      "onFinalRetry": true
+    },
+    {
+      "id": "lam-bowl-fina",
+      "current": "ل",
+      "method": "stem-entry",
+      "turnAngle": 45,
+      "minRise": 3,
+      "maxNeckDistance": 2
+    },
+    {
+      "id": "kaf-bowl-fina",
+      "current": "ك",
+      "method": "stem-entry",
+      "turnAngle": 45,
+      "minRise": 3,
+      "maxNeckDistance": 2,
+      "retryWithVariants": true
+    },
+    {
+      "id": "kaf-return-fina",
+      "current": "ك",
+      "method": "tail-entry",
+      "start": "left",
+      "tailEntry": {
+        "walkWidths": 0.5,
+        "minRise": 3,
+        "maxRun": 75,
+        "minRun": 0.75
+      },
+      "bodyCounters": 0,
+      "ownsLeftTip": true,
+      "tryNext": true,
+      "onIncomplete": true
+    },
+    {
+      "id": "waw-neck-fina",
+      "current": "وؤ",
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "placement": "top-right",
+          "maxDistance": 2,
+          "normalCut": true,
+          "required": true
+        }
+      },
+      "tryNext": true,
+      "ownsLeftTip": true,
+      "start": "left",
+      "bodyCounters": 1
+    },
+    {
+      "id": "waw-shoulder-fina",
+      "current": "وؤ",
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "maxDistance": 2
+        }
+      },
+      "shoulder": {
+        "radius": 2.5,
+        "maxWidth": 2.4,
+        "maxCapRise": 2
+      },
+      "tryNext": true,
+      "onIncomplete": true,
+      "ownsLeftTip": true,
+      "start": "left",
+      "bodyCounters": 1
+    },
+    {
+      "id": "meem-upper-neck-fina",
+      "current": "م",
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "placement": "upper",
+          "maxDistance": 2,
+          "normalCut": true,
+          "required": true
+        }
+      },
+      "tryNext": true
+    },
+    {
+      "id": "meem-loop-tail-fina",
+      "recoveryVisibleFrom": "bottom",
+      "current": "م",
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "top": [
+        "up",
+        "down",
+        "up"
+      ],
+      "bottom": [
+        "up",
+        "down",
+        "left",
+        "right"
+      ],
+      "tryNext": true,
+      "ownsLeftTip": true
+    },
+    {
+      "id": "meem-shoulder-fina",
+      "current": "م",
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "maxDistance": 2
+        }
+      },
+      "shoulder": {
+        "radius": 2.5,
+        "maxWidth": 2.4,
+        "maxCapRise": 2
+      },
+      "tryNext": true,
+      "onIncomplete": true
+    },
+    {
+      "id": "noon-arm-fina",
+      "current": "نبتث",
+      "method": "walk",
+      "start": "left",
+      "topTraversal": "forward",
+      "top": [
+        "up",
+        "down",
+        "up",
+        {
+          "direction": "down",
+          "end": {
+            "yExtremum": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "normal",
+      "ownsLeftTip": true
+    },
+    {
+      "id": "reh-hook-fina",
+      "current": "رز",
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "minX": 0,
+          "maxY": -1,
+          "accumulate": true
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "normal",
+      "anchorSide": "bottom",
+      "tryNext": true
+    },
+    {
+      "id": "yeh-return-fina",
+      "current": "يئى",
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "top": [
+        "down",
+        "up",
+        "left",
+        "right"
+      ],
+      "bottomProbe": "normal",
+      "tryNext": true,
+      "tightJoin": true
+    },
+    {
+      "id": "hah-fina",
+      "current": "جحخ",
+      "method": "walk",
+      "start": "left",
+      "top": [
+        {
+          "direction": "up",
+          "minDistance": 2,
+          "end": {
+            "xMinimum": true
+          }
+        },
+        {
+          "direction": "right",
+          "accumulate": true,
+          "minX": 2,
+          "maxY": -3,
+          "end": {
+            "sharp": true,
+            "xExtremum": true
+          }
+        },
+        {
+          "direction": "down",
+          "maxX": 0,
+          "start": {
+            "sharp": true,
+            "xExtremum": true
+          }
+        }
+      ],
+      "bottomProbe": "walk-stroke-normal",
+      "penWidth": 0.5,
+      "bodyCounters": 0,
+      "bodyFeatures": {
+        "minHeight": 12,
+        "maxWidthToHeight": 1.3
+      },
+      "tryNext": true
+    },
+    {
+      "id": "hah-stacked-fina",
+      "current": "جحخ",
+      "method": "walk",
+      "start": "left",
+      "top": [
+        {
+          "direction": "right",
+          "accumulate": true,
+          "minX": 3,
+          "maxY": -3,
+          "end": {
+            "xExtremum": true
+          }
+        },
+        {
+          "direction": "left",
+          "accumulate": true,
+          "maxX": -2,
+          "minY": -1,
+          "maxY": 1,
+          "end": {
+            "sharp": true,
+            "xMinimum": true
+          }
+        },
+        {
+          "direction": "right",
+          "minX": 1,
+          "maxY": -2,
+          "start": {
+            "sharp": true,
+            "xMinimum": true
+          }
+        }
+      ],
+      "bottomProbe": "left",
+      "anchorSide": "bottom",
+      "sharedBoundary": true,
+      "bodyCounters": 0,
+      "bodyFeatures": {
+        "minHeight": 4,
+        "maxWidthToHeight": 1.3
+      }
+    },
+    {
+      "id": "ain-fina",
+      "current": "عغ",
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "top": [
+        "up",
+        "left",
+        "up",
+        "right",
+        "left",
+        "right"
+      ],
+      "bottomProbe": "down",
+      "tryNext": true,
+      "normalCut": true,
+      "strokeOffsetX": 0.5,
+      "bodyCounters": 0
+    },
+    {
+      "id": "alef-return-fina",
+      "current": "اآأإٱ",
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "top": [
+        "up",
+        "down",
+        "up"
+      ],
+      "bottomProbe": "normal",
+      "bodyCounters": 0,
+      "bodyFeatures": {
+        "minHeight": 3,
+        "maxWidthToHeight": 1.2
+      },
+      "tightJoin": true,
+      "tryNext": true,
+      "sharedBoundary": true,
+      "sharedBoundaryWith": "لك"
+    },
+    {
+      "id": "alef-detached-fina",
+      "current": "اأإآٱ",
+      "method": "detached-arm",
+      "onIncomplete": true,
+      "detachedArm": {
+        "minRise": 3,
+        "maxTipGap": 0.85
+      }
+    },
+    {
+      "id": "kaf-fork-fina",
+      "current": "ك",
+      "start": "left",
+      "method": "bowl-fork",
+      "walkWidths": 0.5,
+      "minRise": 3,
+      "bodyCounters": 0,
+      "ownsLeftTip": true,
+      "onIncomplete": true,
+      "tryNext": true
+    },
+    {
+      "id": "alef-tapered-arm-fina",
+      "current": "اأإآٱ",
+      "method": "folded-arm",
+      "minRise": 3,
+      "maxNeck": 1.6,
+      "sharedBoundary": true,
+      "onIncomplete": true
+    },
+    {
+      "id": "lam-return-fina",
+      "current": "ل",
+      "method": "tail-entry",
+      "start": "left",
+      "ownsLeftTip": true,
+      "onIncomplete": true,
+      "tailEntry": {
+        "minRise": 3,
+        "minRun": 0.75,
+        "maxRun": 75,
+        "walkWidths": 0.5
+      }
+    },
+    {
+      "id": "heh-shoulder-fina",
+      "current": "هة",
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "maxDistance": 2
+        }
+      },
+      "shoulder": {
+        "radius": 2.5,
+        "maxWidth": 2.4,
+        "maxCapRise": 2
+      },
+      "tryNext": true,
+      "onIncomplete": true
+    },
+    {
+      "id": "qaf-top-bridge-fina",
+      "current": "ق",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "placement": "top-right",
+          "maxDistance": 2.1,
+          "required": true
+        }
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "sad-diagonal-fina",
+      "current": "صض",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "maxDistance": 2.1,
+          "normalCut": true
+        },
+        "offset": 0.4,
+        "baselineOffset": 0.2
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "tah-diagonal-fina",
+      "current": "طظ",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "maxDistance": 2.1,
+          "normalCut": true
+        },
+        "offset": 0.4,
+        "baselineOffset": 0.2
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-diagonal-fina",
+      "current": "م",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "maxDistance": 2.1,
+          "normalCut": true
+        },
+        "offset": 0.4,
+        "baselineOffset": 0.2
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-upper-bridge-fina",
+      "current": "م",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "placement": "upper",
+          "maxDistance": 2.2,
+          "normalCut": true,
+          "required": true
+        }
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "reh-returning-bowl-fina",
+      "onHeadConflict": true,
+      "current": "رز",
+      "method": "tail-entry",
+      "start": "left",
+      "ownsLeftTip": true,
+      "tailEntry": {
+        "minRise": 0.35,
+        "minRun": 0.4,
+        "maxRun": 75,
+        "walkWidths": 0.5
+      },
+      "tryNext": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "onIncomplete": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "reh-swept-arm-fina",
+      "current": "رز",
+      "method": "walk",
+      "start": "left",
+      "topTraversal": "forward",
+      "top": [
+        "up",
+        "down",
+        "up",
+        {
+          "direction": "down",
+          "end": {
+            "yExtremum": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "normal",
+      "onIncomplete": true,
+      "tryNext": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "noon-returning-bowl-fina",
+      "current": "ن",
+      "method": "tail-entry",
+      "start": "left",
+      "ownsLeftTip": true,
+      "tailEntry": {
+        "minRise": 0.35,
+        "minRun": 0.4,
+        "maxRun": 75,
+        "walkWidths": 0.5
+      },
+      "tryNext": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "onIncomplete": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "yeh-folded-lip-fina",
+      "current": "يئى",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        "up",
+        "left",
+        {
+          "direction": "right",
+          "end": {
+            "sharp": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "normal",
+      "ownsLeftTip": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "bodyCounters": 0,
+      "onUnresolved": true
+    },
+    {
+      "id": "reh-rising-root-fina",
+      "current": "رز",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "minX": 1
+        },
+        "right"
+      ],
+      "bottomProbe": "up",
+      "ownsLeftTip": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "bodyCounters": 0,
+      "onUnresolved": true
+    },
+    {
+      "id": "noon-normal-corner-fina",
+      "current": "ن",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "minX": 1,
+          "end": {
+            "sharp": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "normal",
+      "ownsLeftTip": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "bodyCounters": 0,
+      "onUnresolved": true
+    },
+    {
+      "id": "noon-rising-corner-fina",
+      "current": "ن",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "minX": 1,
+          "end": {
+            "sharp": true
+          }
+        }
+      ],
+      "topUseStepEnd": true,
+      "bottomProbe": "up",
+      "ownsLeftTip": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "bodyCounters": 0,
+      "onUnresolved": true
+    },
+    {
+      "id": "noon-rising-root-fina",
+      "current": "ن",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "walk",
+      "start": "left",
+      "traversal": "down",
+      "topTraversal": "forward",
+      "top": [
+        "down",
+        {
+          "direction": "up",
+          "minX": 1
+        },
+        "right"
+      ],
+      "bottomProbe": "up",
+      "ownsLeftTip": true,
+      "tightJoin": true,
+      "returningStroke": true,
+      "bodyCounters": 0,
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-returning-shoulder-fina",
+      "current": "م",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "placement": "upper",
+          "required": true,
+          "maxDistance": 2.6,
+          "normalCut": true
+        },
+        "offset": 0.3,
+        "baselineOffset": 0.25
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "returningStroke": true,
+      "shoulder": {
+        "maxCapRise": 2.7,
+        "maxWidth": 3.2,
+        "radius": 2.9
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-returning-bridge-fina",
+      "current": "م",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "placement": "upper",
+          "required": true,
+          "maxDistance": 2.6,
+          "normalCut": true
+        },
+        "offset": 0.3,
+        "baselineOffset": 0.25
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "returningStroke": true,
+      "bridge": {
+        "maxWidth": 3.0
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "sad-returning-shoulder-fina",
+      "current": "صض",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "placement": "upper",
+          "required": true,
+          "maxDistance": 2.6,
+          "normalCut": true
+        },
+        "offset": 0.3,
+        "baselineOffset": 0.25
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "returningStroke": true,
+      "shoulder": {
+        "maxCapRise": 2.7,
+        "maxWidth": 3.2,
+        "radius": 2.9
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "tah-returning-shoulder-fina",
+      "current": "طظ",
+      "tryNext": true,
+      "onIncomplete": true,
+      "method": "final-counter",
+      "counter": {
+        "entryCorner": {
+          "placement": "upper",
+          "required": true,
+          "maxDistance": 2.6,
+          "normalCut": true
+        },
+        "offset": 0.3,
+        "baselineOffset": 0.25
+      },
+      "bodyCounters": 1,
+      "tightJoin": true,
+      "returningStroke": true,
+      "shoulder": {
+        "maxCapRise": 2.7,
+        "maxWidth": 3.2,
+        "radius": 2.9
+      },
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-short-neck-fina",
+      "current": "م",
+      "onIncomplete": true,
+      "tightJoin": true,
+      "tryNext": true,
+      "bodyCounters": 1,
+      "method": "final-counter",
+      "counter": {
+        "maxOuterDistance": 2,
+        "maxNeckDistance": 2
+      },
+      "returningStroke": true,
+      "onUnresolved": true
+    },
+    {
+      "id": "meem-tailed-rim-fina",
+      "current": "م",
+      "onUnresolved": true,
+      "bodyOutline": {
+        "counters": 1,
+        "aspect": [
+          0.65,
+          3.3
+        ],
+        "rim": {
+          "left": [
+            1.35,
+            5.8
+          ],
+          "top": [
+            0.25,
+            1.5
+          ],
+          "right": [
+            0,
+            1.35
+          ],
+          "bottom": [
+            1.5,
+            6
+          ]
+        },
+        "entry": {
+          "x": [
+            0.55,
+            1.8
+          ],
+          "y": [
+            -0.6,
+            0.85
+          ],
+          "width": [
+            0.5,
+            3.4
+          ]
+        }
+      }
+    },
+    {
+      "id": "sad-deep-bowl-fina",
+      "current": "صض",
+      "onUnresolved": true,
+      "bodyOutline": {
+        "counters": 1,
+        "aspect": [
+          1.6,
+          2.6
+        ],
+        "rim": {
+          "left": [
+            2.8,
+            4.6
+          ],
+          "top": [
+            0.25,
+            0.8
+          ],
+          "right": [
+            0.35,
+            1.7
+          ],
+          "bottom": [
+            1.85,
+            3.05
+          ]
+        },
+        "entry": {
+          "x": [
+            1.05,
+            1.9
+          ],
+          "y": [
+            0.5,
+            1.4
+          ],
+          "width": [
+            0.18,
+            0.85
+          ]
+        }
+      }
+    }
+  ],
+  "reconsiderForms": {
+    "initial": "ك",
+    "medial": "كلجحخ",
+    "final": "ك"
+  },
+  "recoveryChecks": {
+    "connectorMargin": 0.9,
+    "connectorBend": 0.25,
+    "finalBowl": {
+      "letters": "يئى",
+      "minWidth": 2.5,
+      "minHeight": 1.4,
+      "tipTolerance": 0.25
+    },
+    "bodyExtents": [
+      {
+        "position": "medial",
+        "letters": "جحخ",
+        "protectHead": true,
+        "minWidth": 3,
+        "minHeight": 1.5,
+        "lips": {
+          "minRun": 0.5,
+          "minGap": 0.15
+        }
+      },
+      {
+        "position": "initial",
+        "letters": "بتثنيئى",
+        "minWidth": 0.45,
+        "minHeight": 1.25
+      },
+      {
+        "position": "medial",
+        "letters": "ل",
+        "minWidth": 0.65,
+        "minHeight": 3
+      },
+      {
+        "position": "medial",
+        "letters": "ل",
+        "template": "lam-medi",
+        "minWidth": 0.65,
+        "minHeight": 3,
+        "maxWidthToHeight": 1
+      },
+      {
+        "position": "initial",
+        "letters": "عغ",
+        "protectHead": true,
+        "minWidth": 3.2,
+        "minHeight": 1.9,
+        "onUnresolved": true,
+        "lips": {
+          "minRun": 0.38,
+          "minGap": 0.16
+        }
+      },
+      {
+        "position": "medial",
+        "letters": "عغ",
+        "minWidth": 1.65,
+        "minHeight": 1.8,
+        "onUnresolved": true
+      },
+      {
+        "position": "final",
+        "letters": "عغ",
+        "minWidth": 6,
+        "minHeight": 6,
+        "onUnresolved": true,
+        "minHeadRiseWidths": 0.6
+      }
+    ],
+    "longConnectorWidths": 4
+  },
+  "reconsiderScale": {
+    "fraction": 0.05,
+    "boundaryTolerance": 0.05
+  },
+  "reconsiderFinalAttachments": "لسشوؤاآأإٱبتث",
+  "retryUnresolvedForms": true,
+  "unresolvedShapeFrames": [
+    [
+      1,
+      -0.12
+    ],
+    [
+      1,
+      0.12
+    ],
+    [
+      0.8,
+      0
+    ],
+    [
+      1.22,
+      0
+    ],
+    [
+      1.25,
+      0.13
+    ],
+    [
+      0.65,
+      0
+    ],
+    [
+      0.72,
+      -0.26
+    ],
+    [
+      0.72,
+      0.26
+    ],
+    [
+      0.72,
+      -0.09
+    ],
+    [
+      0.58,
+      0.26
+    ],
+    [
+      1,
+      0,
+      -9
+    ],
+    [
+      1,
+      0,
+      17
+    ]
+  ],
+  "unresolvedScaleCenters": [
+    0.88,
+    1.12,
+    0.76,
+    1.27
+  ],
+  "unresolvedTiltAngles": [
+    -6,
+    6,
+    -12,
+    12
+  ],
+  "unresolvedInitialShaft": {
+    "letters": "ل",
+    "minHeight": 4,
+    "maxWidthToHeight": 0.7,
+    "edgeTolerance": 0.035
+  }
+}
