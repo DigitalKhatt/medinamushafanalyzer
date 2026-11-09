@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -11,6 +12,11 @@ import sys
 import venv
 
 from workspace import ENV, HERE, NATIVE, latest_report, read, run_path
+
+
+PRETRAINED_REPO = 'facebook/mask2former-swin-tiny-coco-instance'
+PRETRAINED_REVISION = '22c4a2f15dc88149b8b8d9f4d42c54431fbd66f6'
+PRETRAINED_FILES = ('config.json', 'model.safetensors')
 
 
 def digest(path):
@@ -25,6 +31,32 @@ def setup():
     subprocess.run([str(python), '-m', 'pip', 'install', '--only-binary=:all:',
                     '-r', str(HERE / 'requirements.txt')], check=True)
     print(f'Mask2Former Python ready at {python}', flush=True)
+
+
+def pretrained_checkpoint(explicit, previous):
+    if explicit is not None:
+        checkpoint = explicit.expanduser().resolve()
+        if not all((checkpoint / name).is_file() for name in PRETRAINED_FILES):
+            raise ValueError(f'--pretrained must contain config.json and model.safetensors: {checkpoint}')
+        return checkpoint
+    if previous is not None:
+        checkpoint = previous / 'pretrained'
+        if all((checkpoint / name).is_file() for name in PRETRAINED_FILES):
+            return checkpoint
+
+    from huggingface_hub import hf_hub_download
+    from huggingface_hub.utils import HfHubHTTPError
+
+    print(f'Loading the default pretrained checkpoint {PRETRAINED_REPO} from cache or Hugging Face', flush=True)
+    cache = NATIVE / 'output' / 'mask2former-model-cache'
+    try:
+        for name in PRETRAINED_FILES:
+            path = Path(hf_hub_download(PRETRAINED_REPO, name, revision=PRETRAINED_REVISION,
+                                        cache_dir=cache, token=False))
+    except (HfHubHTTPError, OSError) as error:
+        raise RuntimeError('Could not fetch the default Mask2Former checkpoint. '
+                           'Retry with Hugging Face access or use --pretrained with a local checkpoint.') from error
+    return path.parent
 
 
 def current_snapshot():
@@ -45,16 +77,21 @@ def current_snapshot():
     return None
 
 
-def export_snapshot(jobs, rebuild=False):
-    if not rebuild and (snapshot := current_snapshot()):
-        return snapshot
-    if jobs <= 0:
-        raise ValueError('Choose at least one native export worker')
+def build_native():
     build = NATIVE / 'build' / 'ninja-nmc'
     if not (build / 'build-Release.ninja').is_file():
         subprocess.run(['cmake', '--preset', 'ninja-nmc'], cwd=NATIVE, check=True)
     subprocess.run(['cmake', '--build', '--preset', 'release', '--target', 'medinamushafanalyzer'],
                    cwd=NATIVE, check=True)
+    return build / 'Release' / 'medinamushafanalyzer'
+
+
+def export_snapshot(jobs, rebuild=False):
+    if not rebuild and (snapshot := current_snapshot()):
+        return snapshot
+    if jobs <= 0:
+        raise ValueError('Choose at least one native export worker')
+    build_native()
     sys.path.insert(0, str(NATIVE))
     from tools.build_native_exporter import build as build_exporter
     from tools.letter_audit.regenerate_letter_audit import run
@@ -66,6 +103,14 @@ def export_snapshot(jobs, rebuild=False):
     if run(snapshot, exporter, jobs=jobs):
         raise ValueError(f'Native export failed. Check {snapshot / "logs"}.')
     return snapshot
+
+
+def ensure_page_rasters(snapshot):
+    metadata = snapshot / 'page-rasters.json'
+    if not metadata.is_file():
+        print('Generating page raster metadata from the 604 AI/PDF source pages.', flush=True)
+        subprocess.run([str(build_native()), '--export-page-rasters', str(metadata), '--pages', 'all'],
+                       cwd=NATIVE, env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, check=True)
 
 
 def ids(path):
@@ -91,7 +136,7 @@ def resolve_device(value):
 
 
 def prepare_run(args, folder):
-    from data import prepare
+    from data import generation_for, prepare
 
     if folder.exists():
         raise ValueError(f'Choose a fresh run name. Already exists: {folder}')
@@ -117,13 +162,13 @@ def prepare_run(args, folder):
         print(f'Frozen three-class targets use the same masks and page split as {previous}.', flush=True)
         return
     previous = latest_report() if args.previous == 'latest' else None if args.previous == 'none' else run_path(args.previous)
-    pretrained = args.pretrained.resolve() if args.pretrained else (previous / 'pretrained' if previous else None)
-    if pretrained is None or not all((pretrained / name).is_file() for name in ('config.json', 'model.safetensors')):
-        raise ValueError('Set --pretrained to a local pretrained Mask2Former directory')
+    pretrained = pretrained_checkpoint(args.pretrained, previous)
     snapshot = args.snapshot.resolve() if args.snapshot else export_snapshot(args.jobs)
+    generation_for(snapshot)
+    ensure_page_rasters(snapshot)
     print(f'Native input {snapshot}', flush=True)
     prepare(folder, snapshot, pretrained, previous, ids(args.focus), ids(args.exclude), ids(args.include),
-            ids(args.add_test_focus))
+            ids(args.add_test_focus), seen_body_class=args.seen_body)
 
 
 def main():
@@ -142,10 +187,14 @@ def main():
                     'geometry-input', 'compare', 'predict'):
             cmd.add_argument('--device', choices=('auto', 'mps', 'cuda', 'cpu'), default='auto')
         if name in ('prepare', 'repeat'):
-            cmd.add_argument('--seen-body-baseline',
-                             help='Frozen two-class run whose masks and splits to reuse for a seen-body trial')
+            seen_mode = cmd.add_mutually_exclusive_group()
+            seen_mode.add_argument('--seen-body', action='store_true',
+                                   help='Train a shared sīn/shīn body class from the first run')
+            seen_mode.add_argument('--seen-body-baseline',
+                                   help='Frozen two-class run whose masks and splits to reuse for a seen-body trial')
             cmd.add_argument('--snapshot', type=Path)
-            cmd.add_argument('--pretrained', type=Path)
+            cmd.add_argument('--pretrained', type=Path,
+                             help='Local checkpoint directory. Defaults to the previous run or a pinned download.')
             cmd.add_argument('--previous', default='latest', help='Previous run, latest, or none')
             cmd.add_argument('--focus', type=Path, help='JSON array of additional seen training crop IDs')
             cmd.add_argument('--include', type=Path, help='JSON array of complete cutter training crop IDs to include')

@@ -57,7 +57,7 @@ def cached_example(db, row, source):
 
 def previous_reference(run):
     previous = run_path(run['previous']) if run['previous'] else None
-    return matching_audit(previous, run['generationSha256'])
+    return matching_audit(previous, run['generationSha256'], run.get('rasterMetadataSha256'))
 
 
 def predict(folder, device_name, batch_size, page_numbers=None):

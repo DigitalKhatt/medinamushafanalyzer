@@ -14,6 +14,19 @@ if AVAILABLE:
 
 @unittest.skipUnless(AVAILABLE, 'Optional model dependencies are absent')
 class CorpusAuditTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec('PySide6'), 'Qt rasterizer is absent')
+    def test_unowned_partial_body_does_not_block_inference(self):
+        from letter_corpus_audit import prepare_example
+        outline = {'commands': [['M', 2, 2], ['L', 12, 2], ['L', 12, 12], ['L', 2, 12]],
+                   'fillRule': 'evenodd'}
+        row = dict(line=1, word=1, subword=1, text='بم', complete=False,
+                   bodies=[outline], joins=[], sourceInk=outline)
+        source = dict(page='page001', raster=dict(width=100, height=100), pdfToRaster=[4, 0, 0, 4, 0, 0])
+        item = prepare_example(row, source)
+        self.assertTrue(item['ink'].any())
+        self.assertFalse(item['reference'].any())
+        self.assertFalse(item['status']['valid'])
+
     def test_comparison_seam_repair_preserves_ink_and_rejects_deeper_gaps(self):
         from letter_page_compare import repair_reference_seams
         ink = np.pad(np.ones((40, 40), bool), 3)

@@ -76,9 +76,17 @@ python3 tools/mushafcatalog/catalog.py replay-marks \
 
 `mask2former/` trains on eligible native letter cuts and compares predictions
 with the cutter on connected subwords. The VS Code tasks prepare cuts,
-repeat training, predict, and serve the comparison. Runs use the bundled
-workbench code and saved pretrained weights and page splits under
-`output/mark-classifier-data/`.
+repeat training, predict, and serve the comparison. The repeat task sets up
+its Python environment. `prepare` and `repeat` generate missing raster metadata
+from the AI/PDF artwork and freeze it with the page inventory in the run.
+They keep any existing page splits and use the default deterministic split
+for a first run. For starting weights, they use `--pretrained`, reuse the
+previous run's starting weights when available, or
+download the pinned [Mask2Former Swin-Tiny COCO checkpoint](https://huggingface.co/facebook/mask2former-swin-tiny-coco-instance/commit/22c4a2f15dc88149b8b8d9f4d42c54431fbd66f6).
+The download is cached under `output/mask2former-model-cache/`. Training
+fine-tunes those weights on native letter cuts.
+The default classes are `body` and `kashida`. Add `--previous none --seen-body`
+to the `repeat` command to train a shared sīn/shīn class from the first run.
 
 ```sh
 python3.14 tools/mask2former/run.py setup

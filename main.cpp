@@ -29,6 +29,7 @@ int main(int argc, char** argv) {
     parser.addOption({"export-proposals", "Export draft vector segmentation for HTML review (no GUI).", "directory"});
     parser.addOption({"skip-template-scores", "Omit unused per-path template scores from the native proposal export."});
     parser.addOption({"export-baselines", "Export cached geometric line baselines without redoing shape matching.", "file"});
+    parser.addOption({"export-page-rasters", "Export AI/PDF raster dimensions and transforms without cutting ink.", "file"});
     parser.addOption({"export-transcript", "Export the current QuranTextByWord transcript without reading segmentation caches.", "file"});
     parser.addOption({"assign-marks", "Run native mark ownership/grouping on frozen native vector exports.", "directory"});
     parser.addOption({"mark-inputs", "Frozen native input directory for --assign-marks.", "directory"});
@@ -72,6 +73,8 @@ int main(int argc, char** argv) {
         return exportLetterTraining(parser.value("export-letter-training"), parser.value("pages"));
     if (parser.isSet("export-baselines"))
         return exportReviewBaselines(parser.value("export-baselines"),parser.value("pages"));
+    if (parser.isSet("export-page-rasters"))
+        return exportPageRasters(parser.value("export-page-rasters"), parser.value("pages"));
 
     if (parser.isSet("export-proposals")) {
         return exportReviewProposals(parser.value("export-proposals"), parser.value("svg-dir"), parser.value("pages"),

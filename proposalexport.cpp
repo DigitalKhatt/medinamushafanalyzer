@@ -18,6 +18,27 @@ QByteArray readFile(const QString& name) {
 QString digest(const QByteArray& bytes) {
     return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex();
 }
+QSizeF pdfCropSize(const QString& name) {
+    PDFDoc pdf(std::make_unique<GooString>(name.toStdString()));
+    if (!pdf.isOk() || pdf.getNumPages()!=1) throw std::runtime_error("Cannot read source AI/PDF");
+    const QSizeF crop(pdf.getPageCropWidth(1), pdf.getPageCropHeight(1));
+    if (crop.isEmpty()) throw std::runtime_error("Invalid PDF crop box");
+    return crop;
+}
+QJsonArray pdfViewBox(const QSizeF& crop) {
+    constexpr double cssPixelsPerPoint = 96.0 / 72.0;
+    return {0, 0, crop.width()*cssPixelsPerPoint, crop.height()*cssPixelsPerPoint};
+}
+QJsonObject pageRaster(const QJsonArray& viewBox) {
+    return {{"width",qRound(viewBox[2].toDouble()*4)},{"height",qRound(viewBox[3].toDouble()*4)},
+            {"scale",4},{"threshold",170},{"chroma",45},{"viewBox",viewBox}};
+}
+QJsonArray pdfToRaster(const QSizeF& crop, int width, int height) {
+    return {width/crop.width(),0,0,height/crop.height(),0,0};
+}
+QString artworkPath(int page) {
+    return QString("input/1441-AI-hafs/%1___Hafs39__DM.ai").arg(page,3,10,QChar('0'));
+}
 void writeJson(const QString& name, const QJsonObject& value) {
     QSaveFile file(name);
     if (!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(value).toJson(QJsonDocument::Compact)) < 0 || !file.commit())
@@ -109,6 +130,25 @@ int exportReviewTranscript(const QString& output, const QString& selection) {
     } catch (const std::exception& error) { std::cerr << error.what() << std::endl; return 1; }
 }
 
+int exportPageRasters(const QString& output, const QString& selection) {
+    try {
+        QJsonArray pages;
+        for (int page : parsePages(selection)) {
+            const auto path = artworkPath(page);
+            const auto crop = pdfCropSize(path);
+            const auto raster = pageRaster(pdfViewBox(crop));
+            const auto transform = pdfToRaster(crop, raster.value("width").toInt(), raster.value("height").toInt());
+            pages.append(QJsonObject{{"id",QString("page%1").arg(page,3,10,QChar('0'))},
+                                     {"sha256",digest(readFile(path))},{"raster",raster},{"pdfToRaster",transform}});
+        }
+        writeJson(output, {{"schemaVersion",1},{"sourceFormat","ai-pdf"},{"pages",pages}});
+        return 0;
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << std::endl;
+        return 1;
+    }
+}
+
 int exportReviewProposals(const QString& output, const QString& svgDirectory, const QString& selection,
                          bool includeTemplateScores, const QString& markOutput, bool fresh) {
     try {
@@ -130,16 +170,13 @@ int exportReviewProposals(const QString& output, const QString& svgDirectory, co
         for (int number : parsePages(selection)) {
             const QString id=QString("page%1").arg(number,3,10,QChar('0'));
             try {
-                const QString pdfName=QString("input/1441-AI-hafs/%1___Hafs39__DM.ai").arg(number,3,10,QChar('0'));
-                auto pdf=std::make_unique<PDFDoc>(std::make_unique<GooString>(pdfName.toStdString()));
-                if (!pdf->isOk() || pdf->getNumPages()!=1) throw std::runtime_error("Cannot read source AI/PDF");
-                const double pw=pdf->getPageCropWidth(1), ph=pdf->getPageCropHeight(1);
-                if (pw<=0 || ph<=0) throw std::runtime_error("Invalid PDF crop box");
+                const QString pdfName=artworkPath(number);
+                const auto crop=pdfCropSize(pdfName);
+                const double pw=crop.width(), ph=crop.height();
                 const auto pdfHash=digest(readFile(pdfName));
                 auto sourceHash=pdfHash;
                 // Keep the same mask grid as the SVG export, in 96 dpi CSS units.
-                constexpr double cssPixelsPerPoint = 96.0 / 72.0;
-                QJsonArray viewBox{0,0,pw*cssPixelsPerPoint,ph*cssPixelsPerPoint};
+                QJsonArray viewBox=pdfViewBox(crop);
                 if (!svgDirectory.isEmpty()) {
                     const auto svgBytes=readFile(svgDirectory+"/"+id+".svg");
                     sourceHash=digest(svgBytes);
@@ -154,7 +191,8 @@ int exportReviewProposals(const QString& output, const QString& svgDirectory, co
                     }
                     if (viewBox.size()!=4 || viewBox[0].toDouble()!=0 || viewBox[1].toDouble()!=0) throw std::runtime_error("Unsupported SVG viewBox");
                 }
-                const int width=qRound(viewBox[2].toDouble()*4),height=qRound(viewBox[3].toDouble()*4);
+                const auto raster=pageRaster(viewBox);
+                const int width=raster.value("width").toInt(),height=raster.value("height").toInt();
                 QByteArray cacheBytes;
                 PageAnalysisResult result;
                 if (fresh) {
@@ -220,13 +258,13 @@ int exportReviewProposals(const QString& output, const QString& svgDirectory, co
                     }
                 }
                 QJsonObject doc{{"schemaVersion",1},{"pageId",id},{"sourceSha256",sourceHash},
-                    {"raster",QJsonObject{{"width",width},{"height",height},{"scale",4},{"threshold",170},{"chroma",45},{"viewBox",viewBox}}},
+                    {"raster",raster},
                     {"provenance",QJsonObject{{"producer","medinamushafanalyzer-vector-v1"},{"pdfSha256",pdfHash},
                         {"cacheSha256",fresh ? QJsonValue() : QJsonValue(digest(cacheBytes))},{"templateSha256",digest(fontBytes)},
                         {"wordBoundaryVersion",1},{"wordBoundaryRepairs",boundaryRepairs},
                         {"subwordBoundaryVersion",1},{"subwordBoundaryRepairs",result.subwordBoundaryRepairs},
                         {"waqfTypeVersion",1},{"waqfTypeRepairs",result.waqfTypeRepairs},
-                        {"pdfCropSize",QJsonArray{pw,ph}},{"pdfToRaster",QJsonArray{width/pw,0,0,height/ph,0,0}},
+                        {"pdfCropSize",QJsonArray{pw,ph}},{"pdfToRaster",pdfToRaster(crop,width,height)},
                         {"cacheOrigin",fresh ? "fresh AI/PDF segmentation; no page cache read or written" : "legacy cache; geometry must be verified against source SVG"}}},
                     {"words",words},{"paths",paths}};
                 if (svgDirectory.isEmpty()) {

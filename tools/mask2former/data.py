@@ -17,6 +17,7 @@ from letter_retest import SEED
 from letter_retest_data import weak_partition
 from letter_template_repeat import TOOTH_TEMPLATES, cases, choose_diverse, complete_row, sha, tooth_policy, vector_row
 from seen import families, layout, measure
+from segment import split_for
 
 
 def open_audit(path):
@@ -54,6 +55,10 @@ def load_page(snapshot, generation, page):
 
 
 def document(page, cache, info):
+    if 'raster' in info:
+        return dict(page=page, raster=info['raster'], pdfToRaster=info['pdfToRaster'],
+                    sourceSha256=info['sha256'], sourceCacheSha256=cache['sourceFileSha256'],
+                    templateSha256=cache['letterFormsSha256'])
     raw = read(NATIVE / 'output' / 'vector-review' / f'{page}.raw.json')
     data = document_for(cache, raw)
     if data['sourceSha256'] != info['sha256']:
@@ -61,11 +66,15 @@ def document(page, cache, info):
     return data
 
 
-def matching_audit(previous, generation_hash):
+def matching_audit(previous, generation_hash, raster_hash=None):
     if previous is None:
         return None
     folder = previous / 'corpus-audit'
     if not (folder / 'summary.json').is_file() or not (folder / 'comparison.sqlite').is_file():
+        return None
+    receipt = previous / 'run.json'
+    prior_raster = read(receipt).get('rasterMetadataSha256') if receipt.is_file() else None
+    if prior_raster != raster_hash:
         return None
     summary = read(folder / 'summary.json')
     update = summary.get('referenceUpdate', {})
@@ -142,20 +151,37 @@ def add_diverse_focus(pool, focus, per_family=30, tooth_controls=80):
             counts['three-teeth'] += 1
 
 
-def load_corpus(previous):
-    # Previous splits are kept when continuing a comparison.
+def load_corpus(snapshot, previous):
     frozen = previous / 'inputs' / 'corpus.json' if previous else None
-    return read(frozen if frozen and frozen.is_file() else DATA / 'corpus.json')
+    source_index = frozen if frozen and frozen.is_file() else DATA / 'corpus.json'
+    saved = read(source_index) if source_index.is_file() else {}
+    prior_pages = saved.get('pages', [])
+    if source_index == frozen and prior_pages and 'rasterMetadataSha256' not in saved and all(
+            (NATIVE / 'output' / 'vector-review' / f"{page['id']}.raw.json").is_file() for page in prior_pages):
+        return saved
+
+    path = snapshot / 'page-rasters.json'
+    corpus = read(path)
+    if corpus.get('schemaVersion') != 1 or corpus.get('sourceFormat') != 'ai-pdf':
+        raise ValueError(f'Invalid AI/PDF page raster metadata: {path}')
+    splits = {page['id']: page['split'] for page in prior_pages}
+    if splits and splits.keys() != {page['id'] for page in corpus['pages']}:
+        raise ValueError(f'The saved page inventory differs from the artwork: {source_index}')
+    for page in corpus['pages']:
+        page['split'] = splits[page['id']] if splits else split_for(page['id'])
+    corpus['rasterMetadataSha256'] = sha(path)
+    return corpus
 
 
-def prepare(folder, snapshot, pretrained, previous, focus_ids, excluded_ids, include_ids=(), add_test_focus=()):
+def prepare(folder, snapshot, pretrained, previous, focus_ids, excluded_ids, include_ids=(), add_test_focus=(),
+            *, seen_body_class=False):
     if folder.exists():
         raise ValueError(f'Choose a fresh run directory. Already exists: {folder}')
     if not all((pretrained / name).is_file() for name in ('config.json', 'model.safetensors')):
         raise ValueError('Choose a local Mask2Former Swin-Tiny pretrained directory')
     generation = generation_for(snapshot)
     generation_hash = sha(snapshot / 'generation.json')
-    corpus = load_corpus(previous)
+    corpus = load_corpus(snapshot, previous)
     pages = {p['id']: p for p in corpus['pages']}
     if set(pages) != {f'page{page:03}' for page in range(1, 605)} or len(corpus['pages']) != 604:
         raise ValueError('The page inventory must contain each of the 604 pages exactly once')
@@ -213,7 +239,8 @@ def prepare(folder, snapshot, pretrained, previous, focus_ids, excluded_ids, inc
         raise ValueError(f'Included IDs need a complete multi-letter cut on a training page: {sorted(include_ids - eligible)}')
     focus = {r['id']: r['trainingFocus'] for r in prior.get('records', [])
              if r['id'] in eligible and r.get('trainingFocus')}
-    cache_audit = matching_audit(previous, generation_hash)
+    raster_hash = corpus.get('rasterMetadataSha256')
+    cache_audit = matching_audit(previous, generation_hash, raster_hash)
     mined = {}
     if not promoted:
         mining_audit = cache_audit
@@ -319,10 +346,13 @@ def prepare(folder, snapshot, pretrained, previous, focus_ids, excluded_ids, inc
                     target='Letter body and kashida instances', tuningGroup='weak_validation',
                     excludedReviewedIds=sorted(reviewed), excludedCropIds=sorted(excluded_ids - reviewed), decoder=decoder,
                     minimumTrainingBaseCharacters=2, sampling=dict(coverEveryTrainingExample=True))
+    if seen_body_class:
+        manifest['seenBodyClass'] = True
     if promoted:
         manifest.update(addedTestFocusIds=sorted(add_test_focus), promotedTestPages=sorted(promoted))
     write_json(folder / 'dataset.json', manifest)
     write_json(folder / 'run.json', dict(snapshot=str(snapshot), generationSha256=generation_hash,
+               rasterMetadataSha256=raster_hash,
                corpusSha256=sha(folder / 'inputs' / 'corpus.json'), previous=str(previous) if previous else None,
                scope=dict(scope), previousReferenceMatched=bool(cache_audit), datasetSha256=sha(folder / 'dataset.json'),
                pretrainedFiles={p.name: sha(p) for p in (folder / 'pretrained').iterdir() if p.is_file()}))

@@ -339,6 +339,7 @@
     },
     {
       "label": "Mask2Former: Repeat training",
+      "dependsOn": ["Mask2Former: Set up Python environment"],
       "type": "process",
       "command": "${workspaceFolder}/output/mask2former-env/bin/python",
       "args": ["tools/mask2former/run.py", "repeat", "--run", "${input:mask2formerRun}", "--device", "${input:mask2formerDevice}"],

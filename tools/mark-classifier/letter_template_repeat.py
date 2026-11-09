@@ -86,6 +86,9 @@ def vector_row(row, document):
     width, height = raster['width'], raster['height']
     regions = []
     for body in row['bodies']:
+        if 'letter' not in body and not row['complete'] and not row.get('provisional'):
+            # Unassigned contours are still available in the uncut source ink.
+            continue
         regions.append(dict(role='body', letter=body['letter'], labelSource=body.get('labelSource'),
                             runs=raster_runs(body, width, height, transform)))
     for join in row['joins']:
