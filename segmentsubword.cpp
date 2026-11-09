@@ -594,6 +594,26 @@ static QJsonObject namedLetterForm(const QJsonObject& config, const QString& id)
     return {};
 }
 
+static bool toothPairDescription(const QJsonObject& body) {
+    return body.value("shape") == "tooth-pair";
+}
+
+// Resolved declarations and forms awaiting migration use the same assembly
+// hooks. A declared tooth never reconstructs the old combined `tooth` object.
+static bool hasToothBody(const QJsonObject& form) {
+    return toothPairDescription(form.value("body").toObject()) || form.contains("tooth");
+}
+
+static QJsonObject toothRecognitionSettings(const QJsonObject& form) {
+    return toothPairDescription(form.value("body").toObject()) ? form.value("body").toObject()
+                                                             : form.value("tooth").toObject();
+}
+
+static QJsonObject toothPlacementSettings(const QJsonObject& form) {
+    return toothPairDescription(form.value("body").toObject()) ? form.value("cuts").toObject()
+                                                             : form.value("tooth").toObject();
+}
+
 // References share descriptions, not execution order. Resolve each field on
 // demand so editing a parent in the preview immediately updates its users.
 static QJsonObject formDescription(const QJsonObject& config, const QJsonObject& form,
@@ -620,7 +640,7 @@ static QJsonObject formDescription(const QJsonObject& config, const QJsonObject&
 // A terminal attachment is declared by the form. No template names or letter
 // identities in the planner decide when a body changes its cut topology.
 static QJsonObject descendingStemDescription(const QJsonObject& config, const QJsonObject& form) {
-    return form.contains("lamBody") ? formDescription(config, form, "lamBody").value("stem").toObject()
+    return form.contains("body") ? formDescription(config, form, "body").value("stem").toObject()
                                     : form.value("descendingStem").toObject();
 }
 
@@ -628,15 +648,17 @@ static QJsonObject medialLamShortExit(const QJsonObject& config) {
     if (config.value("_disableLamShortExit").toBool()) return {};
     for (const auto& value : config.value("medial").toArray()) {
         const auto form = value.toObject();
-        if (formDescription(config, form, "lamBody").value("shape") == "forked-stem")
-            return formDescription(config, form, "lamCuts").value("shortExit").toObject();
+        if (formDescription(config, form, "body").value("shape") == "forked-stem")
+            return formDescription(config, form, "cuts").value("shortExit").toObject();
     }
     return {};
 }
 
 static QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form) {
-    if (!form.contains("lamBody")) return form;
-    const auto body = formDescription(config, form, "lamBody");
+    if (!form.contains("body")) return form;
+    const auto body = formDescription(config, form, "body");
+    const auto cuts = formDescription(config, form, "cuts");
+    if (toothPairDescription(body)) form.insert("tightJoin", cuts.value("tightJoin") == "shared-boundary");
     if (body.value("features").isObject()) form.insert("bodyFeatures", body.value("features"));
     if (body.value("counters").isDouble()) form.insert("bodyCounters", body.value("counters"));
     const auto stem = body.value("stem").toObject();
@@ -834,9 +856,14 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             if (rule.contains("onFinalRetry") && (!rule.value("onFinalRetry").isBool() || rule.contains("onIncomplete")))
                 return id + ": onFinalRetry must be a separate boolean retry phase";
             QString descriptionError;
-            const auto lamSettings = formDescription(config, rule, "lamCuts", &descriptionError);
-            const auto lamBody = formDescription(config, rule, "lamBody", &descriptionError);
+            if (rule.contains("lamBody") || rule.contains("lamCuts"))
+                return id + ": use body / cuts for declared forms";
+            const auto lamSettings = formDescription(config, rule, "cuts", &descriptionError);
+            const auto lamBody = formDescription(config, rule, "body", &descriptionError);
             if (!descriptionError.isEmpty()) return descriptionError;
+            if (rule.contains("body") != rule.contains("cuts") ||
+                (rule.contains("body") && (lamBody.isEmpty() || lamSettings.isEmpty())))
+                return id + ": declared forms require both body and cuts";
             const auto method = rule.value("method").toString();
             if (method == "descending-stem" && (QString(phase) != "initial" ||
                 !positive(rule.value("descendingStem").toObject().value("penWidth")) ||
@@ -944,23 +971,74 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     turn.toDouble() < 0 || turn.toDouble() > 1))
                     return id + ": tooth.minBendTurn must be between 0 and 1";
             }
-            if (rule.contains("lamBody") || rule.contains("lamCuts")) {
+            if (toothPairDescription(lamBody)) {
+                if (QString(phase) != "medial") return id + ": tooth-pair is a medial body";
+                for (const auto* key : {"tooth", "method", "tightJoin"})
+                    if (rule.contains(key)) return id + ": declared tooth geometry and policies belong in body / cuts";
+                const QStringList dimensions{"minPairDistance", "maxPairDistance", "minFlankRise", "flankDrop",
+                    "maxTipOverhang", "minWidth", "maxWidth"};
+                for (auto key = lamBody.begin(); key != lamBody.end(); ++key) {
+                    if (dimensions.contains(key.key())) {
+                        if (!key.value().isDouble() || !std::isfinite(key.value().toDouble()) || key.value().toDouble() < 0)
+                            return id + ": tooth body measurements must be nonnegative local stroke widths";
+                    } else if (!QStringList{"shape", "baselineEntry", "allowFlatBend"}.contains(key.key()))
+                        return id + ": unknown tooth body setting " + key.key();
+                }
+                if (!positive(lamBody.value("maxPairDistance")) || !positive(lamBody.value("maxWidth")) ||
+                    lamBody.value("minPairDistance").toDouble() >= lamBody.value("maxPairDistance").toDouble() ||
+                    lamBody.value("minWidth").toDouble() >= lamBody.value("maxWidth").toDouble())
+                    return id + ": tooth body measurements need ordered pair-distance and width limits";
+                if (lamBody.contains("allowFlatBend") && !lamBody.value("allowFlatBend").isBool())
+                    return id + ": body.allowFlatBend must be boolean";
+                const auto entry = lamBody.value("baselineEntry").toObject();
+                if (lamBody.contains("baselineEntry")) {
+                    if (!positive(entry.value("minRise"))) return id + ": body.baselineEntry needs a positive minRise";
+                    for (auto key = entry.begin(); key != entry.end(); ++key)
+                        if (key.key() != "minRise" && (key.key() != "required" || !key.value().isBool()))
+                            return id + ": body.baselineEntry supports minRise and required";
+                }
+                if (lamSettings.value("offsetUnit") != "local-stroke" ||
+                    !QStringList{"shared-boundary", "separate"}.contains(lamSettings.value("tightJoin").toString()))
+                    return id + ": tooth cuts need local-stroke offsets and a tightJoin policy";
+                for (const auto* side : {"left", "right"})
+                    if (lamSettings.value("boundaries").toObject().value(side) != "tooth-normal")
+                        return id + ": tooth boundaries must use tooth-normal";
+                for (const auto* key : {"leftOffset", "rightOffset", "normalOffsetTolerance"}) {
+                    const auto value = lamSettings.value(key);
+                    if ((QString(key) != "normalOffsetTolerance" || !value.isUndefined()) &&
+                        (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() < 0))
+                        return id + ": tooth offsets must be nonnegative local stroke widths";
+                }
+                const auto turn = lamSettings.value("baselineEntry").toObject();
+                if (lamSettings.contains("baselineEntry")) {
+                    if (entry.isEmpty() || !positive(turn.value("turnAngle")) || turn.value("turnAngle").toDouble() >= 90 ||
+                        (turn.contains("minTurnRun") && !positive(turn.value("minTurnRun"))))
+                        return id + ": cuts.baselineEntry needs recognized entry geometry and a turn angle between 0 and 90";
+                    for (auto key = turn.begin(); key != turn.end(); ++key)
+                        if (key.key() != "turnAngle" && key.key() != "minTurnRun")
+                            return id + ": cuts.baselineEntry supports turnAngle and minTurnRun";
+                }
+                for (auto key = lamSettings.begin(); key != lamSettings.end(); ++key)
+                    if (!QStringList{"boundaries", "offsetUnit", "tightJoin", "leftOffset", "rightOffset",
+                                     "normalOffsetTolerance", "baselineEntry"}.contains(key.key()))
+                        return id + ": unknown tooth cuts setting " + key.key();
+            } else if (rule.contains("body") || rule.contains("cuts")) {
                 if (!positive(lamBody.value("minRise")) || !positive(lamBody.value("maxWidthToHeight")) ||
                     !positive(lamBody.value("minFlankSpan")) || lamSettings.isEmpty())
-                    return id + ": lamBody needs positive flank/rise/aspect measurements and separate lamCuts";
+                    return id + ": body needs positive flank/rise/aspect measurements and separate cuts";
                 for (const auto* key : {"method", "top", "bottomProbe", "legacyLamRoutes", "shaft", "tailEntry", "descendingStem",
                                         "terminalArm", "detachedExit", "prefixTail", "bodyFeatures", "bodyCounters"})
-                    if (rule.contains(key)) return id + ": lām geometry belongs in lamBody / lamCuts, not " + key;
+                    if (rule.contains(key)) return id + ": lām geometry belongs in body / cuts, not " + key;
                 const auto shape = lamBody.value("shape").toString();
                 const QStringList shapes = QString(phase) == "initial" ? QStringList{"contour-stem", "descending-stem"} :
                     QString(phase) == "medial" ? QStringList{"forked-stem", "turning-shaft", "detached-return", "attached-return"} :
                     QStringList{"terminal-bowl", "terminal-fork", "terminal-return"};
-                if (!shapes.contains(shape)) return id + ": unknown lamBody.shape for this position";
+                if (!shapes.contains(shape)) return id + ": unknown body.shape for this position";
                 const auto counters = lamBody.value("counters");
                 if (!counters.isUndefined() && counters != QJsonValue(false) &&
                     (!counters.isDouble() || !std::isfinite(counters.toDouble()) || counters.toDouble() < 0 ||
                      counters.toDouble() != std::floor(counters.toDouble())))
-                    return id + ": lamBody.counters needs a nonnegative integer or false";
+                    return id + ": body.counters needs a nonnegative integer or false";
                 const auto checkRoute = [&](const QJsonValue& body, const QJsonValue& cuts, const QString& name) {
                     if (!body.isObject() || !cuts.isObject() || body.toObject().value("top").toArray().isEmpty())
                         return id + ": " + name + " needs body landmarks and a cut policy";
@@ -982,18 +1060,18 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     const auto placement = lamSettings.value("placement").toObject();
                     if (!positive(placement.value("entryOverlap")) || !positive(placement.value("turnAngle")) ||
                         placement.value("turnAngle").toDouble() >= 90 || !placement.value("levelForkEntry").isBool())
-                        return id + ": invalid lamCuts.placement";
+                        return id + ": invalid cuts.placement";
                 }
                 const auto stem = lamBody.value("stem").toObject();
                 if ((shape == "descending-stem" || shape == "terminal-fork") &&
                     (!positive(stem.value("minRise")) || !positive(stem.value("penWidth"))))
-                    return id + ": lamBody.stem needs positive penWidth and minRise";
+                    return id + ": body.stem needs positive penWidth and minRise";
                 if (shape == "terminal-bowl" && (!positive(stem.value("minRise")) || !positive(stem.value("maxNeckDistance")) ||
                     !positive(lamSettings.value("section").toObject().value("turnAngle"))))
                     return id + ": invalid terminal bowl body / section";
                 if (shape == "turning-shaft" && (!positive(lamBody.value("shaft").toObject().value("minRise")) ||
                     !positive(lamBody.value("shaft").toObject().value("maxWidthToHeight"))))
-                    return id + ": invalid lamBody.shaft";
+                    return id + ": invalid body.shaft";
                 if (shape == "attached-return" && (lamBody.value("terminalArm").toString().isEmpty() ||
                     !positive(lamSettings.value("entryTurnAngle")) || lamSettings.value("entryTurnAngle").toDouble() >= 90))
                     return id + ": invalid returning body / entry angle";
@@ -1002,57 +1080,57 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 if (shape == "terminal-return" || shape == "detached-return") {
                     const auto tail = lamBody.value("tail").toObject();
                     for (const auto* key : {"minRise", "minRun", "maxRun"})
-                        if (!positive(tail.value(key))) return id + ": invalid lamBody.tail";
+                        if (!positive(tail.value(key))) return id + ": invalid body.tail";
                 }
                 if ((shape == "terminal-return" || shape == "detached-return" || shape == "terminal-fork") &&
                     !positive(lamSettings.value("section").toObject().value("walkWidths")))
                     return id + ": section.walkWidths must be positive";
                 const auto shortExit = lamSettings.value("shortExit");
                 if (!shortExit.isUndefined() && shortExit != QJsonValue(false)) {
-                    if (!shortExit.isObject()) return "lamCuts.shortExit must be an object or false";
+                    if (!shortExit.isObject()) return "cuts.shortExit must be an object or false";
                     const auto settings = shortExit.toObject();
                     for (const auto* key : {"minHorizontalRun", "maxEntryGap", "minLengthRatio", "anchorTolerance"}) {
                         const auto value = settings.value(key);
                         const double minimum = QString(key) == "minLengthRatio" ? 1 : 0;
                         if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= minimum)
-                            return QString("lamCuts.shortExit.%1 must be greater than %2").arg(key).arg(minimum);
+                            return QString("cuts.shortExit.%1 must be greater than %2").arg(key).arg(minimum);
                     }
                     if (!settings.value("retryOnUnresolved").isBool())
-                        return "lamCuts.shortExit.retryOnUnresolved must be true or false";
+                        return "cuts.shortExit.retryOnUnresolved must be true or false";
                     const auto hollow = settings.value("cutsAroundHollow");
                     if (!hollow.isUndefined() && !hollow.isBool())
-                        return "lamCuts.shortExit.cutsAroundHollow must be true or false";
+                        return "cuts.shortExit.cutsAroundHollow must be true or false";
                     const auto tilt = settings.value("entryMaxTilt");
                     if (!tilt.isUndefined() && (!tilt.isDouble() || !std::isfinite(tilt.toDouble()) || tilt.toDouble() < 0 || tilt.toDouble() >= 90))
-                        return "lamCuts.shortExit.entryMaxTilt must be an angle from 0 up to 90 degrees";
+                        return "cuts.shortExit.entryMaxTilt must be an angle from 0 up to 90 degrees";
                 }
                 const auto arm = lamBody.value("alefArm");
                 if (!arm.isUndefined() && (!arm.isString() ||
                     namedLetterForm(config, arm.toString()).value("method") != "folded-arm" ||
                     lamBody.value("alefLetters").toString().isEmpty()))
-                    return id + ": lamBody.alefArm needs a folded-arm body template and alefLetters";
+                    return id + ": body.alefArm needs a folded-arm body template and alefLetters";
                 const auto forkOffset = lamSettings.value("forkOffset");
                 if (!forkOffset.isUndefined() && !positive(forkOffset))
-                    return id + ": lamCuts.forkOffset must be positive in page units";
+                    return id + ": cuts.forkOffset must be positive in page units";
                 if (!QStringList{"tip-normal", "preserve"}.contains(lamSettings.value("tightJoin").toString()) ||
                     lamSettings.value("counterJoin") != "preserve-entry")
-                    return id + ": lamCuts needs a tightJoin policy and counterJoin: preserve-entry";
+                    return id + ": cuts needs a tightJoin policy and counterJoin: preserve-entry";
                 const auto terminal = lamSettings.value("beforeFinal");
                 if (!terminal.isUndefined() && terminal != QJsonValue(false) &&
                     (!terminal.isObject() || terminal.toObject().value("letters").toString().isEmpty()))
-                    return id + ": lamCuts.beforeFinal needs a terminal letter selector, or false";
+                    return id + ": cuts.beforeFinal needs a terminal letter selector, or false";
                 for (const auto& settings : {lamSettings, terminal.toObject()}) {
                     if (settings.isEmpty()) continue;
                     const auto boundaries = settings.value("boundaries").toObject();
                     if (!QStringList{"free", "preserve", "fork-normal"}.contains(boundaries.value("right").toString()) ||
                         !QStringList{"free", "preserve", "fork-normal", "shared-return"}.contains(boundaries.value("left").toString()))
-                        return id + ": lamCuts.boundaries must declare the right and left cut policies";
+                        return id + ": cuts.boundaries must declare the right and left cut policies";
                     if (boundaries.value("left") == "fork-normal" && boundaries.value("right") != "fork-normal")
                         return id + ": an outgoing fork-normal policy currently needs the incoming fork-normal policy";
                     if (boundaries.value("left") == "shared-return" && !settings.contains("letters"))
                         return id + ": a shared-return policy belongs in beforeFinal with its letter selector";
                     if (settings.contains("preserveEntryAfter") && !settings.value("preserveEntryAfter").isString())
-                        return id + ": lamCuts.preserveEntryAfter must be a letter selector";
+                        return id + ": cuts.preserveEntryAfter must be a letter selector";
                     if (settings.contains("junction") && (settings.value("junction") != "inward-corners" ||
                         arm.isUndefined() || boundaries.value("left") != "shared-return"))
                         return id + ": inward-corners needs a shared-return boundary and an alefArm body";
@@ -1060,7 +1138,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                         if (!QStringList{"boundaries", "forkOffset", "tightJoin", "counterJoin", "beforeFinal",
                                          "letters", "junction", "preserveEntryAfter", "route", "section", "exitRoutes",
                                          "entryRoute", "placement", "entryTurnAngle", "shortExit"}.contains(key.key()))
-                            return id + ": unknown lamCuts setting " + key.key();
+                            return id + ": unknown cuts setting " + key.key();
                 }
             }
             if (rule.contains("shaftTurn") && (method != "alef-stem" || !rule.value("shaftTurn").isBool()))
@@ -4591,9 +4669,8 @@ static bool searchInitialLoopHead(SearchContext& context) {
     return true;
 }
 
-// A medial loop supplies both boundaries from its own counter. The incoming
-// join only limits which occurrence is being considered; it supplies no scale
-// or landmark for either cut.
+// Projected tooth boundaries retain their intrinsic tip and bend for the
+// assembler to verify that the complete body survives its neighboring cuts.
 struct ToothBody {
     PathExtrema tip;
     PathExtrema bend;
@@ -5066,30 +5143,34 @@ static std::vector<ToothBody> toothBendSections(SearchContext& context, const QJ
 // Recognize a tooth from its outer tip and the inner bend across the ink.
 // Its two flanks and their local cross-section supply the scale and cuts;
 // no neighboring join, character or stroke width is used here.
-static std::vector<ToothBody> toothBodyBoundaries(
-        SearchContext& context, const QJsonObject& settings, bool bothSides) {
-    if (bothSides && settings.contains("flankOffset")) {
-        if (!settings.value("projectFlanks").toBool() && !settings.value("walkFlanks").toBool()) return toothBendSections(context, settings);
-        // A smooth extremum can fall exactly between two cubics. A root just
-        // outside [0,1] on both cubics would hide the entire tooth shoulder.
-        SearchContext local{.transformedPath=context.transformedPath, .xSorted=context.xSorted,
-            .timeSorted=context.timeSorted, .bbox=context.bbox, .subword=context.subword, .orientation=context.orientation,
-            .outlineCache=context.outlineCache};
-        const auto curves = baseContourCurves(local.transformedPath);
-        for (int i = 0; i < static_cast<int>(curves.size()); ++i) {
-            const auto p = curves[i].pt1();
-            const auto a = curves[(i+curves.size()-1)%curves.size()].pointAt(.97);
-            const auto b = curves[i].pointAt(.03);
-            if ((a.y()-p.y())*(b.y()-p.y()) <= 0) continue;
-            const bool already = std::any_of(local.timeSorted.begin(), local.timeSorted.end(), [&](const auto& e) {
-                return std::abs(e.time-i)<.05 && QLineF(e.point,p).length()<.01;
-            });
-            if (!already) local.timeSorted.insert({0,double(i),p,false,true});
-        }
-        return toothBendSections(local, settings);
-    }
+// Recognition stores only intrinsic landmarks and cross-sections used for
+// measurement. It has no committed boundaries or masks and accepts no cut
+// policy. Keeping both valid scale hypotheses lets a policy reject a baseline
+// projection without losing a tooth supported by its own opposite flank.
+struct ToothScaleEvidence {
+    double stroke;
+    std::vector<PathExtrema> flankSamples;
+};
+struct ToothPairEvidence {
+    PathExtrema bend;
+    Stretching localSection;
+    std::optional<ToothScaleEvidence> localScale, entryScale;
+};
+struct ToothBodyEvidence {
+    PathExtrema tip;
+    std::vector<PathExtrema> forwardFlank, reverseFlank;
+    bool reverseIsRight;
+    std::optional<Stretching> baselineSection;
+    double entryStroke;
+    bool requiredEntry;
+    double minEntryRise;
+    std::vector<ToothPairEvidence> pairs;
+};
+
+static std::vector<ToothBodyEvidence> recognizeToothBodies(
+        SearchContext& context, const QJsonObject& settings) {
     const auto& ink = context.transformedPath;
-    std::vector<ToothBody> results;
+    std::vector<ToothBodyEvidence> results;
     // Derivative roots and curve endpoints can name the same extremum
     // within floating-point precision. It is one tip, with two real flanks.
     const auto adjacent = [&](auto point, auto advance) {
@@ -5159,19 +5240,7 @@ static std::vector<ToothBody> toothBodyBoundaries(
                 const double width = QLineF(footEntry->topBaseLine.point, footEntry->bottomBaseLine.point).length();
                 if (anchor.point.x() <= tip.x() || anchor.point.y() - tip.y() <
                     baselineEntry.value("minRise").toDouble() * width) footEntry.reset();
-                else {
-                    entryStroke = width;
-                    if (baselineEntry.contains("turnAngle") && anchor.point.x() - tip.x() >=
-                        baselineEntry.value("minTurnRun").toDouble() * width) {
-                        Stretching turn{};
-                        const int direction = &rightFlank == &forwardFlank ? 1 : -1;
-                        if (alefTurnCut(context, anchor, baselineEntry.value("turnAngle").toDouble(),
-                                        width, turn, &*peak, direction)) {
-                            turn.referenceWidth = width;
-                            footEntry = turn;
-                        } else if (!baselineEntry.contains("minTurnRun")) footEntry.reset();
-                    }
-                }
+                else entryStroke = width;
             }
         }
         const auto onFlank = [&](const PathExtrema& point, const auto& points) {
@@ -5192,6 +5261,8 @@ static std::vector<ToothBody> toothBodyBoundaries(
         std::sort(bends.begin(), bends.end(), [&](const auto& x, const auto& y) {
             return QLineF(tip, x.point).length() < QLineF(tip, y.point).length();
         });
+        ToothBodyEvidence body{*peak, forwardFlank, reverseFlank, reverseIsRight, footEntry, entryStroke,
+            baselineEntry.value("required").toBool(), baselineEntry.value("minRise").toDouble(), {}};
         for (const auto& inner : bends) {
             const double distance = QLineF(tip, inner.point).length();
             // Sample the joining stroke just past the inner bend, on the
@@ -5203,8 +5274,87 @@ static std::vector<ToothBody> toothBodyBoundaries(
                 local.bottomBaseLine = inner;
             }
             const double localWidth = QLineF(local.topBaseLine.point, local.bottomBaseLine.point).length();
+            const auto measure = [&](double stroke) -> std::optional<ToothScaleEvidence> {
+                if (stroke <= 0 || distance < settings.value("minPairDistance").toDouble() * stroke ||
+                    distance > settings.value("maxPairDistance").toDouble(2.5) * stroke) return std::nullopt;
+                const double rise = std::min(rightFlank.back().point.y(), leftFlank.back().point.y()) - tip.y();
+                if (rise < settings.value("minFlankRise").toDouble() * stroke) return std::nullopt;
+                const double drop = std::min(settings.value("flankDrop").toDouble(0.6) * stroke, 0.95 * rise);
+                const auto hits = FindInterections(ink, QLineF(context.bbox.left() - 1, tip.y() + drop,
+                                                              context.bbox.right() + 1, tip.y() + drop), true);
+                const auto foot = [&](const auto& points) -> std::optional<QPointF> {
+                    for (const auto& hit : hits) if (onFlank(hit, points)) return hit.point;
+                    return std::nullopt;
+                };
+                const auto r = foot(rightFlank), l = foot(leftFlank);
+                if (!r || !l) return std::nullopt;
+                const double width = r->x() - l->x();
+                if (r->x() + settings.value("maxTipOverhang").toDouble(0.12) * stroke < tip.x() ||
+                    tip.x() < l->x() || width < settings.value("minWidth").toDouble(0.2) * stroke ||
+                    width > settings.value("maxWidth").toDouble(3) * stroke) return std::nullopt;
+                return ToothScaleEvidence{stroke, hits};
+            };
+            auto localScale = measure(localWidth);
+            auto entryScale = footEntry ? (entryStroke == localWidth ? localScale : measure(entryStroke)) : std::nullopt;
+            if (localScale || entryScale)
+                body.pairs.push_back({inner, local, std::move(localScale), std::move(entryScale)});
+        }
+        if (!body.pairs.empty()) results.push_back(std::move(body));
+    }
+    return results;
+}
+
+// Only this stage places the normal sections and chooses an accepted pair of
+// boundaries. Candidate order and all offsets retain the previous geometry.
+static std::vector<ToothBody> cutToothBodies(SearchContext& context,
+        const std::vector<ToothBodyEvidence>& bodies, const QJsonObject& settings, bool bothSides = true) {
+    const auto& ink = context.transformedPath;
+    std::vector<ToothBody> results;
+    const auto adjacent = [&](auto point, auto advance) {
+        auto next = (context.*advance)(point);
+        while (next != point && std::abs(next->time - point->time) < 1e-7)
+            next = (context.*advance)(next);
+        return next;
+    };
+    for (const auto& evidence : bodies) {
+        const auto tip = evidence.tip.point;
+        const auto& forwardFlank = evidence.forwardFlank;
+        const auto& reverseFlank = evidence.reverseFlank;
+        const auto& rightFlank = evidence.reverseIsRight ? reverseFlank : forwardFlank;
+        const auto& leftFlank = evidence.reverseIsRight ? forwardFlank : reverseFlank;
+        const auto baselineEntry = settings.value("baselineEntry").toObject();
+        auto footEntry = evidence.baselineSection;
+        if (footEntry) {
+            const auto& anchor = rightFlank.back();
+            const auto width = evidence.entryStroke;
+            if (baselineEntry.contains("turnAngle") && anchor.point.x() - tip.x() >=
+                baselineEntry.value("minTurnRun").toDouble() * width) {
+                Stretching turn{};
+                const int direction = &rightFlank == &forwardFlank ? 1 : -1;
+                if (alefTurnCut(context, anchor, baselineEntry.value("turnAngle").toDouble(),
+                                width, turn, &evidence.tip, direction)) {
+                    turn.referenceWidth = width;
+                    footEntry = turn;
+                } else if (!baselineEntry.contains("minTurnRun")) footEntry.reset();
+            }
+        }
+        const auto onFlank = [&](const PathExtrema& point, const auto& points) {
+            if (point.pathIndex != 0) return false;
+            const bool forward = &points == &forwardFlank;
+            for (size_t i = 1; i < points.size(); ++i) {
+                const double from = forward ? points[i - 1].time : points[i].time;
+                const double to = forward ? points[i].time : points[i - 1].time;
+                const bool after = point.time >= from - 1e-6, before = point.time <= to + 1e-6;
+                if (from <= to ? after && before : after || before) return true;
+            }
+            return false;
+        };
+        for (const auto& pair : evidence.pairs) {
+            const auto& inner = pair.bend;
+            const auto& local = pair.localSection;
+            const double localWidth = QLineF(local.topBaseLine.point, local.bottomBaseLine.point).length();
             auto rightTurn = footEntry;
-            if (!rightTurn && baselineEntry.value("required").toBool()) {
+            if (!rightTurn && evidence.requiredEntry) {
                 // An inclined entry can end at a corner whose vertical misses
                 // the underside. Measure the tooth at its own opposite flank
                 // and search the descending edge directly for its turning normal.
@@ -5212,31 +5362,17 @@ static std::vector<ToothBody> toothBodyBoundaries(
                 const int direction = &rightFlank == &forwardFlank ? 1 : -1;
                 Stretching turn{};
                 if (root.point.x() <= tip.x() || root.point.y() - tip.y() <
-                    baselineEntry.value("minRise").toDouble() * localWidth ||
+                    evidence.minEntryRise * localWidth ||
                     !baselineEntry.contains("turnAngle") ||
                     !alefTurnCut(context, root, baselineEntry.value("turnAngle").toDouble(),
-                                 localWidth, turn, &*peak, direction)) continue;
+                                 localWidth, turn, &evidence.tip, direction)) continue;
                 turn.referenceWidth = localWidth;
                 rightTurn = turn;
             }
-            const double stroke = footEntry ? entryStroke : localWidth;
-            if (stroke <= 0 || distance < settings.value("minPairDistance").toDouble() * stroke ||
-                distance > settings.value("maxPairDistance").toDouble(2.5) * stroke) continue;
-            const double rise = std::min(rightFlank.back().point.y(), leftFlank.back().point.y()) - tip.y();
-            if (rise < settings.value("minFlankRise").toDouble() * stroke) continue;
-            const double drop = std::min(settings.value("flankDrop").toDouble(0.6) * stroke, 0.95 * rise);
-            const auto hits = FindInterections(ink, QLineF(context.bbox.left() - 1, tip.y() + drop,
-                                                          context.bbox.right() + 1, tip.y() + drop), true);
-            const auto foot = [&](const auto& points) -> std::optional<QPointF> {
-                for (const auto& hit : hits) if (onFlank(hit, points)) return hit.point;
-                return std::nullopt;
-            };
-            const auto r = foot(rightFlank), l = foot(leftFlank);
-            if (!r || !l) continue;
-            const double width = r->x() - l->x();
-            if (r->x() + settings.value("maxTipOverhang").toDouble(0.12) * stroke < tip.x() ||
-                tip.x() < l->x() || width < settings.value("minWidth").toDouble(0.2) * stroke ||
-                width > settings.value("maxWidth").toDouble(3) * stroke) continue;
+            const auto& profile = footEntry ? pair.entryScale : pair.localScale;
+            if (!profile) continue;
+            const double stroke = profile->stroke;
+            const auto& hits = profile->flankSamples;
             Stretching right{}, left{};
             // Keep the known bend as the lower endpoint. Re-discovering an
             // exact curve endpoint by intersection can lose it to rounding.
@@ -5390,7 +5526,7 @@ static std::vector<ToothBody> toothBodyBoundaries(
                 if (!body.contains(tip) || !body.contains(inner.point) ||
                     !bodyPath.contains(tip + .05 * (inner.point - tip)) ||
                     !bodyPath.contains(tip + .95 * (inner.point - tip))) continue;
-                results.push_back({*peak, inner, left, bothSides ? std::optional{proposal} : std::nullopt});
+                results.push_back({evidence.tip, inner, left, bothSides ? std::optional{proposal} : std::nullopt});
                 accepted = true;
                 break;
             }
@@ -5402,6 +5538,38 @@ static std::vector<ToothBody> toothBodyBoundaries(
         return a.right && b.right ? Stretching::cmpbyx{}(*a.right, *b.right) : a.tip.point.x() > b.tip.point.x();
     });
     return results;
+}
+
+// Transitional adapter for the other tooth forms and loop exit teeth. The
+// declared tooth-pair path below calls recognition and projection directly.
+static std::vector<ToothBody> toothBodyBoundaries(
+        SearchContext& context, const QJsonObject& settings, bool bothSides) {
+    if (bothSides && settings.contains("flankOffset")) {
+        if (!settings.value("projectFlanks").toBool() && !settings.value("walkFlanks").toBool()) return toothBendSections(context, settings);
+        // A smooth extremum can fall exactly between two cubics. A root just
+        // outside [0,1] on both cubics would hide the entire tooth shoulder.
+        SearchContext local{.transformedPath=context.transformedPath, .xSorted=context.xSorted,
+            .timeSorted=context.timeSorted, .bbox=context.bbox, .subword=context.subword, .orientation=context.orientation,
+            .outlineCache=context.outlineCache};
+        const auto curves = baseContourCurves(local.transformedPath);
+        for (int i = 0; i < static_cast<int>(curves.size()); ++i) {
+            const auto p = curves[i].pt1();
+            const auto a = curves[(i+curves.size()-1)%curves.size()].pointAt(.97);
+            const auto b = curves[i].pointAt(.03);
+            if ((a.y()-p.y())*(b.y()-p.y()) <= 0) continue;
+            const bool already = std::any_of(local.timeSorted.begin(), local.timeSorted.end(), [&](const auto& e) {
+                return std::abs(e.time-i)<.05 && QLineF(e.point,p).length()<.01;
+            });
+            if (!already) local.timeSorted.insert({0,double(i),p,false,true});
+        }
+        return toothBendSections(local, settings);
+    }
+    return cutToothBodies(context, recognizeToothBodies(context, settings), settings, bothSides);
+}
+
+static std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJsonObject& form) {
+    const auto evidence = recognizeToothBodies(context, form.value("body").toObject());
+    return cutToothBodies(context, evidence, form.value("cuts").toObject());
 }
 
 // The stacked counters identify the medial heh itself. Locate the inward
@@ -6525,10 +6693,10 @@ static const BodyCutProgram& bodyCutProgram(const QJsonObject& config) {
     for (const auto* phase : {"initial", "medial", "final"})
         for (const auto& value : config.value(phase).toArray()) {
             const auto form = value.toObject();
-            if (!form.contains("lamBody") || !form.contains("lamCuts")) continue;
+            if (!form.contains("body") || !form.contains("cuts")) continue;
             const auto current = form.value("current").toString();
             program.forms.insert(form.value("id").toString(), {current,
-                formDescription(config, form, "lamBody"), formDescription(config, form, "lamCuts")});
+                formDescription(config, form, "body"), formDescription(config, form, "cuts")});
             for (QChar letter : current)
                 if (!program.letters.contains(letter)) program.letters += letter;
         }
@@ -6557,6 +6725,9 @@ static SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
         return result;
     QMap<QByteArray, QJsonObject> descriptions;
     for (const auto& form : program.forms) {
+        // Tooth declarations have their own intrinsic recognizer. They must
+        // not be interpreted as stems or trigger the lām fork search.
+        if (toothPairDescription(form.body)) continue;
         if (std::none_of(letters.begin(), letters.end(), [&](QChar letter) { return form.current.contains(letter); }))
             continue;
         descriptions.insert(bodyDescriptionKey(form.body), form.body);
@@ -7480,8 +7651,8 @@ static bool terminalStemFork(SearchContext &ctx, const QJsonObject &form, Stretc
 // Initial/final lām declarations are evaluated here, before the legacy
 // dispatcher. A failed declaration is a miss, never a legacy matcher fallback.
 static bool declaredLamBoundary(SearchContext& context, const QJsonObject& config, const QJsonObject& form) {
-    const auto body = formDescription(config, form, "lamBody");
-    const auto cuts = formDescription(config, form, "lamCuts");
+    const auto body = formDescription(config, form, "body");
+    const auto cuts = formDescription(config, form, "cuts");
     const auto shape = body.value("shape").toString();
     if (shape == "contour-stem")
         return lamRouteCut(context, body.value("route").toObject(), cuts.value("route").toObject());
@@ -7513,8 +7684,8 @@ static std::vector<MedialCandidate> declaredMedialLamCandidates(SearchContext& c
         const QJsonObject& config, const QJsonObject& form, const Stretching& incoming,
         const QPointF& entry, const QPointF& exit, double stroke, bool open, bool recoverTeeth,
         bool allowFork, const std::optional<Stretching>& sharedExit) {
-    const auto lamBody = formDescription(config, form, "lamBody");
-    const auto lam = formDescription(config, form, "lamCuts");
+    const auto lamBody = formDescription(config, form, "body");
+    const auto lam = formDescription(config, form, "cuts");
     std::vector<MedialCandidate> candidates;
     if (lamBody.value("shape") == "turning-shaft") {
         for (const auto& [right, left] : shaftSections(context, lamBody.value("shaft").toObject()))
@@ -8470,7 +8641,7 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
     const auto findRule = [&](const char* phase, const char* feature, QChar ch) {
         for (const auto& value : config.value(phase).toArray()) {
             const auto rule = value.toObject();
-            if ((rule.contains(feature) || formDescription(config, rule, "lamBody").contains(feature)) &&
+            if ((rule.contains(feature) || formDescription(config, rule, "body").contains(feature)) &&
                 rule.value("current").toString().contains(ch))
                 return rule;
         }
@@ -8479,8 +8650,8 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
     auto lam = findRule("medial", attached ? "terminalArm" : "detachedExit", letters[letters.size() - 2]);
     if (lam.isEmpty())
         return false;
-    const auto lamBody = formDescription(config, lam, "lamBody");
-    const auto lamCuts = formDescription(config, lam, "lamCuts");
+    const auto lamBody = formDescription(config, lam, "body");
+    const auto lamCuts = formDescription(config, lam, "cuts");
     auto arm = findRule("final", "detachedArm", letters.back());
     if (attached) {
         arm = {};
@@ -8585,7 +8756,7 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
         cuts.insert("beforeFinal", false);
         cuts.insert("boundaries", QJsonObject{{"right", "fork-normal"}, {"left", "free"}});
         rules.append(QJsonObject{{"id", lam.value("id")}, {"current", lam.value("current")},
-            {"ownsLeftTip", true}, {"lamBody", body}, {"lamCuts", cuts}});
+            {"ownsLeftTip", true}, {"body", body}, {"cuts", cuts}});
         prefixForms.insert("final", rules);
     }
     bool prefixComplete;
@@ -8593,14 +8764,14 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
         auto rules = prefixForms.value("final").toArray();
         for (int i = 0; i < rules.size(); ++i) {
             auto form = rules[i].toObject();
-            auto body = formDescription(prefixForms, form, "lamBody");
+            auto body = formDescription(prefixForms, form, "body");
             if (body.value("shape") == "terminal-return" &&
                 form.value("current").toString().contains(result.text.back())) {
-                auto cuts = formDescription(prefixForms, form, "lamCuts");
+                auto cuts = formDescription(prefixForms, form, "cuts");
                 auto section = cuts.value("section").toObject();
                 section.insert("turnAngle", lamCuts.value("entryTurnAngle"));
                 cuts.insert("section", section);
-                form.insert("lamCuts", cuts);
+                form.insert("cuts", cuts);
                 rules[i] = form;
             }
 
@@ -9685,7 +9856,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         outline.form = form(position, id);
         outline.nextIter = std::next(outline.xSorted.begin());
         outline.res = {};
-        if (outline.form.isEmpty() || !(outline.form.contains("lamBody") ?
+        if (outline.form.isEmpty() || !(outline.form.contains("body") ?
             declaredLamBoundary(outline, config, outline.form) :
             seen ? searchSeenTeeth(outline) : searchContourWalk(outline))) return {};
         return outline.res;
@@ -10777,8 +10948,8 @@ bool PageAnalysisResult::segmentWithLetterForms(int pageIndex, int lineIndex, in
                         [&](QChar letter) { return characters.contains(letter); })) continue;
                 const auto declaration = declarations.forms.constFind(rule.value("id").toString());
                 if (declaration != declarations.forms.cend()) {
-                    rule.insert("lamBody", declaration->body);
-                    rule.insert("lamCuts", declaration->cuts);
+                    rule.insert("body", declaration->body);
+                    rule.insert("cuts", declaration->cuts);
                 }
                 rules.append(rule);
             }
@@ -11124,7 +11295,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             return true;
         };
         bool found = false;
-        if (rule.contains("lamBody")) found = declaredLamBoundary(context, config, rule);
+        if (rule.contains("body")) found = declaredLamBoundary(context, config, rule);
         else if (method == "descending-stem") found = descendingStemExit(context,rule.value("descendingStem").toObject(),context.res);
         else if (method == "walk") {
             if (recoverTeeth && rule.contains("tailEntry"))
@@ -11270,12 +11441,12 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     };
     const auto supportsOpenBoundary = [&](const QJsonObject& form) {
         return form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") || form.contains("counterLigature") || form.contains("mouth") || form.contains("blade") || !form.value("contourBody").toObject().isEmpty() ||
-            (formDescription(config, form, "lamBody").value("shape") == "forked-stem" ||
-             formDescription(config, form, "lamBody").value("shape") == "turning-shaft") ||
+            (formDescription(config, form, "body").value("shape") == "forked-stem" ||
+             formDescription(config, form, "body").value("shape") == "turning-shaft") ||
             !form.value("pairedCounterCorners").toObject().isEmpty() ||
             !form.value("loopBoundaries").toObject().isEmpty() ||
             !form.value("openHead").toObject().isEmpty() ||
-            !form.value("tooth").toObject().isEmpty() ||
+            hasToothBody(form) ||
             !form.value("seenTeeth").toObject().isEmpty() ||
             !form.value("headEdges").toObject().isEmpty() ||
             form.value("pairedCounters").toBool() ||
@@ -11297,7 +11468,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         const auto medial = config.value("medial").toArray();
         const bool hasTooth = std::any_of(medial.begin(), medial.end(), [&](const auto& value) {
             const auto form = value.toObject();
-            return !form.value("tooth").toObject().isEmpty() &&
+            return hasToothBody(form) &&
                 form.value("current").toString().contains(baseText[index]);
         });
         return hasTooth && (std::any_of(finalRules.begin(), finalRules.end(), [&](const auto& value) {
@@ -11492,21 +11663,23 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             for (const auto& value : medialForms) {
                 const auto form = value.toObject();
                 if (!matchesBody(form, letter) || (open && !supportsOpenBoundary(form))) continue;
-                const auto toothSettings = form.value("tooth").toObject();
+                const auto toothSettings = toothRecognitionSettings(form);
                 if ((!recoverTeeth && toothSettings.contains("flankOffset")) ||
                     (plan && ((toothSettings.value("projectFlanks").toBool() && plan->stage<2) ||
                               (toothSettings.value("walkFlanks").toBool() && plan->stage<3)))) continue;
                 bodyAttempted[letter] = true;
-                if (!form.contains("tooth")) {
+                if (!hasToothBody(form)) {
                     attempts.push_back({form});
                     continue;
                 }
                 if (!toothPosition) toothPosition = attempts.size();
                 const auto id = form.value("id").toString();
                 if (!teethByForm.contains(id)) {
-                    auto bodies = toothBodyBoundaries(context, toothSettings, true);
+                    auto bodies = toothPairDescription(form.value("body").toObject()) ?
+                        declaredToothBoundaries(context, form) : toothBodyBoundaries(context, toothSettings, true);
                     if (recoverTeeth && toothSettings.contains("baselineEntry") && !toothSettings.contains("flankOffset")) {
-                        const auto entry = toothSettings.value("baselineEntry").toObject();
+                        const auto entry = withOverrides(toothSettings.value("baselineEntry").toObject(),
+                            toothPlacementSettings(form).value("baselineEntry").toObject());
                         for (auto& body : bodies) extendToothToBaseline(context, body, entry);
                     }
                     teethByForm.insert(id, std::move(bodies));
@@ -11618,11 +11791,11 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 const auto loop = form.value("loopBoundaries").toObject();
                 const auto openHead = form.value("openHead").toObject();
                 const auto pairedCorners = form.value("pairedCounterCorners").toObject();
-                const auto tooth = form.value("tooth").toObject();
+                const auto tooth = toothRecognitionSettings(form);
                 const auto head = form.value("headEdges").toObject();
                 const auto bridge = form.value("counterLigature").toObject();
                 const bool internalBody =
-                    formDescription(config, form, "lamBody").value("shape") == "turning-shaft" || form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") || form.contains("mouth") || form.contains("blade") || !bridge.isEmpty() || !contour.isEmpty() || !loop.isEmpty() || !openHead.isEmpty() ||
+                    formDescription(config, form, "body").value("shape") == "turning-shaft" || form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") || form.contains("mouth") || form.contains("blade") || !bridge.isEmpty() || !contour.isEmpty() || !loop.isEmpty() || !openHead.isEmpty() ||
                     !pairedCorners.isEmpty() || !tooth.isEmpty() || !head.isEmpty() ||
                     (form.value("sharedEntry").toBool() && !form.value("seenTeeth").toObject().isEmpty());
                 if (!bridge.isEmpty() && bridge.value("letters").toString().contains(baseText[letter + 1])) {
@@ -11722,7 +11895,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                         // cut. Keep the tooth candidates on its incoming side.
                         const bool suppliesExit = rule.value("pairedOnly").toBool() ||
                             rule.value("method") == "alef-stem" || rule.contains("penWidth") ||
-                            formDescription(config, rule, "lamBody").value("shape") == "terminal-fork" ||
+                            formDescription(config, rule, "body").value("shape") == "terminal-fork" ||
                             rule.value("strokeSource") == "local";
                         if (!suppliesExit || !applies(rule, letter) || !probeFinal(rule)) continue;
                         nextBody = context.res;
@@ -11735,7 +11908,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 if (deferred && tooth.isEmpty()) continue;
                 if (medial.tooth)
                     candidates.push_back({*medial.tooth->right, medial.tooth->left});
-                const auto lamBody = formDescription(config, form, "lamBody");
+                const auto lamBody = formDescription(config, form, "body");
                 const bool forkedLam = lamBody.value("shape") == "forked-stem";
                 const bool foldedFinal = form.contains("sharedFoldWithFinal");
                 std::optional<BodyBoundary> sharedExit;
@@ -11768,7 +11941,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     for (const auto& [right, left] : contourBodyBoundaries(context, contour, &sharedExit->cut))
                         candidates.emplace_back(right, left);
                 }
-                if (form.contains("lamBody")) {
+                if (form.contains("body") && !toothPairDescription(form.value("body").toObject())) {
                     const auto declarations = declaredMedialLamCandidates(context, config, form, incoming,
                         entry, exit, stroke, open, recoverTeeth, pageIndex >= 0,
                         sharedExit ? std::optional<Stretching>{sharedExit->cut} : std::nullopt);
@@ -11854,7 +12027,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                             const bool intrinsicTooth = std::any_of(rules.begin(), rules.end(), [&](const auto& value) {
                                 const auto prior = value.toObject();
                                 return prior.value("id") == bodyTemplateIds[letter - 1] &&
-                                    (prior.contains("tooth") || prior.contains("seenTeeth") || prior.value("method") == "seen-teeth" ||
+                                    (hasToothBody(prior) || prior.contains("seenTeeth") || prior.value("method") == "seen-teeth" ||
                                      prior.value("loopBoundaries").toObject().contains("exitTooth"));
                             });
                             if (intrinsicTooth) continue;
@@ -12194,7 +12367,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 QLineF(outside.center(), inside.center()).length() <= 1.5 * std::min(outside.length(), inside.length());
             bool touchingCounter = false;
             if (rule.value("stemFoot").toBool() ||
-                formDescription(config, rule, "lamBody").value("shape") == "terminal-fork")
+                formDescription(config, rule, "body").value("shape") == "terminal-fork")
                 for (size_t i = 1; i < context.subPaths.size(); ++i) {
                     const auto box = context.subPaths[i].boundingRect();
                     if (box.left() >= inside.center().x() - inside.length() * .3 &&

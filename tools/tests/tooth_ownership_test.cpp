@@ -27,13 +27,13 @@ int main(int argc, char** argv) {
     for (const auto& value:config.value("initial").toArray())
         if (value.toObject().value("id")=="beh-init") initial=value.toObject();
     for (const auto& value:config.value("medial").toArray())
-        if (value.toObject().value("id")=="beh-tooth-medi") tooth=value.toObject().value("tooth").toObject();
+        if (value.toObject().value("id")=="beh-tooth-medi") tooth=value.toObject();
     for (const auto& value:config.value("final").toArray())
         if (value.toObject().value("id")=="meem-counter-fina") final=value.toObject();
     context.form=initial;
     check(searchContourWalk(context), "Fixture no longer exercises the misleading initial route");
     auto badInitial=context.res;
-    const auto proposals=toothBodyBoundaries(context,tooth,true);
+    const auto proposals=declaredToothBoundaries(context, tooth);
     check(proposals.size()==1 && std::abs(proposals[0].tip.time-3.65792430518215)<1e-6,
           "The meem loop was mistaken for the medial tooth");
     context.form=final;

@@ -5,7 +5,7 @@
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 
 static const LamBodyRecognition& bodyEvidence(const SubwordBodyRecognition& recognition, const QJsonObject& config) {
-    const auto body = formDescription(config, namedLetterForm(config, "lam-medi"), "lamBody");
+    const auto body = formDescription(config, namedLetterForm(config, "lam-medi"), "body");
     const auto* found = recognizedLamBody(recognition, body);
     check(found != nullptr, "Missing declared lam body evidence");
     return *found;
@@ -59,7 +59,7 @@ static void checkDeclaredLamRoutes() {
     WordResultInfo::SubWordInfo dummy{};
     auto context = geometry(shape.transform.map(shape.path).translated(shape.pos), dummy, {}, {});
     const auto declaration = namedLetterForm(config, "lam-init");
-    const auto body = formDescription(config, declaration, "lamBody").value("route").toObject();
+    const auto body = formDescription(config, declaration, "body").value("route").toObject();
     const auto evidence = recognizeContourRoute(context, body);
     check(evidence.has_value(), "Declared initial stem landmarks not found");
     check(projectContourRoute(context, withOverrides(body, QJsonObject{{"bottomProbe", "down"}}), *evidence),
@@ -73,9 +73,9 @@ static void checkDeclaredLamRoutes() {
           "Cut-policy change must preserve the recognized landmark and change its projection");
     // Even a usable legacy walk cannot rescue a failed declaration.
     auto invalid = declaration;
-    auto invalidBody = formDescription(config, declaration, "lamBody");
+    auto invalidBody = formDescription(config, declaration, "body");
     invalidBody.insert("shape", "unknown");
-    invalid.insert("lamBody", invalidBody);
+    invalid.insert("body", invalidBody);
     invalid.insert("method", "walk");
     invalid.insert("top", body.value("top"));
     invalid.insert("bottomProbe", "down");
@@ -110,7 +110,7 @@ static void checkBodyRecognitionSeparation() {
     for (int i = 0; i < forms.size(); ++i) {
         auto form = forms[i].toObject();
         if (form.value("id") != "lam-medi") continue;
-        form.insert("lamCuts", QJsonObject{{"forkOffset", 1.25}});
+        form.insert("cuts", QJsonObject{{"forkOffset", 1.25}});
         forms[i] = form;
     }
     changed.insert("medial", forms);
@@ -268,11 +268,11 @@ static void checkSharedAlefJunctionPolicy() {
     for (int i = 0; i < forms.size(); ++i) {
         auto form = forms[i].toObject();
         if (form.value("id") != "lam-medi") continue;
-        auto cuts = form.value("lamCuts").toObject();
+        auto cuts = form.value("cuts").toObject();
         auto terminal = cuts.value("beforeFinal").toObject();
         terminal.remove("junction");
         cuts.insert("beforeFinal", terminal);
-        form.insert("lamCuts", cuts);
+        form.insert("cuts", cuts);
         forms[i] = form;
     }
     routePolicy.insert("medial", forms);
@@ -326,8 +326,8 @@ static void checkTerminalLamEntryPolicy() {
         auto forms = disabled.value(phase).toArray();
         for (int i = 0; i < forms.size(); ++i) {
             auto form = forms[i].toObject();
-            if (!form.contains("lamCuts")) continue;
-            auto cuts = form.value("lamCuts").toObject();
+            if (!form.contains("cuts")) continue;
+            auto cuts = form.value("cuts").toObject();
             if (QString(phase) == "final")
                 cuts.insert("boundaries", QJsonObject{{"right", "preserve"}, {"left", "free"}});
             if (cuts.value("beforeFinal").isObject()) {
@@ -335,7 +335,7 @@ static void checkTerminalLamEntryPolicy() {
                 terminal.insert("boundaries", QJsonObject{{"right", "preserve"}, {"left", "shared-return"}});
                 cuts.insert("beforeFinal", terminal);
             }
-            form.insert("lamCuts", cuts);
+            form.insert("cuts", cuts);
             forms[i] = form;
         }
         disabled.insert(phase, forms);
@@ -400,9 +400,9 @@ static void checkTerminalLamEntryPolicy() {
                 // The template name and a final-only override must be data,
                 // not hidden dispatch conditions in the new cutter.
                 form.insert("id", "renamed-terminal-lam");
-                auto cuts = form.value("lamCuts").toObject();
+                auto cuts = form.value("cuts").toObject();
                 cuts.insert("forkOffset", .25);
-                form.insert("lamCuts", cuts);
+                form.insert("cuts", cuts);
                 finals[i] = form;
             }
             custom.insert("final", finals);
@@ -484,9 +484,9 @@ static void checkSharedCounterForkPolicy(int page, int line, int wordIndex, int 
     for (int i = 0; i < forms.size(); ++i) {
         auto form = forms[i].toObject();
         if (form.value("id") != "lam-medi") continue;
-        auto policy = form.value("lamCuts").toObject();
+        auto policy = form.value("cuts").toObject();
         policy.remove("counterJoin");
-        form.insert("lamCuts", policy);
+        form.insert("cuts", policy);
         forms[i] = form;
     }
     without.insert("medial", forms);

@@ -159,7 +159,7 @@
       "tightJoin": true,
       "tryNext": true,
       "onUnresolved": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -177,7 +177,7 @@
           }
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -190,7 +190,7 @@
       "current": "ل",
       "tryNext": true,
       "retryOnPartial": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -210,7 +210,7 @@
           "snapEndpointTolerance": 0.05
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -226,7 +226,7 @@
       "current": "ل",
       "tryNext": true,
       "retryOnPartial": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -246,7 +246,7 @@
           "snapEndpointTolerance": 0.05
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -263,7 +263,7 @@
       "tryNext": true,
       "retryOnPartial": true,
       "onIncomplete": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -284,7 +284,7 @@
           "snapEndpointTolerance": 0.05
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -299,7 +299,7 @@
       "id": "lam-wide-step-init",
       "current": "ل",
       "tryNext": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -318,7 +318,7 @@
           ]
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -766,7 +766,7 @@
       "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -788,7 +788,7 @@
           ]
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -805,7 +805,7 @@
       "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -827,7 +827,7 @@
           ]
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -844,7 +844,7 @@
       "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -866,7 +866,7 @@
           ]
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -883,7 +883,7 @@
       "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -900,7 +900,7 @@
           "topUseStepEnd": false
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -1113,7 +1113,7 @@
       "tightJoin": true,
       "onIncomplete": true,
       "onUnresolved": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "features": {
           "minHeight": 4,
@@ -1126,7 +1126,7 @@
           "minRise": 4
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -1257,7 +1257,7 @@
     {
       "id": "lam-medi",
       "current": "ل",
-      "lamBody": {
+      "body": {
         "minFlankSpan": 0.25,
         "minRise": 3,
         "maxWidthToHeight": 0.75,
@@ -1323,7 +1323,7 @@
           ]
         }
       },
-      "lamCuts": {
+      "cuts": {
         "boundaries": {
           "right": "fork-normal",
           "left": "fork-normal"
@@ -1418,22 +1418,32 @@
     {
       "id": "beh-tooth-medi",
       "current": "بتثنيئى",
-      "tooth": {
+      "body": {
+        "shape": "tooth-pair",
         "baselineEntry": {
-          "minRise": 2.5,
-          "turnAngle": 45,
-          "minTurnRun": 4
+          "minRise": 2.5
         },
         "maxPairDistance": 2.5,
         "flankDrop": 0.6,
         "maxTipOverhang": 0.12,
-        "leftOffset": 0.45,
-        "rightOffset": 0.5,
         "minWidth": 0.2,
         "maxWidth": 3.25,
         "allowFlatBend": true
       },
-      "tightJoin": true
+      "cuts": {
+        "boundaries": {
+          "left": "tooth-normal",
+          "right": "tooth-normal"
+        },
+        "offsetUnit": "local-stroke",
+        "leftOffset": 0.45,
+        "rightOffset": 0.5,
+        "baselineEntry": {
+          "turnAngle": 45,
+          "minTurnRun": 4
+        },
+        "tightJoin": "shared-boundary"
+      }
     },
     {
       "id": "beh-low-medi",
@@ -2404,7 +2414,7 @@
       "id": "lam-detached-arm-medi",
       "current": "ل",
       "onIncomplete": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "counters": false,
         "shape": "detached-return",
@@ -2415,7 +2425,7 @@
           "maxRun": 75
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "preserve",
@@ -2494,7 +2504,7 @@
       "current": "ل",
       "tightJoin": true,
       "onIncomplete": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "counters": 0,
         "shape": "turning-shaft",
@@ -2503,7 +2513,7 @@
           "maxWidthToHeight": 0.8
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "fork-normal",
@@ -2536,13 +2546,13 @@
       "id": "lam-returning-bowl-medi",
       "current": "ل",
       "onIncomplete": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "counters": false,
         "shape": "attached-return",
         "terminalArm": "alef-tapered-arm-fina"
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "preserve",
@@ -3590,7 +3600,7 @@
       "tightJoin": true,
       "terminalAttachment": true,
       "onFinalRetry": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "counters": 0,
         "shape": "terminal-fork",
@@ -3599,7 +3609,7 @@
           "penWidth": 0.5
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "fork-normal",
@@ -3615,7 +3625,7 @@
     {
       "id": "lam-bowl-fina",
       "current": "ل",
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "counters": false,
         "shape": "terminal-bowl",
@@ -3624,7 +3634,7 @@
           "maxNeckDistance": 2
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "fork-normal",
@@ -3973,7 +3983,7 @@
       "current": "ل",
       "ownsLeftTip": true,
       "onIncomplete": true,
-      "lamBody": {
+      "body": {
         "inherit": "lam-medi",
         "counters": false,
         "shape": "terminal-return",
@@ -3983,7 +3993,7 @@
           "maxRun": 75
         }
       },
-      "lamCuts": {
+      "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
           "right": "fork-normal",

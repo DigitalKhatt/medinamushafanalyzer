@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < rules.size(); ++i) {
         const auto rule = rules[i].toObject();
         if (rule.value("id") == "beh-upright-medi") {upright = rule.value("tooth").toObject(); uprightIndex = i;}
-        if (rule.value("id") == "beh-tooth-medi") ordinary = rule.value("tooth").toObject();
+        if (rule.value("id") == "beh-tooth-medi") ordinary = rule;
     }
     check(uprightIndex >= 0 && !ordinary.isEmpty(), "Missing tooth templates");
     for (int mutation = 0; mutation < 4; ++mutation) {
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     check(tangent.x()*tangent.y() > 0 && std::abs(std::abs(tangent.x())-std::abs(tangent.y())) < 1e-6 &&
           std::abs(QPointF::dotProduct(tangent, normal)) < 1e-6,
           "Upright entry is not normal to its own 45-degree descending turn");
-    const auto old = toothBodyBoundaries(context, ordinary, true);
+    const auto old = declaredToothBoundaries(context, ordinary);
     check(std::none_of(old.begin(), old.end(), [&](const auto& proposal) {return proposal.tip.time == tooth.tip.time;}),
           "Fixture does not exercise the ordinary pair-distance cutoff");
     auto noFoot = upright; auto entry = noFoot.value("baselineEntry").toObject();

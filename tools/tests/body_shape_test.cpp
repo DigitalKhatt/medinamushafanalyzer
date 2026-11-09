@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     };
     const auto lam = bodyConstraintForm(config, rule("initial", "lam-init")),
         lamNormal = bodyConstraintForm(config, rule("initial", "lam-normal-init"));
-    const auto tooth = rule("medial", "beh-tooth-medi").value("tooth").toObject();
+    const auto tooth = rule("medial", "beh-tooth-medi");
     QFile file("pages/page600.dat");
     check(file.open(QIODevice::ReadOnly), "Page 600 cache missing");
     PageAnalysisResult analysis;
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
     check(!badShared.empty(), "Expected the former lam-tip ligature proposal");
     for (const auto& pair : badShared)
         check(!matchesBoundaryBody(c, lamNormal, pair.first, true), "Shared entry bypassed lam body constraints");
-    const auto proposals = toothBodyBoundaries(c, tooth, true);
+    const auto proposals = declaredToothBoundaries(c, tooth);
     const auto tall = std::find_if(proposals.begin(), proposals.end(), [](const auto& p) {
         return std::abs(p.tip.time - 15.41831769) < 1e-6;
     });
@@ -73,14 +73,14 @@ int main(int argc, char** argv) {
     const auto footSample = QLineF(tall->right->topBaseLine.point, tall->right->bottomBaseLine.point).center() - QPointF(.25 * width, 0);
     check(regions.size() == 3 && regions[1].path.contains(footSample), "Tooth's descending stroke was left in kashida");
     c.baseText = QStringLiteral("بدون سياق"); c.pairedStrokeWidth = 1000; c.nextIter = c.xSorted.end();
-    const auto independent = toothBodyBoundaries(c, tooth, true);
+    const auto independent = declaredToothBoundaries(c, tooth);
     check(std::any_of(independent.begin(), independent.end(), [&](const auto& p) {
         return same(*tall->right, *p.right) && same(tall->left, p.left);
     }), "Neighbor state changed the baseline-entry tooth");
     for (double scale : {.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(source), dummy);
-        const auto found = toothBodyBoundaries(scaled, tooth, true);
+        const auto found = declaredToothBoundaries(scaled, tooth);
         check(std::any_of(found.begin(), found.end(), [&](const auto& p) {
             return same(*tall->right, *p.right, mapping) && same(tall->left, p.left, mapping);
         }), "Baseline-entry tooth changed under scale/translation");

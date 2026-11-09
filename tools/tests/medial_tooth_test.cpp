@@ -31,7 +31,7 @@ static bool same(const Stretching& expected, const Stretching& actual, const QTr
 static std::vector<std::pair<Stretching, Stretching>> medialToothBoundaries(
         SearchContext& context, const QJsonObject& settings) {
     std::vector<std::pair<Stretching, Stretching>> result;
-    for (const auto& tooth : toothBodyBoundaries(context, settings, true)) result.emplace_back(*tooth.right, tooth.left);
+    for (const auto& tooth : declaredToothBoundaries(context, settings)) result.emplace_back(*tooth.right, tooth.left);
     return result;
 }
 
@@ -81,8 +81,8 @@ int main(int argc, char** argv) {
     const auto config = PageAnalysisResult::letterForms();
     QJsonObject settings;
     for (const auto& value : config.value("medial").toArray())
-        if (value.toObject().value("id") == "beh-tooth-medi") settings = value.toObject().value("tooth").toObject();
-    check(!settings.isEmpty() && !settings.contains("maxExitDistance"), "Tooth still uses the neighboring exit distance");
+        if (value.toObject().value("id") == "beh-tooth-medi") settings = value.toObject();
+    check(!settings.isEmpty() && !settings.value("body").toObject().contains("maxExitDistance"), "Tooth still uses the neighboring exit distance");
     QFile file("pages/page3.dat");
     check(file.open(QIODevice::ReadOnly), "Page 3 cache is required");
     PageAnalysisResult analysis;
@@ -195,14 +195,14 @@ int main(int argc, char** argv) {
     const auto& laterShape = laterWord.paths[laterSub.paths.front()];
     auto laterInk = laterShape.transform.map(laterShape.path); laterInk.translate(laterShape.pos);
     auto laterContext = geometry(laterInk, dummy);
-    const auto broad = toothBodyBoundaries(laterContext, settings, true);
+    const auto broad = declaredToothBoundaries(laterContext, settings);
     check(broad.size() == 1 && std::abs(broad.front().tip.time - 30.4397) < 1e-4 &&
           std::abs(broad.front().bend.time - 16.5705) < 1e-4,
           "Rounded hamza seat was missed or the meem/dhal was mistaken for its tooth");
     for (double scale : {.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(laterInk), dummy);
-        const auto result = toothBodyBoundaries(scaled, settings, true);
+        const auto result = declaredToothBoundaries(scaled, settings);
         check(result.size() == 1 && same(*broad.front().right, *result.front().right, mapping) &&
               same(broad.front().left, result.front().left, mapping),
               "Rounded tooth changed under scale/translation");

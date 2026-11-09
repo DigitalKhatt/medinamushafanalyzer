@@ -59,16 +59,17 @@ Run `python3 tools/mushafcatalog/catalog.py validate-medial-lam-height` to check
 every medial lām body against 5 page units. The JSON report lists short bodies
 and unmeasured letters by ID. Either result makes the check fail.
 
-Lām forms use `lamBody` for recognition and `lamCuts` for cut placement.
+Declared forms use `body` for recognition and `cuts` for cut placement.
 Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
-declares its stem/bowl measurements in `lamBody.stem`, then uses
-`lamCuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
-lām `method` or `legacyLamRoutes` adapter.
+declares its stem/bowl measurements in `body.stem`, then uses
+`cuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
+lām `method` or `legacyLamRoutes` adapter. All lām forms and `beh-tooth-medi`
+use these declarations; other forms can migrate independently.
 
-`lamBody.shape` selects the intrinsic shape vocabulary: contour stem,
+`body.shape` selects the intrinsic shape vocabulary: contour stem,
 descending stem, forked stem, turning shaft, terminal bowl/fork/return, or an
 attached/detached return. `route` and `exitRoutes` describe contour landmarks;
-the corresponding entries in `lamCuts` specify projections and offsets.
+the corresponding entries in `cuts` specify projections and offsets.
 `minFlankSpan`, `minRise`, and `maxWidthToHeight` describe the shaft/fork.
 
 `fork-normal` walks `forkOffset` page units along a fork flank, then cuts
@@ -78,11 +79,26 @@ from the declared shape's attachment. `beforeFinal` supplies the lām–alef
 policy: keep the lower return with lām and share one seam at the inward
 corners. `counterJoin` and `preserveEntryAfter` preserve the kāf–lām attachments.
 
-The folded-foot option is `lamCuts.shortExit`: `minHorizontalRun` and
+The folded-foot option is `cuts.shortExit`: `minHorizontalRun` and
 `maxEntryGap` use local stroke widths; `anchorTolerance` uses page units.
 `cutsAroundHollow` and `entryMaxTilt` control its placement. Set
 `retryOnUnresolved` to false to skip the longer-exit retry, or `shortExit` to
 false to disable shortening. The ordinary fork walk remains 0.5 page unit.
+
+For `beh-tooth-medi`, `body.shape: "tooth-pair"` recognizes the outer tip,
+opposing inner bend, both flanks and local stroke measurements from uncut ink.
+`body` contains pair-distance/width limits, flat-bend acceptance and the baseline
+entry's minimum rise. `cuts` holds the left/right normal offsets, turn angle,
+minimum turn run and tight-join policy. Its offsets use `local-stroke` units;
+they preserve the existing normal-projection and contour-walk alternatives,
+not a new symmetric contour-walk rule. `shared-boundary` permits a shared seam
+when necessary. Recognition takes no cut policy or neighboring join landmarks.
+Changing a policy can reuse the recognized evidence; the assembler still checks
+that the tooth core survives. Check this separation and inheritance with:
+
+```sh
+python3 tools/tests/check_letter_forms.py body_cuts_test.cpp medial_tooth_test.cpp lam_alef_test.cpp
+```
 
 Catalog builds use AI/PDF reports. Rerun `build` with the same report to
 upgrade a native catalog created with the previous artwork schema.

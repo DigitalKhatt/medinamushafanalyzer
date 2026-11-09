@@ -18,9 +18,9 @@ int main(int argc, char** argv) {
         for (int i = 0; i < forms.size(); ++i) {
             auto form = forms[i].toObject();
             if (form.value("id") != "lam-medi") continue;
-            auto cuts = form.value("lamCuts").toObject();
+            auto cuts = form.value("cuts").toObject();
             for (auto it = bad.begin(); it != bad.end(); ++it) cuts.insert(it.key(), it.value());
-            form.insert("lamCuts", cuts);
+            form.insert("cuts", cuts);
             forms[i] = form;
         }
         invalid.insert("medial", forms);
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < finals.size(); ++i) {
             auto form = finals[i].toObject();
             if (form.value("id") != "lam-bowl-fina") continue;
-            form.insert("lamBody", QJsonObject{{"inherit", inherited}});
+            form.insert("body", QJsonObject{{"inherit", inherited}});
             finals[i] = form;
         }
         invalid.insert("final", finals);
@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < forms.size(); ++i) {
             auto form = forms[i].toObject();
             if (form.value("id") != "lam-medi") continue;
-            const auto field = badReference ? "lamBody" : "lamCuts";
+            const auto field = badReference ? "body" : "cuts";
             auto settings = form.value(field).toObject();
             if (badReference) settings.insert("alefArm", "missing-body");
             else {
@@ -65,9 +65,9 @@ int main(int argc, char** argv) {
             for (int i = 0; i < forms.size(); ++i) {
                 auto form = forms[i].toObject();
                 if (form.value("id") != "lam-medi") continue;
-                auto cuts = form.value("lamCuts").toObject();
+                auto cuts = form.value("cuts").toObject();
                 cuts.insert("shortExit", value);
-                form.insert("lamCuts", cuts);
+                form.insert("cuts", cuts);
                 forms[i] = form;
             }
             draft.insert("medial", forms);
@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
         QJsonObject shortExit;
         for (const auto& value : config.value("medial").toArray())
             if (value.toObject().value("id") == "lam-medi")
-                shortExit = value.toObject().value("lamCuts").toObject().value("shortExit").toObject();
+                shortExit = value.toObject().value("cuts").toObject().value("shortExit").toObject();
         shortExit.insert("minLengthRatio", 1);
         draft = withShortExit(shortExit);
         check(!PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Invalid short lam exit ratio accepted");
@@ -138,9 +138,9 @@ int main(int argc, char** argv) {
             for (int i = 0; i < medial.size(); ++i) {
                 auto rule = medial[i].toObject();
                 if (rule.value("id") != "lam-medi") continue;
-                auto body = rule.value("lamBody").toObject();
+                auto body = rule.value("body").toObject();
                 body.insert("exitRoutes", QJsonArray{});
-                rule.insert("lamBody", body);
+                rule.insert("body", body);
                 medial[i] = rule;
             }
         }
@@ -152,15 +152,15 @@ int main(int argc, char** argv) {
             for (int i = 0; i < medial.size(); ++i) {
                 auto rule = medial[i].toObject();
                 if (rule.value("id") != "lam-medi") continue;
-                auto boundaries = rule.value("lamCuts").toObject();
+                auto boundaries = rule.value("cuts").toObject();
                 if (scenario == 10) boundaries.insert("entryRoute", QJsonObject{{"top", QJsonArray{"down"}},
                     {"anchorSide", "sideways"}});
                 else {
-                    auto body = rule.value("lamBody").toObject();
+                    auto body = rule.value("body").toObject();
                     body.insert("maxWidthToHeight", 0);
-                    rule.insert("lamBody", body);
+                    rule.insert("body", body);
                 }
-                rule.insert("lamCuts", boundaries);
+                rule.insert("cuts", boundaries);
                 medial[i] = rule;
             }
         }
@@ -248,10 +248,10 @@ int main(int argc, char** argv) {
         for (auto entry = forms.begin(); entry != forms.end(); ++entry) {
             auto form = entry->toObject();
             if (form.value("id") != "lam-medi") continue;
-            auto bounds = form.value("lamCuts").toObject();
+            auto bounds = form.value("cuts").toObject();
             if (offset.isDouble()) bounds.insert("forkOffset", offset);
             else bounds.remove("forkOffset");
-            form.insert("lamCuts", bounds);
+            form.insert("cuts", bounds);
             *entry = form;
         }
         draft.insert("medial", forms);
@@ -306,7 +306,7 @@ int main(int argc, char** argv) {
     for (auto entry = medialForms.begin(); entry != medialForms.end(); ++entry) {
         auto rule = entry->toObject();
         if (rule.value("id") != "lam-medi") continue;
-        auto bounds = rule.value("lamCuts").toObject();
+        auto bounds = rule.value("cuts").toObject();
         auto routes = bounds.value("exitRoutes").toArray();
         for (auto it = routes.begin(); it != routes.end(); ++it) {
             auto route = it->toObject();
@@ -314,7 +314,7 @@ int main(int argc, char** argv) {
             *it = route;
         }
         bounds.insert("exitRoutes", routes);
-        rule.insert("lamCuts", bounds);
+        rule.insert("cuts", bounds);
         *entry = rule;
     }
     withoutGuard.insert("medial", medialForms);

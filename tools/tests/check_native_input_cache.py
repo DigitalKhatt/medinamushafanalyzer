@@ -30,7 +30,7 @@ def main():
 
         draft = json.loads(templates.read_bytes())
         lam = next(f for f in draft['medial'] if f['id']=='lam-medi')
-        lam['lamCuts']['forkOffset'] = .6
+        lam['cuts']['forkOffset'] = .6
         edited = work/'edited.json'
         edited.write_text(json.dumps(draft,ensure_ascii=False))
         reused, different = run('edited',edited)
