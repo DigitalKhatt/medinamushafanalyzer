@@ -29,6 +29,23 @@ python3 tools/mushafcatalog/catalog.py serve --port 8770
 to `output/mark-assignment-character-links-vector/`. Letter segmentation
 stores the native page contours, grouped surah titles, basmalas and ayah
 markers, and frame openings in the catalog. The viewer draws them directly.
+Each letter-segmentation run writes `output/mushafcatalog/letter-segmentation.log`
+with page totals and the subword IDs, letter diagnostics, and cutter traces
+for provisional or unresolved cases. The log also records whether the catalog
+update committed. Use `segment-letters --log PATH` to keep a separate log.
+
+Check individual template edits against the saved cuts with
+`python3 tools/mushafcatalog/catalog.py check-letter-cuts page069:l15-w6-s1 page435:l11-w6-s2`.
+It reads the current template JSON directly and reports whether the cuts match
+the saved outlines, endpoints, and raster masks. The catalog stays read-only.
+Use `--templates PATH` to check a separate draft.
+The `medialLamShortExit` settings use local stroke widths for
+`minHorizontalRun` and `maxEntryGap`, and page units for `anchorTolerance`.
+When the folded exit is shortened, `cutsAroundHollow` uses the stem's turn to place
+each cut up to one local stroke width from the hollow. This applies when the
+original entry cut is within `entryMaxTilt` degrees of vertical.
+Set `retryOnUnresolved` to false to skip the original-exit retry, or set
+`medialLamShortExit` to false to disable shortening.
 
 Catalog builds use AI/PDF reports. Rerun `build` with the same report to
 upgrade a native catalog created with the previous artwork schema.

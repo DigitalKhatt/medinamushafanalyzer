@@ -1,6 +1,7 @@
 #include "afont.h"
 
 #include "TFMatcherCpp/Matcher.h"
+#include <QIODevice>
 #include <climits>
 
 long AFont::getArea(QPainterPath path) {
@@ -36,7 +37,7 @@ int AFont::checkGlyphScaled(const QPainterPath& path, const QString& glyphName,
             auto normalized = QTransform::fromScale(scale, -scale).map(path);
             const auto bounds = normalized.boundingRect();
             normalized.translate(target.left() - bounds.left(), target.top() - bounds.top());
-            best = qMin(best, compareQPainterPath(reference, normalized));
+            best = qMin(best, compareGlyphAreas(reference, normalized));
         }
     }
     if (value) *value = best;
@@ -74,7 +75,7 @@ int AFont::checkGlyph(const QPainterPath& inpath, QString glyphName, CompareMeth
 
 		double value;
 		if (compareMethod == CompareMethod::AREA) {
-			value = compareQPainterPath(glyph.path, path);
+			value = compareGlyphAreas(glyph.path, path);
 		}
 		else {
 			value = compareQPainterPathTF(glyph.path, path);
@@ -140,6 +141,22 @@ double AFont::compareQPainterPath(const QPainterPath& path1, const QPainterPath&
 
 	return 1 - (intArea / uniArea);
 
+}
+
+double AFont::compareGlyphAreas(const QPainterPath& reference, const QPainterPath& outline) const
+{
+	if (!areaComparisons) return compareQPainterPath(reference, outline);
+
+	// Keep both exact paths, including their fill rules. The score is independent of the caller's threshold.
+	QByteArray key;
+	QDataStream stream(&key, QIODevice::WriteOnly);
+	stream << reference << outline;
+	const auto found = areaComparisons->constFind(key);
+	if (found != areaComparisons->cend()) return found.value();
+
+	const auto score = compareQPainterPath(reference, outline);
+	areaComparisons->insert(std::move(key), score);
+	return score;
 }
 
 double AFont::scaleAndCompareQPainterPath(QPainterPath path1, QPainterPath path2, bool transform1 = false, bool transform2 = false)
@@ -242,7 +259,7 @@ int AFont::checkGlyph(const QPainterPath& inpath, QChar qchar, double errorRatio
 		fatha.closeSubpath();
 
 
-		auto value = compareQPainterPath(fatha, path);
+		auto value = compareGlyphAreas(fatha, path);
 
 		if (value < 0.1) {
 			return 0;

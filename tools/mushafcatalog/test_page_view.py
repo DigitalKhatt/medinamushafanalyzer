@@ -1,10 +1,12 @@
 from collections import Counter
 from contextlib import closing
+from io import StringIO
 import json
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 import zlib
 from xml.etree import ElementTree as ET
 
@@ -12,7 +14,7 @@ from automatic.transcript_mark_search import image as mark_preview
 from compact import compact_catalog
 from page_join import choose_boundary, outline_edges
 from page_view import page_svg
-from segment_letters import NATIVE, publish_page, record_kashida_spans, selected_pages
+from segment_letters import NATIVE, log_page, publish_page, record_kashida_spans, segment, selected_pages
 from rebuild_check import compare_rebuild
 from search import body_source, image, search
 from store import attach_record, build, pack_runs, read, sha
@@ -27,6 +29,36 @@ def pack_vectors(vectors=None):
     data = dict(paths={}, parts={}, rasterMarks=[], pageArt=PAGE_ART)
     data.update(vectors or {})
     return zlib.compress(json.dumps(data).encode())
+
+
+class CutterLogTests(unittest.TestCase):
+    def test_partial_and_unmatched_cuts_have_distinct_diagnostics(self):
+        log = StringIO()
+        missing = dict(position='medial',character='ص',status='no-match',candidates=['sad-medi'])
+        matched = dict(position='initial',character='ل',status='matched')
+        remainder = dict(position='final',character='ي',status='remainder')
+        results = {
+            'partial': dict(status='incomplete',text='لصح',letters=[matched,missing],trace=['Contour rejected']),
+            'unmatched': dict(status='incomplete',text='صح',letters=[missing]),
+            'provisional': dict(status='provisional',text='لي',letters=[matched,remainder]),
+            'accepted': dict(status='template'),
+        }
+        self.assertEqual(log_page(log,'page435',results),
+                         {'partial-match':1,'no-match':1,'provisional':1,'template':1})
+        self.assertIn('partial-match: partial لصح',log.getvalue())
+        self.assertIn('no-match: unmatched صح',log.getvalue())
+        self.assertIn('medial ص: no-match (sad-medi)',log.getvalue())
+        self.assertIn('Contour rejected',log.getvalue())
+        self.assertIn('final ي: remainder',log.getvalue())
+
+    def test_aborted_segmentation_publishes_its_log(self):
+        with TemporaryDirectory() as folder:
+            database, log = (Path(folder)/name for name in ('catalog.sqlite','cuts.log'))
+            with patch('segment_letters.segment_pages',side_effect=ValueError('cutter left a body unresolved')):
+                with self.assertRaisesRegex(ValueError,'cutter left a body unresolved'):
+                    segment(database,'435',1,log_path=log)
+            self.assertIn('Pages: 435',log.read_text())
+            self.assertIn('Catalog update aborted: cutter left a body unresolved',log.read_text())
 
 
 class ConnectorTests(unittest.TestCase):

@@ -3,6 +3,15 @@
   "provisionalFallbacks": {
     "finalYehRemainder": true
   },
+  "medialLamShortExit": {
+    "minHorizontalRun": 1,
+    "maxEntryGap": 1,
+    "minLengthRatio": 2,
+    "anchorTolerance": 0.00001,
+    "cutsAroundHollow": true,
+    "entryMaxTilt": 12,
+    "retryOnUnresolved": true
+  },
   "joinDefaults": {
     "lookback": 4,
     "previousOffset": 1,

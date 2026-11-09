@@ -2,6 +2,7 @@
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from datetime import datetime, timezone
 import json
 import math
 import os
@@ -9,11 +10,11 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
-from tempfile import TemporaryDirectory
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 import zlib
 
 from store import (HERE, META, ROOT, VECTOR_STORAGE, VERSION, attach_record, encoded, merged,
-                   meta, pack_runs, read, report_ink, require, sha, unpack_runs)
+                   meta, pack_runs, read, report_ink, require, sha, tables, unpack_runs)
 
 NATIVE = 'medina-native-letters/'
 
@@ -53,7 +54,13 @@ def selected_pages(db, selection):
     return sorted(result)
 
 
-def prepare_page(database, pid, binary, work, selected=None):
+def native_binary():
+    binary = Path(os.environ.get('MEDINA_ANALYZER_BINARY',ROOT/'build/ninja-nmc/Release/medinamushafanalyzer')).resolve()
+    require(binary.is_file(), 'Compile the native segmenter first')
+    return binary
+
+
+def prepare_page(database, pid, binary, work, selected=None, templates=None):
     with closing(read(database)) as db:
         db.execute('BEGIN')
         compact = meta(db,VECTOR_STORAGE)
@@ -67,12 +74,13 @@ def prepare_page(database, pid, binary, work, selected=None):
             JOIN catalog_owners o ON o.subword_id=s.id WHERE s.page_id=? AND o.role='letter'
             ORDER BY s.seq,o.word_offset''', (pid,)):
             owners[row[0]].append((row[1],row[2]))
-        requested, keys, results, singles = {}, {}, {}, {}
-        for sid, members, path, key, blob in db.execute('''SELECT id,members,body_path,body_key,runs
+        requested, keys, results, singles, texts = {}, {}, {}, {}, {}
+        for sid, members, path, key, blob, text in db.execute('''SELECT id,members,body_path,body_key,runs,text
                 FROM catalog_subwords WHERE page_id=? AND kind='text' ORDER BY seq''',(pid,)):
             if selected is not None and sid not in selected:
                 continue
             keys[sid] = key
+            texts[sid] = text
             ids, letters = zip(*owners[sid])
             runs = bodies.get(sid,[]) if blob==b'' else unpack_runs(blob) if blob else []
             if not key or not runs:
@@ -99,8 +107,12 @@ def prepare_page(database, pid, binary, work, selected=None):
     request_file.write_text(encoded(request))
     command = [str(binary),'--segment-catalog-page',str(request_file),'--catalog-output',str(output)]
     env = dict(os.environ, QT_QPA_PLATFORM='offscreen')
+    if templates is not None:
+        env['MEDINA_LETTER_FORMS'] = str(templates)
     run = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True)
     require(run.returncode==0, f'{pid}: native cutter failed ({run.returncode}): '+(run.stderr or run.stdout)[-2000:])
+    if templates is not None:
+        require('Invalid letter form configuration' not in run.stderr,run.stderr.strip())
     reply = json.loads(output.read_bytes())
     require(set(reply['results'])=={r['id'] for r in requested.values()}, f'{pid}: incomplete cutter output')
     results.update(reply['results'])
@@ -114,6 +126,8 @@ def prepare_page(database, pid, binary, work, selected=None):
             part['outline'] = dict(raw)
     outlines = {}
     for sid, result in results.items():
+        if result['status'] not in ('template','single-letter'):
+            result['text'] = texts[sid]
         if result['status'] in ('template','provisional'):
             record_kashida_spans(result['parts'], [owner for owner, _ in owners[sid]])
         for part in result.get('parts', []):
@@ -182,9 +196,56 @@ def publish_page(db, pid, data, vectors, producer, counts, *, partial=False):
             counts['pending/'+status] += 1
 
 
-def segment(database, selection, workers, subwords=None):
-    binary = Path(os.environ.get('MEDINA_ANALYZER_BINARY',ROOT/'build/ninja-nmc/Release/medinamushafanalyzer')).resolve()
-    require(binary.is_file(), 'Compile the native segmenter first')
+def log_page(log, page, results):
+    counts = Counter()
+    issues = []
+    for sid, result in results.items():
+        status = result['status']
+        letters = result.get('letters') or []
+        if status == 'incomplete' and letters:
+            matched = sum(slot['status'] == 'matched' for slot in letters)
+            status = ('partition-failed' if matched == len(letters) else
+                      'partial-match' if matched else 'no-match')
+        counts[status] += 1
+        if status not in ('template','single-letter'):
+            issues.append((sid, status, result, letters))
+    print(page, ', '.join(f'{key}={value}' for key,value in sorted(counts.items())), file=log)
+    for sid, status, result, letters in issues:
+        print(f"  {status}: {sid} {result.get('text', '')}".rstrip(), file=log)
+        for slot in letters:
+            if slot['status'] in ('matched','not-required'):
+                continue
+            candidates = ', '.join(slot.get('candidates', []))
+            detail = f"    {slot['position']} {slot['character']}: {slot['status']}"
+            print(f'{detail} ({candidates})' if candidates else detail, file=log)
+        for line in result.get('trace') or []:
+            print(f'    {line}', file=log)
+    return counts
+
+
+def segment(database, selection, workers, subwords=None, log_path=None):
+    destination = (log_path or database.resolve().parent/'mushafcatalog'/'letter-segmentation.log').resolve()
+    require(destination!=database.resolve(), 'Choose a log path separate from the catalog')
+    destination.parent.mkdir(parents=True,exist_ok=True)
+    with NamedTemporaryFile(mode='w',encoding='utf-8',dir=destination.parent,
+                            prefix='.letter-segmentation-',suffix='.log',delete=False) as log:
+        try:
+            print(f'Letter segmentation started {datetime.now(timezone.utc).isoformat()}', file=log)
+            print(f'Catalog: {database.resolve()}\nPages: {selection}', file=log)
+            result = segment_pages(database,selection,workers,subwords,log)
+            print('Catalog update committed.', file=log)
+            return dict(result,log=str(destination))
+        except (Exception,KeyboardInterrupt) as error:
+            print(f'Catalog update aborted: {error or type(error).__name__}', file=log)
+            raise
+        finally:
+            log.close()
+            os.replace(log.name,destination)
+            print(f'Letter segmentation log: {destination}', file=sys.stderr,flush=True)
+
+
+def segment_pages(database, selection, workers, subwords, log):
+    binary = native_binary()
     binary_hash = sha(binary.read_bytes())
     with closing(read(database)) as db:
         require(meta(db,META), 'Build the native catalog first')
@@ -196,14 +257,21 @@ def segment(database, selection, workers, subwords=None):
         require(targets and targets.keys() <= set(pages), 'Choose subwords on the selected catalog pages')
         pages = sorted(targets)
     require(pages, 'No catalog pages selected')
-    counts = Counter()
+    counts, diagnostics = Counter(), Counter()
     with TemporaryDirectory(prefix='mushaf-catalog-letters-') as folder:
         work = Path(folder)
         with ThreadPoolExecutor(max_workers=workers) as pool:
             revisions = set()
             for i, revision in enumerate(pool.map(lambda p: prepare_page(database,p,binary,work,targets.get(p)),pages),1):
+                pid = pages[i-1]
                 revisions.add(revision)
-                print(f'Cut {i}/{len(pages)} pages ({pages[i-1]})',file=sys.stderr,flush=True)
+                diagnostics.update(log_page(log,pid,json.loads((work/(pid+'.json')).read_bytes())['results']))
+                log.flush()
+                print(f'Cut {i}/{len(pages)} pages ({pid})',file=sys.stderr,flush=True)
+        unresolved = sum(value for key,value in diagnostics.items() if key not in ('template','single-letter','provisional'))
+        print('Summary: '+', '.join(f'{key}={value}' for key,value in sorted(diagnostics.items())), file=log)
+        print(f'Unresolved: {unresolved}. Provisional: {diagnostics["provisional"]}.', file=log)
+        print(f'Partial matches: {diagnostics["partial-match"]}. No matches: {diagnostics["no-match"]}.', file=log)
         require(len(revisions)==1 and sha(binary.read_bytes())==binary_hash, 'Cutter or templates changed during segmentation; retry')
         producer = NATIVE + revisions.pop() + '/' + binary_hash + '/cut-span-x-v1'
         with closing(sqlite3.connect(database.resolve().as_uri()+'?mode=rw',uri=True,timeout=120)) as db, db:
@@ -214,3 +282,46 @@ def segment(database, selection, workers, subwords=None):
                 publish_page(db,pid,json.loads((work/(pid+'.json')).read_bytes()),
                              (work/(pid+'.vectors')).read_bytes(),producer,counts,partial=bool(targets))
     return dict(database=str(database.resolve()),pages=len(pages),subwords=dict(sorted(counts.items())))
+
+
+def check_cuts(database, subwords, templates):
+    """Compare selected native multi-letter cuts with the saved vectors, read-only."""
+    require(subwords, 'Choose at least one multi-letter subword')
+    binary = native_binary()
+    binary_hash = sha(binary.read_bytes())
+    templates = templates.resolve()
+    template_hash = sha(templates.read_bytes())
+    targets = defaultdict(set)
+    for sid in subwords:
+        targets[sid.partition(':')[0]].add(sid)
+    with closing(read(database)) as db:
+        require(targets.keys() <= set(selected_pages(db,'all')), 'Choose existing catalog subword IDs')
+    checks = {}
+    with TemporaryDirectory(prefix='mushaf-check-letter-cuts-') as folder:
+        work = Path(folder)
+        with ThreadPoolExecutor(max_workers=min(4,len(targets))) as pool:
+            revisions = set(pool.map(lambda p: prepare_page(database,p,binary,work,targets[p],templates),targets))
+        require(len(revisions)==1 and sha(templates.read_bytes())==template_hash and
+                sha(binary.read_bytes())==binary_hash, 'Cutter or templates changed while checking the cuts; retry')
+        with closing(read(database)) as db:
+            db.execute('BEGIN')
+            has_vectors = 'catalog_page_art' in tables(db)
+            for pid in targets:
+                data = json.loads((work/(pid+'.json')).read_bytes())
+                generated = json.loads(zlib.decompress((work/(pid+'.vectors')).read_bytes()))['parts']
+                saved_row = db.execute('SELECT vectors FROM catalog_page_art WHERE page_id=?',(pid,)).fetchone() if has_vectors else None
+                saved = json.loads(zlib.decompress(saved_row[0]))['parts'] if saved_row else {}
+                for sid, result in data['results'].items():
+                    key = db.execute('SELECT body_key FROM catalog_subwords WHERE id=?',(sid,)).fetchone()
+                    require(key and key[0]==data['keys'][sid], f'{sid}: catalog source changed; retry')
+                    check = {key:value for key,value in result.items() if key!='parts'}
+                    existing = {owner+'/'+role for owner,role in db.execute(
+                        'SELECT owner_id,role FROM catalog_parts WHERE subword_id=?',(sid,))}
+                    candidate = {p['owner']+'/'+p['role'] for p in result.get('parts',[])}
+                    if candidate and existing and candidate <= generated.keys() and existing <= saved.keys():
+                        same = candidate == existing and all(generated[key]==saved[key] for key in candidate)
+                        check['savedGeometry'] = 'identical' if same else 'changed'
+                    else:
+                        check['savedGeometry'] = 'unavailable'
+                    checks[sid] = check
+    return dict(templates=str(templates),subwords={sid:checks[sid] for sid in subwords})

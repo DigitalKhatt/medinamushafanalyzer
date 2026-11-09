@@ -106,6 +106,11 @@ def main():
     letters.add_argument('--pages',default='all',help='All catalog pages, or a selection such as 3,8-12')
     letters.add_argument('--workers',type=int,choices=range(1,17),default=4)
     letters.add_argument('--subwords-file',type=Path,help='Update only these multi-letter subword IDs, one per line')
+    letters.add_argument('--log',type=Path,help='Write diagnostics here instead of the default letter-segmentation.log')
+    check_cuts = commands.add_parser('check-letter-cuts',help='Compare selected cuts against the catalog without writing to it')
+    check_cuts.add_argument('subwords',nargs='+',help='Multi-letter subword IDs such as page069:l15-w6-s1')
+    check_cuts.add_argument('--templates',type=Path,default=ROOT/'templates/letter-forms.json',
+                            help='Draft template file to check (default: current repository templates)')
     page_export = commands.add_parser('export-page',help='Regenerate a standalone SVG page from the catalog')
     page_export.add_argument('page',help='Page number or ID')
     page_export.add_argument('file',type=Path)
@@ -167,7 +172,10 @@ def main():
     elif args.command=='segment-letters':
         from segment_letters import segment
         selected = args.subwords_file.read_text().split() if args.subwords_file else None
-        data = segment(args.db,args.pages,args.workers,selected)
+        data = segment(args.db,args.pages,args.workers,selected,args.log)
+    elif args.command=='check-letter-cuts':
+        from segment_letters import check_cuts
+        data = check_cuts(args.db,args.subwords,args.templates)
     elif args.command=='export-page':
         target = args.file.resolve()
         require(target!=args.db.resolve() and target.suffix.lower()=='.svg','Choose an SVG output file')

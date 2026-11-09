@@ -415,6 +415,13 @@ static QJsonObject readFormConfig(const QString& filename) {
     return config;
 }
 
+static QJsonObject medialLamShortExit(const QJsonObject& config) {
+    const auto setting = config.value("medialLamShortExit");
+    if (!setting.isUndefined()) return setting.toObject();
+    static const auto defaults = readFormConfig(":/templates/letter-forms.json").value("medialLamShortExit").toObject();
+    return defaults;
+}
+
 static QJsonObject withOverrides(QJsonObject defaults, const QJsonObject& overrides) {
     for (auto it = overrides.begin(); it != overrides.end(); ++it) {
         defaults.insert(it.key(), it.value());
@@ -547,6 +554,25 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
     }
     for (const auto* obsolete : {"preferred", "fallback", "medialBodies"})
         if (config.contains(obsolete)) return QString("Obsolete template section: %1").arg(obsolete);
+    const auto shortExit = config.value("medialLamShortExit");
+    if (!shortExit.isUndefined() && shortExit != QJsonValue(false)) {
+        if (!shortExit.isObject()) return "medialLamShortExit must be an object or false";
+        const auto settings = shortExit.toObject();
+        for (const auto* key : {"minHorizontalRun", "maxEntryGap", "minLengthRatio", "anchorTolerance"}) {
+            const auto value = settings.value(key);
+            const double minimum = QString(key) == "minLengthRatio" ? 1 : 0;
+            if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= minimum)
+                return QString("medialLamShortExit.%1 must be greater than %2").arg(key).arg(minimum);
+        }
+        if (!settings.value("retryOnUnresolved").isBool())
+            return "medialLamShortExit.retryOnUnresolved must be true or false";
+        const auto hollow = settings.value("cutsAroundHollow");
+        if (!hollow.isUndefined() && !hollow.isBool())
+            return "medialLamShortExit.cutsAroundHollow must be true or false";
+        const auto tilt = settings.value("entryMaxTilt");
+        if (!tilt.isUndefined() && (!tilt.isDouble() || !std::isfinite(tilt.toDouble()) || tilt.toDouble() < 0 || tilt.toDouble() >= 90))
+            return "medialLamShortExit.entryMaxTilt must be an angle from 0 up to 90 degrees";
+    }
     if (config.contains("provisionalFallbacks")) {
         if (!config.value("provisionalFallbacks").isObject()) return "provisionalFallbacks must be an object";
         const auto fallbacks = config.value("provisionalFallbacks").toObject();
@@ -9006,8 +9032,23 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     auto& sub = word.wordResultInfo.subWords[subWordIndex];
     if (!refresh && !sub.baseGlyphs.empty())
         return sub.correct;
-    const auto requested = draft ? *draft : letterForms();
-    if (!segmentWithRecovery(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested)) return false;
+    auto requested = draft ? *draft : letterForms();
+    if (!segmentWithRecovery(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested)) {
+        const auto letters = bodyLetters(sub.text);
+        if (sub.provisional() || !medialLamShortExit(requested).value("retryOnUnresolved").toBool() ||
+            letters.size() < 3 || !QStringView(letters).mid(1, letters.size() - 2).contains(QChar(0x0644)))
+            return false;
+
+        // Reassemble the whole subword: a shorter exit can invalidate a neighbouring cut.
+        auto partial = sub;
+        requested.insert("medialLamShortExit", false);
+        if (!segmentWithRecovery(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested) ||
+            sub.provisional() || !coversOriginalInk(word, sub)) {
+            sub = std::move(partial);
+            return false;
+        }
+        sub.templateTrace.append("Complete partition recovered with the original lam exit");
+    }
     if (pageIndex < 0 || sub.baseGlyphs.size() < 2 || sub.provisional()) return true;
     const auto refine = [&] {
         refineLipCuts(lineIndex, wordIndex, subWordIndex, requested);
@@ -9568,6 +9609,13 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
 
 
 	const auto& config = draft ? *draft : letterForms();
+    const auto shortLamExit = medialLamShortExit(config);
+    const double minExitRun = shortLamExit.value("minHorizontalRun").toDouble();
+    const double maxExitEntryGap = shortLamExit.value("maxEntryGap").toDouble();
+    const double minExitLengthRatio = shortLamExit.value("minLengthRatio").toDouble();
+    const double exitAnchorTolerance = shortLamExit.value("anchorTolerance").toDouble();
+    const bool cutsAroundHollow = shortLamExit.value("cutsAroundHollow").toBool();
+    const double maxEntrySlope = std::tan(qDegreesToRadians(shortLamExit.value("entryMaxTilt").toDouble(12)));
 	SearchContext context{ .joinDefaults = config.value("joinDefaults").toObject(),
 	                       .subword = subWord, .baseText = baseText, .outlineCache = &outlineCache };
 
@@ -10159,6 +10207,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     Stretching right;
                     Stretching left;
                     bool sharedJoins = false;
+                    std::optional<std::pair<Stretching, Stretching>> hollowCuts;
                 };
                 std::vector<MedialCandidate> candidates;
                 const auto contour = form.value("contourBody").toObject();
@@ -10353,6 +10402,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                             }
                             // A bowl-shaped foot can turn after the stem's 45-degree
                             // normal. Its optional route stays on this stem's flank.
+                            const auto turnCount = rightOptions.size();
                             if (lam.value("right").isObject()) {
                                 context.form = lam.value("right").toObject();
                                 for (bool reverse : {false, true}) {
@@ -10428,32 +10478,70 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                                             if (local.size() == 3 && local[1].path.contains(sample)) bodyEntry = *near;
                                         }
                                     }
-                                    if (!sharedExit) {
+                                    std::optional<std::pair<Stretching, Stretching>> hollowCuts;
+                                    if (!sharedExit && !shortLamExit.isEmpty()) {
                                         const auto top = context.res.topBaseLine;
                                         const auto bottom = context.res.bottomBaseLine;
                                         const double entryBottomX = bodyEntry.bottomBaseLine.point.x();
                                         // On a folded lam foot a normal can cross the whole bend
-                                        // and land within a stroke width of the entry. Keep the same exit landmark
+                                        // and land near the entry. Keep the same exit landmark
                                         // and use the short section of ink directly beneath it.
-                                        if (bottom.point.x() - top.point.x() > stroke &&
-                                            entryBottomX - bottom.point.x() <= stroke) {
+                                        if (bottom.point.x() - top.point.x() > minExitRun * stroke &&
+                                            entryBottomX - bottom.point.x() <= maxExitEntryGap * stroke) {
                                             auto local = context.res;
                                             if (medialChordAt(context, top.point.x(), top.point.y(), stroke,
-                                                              local, false, top.point.y() - 1e-5) &&
-                                                std::abs(local.topBaseLine.point.y() - top.point.y()) < 1e-5 &&
+                                                              local, false, top.point.y() - exitAnchorTolerance) &&
+                                                std::abs(local.topBaseLine.point.y() - top.point.y()) < exitAnchorTolerance &&
                                                 QLineF(top.point, bottom.point).length() >
-                                                    2 * QLineF(local.topBaseLine.point, local.bottomBaseLine.point).length() &&
+                                                    minExitLengthRatio * QLineF(local.topBaseLine.point, local.bottomBaseLine.point).length() &&
                                                 before(bodyEntry, local)) {
                                                 local.topBaseLine = top;
                                                 local.topLeft = local.topRight = top;
                                                 local.bottomLeft = local.bottomRight = local.bottomBaseLine;
                                                 local.referenceWidth = QLineF(top.point, local.bottomBaseLine.point).length();
                                                 local.length = 0;
+                                                const auto entryChord = bodyEntry.bottomBaseLine.point - bodyEntry.topBaseLine.point;
+                                                if (!shared && cutsAroundHollow &&
+                                                    std::abs(entryChord.x()) <= maxEntrySlope * std::abs(entryChord.y())) {
+                                                    // A turn at the hollow can cross the original long exit.
+                                                    // Recheck it against the shortened exit of the same foot.
+                                                    for (size_t turn = 0; turn < turnCount; ++turn) {
+                                                        const auto& hollow = rightOptions[turn];
+                                                        if (!before(bodyEntry, hollow) || !before(hollow, local)) continue;
+                                                        const auto axis = center(hollow);
+                                                        const double width = QLineF(hollow.topBaseLine.point, hollow.bottomBaseLine.point).length();
+                                                        if (width <= 0) continue;
+                                                        auto hollowRight = bodyEntry, hollowLeft = local;
+                                                        const auto sectionAt = [&](Stretching& boundary, double x, double y, bool normal) {
+                                                            if (!medialChordAt(context, x, y, width, boundary) ||
+                                                                (normal && !strokeNormalCut(context, boundary))) return false;
+                                                            boundary.referenceWidth = QLineF(boundary.topBaseLine.point, boundary.bottomBaseLine.point).length();
+                                                            return boundary.referenceWidth <= 2 * width;
+                                                        };
+                                                        // The existing cuts bound the space available on each side.
+                                                        const double rightX = axis.x() + width, leftX = axis.x() - width;
+                                                        if (rightX < center(bodyEntry).x() &&
+                                                            (!sectionAt(hollowRight, rightX, center(bodyEntry).y(), true) ||
+                                                             !before(bodyEntry, hollowRight) || !before(hollowRight, hollow)))
+                                                            continue;
+                                                        if (leftX > center(local).x() &&
+                                                            (!sectionAt(hollowLeft, leftX, center(local).y(), false) ||
+                                                             !before(hollow, hollowLeft) || !before(hollowLeft, local)))
+                                                            continue;
+                                                        const auto hollowPieces = cutRegions(context.transformedPath, {}, {hollowRight, hollowLeft},
+                                                                                             context.orientation, true);
+                                                        if (hollowPieces.size() != 3 || !hollowPieces[1].path.contains(sample) ||
+                                                            toSubpaths(hollowPieces[1].path).size() != toSubpaths(pieces[1].path).size())
+                                                            continue;
+                                                        hollowCuts = std::pair{hollowRight, hollowLeft};
+                                                        break;
+                                                    }
+                                                }
                                                 context.res = local;
                                             }
                                         }
                                     }
-                                    candidates.push_back({bodyEntry, context.res, shared}); accepted = true;
+                                    candidates.push_back({bodyEntry, context.res, shared, hollowCuts}); accepted = true;
                                     if (sharedExit) break;
                                 }
                                 if (accepted) break;
@@ -10535,7 +10623,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 const bool preferFinalBoundary = !lam.isEmpty() && letter + 1 == lastIndex &&
                     !outgoing.fixedLeftBoundary;
                 for (int pass = 0; pass < (preferFinalBoundary ? 2 : 1) && !matched; ++pass) {
-                for (auto [right, left, sharedJoins] : candidates) {
+                for (auto [right, left, sharedJoins, hollowCuts] : candidates) {
                     if (form.contains("bodyCounters")) {
                         const auto pieces = cutRegions(context.transformedPath, {}, {right, left}, context.orientation, true);
                         if (pieces.size() != 3 || static_cast<int>(toSubpaths(pieces[1].path).size()) - 1 !=
@@ -10773,6 +10861,16 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     if (((preferFinalBoundary && pass == 0) || medial.requireFinal) &&
                         !finalBoundary && bodyTemplateIds[lastIndex].isEmpty()) continue;
 
+                    if (hollowCuts && !sharedJoins && !sharedExit &&
+                        (!finalBoundary || before(hollowCuts->second, *finalBoundary))) {
+                        // Refine only after the original route has passed the full partition check.
+                        trial[letter] = hollowCuts->first;
+                        trial[letter + 1] = hollowCuts->second;
+                        if (validCuts(trial)) {
+                            right = hollowCuts->first;
+                            left = hollowCuts->second;
+                        }
+                    }
                     if (enumerate && !plan->accepts(letter, right, left)) continue;
                     if (sharedJoins) {
                         incoming.topBaseLine = incoming.topRight = right.topBaseLine;

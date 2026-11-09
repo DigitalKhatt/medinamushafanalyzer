@@ -79,6 +79,9 @@ int main(int argc, char** argv) {
         // At the returning lam bowl the connector stops at the turn. The upright stays with lam.
         {284, 6, 5, 2, {{2, {225.21, 222.55}}, {2, {222.93, 222.91}}, {3, {217.01, 216.11}}}},
         {579, 7, 9, 2, {{3, {67.37, 248.95}}, {3, {66.60, 246.65}}, {4, {59.61, 242.39}}}},
+        // Prefer the short exit when the entire partition works. Recover the original exit otherwise.
+        {69, 15, 6, 1, {}},
+        {435, 11, 6, 2, {}},
         // The descending arm of stacked ain, the third seen tooth and the
         // low returning arm of ain end at three different medial jim entries.
         {208, 3, 9, 1, {{1, {119.15, 140.5}}, {2, {120.15, 142.55}}, {2, {115.7, 144.2}}}},
@@ -169,6 +172,22 @@ int main(int argc, char** argv) {
                 id + " incomplete");
         const auto& sub = word.wordResultInfo.subWords[e.subword - 1];
         const auto shape = word.bodyShape(sub);
+        if (e.page == 69) {
+            require(sub.baseGlyphs.size() == 5 && sub.kashidaCuts.size() == 4 && !sub.provisional(),
+                    id + " expected five complete letter bodies");
+            const auto exit = sub.kashidaCuts.back().first;
+            require(QLineF(exit.p1(), {95.93955, 464.35570}).length() < .01 &&
+                    QLineF(exit.p2(), {95.93955, 465.72112}).length() < .01,
+                    id + " lost the short lam exit");
+        }
+        if (e.page == 435) {
+            require(sub.baseGlyphs.size() == 4 && sub.kashidaCuts.size() == 3 && !sub.provisional(),
+                    id + " expected four complete letter bodies and three connectors");
+            const auto exit = sub.kashidaCuts.back().first;
+            require(QLineF(exit.p1(), {129.37530, 356.82080}).length() < .01 &&
+                    QLineF(exit.p2(), {132.01983, 359.25844}).length() < .01,
+                    id + " original lam exit was not recovered");
+        }
         for (const auto& witness : e.witnesses) {
             const auto local = shape.transform.inverted().map(witness.point - shape.pos);
             require(shape.path.contains(local), id + " misplaced test point");

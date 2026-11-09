@@ -12,6 +12,19 @@ int main(int argc, char** argv) {
     Q_INIT_RESOURCE(application);
     auto config = PageAnalysisResult::letterForms();
     check(PageAnalysisResult::prepareLetterForms(config).isEmpty(), "Position schema rejected bundled forms");
+    {
+        auto draft = config;
+        draft.insert("medialLamShortExit", false);
+        check(PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Short lam exit cannot be disabled");
+        auto shortExit = config.value("medialLamShortExit").toObject();
+        shortExit.insert("minLengthRatio", 1);
+        draft.insert("medialLamShortExit", shortExit);
+        check(!PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Invalid short lam exit ratio accepted");
+        shortExit.insert("minLengthRatio", 2);
+        shortExit.insert("retryOnUnresolved", "yes");
+        draft.insert("medialLamShortExit", shortExit);
+        check(!PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Invalid short lam exit retry accepted");
+    }
     check(!config.value("kashidaDefaults").toObject().value("trackingEnabled").toBool(), "Tracker was enabled");
     for (const auto& invalidRange : {QJsonArray{-30, 0}, QJsonArray{"6"}}) {
         auto invalid = config;

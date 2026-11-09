@@ -1,5 +1,7 @@
 #pragma once
 #include "aglyph.h"
+#include <QHash>
+#include <optional>
 
 enum class CompareMethod {
 	AREA = 1,
@@ -16,6 +18,9 @@ struct AFont {
 	// Uniform scale only; preserve shape/aspect ratio and use the native area tolerance.
 	int checkGlyphScaled(const QPainterPath& path, const QString& glyphName,
 	                     double errorRatio = constants::MATCHING_ERROR_RATIO, double* value = nullptr) const;
+
+	// For short-lived font instances used to analyze a single page.
+	void cacheAreaComparisons() { areaComparisons.emplace(); }
 
 	static double compareQPainterPath(const QPainterPath& path1, const QPainterPath& path2);
 
@@ -45,6 +50,7 @@ struct AFont {
 	}
 
 private:
-
+	double compareGlyphAreas(const QPainterPath& reference, const QPainterPath& outline) const;
+	mutable std::optional<QHash<QByteArray, double>> areaComparisons;
 
 };

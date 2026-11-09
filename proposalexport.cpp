@@ -677,6 +677,7 @@ int segmentCatalogPage(const QString& request, const QString& output) {
         AFont font;
         QDataStream stream(readFile("input/font.dat")); stream >> font;
         if (stream.status() != QDataStream::Ok) throw std::runtime_error("Invalid geometric font");
+        font.cacheAreaComparisons();
         PageAnalysisResult::initQuranText();
         PageAnalysisResult page;
         if (page.loadPage(number, &font, false) < 0 || page.page.lines.isEmpty()) throw std::runtime_error("Cannot segment native page");
@@ -719,6 +720,10 @@ int segmentCatalogPage(const QString& request, const QString& output) {
             const auto status = !reason.isEmpty() ? reason : cut.value("provisional").toBool() ? QString("provisional") : QString("template");
             QJsonObject result{{"status",status}};
             if (reason.isEmpty()) result.insert("parts",parts);
+            if (status != "template") {
+                result.insert("letters", cut.value("letters"));
+                result.insert("trace", cut.value("trace"));
+            }
             results.insert(item.value("id").toString(),result);
         }
         for (const auto& item : requested)
