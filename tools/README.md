@@ -63,8 +63,8 @@ Declared forms use `body` for recognition and `cuts` for cut placement.
 Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
 declares its stem/bowl measurements in `body.stem`, then uses
 `cuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
-lām `method` or `legacyLamRoutes` adapter. All lām forms and `beh-tooth-medi`
-use these declarations; other forms can migrate independently.
+lām `method` or `legacyLamRoutes` adapter. All lām forms and all six medial
+senna forms use these declarations; other letters can migrate independently.
 
 `body.shape` selects the intrinsic shape vocabulary: contour stem,
 descending stem, forked stem, turning shaft, terminal bowl/fork/return, or an
@@ -85,7 +85,7 @@ The folded-foot option is `cuts.shortExit`: `minHorizontalRun` and
 `retryOnUnresolved` to false to skip the longer-exit retry, or `shortExit` to
 false to disable shortening. The ordinary fork walk remains 0.5 page unit.
 
-For `beh-tooth-medi`, `body.shape: "tooth-pair"` recognizes the outer tip,
+For the ordinary, upright and low senna forms, `body.shape: "tooth-pair"` recognizes the outer tip,
 opposing inner bend, both flanks and local stroke measurements from uncut ink.
 `body` contains pair-distance/width limits, flat-bend acceptance and the baseline
 entry's minimum rise. `cuts` holds the left/right normal offsets, turn angle,
@@ -99,6 +99,19 @@ that the tooth core survives. Check this separation and inheritance with:
 ```sh
 python3 tools/tests/check_letter_forms.py body_cuts_test.cpp medial_tooth_test.cpp lam_alef_test.cpp
 ```
+
+Bent, shoulder and hook forms use `body.shape` values `tooth-bend`,
+`tooth-shoulder` and `tooth-hook`. Their shared recognizer measures the tip/bend,
+local stroke and baseline-entry landmarks; the hook also records a curved ink
+axis. `cuts.flankMode` selects `contour-normal`, `axis-projection` or
+`contour-search`. `flankOffset` and `maxSectionWidth` use local stroke widths.
+Body evidence can be reused with another cut policy, including after a policy
+fails to produce a valid mask. No medial senna uses the old `tooth` field.
+
+The variants inherit shared settings. Set `baselineEntry: false` in `body` and
+`cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
+preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright
+and low teeth are available in the initial pass. It does not alter body geometry.
 
 Catalog builds use AI/PDF reports. Rerun `build` with the same report to
 upgrade a native catalog created with the previous artwork schema.

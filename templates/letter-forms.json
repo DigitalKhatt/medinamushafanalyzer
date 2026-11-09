@@ -1398,21 +1398,22 @@
     {
       "id": "beh-upright-medi",
       "current": "بتثنيئى",
-      "tightJoin": true,
-      "tooth": {
+      "body": {
+        "inherit": "beh-tooth-medi",
         "baselineEntry": {
           "minRise": 2.5,
-          "required": true,
-          "turnAngle": 45
+          "required": true
         },
         "minPairDistance": 2.5,
         "maxPairDistance": 4,
-        "flankDrop": 0.6,
-        "maxTipOverhang": 0.12,
         "maxWidth": 3,
-        "minWidth": 0.2,
-        "rightOffset": 0.5,
-        "leftOffset": 0.45
+        "allowFlatBend": false
+      },
+      "cuts": {
+        "inherit": "beh-tooth-medi",
+        "baselineEntry": {
+          "turnAngle": 45
+        }
       }
     },
     {
@@ -1448,60 +1449,76 @@
     {
       "id": "beh-low-medi",
       "current": "بتثنيئى",
-      "tightJoin": true,
-      "tooth": {
+      "body": {
+        "inherit": "beh-tooth-medi",
+        "baselineEntry": false,
         "minPairDistance": 1.1,
         "maxPairDistance": 1.75,
         "minFlankRise": 0.5,
         "minWidth": 3.25,
-        "maxWidth": 5.5,
-        "allowFlatBend": true,
-        "rightOffset": 0.5,
-        "leftOffset": 0.45
+        "maxWidth": 5.5
+      },
+      "cuts": {
+        "inherit": "beh-tooth-medi",
+        "baselineEntry": false
       }
     },
     {
       "id": "beh-bent-medi",
       "current": "بتثنيئى",
-      "tightJoin": true,
-      "tooth": {
-        "flankOffset": 0.5,
+      "recoveryStage": 1,
+      "body": {
+        "shape": "tooth-bend",
         "baselineEntry": {
-          "minRise": 2.25,
-          "turnAngle": 45
+          "minRise": 2.25
         },
         "minBendTurn": 0.12,
+        "minPairDistance": 0.6,
         "maxPairDistance": 4
+      },
+      "cuts": {
+        "boundaries": {
+          "left": "tooth-flank",
+          "right": "tooth-flank"
+        },
+        "offsetUnit": "local-stroke",
+        "flankMode": "contour-normal",
+        "flankOffset": 0.5,
+        "maxSectionWidth": 2.5,
+        "baselineEntry": {
+          "turnAngle": 45
+        },
+        "tightJoin": "shared-boundary"
       }
     },
     {
       "id": "beh-shoulder-medi",
       "current": "بتثنيئى",
-      "tightJoin": true,
-      "tooth": {
-        "projectFlanks": true,
-        "flankOffset": 0.5,
-        "baselineEntry": {
-          "minRise": 2.25,
-          "turnAngle": 45
-        },
-        "minBendTurn": 0.12,
+      "recoveryStage": 2,
+      "body": {
+        "inherit": "beh-bent-medi",
+        "shape": "tooth-shoulder",
+        "minPairDistance": 0.5,
         "maxPairDistance": 5
+      },
+      "cuts": {
+        "inherit": "beh-bent-medi",
+        "flankMode": "axis-projection"
       }
     },
     {
       "id": "beh-hook-medi",
       "current": "بتثنيئى",
-      "tightJoin": true,
-      "tooth": {
-        "walkFlanks": true,
+      "recoveryStage": 3,
+      "body": {
+        "inherit": "beh-shoulder-medi",
+        "shape": "tooth-hook"
+      },
+      "cuts": {
+        "inherit": "beh-shoulder-medi",
+        "flankMode": "contour-search",
         "flankOffset": 0.55,
-        "baselineEntry": {
-          "minRise": 2.25,
-          "turnAngle": 45
-        },
-        "minBendTurn": 0.12,
-        "maxPairDistance": 5
+        "maxSectionWidth": 5
       }
     },
     {

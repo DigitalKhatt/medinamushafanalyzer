@@ -33,18 +33,19 @@ int main(int argc, char** argv) {
     const auto rules = config.value("medial").toArray();
     for (int i = 0; i < rules.size(); ++i) {
         const auto rule = rules[i].toObject();
-        if (rule.value("id") == "beh-upright-medi") {upright = rule.value("tooth").toObject(); uprightIndex = i;}
+        if (rule.value("id") == "beh-upright-medi") {upright = resolvedBodyForm(config, rule); uprightIndex = i;}
         if (rule.value("id") == "beh-tooth-medi") ordinary = rule;
     }
     check(uprightIndex >= 0 && !ordinary.isEmpty(), "Missing tooth templates");
     for (int mutation = 0; mutation < 4; ++mutation) {
         auto invalid = config; auto forms = rules; auto rule = forms[uprightIndex].toObject();
-        auto tooth = upright;
+        auto tooth = upright.value("body").toObject();
+        auto cuts = upright.value("cuts").toObject();
         if (mutation == 0) tooth.insert("minPairDistance", -1);
         if (mutation == 1) tooth.insert("maxPairDistance", tooth.value("minPairDistance"));
         if (mutation == 2) {auto entry = tooth.value("baselineEntry").toObject(); entry.insert("required", "yes"); tooth.insert("baselineEntry", entry);}
-        if (mutation == 3) {auto entry = tooth.value("baselineEntry").toObject(); entry.insert("turnAngle", 90); tooth.insert("baselineEntry", entry);}
-        rule.insert("tooth", tooth); forms[uprightIndex] = rule; invalid.insert("medial", forms);
+        if (mutation == 3) {auto entry = cuts.value("baselineEntry").toObject(); entry.insert("turnAngle", 90); cuts.insert("baselineEntry", entry);}
+        rule.insert("body", tooth); rule.insert("cuts", cuts); forms[uprightIndex] = rule; invalid.insert("medial", forms);
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Malformed upright constraints accepted");
     }
     QFile file("pages/page600.dat");
@@ -57,14 +58,14 @@ int main(int argc, char** argv) {
     auto ink = shape.transform.map(shape.path); ink.translate(shape.pos);
     WordResultInfo::SubWordInfo dummy;
     auto context = geometry(ink, dummy);
-    const auto proposals = toothBodyBoundaries(context, upright, true);
+    const auto proposals = declaredToothBoundaries(context, upright);
     check(proposals.size() == 1, "Upright variant accepted an ordinary sheen tooth");
     const auto& tooth = proposals.front();
     check(std::abs(tooth.tip.time - 36.5519) < 1e-4 && tooth.bend.time == 20,
           "Upright did not use its own tip and lower inner bend");
-    auto footSettings = upright; auto footEntry = footSettings.value("baselineEntry").toObject();
-    footEntry.remove("turnAngle"); footSettings.insert("baselineEntry", footEntry);
-    const auto atFoot = toothBodyBoundaries(context, footSettings, true);
+    auto footSettings = upright; auto footPolicy = footSettings.value("cuts").toObject();
+    footPolicy.insert("baselineEntry", false); footSettings.insert("cuts", footPolicy);
+    const auto atFoot = declaredToothBoundaries(context, footSettings);
     check(atFoot.size() == 1 && same(tooth.left, atFoot[0].left) &&
           tooth.right->topBaseLine.point.y() < atFoot[0].right->topBaseLine.point.y() &&
           tooth.right->topBaseLine.point.x() < atFoot[0].right->topBaseLine.point.x(),
@@ -82,20 +83,21 @@ int main(int argc, char** argv) {
     const auto old = declaredToothBoundaries(context, ordinary);
     check(std::none_of(old.begin(), old.end(), [&](const auto& proposal) {return proposal.tip.time == tooth.tip.time;}),
           "Fixture does not exercise the ordinary pair-distance cutoff");
-    auto noFoot = upright; auto entry = noFoot.value("baselineEntry").toObject();
-    entry.insert("minRise", 1000); noFoot.insert("baselineEntry", entry);
-    check(toothBodyBoundaries(context, noFoot, true).empty(), "Required baseline entry was ignored");
+    auto noFoot = upright; auto body = noFoot.value("body").toObject();
+    auto entry = body.value("baselineEntry").toObject();
+    entry.insert("minRise", 1000); body.insert("baselineEntry", entry); noFoot.insert("body", body);
+    check(declaredToothBoundaries(context, noFoot).empty(), "Required baseline entry was ignored");
     context.baseText = QStringLiteral("بدون سياق"); context.pairedStrokeWidth = 1000;
     context.nextIter = context.xSorted.end();
     Stretching unrelated{}; unrelated.topBaseLine.point = {-100, 100}; unrelated.bottomBaseLine.point = {200, -50};
     dummy.joins.insert(unrelated);
-    const auto independent = toothBodyBoundaries(context, upright, true);
+    const auto independent = declaredToothBoundaries(context, upright);
     check(independent.size() == 1 && same(*tooth.right, *independent[0].right) && same(tooth.left, independent[0].left),
           "Neighboring letter state changed the upright tooth");
     for (double scale : {.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(ink), dummy);
-        const auto result = toothBodyBoundaries(scaled, upright, true);
+        const auto result = declaredToothBoundaries(scaled, upright);
         check(result.size() == 1 && same(*tooth.right, *result[0].right, mapping) && same(tooth.left, result[0].left, mapping),
               "Upright tooth changed under scale/translation");
     }
