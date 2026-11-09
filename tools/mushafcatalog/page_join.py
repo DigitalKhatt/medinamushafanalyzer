@@ -19,12 +19,16 @@ def dot(a, b):
     return a[0]*b[0]+a[1]*b[1]
 
 
+def outline_commands(path):
+    for command, coordinates in re.findall(r'([MLC])([^MLC]*)', path):
+        yield command, tuple(map(float, coordinates.split()))
+
+
 def outline_edges(path):
     """Flatten the catalog's absolute M/L/C outlines for ink-width measurement."""
     edges = []
     first = last = None
-    for command, coordinates in re.findall(r'([MLC])([^MLC]*)', path):
-        values = tuple(map(float, coordinates.split()))
+    for command, values in outline_commands(path):
         end = values[-2:]
         if command == 'M':
             if first is not None and last != first:

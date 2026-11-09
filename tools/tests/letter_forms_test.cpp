@@ -12,18 +12,93 @@ int main(int argc, char** argv) {
     Q_INIT_RESOURCE(application);
     auto config = PageAnalysisResult::letterForms();
     check(PageAnalysisResult::prepareLetterForms(config).isEmpty(), "Position schema rejected bundled forms");
+    for (const auto& bad : {QJsonObject{{"boundaries", QJsonObject{{"right", "vertical"}, {"left", "free"}}}}, QJsonObject{{"preserveEntryAfter", true}}}) {
+        auto invalid = config;
+        auto forms = invalid.value("medial").toArray();
+        for (int i = 0; i < forms.size(); ++i) {
+            auto form = forms[i].toObject();
+            if (form.value("id") != "lam-medi") continue;
+            auto cuts = form.value("lamCuts").toObject();
+            for (auto it = bad.begin(); it != bad.end(); ++it) cuts.insert(it.key(), it.value());
+            form.insert("lamCuts", cuts);
+            forms[i] = form;
+        }
+        invalid.insert("medial", forms);
+        check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Invalid terminal lam policy accepted");
+    }
+    for (const auto& inherited : {QString("missing-form"), QString("lam-bowl-fina")}) {
+        auto invalid = config;
+        auto finals = invalid.value("final").toArray();
+        for (int i = 0; i < finals.size(); ++i) {
+            auto form = finals[i].toObject();
+            if (form.value("id") != "lam-bowl-fina") continue;
+            form.insert("lamBody", QJsonObject{{"inherit", inherited}});
+            finals[i] = form;
+        }
+        invalid.insert("final", finals);
+        check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Missing or cyclic body reference accepted");
+    }
+    for (bool badReference : {false, true}) {
+        auto invalid = config;
+        auto forms = invalid.value("medial").toArray();
+        for (int i = 0; i < forms.size(); ++i) {
+            auto form = forms[i].toObject();
+            if (form.value("id") != "lam-medi") continue;
+            const auto field = badReference ? "lamBody" : "lamCuts";
+            auto settings = form.value(field).toObject();
+            if (badReference) settings.insert("alefArm", "missing-body");
+            else {
+                auto terminal = settings.value("beforeFinal").toObject();
+                terminal.insert("junction", "normal");
+                settings.insert("beforeFinal", terminal);
+            }
+            form.insert(field, settings);
+            forms[i] = form;
+        }
+        invalid.insert("medial", forms);
+        check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Invalid alef junction policy accepted");
+    }
     {
-        auto draft = config;
-        draft.insert("medialLamShortExit", false);
+        const auto withShortExit = [&](const QJsonValue& value) {
+            auto draft = config;
+            auto forms = draft.value("medial").toArray();
+            for (int i = 0; i < forms.size(); ++i) {
+                auto form = forms[i].toObject();
+                if (form.value("id") != "lam-medi") continue;
+                auto cuts = form.value("lamCuts").toObject();
+                cuts.insert("shortExit", value);
+                form.insert("lamCuts", cuts);
+                forms[i] = form;
+            }
+            draft.insert("medial", forms);
+            return draft;
+        };
+        auto draft = withShortExit(false);
         check(PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Short lam exit cannot be disabled");
-        auto shortExit = config.value("medialLamShortExit").toObject();
+        QJsonObject shortExit;
+        for (const auto& value : config.value("medial").toArray())
+            if (value.toObject().value("id") == "lam-medi")
+                shortExit = value.toObject().value("lamCuts").toObject().value("shortExit").toObject();
         shortExit.insert("minLengthRatio", 1);
-        draft.insert("medialLamShortExit", shortExit);
+        draft = withShortExit(shortExit);
         check(!PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Invalid short lam exit ratio accepted");
         shortExit.insert("minLengthRatio", 2);
         shortExit.insert("retryOnUnresolved", "yes");
-        draft.insert("medialLamShortExit", shortExit);
+        draft = withShortExit(shortExit);
         check(!PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Invalid short lam exit retry accepted");
+    }
+    // Lām forms cannot silently re-enter the old method dispatcher.
+    for (const auto* key : {"method", "legacyLamRoutes"}) {
+        auto invalid = config;
+        auto forms = invalid.value("initial").toArray();
+        for (int i = 0; i < forms.size(); ++i) {
+            auto form = forms[i].toObject();
+            if (form.value("id") != "lam-init") continue;
+            form.insert(key, "walk");
+            forms[i] = form;
+        }
+        invalid.insert("initial", forms);
+        check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Legacy lām matcher configuration accepted");
     }
     check(!config.value("kashidaDefaults").toObject().value("trackingEnabled").toBool(), "Tracker was enabled");
     for (const auto& invalidRange : {QJsonArray{-30, 0}, QJsonArray{"6"}}) {
@@ -63,9 +138,9 @@ int main(int argc, char** argv) {
             for (int i = 0; i < medial.size(); ++i) {
                 auto rule = medial[i].toObject();
                 if (rule.value("id") != "lam-medi") continue;
-                auto boundaries = rule.value("lamBoundaries").toObject();
-                boundaries.insert("left", QJsonArray{});
-                rule.insert("lamBoundaries", boundaries);
+                auto body = rule.value("lamBody").toObject();
+                body.insert("exitRoutes", QJsonArray{});
+                rule.insert("lamBody", body);
                 medial[i] = rule;
             }
         }
@@ -77,11 +152,15 @@ int main(int argc, char** argv) {
             for (int i = 0; i < medial.size(); ++i) {
                 auto rule = medial[i].toObject();
                 if (rule.value("id") != "lam-medi") continue;
-                auto boundaries = rule.value("lamBoundaries").toObject();
-                if (scenario == 10) boundaries.insert("right", QJsonObject{{"top", QJsonArray{"down"}},
+                auto boundaries = rule.value("lamCuts").toObject();
+                if (scenario == 10) boundaries.insert("entryRoute", QJsonObject{{"top", QJsonArray{"down"}},
                     {"anchorSide", "sideways"}});
-                else boundaries.insert("maxWidthToHeight", 0);
-                rule.insert("lamBoundaries", boundaries);
+                else {
+                    auto body = rule.value("lamBody").toObject();
+                    body.insert("maxWidthToHeight", 0);
+                    rule.insert("lamBody", body);
+                }
+                rule.insert("lamCuts", boundaries);
                 medial[i] = rule;
             }
         }
@@ -163,12 +242,50 @@ int main(int argc, char** argv) {
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Invalid or generic join template accepted");
     }
 
+    const auto withForkOffset = [&](QJsonValue offset) {
+        auto draft = config;
+        auto forms = draft.value("medial").toArray();
+        for (auto entry = forms.begin(); entry != forms.end(); ++entry) {
+            auto form = entry->toObject();
+            if (form.value("id") != "lam-medi") continue;
+            auto bounds = form.value("lamCuts").toObject();
+            if (offset.isDouble()) bounds.insert("forkOffset", offset);
+            else bounds.remove("forkOffset");
+            form.insert("lamCuts", bounds);
+            *entry = form;
+        }
+        draft.insert("medial", forms);
+        return draft;
+    };
+    QFile tightForkPage("pages/page81.dat");
+    check(tightForkPage.open(QIODevice::ReadOnly), "Could not open page 81");
+    PageAnalysisResult tightForkAnalysis;
+    QDataStream tightForkStream(&tightForkPage);
+    tightForkStream >> tightForkAnalysis.page;
+    check(tightForkAnalysis.segmentSubword(80, 13, 0, 1, nullptr, true), "Page 81 fork did not segment");
+    const auto& tightFork = tightForkAnalysis.page.lines[13].words[0].wordResultInfo.subWords[1];
+    check(tightFork.baseGlyphs.size() == 5 && tightFork.kashidaCuts.size() == 4 &&
+          tightFork.kashidaCuts[0].second.length() < 1.5 && tightFork.kashidaCuts[1].first.length() < 1.5 &&
+          tightFork.kashidaCuts[0].second.p2().x() > tightFork.kashidaCuts[1].first.p2().x(),
+          "Expected two short cuts on opposite sides of the page 81 fork");
+    const auto separated = tightFork.kashidaCuts;
+    const auto noRoom = withForkOffset(30);
+    check(tightForkAnalysis.segmentSubword(80, 13, 0, 1, nullptr, true, &noRoom), "Shared-tip fork did not segment");
+    const auto rightNormal = tightFork.kashidaCuts[0].second;
+    const auto leftNormal = tightFork.kashidaCuts[1].first;
+    check(rightNormal.p2() == leftNormal.p2() && rightNormal.p1().x() > rightNormal.p2().x() &&
+          leftNormal.p1().x() < leftNormal.p2().x() && rightNormal.p1().y() < rightNormal.p2().y() &&
+          leftNormal.p1().y() < leftNormal.p2().y() && separated[0].first == tightFork.kashidaCuts[0].first &&
+          separated[1].second == tightFork.kashidaCuts[1].second,
+          "Shared-tip cuts must follow opposite normals and keep the neighboring attachments");
+
     QFile forkPage("pages/page372.dat");
     check(forkPage.open(QIODevice::ReadOnly), "Could not open page 372");
     PageAnalysisResult forkAnalysis;
     QDataStream forkStream(&forkPage);
     forkStream >> forkAnalysis.page;
-    check(forkAnalysis.segmentSubword(371, 8, 8, 1, nullptr, true), "Medial lam with a forked foot became partial");
+    const auto withoutFork = withForkOffset(QJsonValue());
+    check(forkAnalysis.segmentSubword(371, 8, 8, 1, nullptr, true, &withoutFork), "Medial lam fallback became partial");
     const auto& fork = forkAnalysis.page.lines[8].words[8].wordResultInfo.subWords[1];
     check(fork.letterDiagnostics[1].toObject()["template"] == "lam-medi" &&
           fork.kashidaCuts.size() == 3 && !fork.kashidaPaths[1].isEmpty(), "Missing outgoing lam kashida");
@@ -184,20 +301,20 @@ int main(int argc, char** argv) {
           std::abs(lamEntry.p2().y() - lamExit.p2().y()) < 1e-6,
           "The incoming cut must stay beside the lam at the height of its outgoing cut");
     const auto correctedEnds = fork.kashidaCuts;
-    auto withoutGuard = config;
+    auto withoutGuard = withoutFork;
     auto medialForms = withoutGuard.value("medial").toArray();
     for (auto entry = medialForms.begin(); entry != medialForms.end(); ++entry) {
         auto rule = entry->toObject();
         if (rule.value("id") != "lam-medi") continue;
-        auto bounds = rule.value("lamBoundaries").toObject();
-        auto routes = bounds.value("left").toArray();
+        auto bounds = rule.value("lamCuts").toObject();
+        auto routes = bounds.value("exitRoutes").toArray();
         for (auto it = routes.begin(); it != routes.end(); ++it) {
             auto route = it->toObject();
             route.remove("forkSide");
             *it = route;
         }
-        bounds.insert("left", routes);
-        rule.insert("lamBoundaries", bounds);
+        bounds.insert("exitRoutes", routes);
+        rule.insert("lamCuts", bounds);
         *entry = rule;
     }
     withoutGuard.insert("medial", medialForms);
@@ -267,7 +384,7 @@ int main(int argc, char** argv) {
     check(ligature.joins.begin()->topBaseLine.time == 4 && ligature.joins.begin()->bottomBaseLine.time == 12,
           "Reviewed lam-alef boundary moved away from corners 4 and 12");
     for (const auto& location : {std::array{2, 6, 1}, std::array{2, 8, 2}, std::array{2, 10, 2}}) {
-        check(analysis.segmentSubword(2, location[0] - 1, location[1] - 1, location[2] - 1, nullptr, true),
+        check(analysis.segmentSubword(2, location[0] - 1, location[1] - 1, location[2] - 1, nullptr, true, &withoutFork),
               "Leaning medial lam is still partial");
         const auto& word = analysis.page.lines[location[0] - 1].words[location[1] - 1];
         const auto& sub = word.wordResultInfo.subWords[location[2] - 1];

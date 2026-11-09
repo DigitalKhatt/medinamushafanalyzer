@@ -39,13 +39,50 @@ Check individual template edits against the saved cuts with
 It reads the current template JSON directly and reports whether the cuts match
 the saved outlines, endpoints, and raster masks. The catalog stays read-only.
 Use `--templates PATH` to check a separate draft.
-The `medialLamShortExit` settings use local stroke widths for
-`minHorizontalRun` and `maxEntryGap`, and page units for `anchorTolerance`.
-When the folded exit is shortened, `cutsAroundHollow` uses the stem's turn to place
-each cut up to one local stroke width from the hollow. This applies when the
-original entry cut is within `entryMaxTilt` degrees of vertical.
-Set `retryOnUnresolved` to false to skip the original-exit retry, or set
-`medialLamShortExit` to false to disable shortening.
+
+For a full regression check and a grid of changed cuts, use **Mushaf Catalog:
+Check all letter cuts**, or:
+
+```sh
+python3 tools/mushafcatalog/catalog.py check-letter-corpus --report output/cut-review
+```
+
+Choose a new report directory each time. It contains `index.html`, the frozen
+reference catalog, all recomputed multi-letter cuts, `cutter.log`, and timings
+by stage and subword. This command does not update the live catalog. Single
+letters remain unchanged. Native runs cache resolved AI source geometry in
+`output/native-input-cache/`; they always recompute letter cuts. Artwork, font,
+transcript and upstream source changes invalidate this cache automatically.
+Set `MEDINA_DISABLE_INPUT_CACHE=1` to verify a fresh parse, or delete the cache.
+
+Run `python3 tools/mushafcatalog/catalog.py validate-medial-lam-height` to check
+every medial lām body against 5 page units. The JSON report lists short bodies
+and unmeasured letters by ID. Either result makes the check fail.
+
+Lām forms use `lamBody` for recognition and `lamCuts` for cut placement.
+Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
+declares its stem/bowl measurements in `lamBody.stem`, then uses
+`lamCuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
+lām `method` or `legacyLamRoutes` adapter.
+
+`lamBody.shape` selects the intrinsic shape vocabulary: contour stem,
+descending stem, forked stem, turning shaft, terminal bowl/fork/return, or an
+attached/detached return. `route` and `exitRoutes` describe contour landmarks;
+the corresponding entries in `lamCuts` specify projections and offsets.
+`minFlankSpan`, `minRise`, and `maxWidthToHeight` describe the shaft/fork.
+
+`fork-normal` walks `forkOffset` page units along a fork flank, then cuts
+normally to that stroke. `tightJoin: "tip-normal"` permits a cut from the tip
+when space is limited. `free` adds no boundary; `preserve` keeps the boundary
+from the declared shape's attachment. `beforeFinal` supplies the lām–alef
+policy: keep the lower return with lām and share one seam at the inward
+corners. `counterJoin` and `preserveEntryAfter` preserve the kāf–lām attachments.
+
+The folded-foot option is `lamCuts.shortExit`: `minHorizontalRun` and
+`maxEntryGap` use local stroke widths; `anchorTolerance` uses page units.
+`cutsAroundHollow` and `entryMaxTilt` control its placement. Set
+`retryOnUnresolved` to false to skip the longer-exit retry, or `shortExit` to
+false to disable shortening. The ordinary fork walk remains 0.5 page unit.
 
 Catalog builds use AI/PDF reports. Rerun `build` with the same report to
 upgrade a native catalog created with the previous artwork schema.
@@ -113,6 +150,26 @@ Open the report through a local static server. For two saved page caches,
 `tools/letter_audit/review_letter_forms.py --help` shows the before-and-after
 comparison options.
 
+The body/cut pipeline is in `segmentsubword.cpp`:
+`bodyCutProgram` resolves per-form descriptions (cached until the config changes);
+`recognizeSubwordBodies` gathers reusable features from uncut ink;
+`makeSubwordCutPlan` reads the matched form's right/left and ligature policies;
+`resolveSubwordCutPlan` resolves compatible cuts before `assembleBodyPartition`
+builds the masks. The planner has no hardcoded lām template-name dispatch.
+
+Lām recognition bypasses the legacy method dispatcher through
+`declaredLamBoundary` and `declaredMedialLamCandidates`. Generic contour
+primitives are shared: `recognizeContourRoute` finds landmarks, while
+`projectContourRoute` applies a cut policy. Non-lām forms still use the
+existing matchers during the incremental migration. A failed lām declaration
+cannot fall back to a legacy lām rule.
+
+Run `python3 tools/tests/check_letter_forms.py lam_alef_test.cpp
+letter_forms_test.cpp body_shape_test.cpp` for recognition, inheritance,
+schema, per-form overrides, shared seams, and ink ownership. Use the full
+`check-letter-corpus` command above for exact geometry and mask parity with
+the current catalog.
+
 ## Vector review
 
 `vector_review/` turns native vector exports into draft proposals for the
@@ -133,6 +190,7 @@ Use `python3 tools/waqf/build_waqf_templates.py --help` for the template inputs.
 
 ```sh
 python3 tools/tests/check_letter_forms.py
+python3 tools/tests/check_native_input_cache.py
 python3 -m unittest discover -s tools/tests -p 'test_*.py'
 python3 -m unittest discover -s tools/mushafcatalog -p 'test_*.py'
 node --test tools/mushafcatalog/test_result_grid.mjs
@@ -140,3 +198,5 @@ node --test tools/mushafcatalog/test_result_grid.mjs
 
 The native checks use the Release binary and edition data. Pass a C++ test
 filename to `check_letter_forms.py` to run one case.
+The input-cache check uses the catalog to verify identical cold/warm masks,
+fresh cuts after a template edit, and recovery from a truncated cache file.

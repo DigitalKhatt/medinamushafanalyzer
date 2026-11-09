@@ -16,7 +16,7 @@ from store import DB, HERE, META, REPORT, ROOT, build, export_bodies, import_bod
 from page_view import page_svg
 
 
-def serve(database, port):
+def serve(database, port, host='127.0.0.1'):
     with closing(read(database)) as db:
         require(meta(db,META), 'Build the native catalog first.')
         require(any(row[1]=='source_sha' for row in db.execute('PRAGMA table_info(catalog_page_art)')),
@@ -67,8 +67,8 @@ def serve(database, port):
                 self.send_error(HTTPStatus.BAD_REQUEST,str(exc))
             except sqlite3.Error as exc:
                 self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR,str(exc))
-    with ThreadingHTTPServer(('127.0.0.1',port),Handler) as server:
-        print(f'Mushaf Catalog at http://127.0.0.1:{server.server_port}/',flush=True)
+    with ThreadingHTTPServer((host,port),Handler) as server:
+        print(f'Mushaf Catalog at http://{host}:{server.server_port}/',flush=True)
         server.serve_forever()
 
 
@@ -111,11 +111,17 @@ def main():
     check_cuts.add_argument('subwords',nargs='+',help='Multi-letter subword IDs such as page069:l15-w6-s1')
     check_cuts.add_argument('--templates',type=Path,default=ROOT/'templates/letter-forms.json',
                             help='Draft template file to check (default: current repository templates)')
+    review = commands.add_parser('check-letter-corpus',help='Recompute all letter cuts and make a before/after review without updating the catalog')
+    review.add_argument('--pages',default='all')
+    review.add_argument('--workers',type=int,choices=range(1,17),default=12)
+    review.add_argument('--report',type=Path,required=True,help='Empty output directory for the review and profiles')
+    review.add_argument('--templates',type=Path,default=ROOT/'templates/letter-forms.json')
     page_export = commands.add_parser('export-page',help='Regenerate a standalone SVG page from the catalog')
     page_export.add_argument('page',help='Page number or ID')
     page_export.add_argument('file',type=Path)
     page_export.add_argument('--colored',action='store_true',help='Color each letter together with its marks')
     commands.add_parser('verify')
+    commands.add_parser('validate-medial-lam-height',help='Fail if any medial lām body is shorter than 5 page units or cannot be measured')
     commands.add_parser('compact-vectors',help='Remove stored catalog masks after verifying complete native vector coverage')
     replay = commands.add_parser('check-rebuild', help='Rebuild in a temporary empty database and compare all catalog rows and mask bytes')
     replay.add_argument('--bodies', type=Path, help='Replay this saved JSONL instead of exporting current body partitions')
@@ -135,6 +141,7 @@ def main():
     source = commands.add_parser('body-source',help='Export the native body mask, coordinate system and ordered letter owners')
     source.add_argument('id')
     s = commands.add_parser('serve')
+    s.add_argument('--host',default='127.0.0.1',help='IPv4 address to listen on. Use your LAN address for access from another device.')
     s.add_argument('--port',type=int,default=8770)
     args = cli.parse_args()
     if args.command=='setup':
@@ -159,7 +166,7 @@ def main():
         print(f"Verified {pin['pages']} AI/PDF pages, native templates, transcript source and validation models.")
         return
     if args.command=='serve':
-        serve(args.db,args.port)
+        serve(args.db,args.port,args.host)
         return
     if args.command=='check-rebuild':
         from rebuild_check import compare_rebuild
@@ -176,6 +183,9 @@ def main():
     elif args.command=='check-letter-cuts':
         from segment_letters import check_cuts
         data = check_cuts(args.db,args.subwords,args.templates)
+    elif args.command=='check-letter-corpus':
+        from cut_review import review
+        data = review(args.db,args.report,args.pages,args.workers,args.templates)
     elif args.command=='export-page':
         target = args.file.resolve()
         require(target!=args.db.resolve() and target.suffix.lower()=='.svg','Choose an SVG output file')
@@ -200,6 +210,9 @@ def main():
         with closing(read(args.db)) as db:
             db.execute('BEGIN')
             if args.command=='verify': data = verify(db,deep=True)
+            elif args.command=='validate-medial-lam-height':
+                from letter_validation import validate_medial_lam_height
+                data = validate_medial_lam_height(db)
             elif args.command=='word': data = detail(db,args.id)
             elif args.command=='body-source': data = body_source(db,args.id)
             elif args.command=='export-bodies':
@@ -215,6 +228,10 @@ def main():
                 data = {'file':str(target),'subwords':db.execute('SELECT count(*) FROM catalog_splits').fetchone()[0]}
             else: data = search(db,{k:v for k,v in vars(args).items() if v},args.statistics)
     print(json.dumps(data,ensure_ascii=False,indent=2))
+    if args.command=='validate-medial-lam-height' and not data['passed']:
+        raise SystemExit(1)
+    if args.command=='check-letter-corpus' and data['issues']:
+        raise SystemExit(1)
 
 
 if __name__=='__main__':

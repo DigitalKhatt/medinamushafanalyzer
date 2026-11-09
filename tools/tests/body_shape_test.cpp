@@ -34,7 +34,8 @@ int main(int argc, char** argv) {
             if (value.toObject().value("id") == id) return value.toObject();
         qFatal("Missing test template"); return QJsonObject{};
     };
-    const auto lam = rule("initial", "lam-init"), lamNormal = rule("initial", "lam-normal-init");
+    const auto lam = bodyConstraintForm(config, rule("initial", "lam-init")),
+        lamNormal = bodyConstraintForm(config, rule("initial", "lam-normal-init"));
     const auto tooth = rule("medial", "beh-tooth-medi").value("tooth").toObject();
     QFile file("pages/page600.dat");
     check(file.open(QIODevice::ReadOnly), "Page 600 cache missing");
@@ -47,10 +48,10 @@ int main(int argc, char** argv) {
     WordResultInfo::SubWordInfo dummy;
     auto c = geometry(source, dummy);
     c.form = lam;
-    check(searchContourWalk(c), "Expected the old overwide lam proposal");
+    check(declaredLamBoundary(c, config, c.form), "Expected the old overwide lam proposal");
     check(!matchesBoundaryBody(c, lam, c.res, true), "Overwide lam body was accepted");
     c.form = lamNormal; c.res = {};
-    check(searchContourWalk(c) && matchesBoundaryBody(c, lamNormal, c.res, true), "Lam stem was rejected");
+    check(declaredLamBoundary(c, config, c.form) && matchesBoundaryBody(c, lamNormal, c.res, true), "Lam stem was rejected");
     const auto lamCut = c.res;
     const auto badShared = contourBodyBoundaries(c, rule("medial", "hah-stacked-medi").value("contourBody").toObject());
     check(!badShared.empty(), "Expected the former lam-tip ligature proposal");
@@ -84,7 +85,7 @@ int main(int argc, char** argv) {
             return same(*tall->right, *p.right, mapping) && same(tall->left, p.left, mapping);
         }), "Baseline-entry tooth changed under scale/translation");
         scaled.form = lamNormal;
-        check(searchContourWalk(scaled) && same(lamCut, scaled.res, mapping) &&
+        check(declaredLamBoundary(scaled, config, scaled.form) && same(lamCut, scaled.res, mapping) &&
               matchesBoundaryBody(scaled, lamNormal, scaled.res, true), "Lam body constraints changed under scaling");
     }
     check(analysis.segmentSubword(599, 2, 9, 0, nullptr, true), "Lam-kha example did not complete");

@@ -76,12 +76,40 @@ int main(int argc, char** argv) {
         {449, 11, 2, 2, {{2, {273.57, 356.02}}, {3, {264.07, 355.22}}}},
         // The two ink bridges between kaf and alef follow the slightly bent shaft.
         {30, 14, 6, 1, {{1, {225.71, 436.83}}, {2, {224.85, 440.40}}}},
-        // At the returning lam bowl the connector stops at the turn. The upright stays with lam.
-        {284, 6, 5, 2, {{2, {225.21, 222.55}}, {2, {222.93, 222.91}}, {3, {217.01, 216.11}}}},
-        {579, 7, 9, 2, {{3, {67.37, 248.95}}, {3, {66.60, 246.65}}, {4, {59.61, 242.39}}}},
-        // Prefer the short exit when the entire partition works. Recover the original exit otherwise.
+        // The entry stops half a unit from lam's fork. Its shaft and lower
+        // return stay with lam; the former long approach is connecting ink.
+        {284, 6, 5, 2, {{2, {222.93, 222.91}}, {3, {217.01, 216.11}}},
+                         ConnectorWitness{1, {225.21, 222.55}, 3.541}},
+        {579, 7, 9, 2, {{3, {66.60, 246.65}}, {4, {59.61, 242.39}}},
+                         ConnectorWitness{2, {67.37, 248.95}, 4.785}},
+        // A local fork refinement must keep the partition complete. If it
+        // does not fit, the previously valid partition must still recover.
         {69, 15, 6, 1, {}},
         {435, 11, 6, 2, {}},
+        // The short yeh tooth must not take the preceding lam's tall shaft.
+        {561, 6, 7, 1, {{2, {68.8, 218.0}}, {3, {66.7, 223.4}}}},
+        // A long diagonal exit must not keep the fork outside the search.
+        {95, 3, 8, 1, {}},
+        // The folded left flank briefly returns rightward before it descends.
+        {79, 12, 2, 2, {}},
+        // A tapered connection to hah must not hide the lam's fork.
+        {399, 10, 4, 2, {}},
+        {35, 3, 1, 2, {}},
+        {12, 10, 7, 2, {}},
+        {101, 12, 4, 3, {}},
+        // Both chords can be short while their anchors are far from a folded foot.
+        {36, 15, 4, 2, {}},
+        // A steep flank can lean, and a low join can put the tip beyond three stroke widths.
+        {29, 7, 4, 1, {}},
+        {36, 13, 2, 2, {}},
+        {521, 12, 1, 2, {}},
+        // Both half-unit walks fit once the adjacent seam is resolved.
+        {140, 12, 9, 2, {}},
+        {184, 14, 10, 1, {}},
+        {415, 14, 3, 1, {}},
+        {429, 3, 2, 1, {}},
+        // A tapered incoming connector must not cap the width of the fork cut.
+        {235, 5, 7, 1, {}},
         // The descending arm of stacked ain, the third seen tooth and the
         // low returning arm of ain end at three different medial jim entries.
         {208, 3, 9, 1, {{1, {119.15, 140.5}}, {2, {120.15, 142.55}}, {2, {115.7, 144.2}}}},
@@ -172,21 +200,82 @@ int main(int argc, char** argv) {
                 id + " incomplete");
         const auto& sub = word.wordResultInfo.subWords[e.subword - 1];
         const auto shape = word.bodyShape(sub);
+        if ((e.page == 12 && e.line == 10 && e.word == 7 && e.subword == 2) ||
+            (e.page == 101 && e.line == 12 && e.word == 4 && e.subword == 3)) {
+            const int lam = e.page == 12 ? 2 : 1;
+            require(sub.letterDiagnostics[lam].toObject().value("boundaryKind") == "lam-fork" &&
+                    sub.kashidaCuts[lam - 1].second.length() < 1.3 &&
+                    sub.kashidaCuts[lam].first.length() < 1.3 &&
+                    !sub.kashidaPaths[lam].isEmpty(),
+                    id + " expected primary fork cuts and a separate connector into hah");
+        }
+        if (e.page == 95 && e.line == 3 && e.word == 8 && e.subword == 1) {
+            require(sub.kashidaCuts.size() == 5 && sub.kashidaCuts[3].second.length() < 1.4 &&
+                    sub.kashidaCuts[4].first.length() < 1.4,
+                    id + " expected two local lam cuts instead of a diagonal through the foot");
+        }
+        if (e.page == 79 && e.line == 12 && e.word == 2 && e.subword == 2) {
+            require(sub.kashidaCuts.size() == 2 &&
+                    QLineF(sub.kashidaCuts[0].second.p2(), {210.609, 384.692}).length() < .01 &&
+                    QLineF(sub.kashidaCuts[1].first.p2(), {210.280, 384.822}).length() < .01,
+                    id + " expected both anchors half a page unit along the folded contour");
+        }
+        if (e.page == 399 && e.line == 10 && e.word == 4 && e.subword == 2) {
+            require(sub.kashidaCuts.size() == 5 && sub.kashidaCuts[1].second.length() < 1.3 &&
+                    sub.kashidaCuts[2].first.length() < 1.3 && !sub.kashidaPaths[2].isEmpty(),
+                    id + " expected local lam cuts with a separate connector to hah");
+        }
+        if (e.page == 35) {
+            require(sub.kashidaCuts.size() == 4 && sub.kashidaCuts[2].second.length() < 1.3 &&
+                    sub.kashidaCuts[3].first.length() < 1.3 && !sub.kashidaPaths[3].isEmpty(),
+                    id + " expected local lam cuts before final hah");
+        }
+        if (e.page == 29 || e.page == 36 || e.page == 521) {
+            const int lam = e.page == 36 && e.line == 13 ? 2 : 1;
+            const QPointF tip = e.page == 29 ? QPointF{186.953, 251.150} :
+                e.page == 521 ? QPointF{278.708, 384.631} :
+                lam == 2 ? QPointF{307.940, 409.680} : QPointF{254.816, 467.331};
+            require(sub.kashidaCuts.size() > size_t(lam), id + " expected two connections to lam");
+            const auto right = sub.kashidaCuts[lam - 1].second.p2();
+            const auto left = sub.kashidaCuts[lam].first.p2();
+            const double rightReach = QLineF(tip, right).length(), leftReach = QLineF(tip, left).length();
+            require(rightReach > .45 && rightReach < .51 && leftReach > .45 && leftReach < .51 &&
+                    QLineF(right, left).length() > .1,
+                    id + " expected separate contour anchors near the folded foot");
+        }
+        const auto expectHalfWalk = [&](size_t lam, const QPointF& right, const QPointF& left) {
+            require(sub.kashidaCuts.size() > lam && !sub.kashidaPaths[lam - 1].isEmpty() &&
+                    !sub.kashidaPaths[lam].isEmpty() &&
+                    QLineF(sub.kashidaCuts[lam - 1].second.p2(), right).length() < .01 &&
+                    QLineF(sub.kashidaCuts[lam].first.p2(), left).length() < .01,
+                    id + " expected both half-unit cuts and separate adjacent connectors");
+        };
+        if (e.page == 140) expectHalfWalk(1, {116.150, 384.988}, {115.813, 384.971});
+        if (e.page == 184 && e.line == 14) {
+            expectHalfWalk(3, {99.465, 436.310}, {99.260, 436.293});
+            require(sub.letterDiagnostics.last().toObject().value("template") == "meem-shoulder-fina",
+                    id + " expected the final meem to keep its shoulder");
+        }
+        if (e.page == 235 && e.line == 5) {
+            expectHalfWalk(1, {116.390, 197.172}, {116.077, 197.273});
+            require(sub.kashidaCuts[0].second.length() > 2.5 * sub.kashidaCuts[0].first.length(),
+                    id + " expected the fork cut to survive the tapered connector");
+        }
+        if (e.page == 415) expectHalfWalk(1, {250.382, 440.019}, {249.956, 439.969});
+        if (e.page == 429) expectHalfWalk(1, {266.492, 146.112}, {266.155, 146.093});
         if (e.page == 69) {
             require(sub.baseGlyphs.size() == 5 && sub.kashidaCuts.size() == 4 && !sub.provisional(),
                     id + " expected five complete letter bodies");
             const auto exit = sub.kashidaCuts.back().first;
-            require(QLineF(exit.p1(), {95.93955, 464.35570}).length() < .01 &&
-                    QLineF(exit.p2(), {95.93955, 465.72112}).length() < .01,
-                    id + " lost the short lam exit");
+            require(exit.length() > 0 && exit.length() < 1.5 && sub.kashidaCuts[2].second.length() < 1.5,
+                    id + " expected short local cuts around the lam fork");
         }
         if (e.page == 435) {
             require(sub.baseGlyphs.size() == 4 && sub.kashidaCuts.size() == 3 && !sub.provisional(),
                     id + " expected four complete letter bodies and three connectors");
             const auto exit = sub.kashidaCuts.back().first;
-            require(QLineF(exit.p1(), {129.37530, 356.82080}).length() < .01 &&
-                    QLineF(exit.p2(), {132.01983, 359.25844}).length() < .01,
-                    id + " original lam exit was not recovered");
+            require(exit.length() > 0 && exit.length() < 1.3 && sub.kashidaCuts[1].second.length() < 1.3 &&
+                    !sub.kashidaPaths.back().isEmpty(), id + " expected local lam cuts with the final connector intact");
         }
         for (const auto& witness : e.witnesses) {
             const auto local = shape.transform.inverted().map(witness.point - shape.pos);
@@ -251,6 +340,8 @@ int main(int argc, char** argv) {
                 require(!body.path.contains(hole), id + " filled the counter of zah");
         }
         if (e.page == 579 && e.line == 10) {
+            require(sub.letterDiagnostics[1].toObject().value("boundaryKind") == "lam-fork",
+                    id + " expected the primary lam fork to compose with final meem");
             require(!sub.kashidaPaths.empty() && !sub.kashidaPaths.back().isEmpty(), id + " lost the final connector");
             const auto edge = sub.kashidaCuts.back().second;
             require(QLineF(edge.p1(), {167.875, 330.173}).length() < .01 &&

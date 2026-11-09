@@ -2,6 +2,26 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Mushaf Catalog: Check all letter cuts",
+      "type": "process",
+      "command": "python3",
+      "args": [
+        "tools/mushafcatalog/catalog.py",
+        "check-letter-corpus",
+        "--pages",
+        "all",
+        "--workers",
+        "12",
+        "--report",
+        "${input:cutReviewReport}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "Mushaf Catalog: Compile native segmenter",
+      "problemMatcher": []
+    },
+    {
       "label": "Mushaf Catalog: Full pipeline and serve",
       "dependsOrder": "sequence",
       "dependsOn": [
@@ -364,6 +384,12 @@
     }
   ],
   "inputs": [
+    {
+      "id": "cutReviewReport",
+      "type": "promptString",
+      "description": "New directory for cut comparisons and execution profiles",
+      "default": "output/cut-review"
+    },
     {
       "id": "markClassifierInputs",
       "type": "promptString",

@@ -5,7 +5,7 @@
 namespace {
 
 // Bump when a change to the segmenter or exported geometry invalidates old results.
-constexpr int CacheVersion = 92;
+constexpr int CacheVersion = 116;
 
 QJsonArray point(const QPointF& p) {
     return {p.x(), p.y()};
@@ -77,6 +77,8 @@ static QJsonObject segmentPage(const PageAnalysisResult& source, int pageNumber,
     PageAnalysisResult analysis;
     analysis.page = source.page;
     QJsonArray subwords;
+    const bool profiling = qEnvironmentVariableIsSet("MEDINA_PROFILE");
+    QJsonArray profile;
     const auto transcript = PageAnalysisResult::QuranTextByWord.value(pageNumber - 1);
     for (int lineIndex = 0; lineIndex < analysis.page.lines.size(); ++lineIndex) {
         auto& line = analysis.page.lines[lineIndex];
@@ -88,8 +90,14 @@ static QJsonObject segmentPage(const PageAnalysisResult& source, int pageNumber,
             for (size_t index = 0; index < results.size(); ++index) {
                 if (requestedSubwords && !requestedSubwords->contains(
                         QString("l%1-w%2-s%3").arg(lineIndex+1).arg(wordIndex+1).arg(index+1))) continue;
+                QElapsedTimer timer;
+                if (profiling) timer.start();
                 const bool complete = analysis.segmentSubword(pageNumber - 1, lineIndex, wordIndex,
                                                               static_cast<int>(index), &font, true);
+                if (profiling) profile.append(QJsonObject{
+                    {"id",QString("page%1:l%2-w%3-s%4").arg(pageNumber,3,10,QChar('0'))
+                        .arg(lineIndex+1).arg(wordIndex+1).arg(index+1)},
+                    {"milliseconds",timer.nsecsElapsed()/1e6}});
                 const auto& sub = results[index];
                 QJsonObject entry{{"line", lineIndex + 1}, {"word", wordIndex + 1},
                     {"subword", static_cast<int>(index + 1)}, {"text", sub.text}, {"complete", complete},
@@ -161,6 +169,7 @@ static QJsonObject segmentPage(const PageAnalysisResult& source, int pageNumber,
         }
     }
     result.insert("subwords", subwords);
+    if (profiling) result.insert("profile", profile);
     return result;
 }
 

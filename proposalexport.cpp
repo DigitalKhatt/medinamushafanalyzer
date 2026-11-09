@@ -6,6 +6,7 @@
 #include "quran.h"
 #include "PDFDoc.h"
 #include "CustomOutputDev.h"
+#include "nativeinputversion.h"
 #include <QRegularExpression>
 #include <stdexcept>
 
@@ -699,8 +700,52 @@ QString catalogParts(const QJsonObject& cut, const QJsonObject& source, const QS
 }
 } // namespace
 
+namespace {
+// Only the resolved source ink is cached. Letter masks, joins and template
+// decisions are deliberately absent: every run still executes the cutter.
+bool restoreNativeInput(const QString& filename, const QString& key, PageAnalysisResult& page) {
+    QFile file(filename);
+    if (!file.open(QIODevice::ReadOnly)) return false;
+    QDataStream envelope(&file);
+    QString savedKey, checksum;
+    QByteArray payload;
+    envelope >> savedKey >> checksum >> payload;
+    if (envelope.status() != QDataStream::Ok || savedKey != key || digest(payload) != checksum) return false;
+    QDataStream data(payload);
+    data >> page.page >> page.headingPaths;
+    for (auto& line : page.page.lines) for (auto& word : line.words)
+        for (auto& sub : word.wordResultInfo.subWords)
+            data >> sub.secondaryBodyPath >> sub.bodyCounter;
+    return data.status() == QDataStream::Ok && data.atEnd() && !page.page.lines.isEmpty();
+}
+
+void saveNativeInput(const QString& filename, const QString& key, const PageAnalysisResult& page) {
+    QByteArray payload;
+    QDataStream data(&payload, QIODevice::WriteOnly);
+    data << page.page << page.headingPaths;
+    for (const auto& line : page.page.lines) for (const auto& word : line.words)
+        for (const auto& sub : word.wordResultInfo.subWords)
+            data << sub.secondaryBodyPath << sub.bodyCounter;
+    if (!QDir().mkpath(QFileInfo(filename).absolutePath())) return;
+    QSaveFile file(filename);
+    if (!file.open(QIODevice::WriteOnly)) return;
+    QDataStream envelope(&file);
+    envelope << key << digest(payload) << payload;
+    if (data.status() == QDataStream::Ok && envelope.status() == QDataStream::Ok) file.commit();
+}
+} // namespace
+
 int segmentCatalogPage(const QString& request, const QString& output) {
     try {
+        QElapsedTimer timer;
+        timer.start();
+        qint64 previous = 0;
+        QJsonObject timings;
+        const auto elapsed = [&](const char* stage) {
+            const auto now = timer.nsecsElapsed();
+            timings.insert(stage, (now - previous) / 1e6);
+            previous = now;
+        };
         const auto input = QJsonDocument::fromJson(readFile(request)).object();
         const int number = input.value("page").toInt();
         const auto map = input.value("pdfToRaster").toArray();
@@ -712,20 +757,34 @@ int segmentCatalogPage(const QString& request, const QString& output) {
         if (digest(readFile(pdfName)) != input.value("pdfSha256").toString()) throw std::runtime_error("Catalog PDF hash mismatch");
         const QTransform toRaster(map[0].toDouble(), map[1].toDouble(), map[2].toDouble(), map[3].toDouble(),
                                   map[4].toDouble(), map[5].toDouble());
+        elapsed("input");
         AFont font;
-        QDataStream stream(readFile("input/font.dat")); stream >> font;
+        const auto fontBytes = readFile("input/font.dat");
+        QDataStream stream(fontBytes); stream >> font;
         if (stream.status() != QDataStream::Ok) throw std::runtime_error("Invalid geometric font");
         font.cacheAreaComparisons();
         PageAnalysisResult::initQuranText();
+        elapsed("font");
         PageAnalysisResult page;
-        if (page.loadPage(number, &font, false) < 0 || page.page.lines.isEmpty()) throw std::runtime_error("Cannot segment native page");
-        page.resolveWordBoundaries(number, &font);
+        const QString inputKey = digest(QByteArray(NativeInputVersion) + qVersion() +
+            QByteArray::number(number) + input.value("pdfSha256").toString().toUtf8() + digest(fontBytes).toUtf8());
+        const auto cacheDirectory = input.value("inputCache").toString("output/native-input-cache");
+        const auto cacheFile = cacheDirectory + "/" + inputKey + ".dat";
+        const bool cacheEnabled = !cacheDirectory.isEmpty() && !qEnvironmentVariableIsSet("MEDINA_DISABLE_INPUT_CACHE");
+        const bool cacheHit = cacheEnabled && restoreNativeInput(cacheFile, inputKey, page);
+        if (!cacheHit) {
+            if (page.loadPage(number, &font, false) < 0 || page.page.lines.isEmpty()) throw std::runtime_error("Cannot segment native page");
+            page.resolveWordBoundaries(number, &font);
+            if (cacheEnabled) saveNativeInput(cacheFile, inputKey, page);
+        }
+        elapsed("loadPage");
         if (input.value("artOnly").toBool()) {
             writeJson(output, {{"pageArt",catalogPageArt(pdfName,page,number,size,toRaster)}});
             return 0;
         }
         auto requested = input.value("subwords").toObject();
         const auto segmented = generateLetterSegmentation(page, number, font, &requested);
+        elapsed("segmentation");
         QJsonObject results, paths;
         QHash<QString,QPainterPath> originals;
         const bool partsOnly = input.value("partsOnly").toBool();
@@ -744,6 +803,7 @@ int segmentCatalogPage(const QString& request, const QString& output) {
                 }
             }
         }
+        elapsed("sourceRaster");
         for (const auto& value : segmented.value("subwords").toArray()) {
             const auto cut = value.toObject();
             const int line = cut.value("line").toInt(), word = cut.value("word").toInt(), sub = cut.value("subword").toInt();
@@ -766,12 +826,23 @@ int segmentCatalogPage(const QString& request, const QString& output) {
         }
         for (const auto& item : requested)
             results.insert(item.toObject().value("id").toString(), QJsonObject{{"status","missing-native-subword"}});
+        elapsed("partitionRaster");
         const auto unresolvedMarks = validateCatalogMarks(input.value("marks").toArray(),originals,size,paths);
+        elapsed("marks");
         QJsonObject reply{{"results",results},{"paths",paths},{"unresolvedMarks",unresolvedMarks},
+            {"inputCacheHit",cacheHit},{"inputVersion",NativeInputVersion},
             {"templateSha256",segmented.value("letterFormsSha256")},
             {"fontSha256",segmented.value("fontSha256")}, {"version",segmented.value("version")}};
         if (!partsOnly) reply["pageArt"] = catalogPageArt(pdfName,page,number,size,toRaster);
+        elapsed("pageArt");
+        reply["timingMs"] = timings;
         writeJson(output,reply);
+        elapsed("write");
+        if (qEnvironmentVariableIsSet("MEDINA_PROFILE")) {
+            timings["total"] = timer.nsecsElapsed() / 1e6;
+            writeJson(output + ".profile", {{"timingMs",timings}, {"subwords",segmented.value("profile")},
+                {"inputCacheHit",cacheHit},{"inputVersion",NativeInputVersion}});
+        }
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << std::endl; return 1; }
 }

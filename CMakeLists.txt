@@ -46,6 +46,24 @@ add_executable(${PROJECT_NAME} ${ALL_FILES} ${TFMatcherCpp} main.cpp proposalexp
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE CommonPCH.h)
 
+# The resolved AI input is independent of letter templates and the cutter.
+# Rebuilding any upstream parser/assignment dependency invalidates that cache.
+set(NATIVE_INPUT_FILES ${ALL_FILES} ${TFMatcherCpp} CommonPCH.h pathmask.h proposalexport.cpp
+    markassignment.cpp markassignment.h markassignment_p.h markgeometry.cpp
+    markcharacterlinks.cpp waqfrecognition.cpp templates/mark-shapes.json tools/waqf_templates.json)
+list(FILTER NATIVE_INPUT_FILES EXCLUDE REGEX "^(segmentsubword|lettersegmentationcache)\\.")
+list(FILTER NATIVE_INPUT_FILES EXCLUDE REGEX "(application\\.qrc|\\.natvis)$")
+set(NATIVE_INPUT_HASHES "native-input-v1;Qt=${Qt5Core_VERSION};Poppler=${Poppler_VERSION}")
+foreach(INPUT_FILE IN LISTS NATIVE_INPUT_FILES)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${INPUT_FILE}")
+    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/${INPUT_FILE}" INPUT_HASH)
+    string(APPEND NATIVE_INPUT_HASHES ";${INPUT_FILE}:${INPUT_HASH}")
+endforeach()
+string(SHA256 NATIVE_INPUT_VERSION "${NATIVE_INPUT_HASHES}")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/nativeinputversion.h"
+    CONTENT "#pragma once\nconstexpr const char* NativeInputVersion = \"${NATIVE_INPUT_VERSION}\";\n")
+target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 
 target_link_libraries(${PROJECT_NAME} PUBLIC  ${LIBRARIES})
 target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)

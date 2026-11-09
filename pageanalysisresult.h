@@ -505,6 +505,8 @@ struct PageAnalysisResult {
 
 private:
     void refineLipCuts(int line, int word, int subword, const QJsonObject& config);
+    bool collectLegacyCutProposals(int pageIndex, int line, int word, int subword, AFont* font,
+                                   QJsonObject& config);
     void refineBodyOwnership(int line, int word, int subword, const QJsonObject& config);
     bool segmentWithRecovery(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
                              const QJsonObject& config);

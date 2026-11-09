@@ -10,6 +10,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
+import time
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 import zlib
 
@@ -60,7 +61,8 @@ def native_binary():
     return binary
 
 
-def prepare_page(database, pid, binary, work, selected=None, templates=None):
+def prepare_page(database, pid, binary, work, selected=None, templates=None, *, profile=False, input_cache=None):
+    started = time.perf_counter()
     with closing(read(database)) as db:
         db.execute('BEGIN')
         compact = meta(db,VECTOR_STORAGE)
@@ -103,13 +105,19 @@ def prepare_page(database, pid, binary, work, selected=None, templates=None):
                           for mark,ids,blob in marks])
     if selected is not None:
         request['partsOnly'] = True
+    if input_cache is not None:
+        request['inputCache'] = str(input_cache)
     request_file, output = work/(pid+'.request'), work/(pid+'.cuts')
     request_file.write_text(encoded(request))
     command = [str(binary),'--segment-catalog-page',str(request_file),'--catalog-output',str(output)]
     env = dict(os.environ, QT_QPA_PLATFORM='offscreen')
     if templates is not None:
         env['MEDINA_LETTER_FORMS'] = str(templates)
+    if profile:
+        env['MEDINA_PROFILE'] = '1'
+    prepared = time.perf_counter()
     run = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True)
+    executed = time.perf_counter()
     require(run.returncode==0, f'{pid}: native cutter failed ({run.returncode}): '+(run.stderr or run.stdout)[-2000:])
     if templates is not None:
         require('Invalid letter form configuration' not in run.stderr,run.stderr.strip())
@@ -143,6 +151,13 @@ def prepare_page(database, pid, binary, work, selected=None, templates=None):
     (work/(pid+'.vectors')).write_bytes(zlib.compress(encoded(vectors).encode(),1))
     revision = f"{reply['version']}/{reply['templateSha256']}/{reply['fontSha256']}"
     (work/(pid+'.json')).write_text(encoded(dict(report=page['report_sha'], source=page['source_sha'], keys=keys, results=results)))
+    if profile:
+        native_profile = Path(str(output)+'.profile')
+        timings = json.loads(native_profile.read_bytes())
+        timings['pythonSeconds'] = dict(prepare=prepared-started, native=executed-prepared,
+                                       export=time.perf_counter()-executed, total=time.perf_counter()-started)
+        (work/(pid+'.profile.json')).write_text(encoded(timings))
+        native_profile.unlink()
     request_file.unlink()
     output.unlink()
     return revision
