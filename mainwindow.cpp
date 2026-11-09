@@ -8,6 +8,7 @@
 #include "renderarea.h"
 #include "graphicsview.h"
 #include "lettersegmentationcache.h"
+#include "bodycutpanel.h"
 #include <iostream>
 #include "qvector.h"
 
@@ -1430,6 +1431,12 @@ public:
     }
 
 protected:
+    void resizeEvent(QResizeEvent* event) override {
+        QGraphicsView::resizeEvent(event);
+        QTimer::singleShot(0, this, [this] {
+            if (scene() && !scene()->items().isEmpty()) fitInView(sceneRect(), Qt::KeepAspectRatio);
+        });
+    }
     void wheelEvent(QWheelEvent* event) override {
         const int delta = event->angleDelta().y();
         if (delta == 0 || scene()->items().isEmpty()) {
@@ -1481,12 +1488,15 @@ void MainWindow::inspectSubword(const QPoint& pos) {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Segmentation · Page %1 · Line %2 · Word %3 · %4")
         .arg(hit.pageIndex + 1).arg(hit.lineIndex + 1).arg(hit.wordIndex + 1).arg(subword->text));
-    dialog.resize(1050, 700);
+    dialog.setObjectName("segmentationDialog");
+    dialog.resize(1280, 900);
     auto* layout = new QHBoxLayout(&dialog);
     auto* comparisons = new QVBoxLayout;
     auto* editing = new QVBoxLayout;
     layout->addLayout(comparisons, 1);
     layout->addLayout(editing, 1);
+    auto* contourPoints = new QCheckBox(tr("Show all contour points"), &dialog);
+    comparisons->addWidget(contourPoints);
 
     auto makeView = [&](const QString& title) {
         auto* heading = new QHBoxLayout;
@@ -1509,19 +1519,25 @@ void MainWindow::inspectSubword(const QPoint& pos) {
     };
     auto* current = makeView(tr("Current cuts"));
     auto* preview = makeView(tr("Draft preview"));
+    connect(contourPoints, &QCheckBox::toggled, &dialog, [current, preview](bool visible) {
+        for (auto* target : {current, preview})
+            for (auto* item : target->scene()->items())
+                if (auto* word = dynamic_cast<WordItem*>(item)) word->setShowLandmarks(visible);
+    });
     auto* trace = new QPlainTextEdit(&dialog);
     trace->setReadOnly(true);
     trace->setMaximumHeight(135);
     comparisons->addWidget(trace);
     auto* rules = new QComboBox(&dialog);
-    editing->addWidget(new QLabel(tr("Template used by the current cuts"), &dialog));
+    editing->addWidget(new QLabel(tr("Template to inspect (matched and applicable alternatives)"), &dialog));
     editing->addWidget(rules);
     auto* editor = new QPlainTextEdit(&dialog);
     editor->setObjectName("letterFormsDraft");
     editor->setLineWrapMode(QPlainTextEdit::NoWrap);
     editor->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     editor->setPlainText(QString::fromUtf8(QJsonDocument(PageAnalysisResult::letterForms()).toJson()));
-    editing->addWidget(editor, 1);
+    auto* bodyCuts = new BodyCutPanel(editor, &dialog);
+    editing->addWidget(bodyCuts, 1);
     auto* status = new QLabel(tr("Edit the JSON and preview it before saving."), &dialog);
     status->setWordWrap(true);
     editing->addWidget(status);
@@ -1537,6 +1553,7 @@ void MainWindow::inspectSubword(const QPoint& pos) {
         target->scene()->clear();
         if (result.baseGlyphs.empty()) return;
         auto* item = new WordItem(sampleWord, subwordIndex, true);
+        item->setShowLandmarks(contourPoints->isChecked());
         target->scene()->addItem(item);
         target->setSceneRect(item->boundingRect());
         target->fitInView(item->boundingRect(), Qt::KeepAspectRatio);
@@ -1555,12 +1572,32 @@ void MainWindow::inspectSubword(const QPoint& pos) {
     trace->setPlainText(currentTrace);
     auto ids = result.matchedTemplates;
     ids.removeDuplicates();
-    rules->addItems(ids);
-    duplicate->setEnabled(!ids.isEmpty());
+    QStringList inspectIds = ids;
+    const auto letters = PageAnalysisResult::bodyLetters(subword->text);
+    for (const auto* phase : {"initial", "medial", "final"}) {
+        const auto applicable = QString(phase) == "initial" ? letters.left(1) :
+            QString(phase) == "final" ? letters.right(1) : letters.mid(1, std::max(0, letters.size() - 2));
+        for (const auto& value : PageAnalysisResult::letterForms().value(phase).toArray()) {
+            const auto form = value.toObject();
+            if (!form.contains("body")) continue;
+            for (const auto letter : applicable)
+                if (form.value("current").toString().contains(letter)) { inspectIds.append(form.value("id").toString()); break; }
+        }
+    }
+    inspectIds.removeDuplicates();
+    rules->addItems(inspectIds);
+    for (const auto& id : ids) if (resolvedLetterForm(PageAnalysisResult::letterForms(), id).contains("body")) {
+        rules->setCurrentText(id); break;
+    }
+    bodyCuts->selectForm(rules->currentText());
+    duplicate->setEnabled(!inspectIds.isEmpty());
     auto* locate = new QPushButton(tr("Locate template in JSON"), &dialog);
-    locate->setEnabled(!ids.isEmpty());
+    locate->setEnabled(!inspectIds.isEmpty());
     editing->insertWidget(2, locate);
     const auto focusRule = [&](const QString& id) {
+        if (rules->findText(id) < 0) rules->addItem(id);
+        rules->setCurrentText(id);
+        bodyCuts->showFullEditor();
         auto cursor = editor->textCursor();
         cursor.movePosition(QTextCursor::Start);
         editor->setTextCursor(cursor);
@@ -1570,10 +1607,9 @@ void MainWindow::inspectSubword(const QPoint& pos) {
     connect(locate, &QPushButton::clicked, &dialog, [&] { focusRule(rules->currentText()); });
 
     const auto readDraft = [&]() {
-        QJsonParseError parse;
-        auto config = QJsonDocument::fromJson(editor->toPlainText().toUtf8(), &parse).object();
-        const auto problem = parse.error == QJsonParseError::NoError
-            ? PageAnalysisResult::prepareLetterForms(config) : parse.errorString();
+        QJsonObject config;
+        QString problem;
+        if (bodyCuts->readConfig(config, problem)) problem = PageAnalysisResult::prepareLetterForms(config);
         if (!problem.isEmpty()) {
             status->setText(problem);
             return QJsonObject{};
@@ -1705,6 +1741,9 @@ void MainWindow::inspectSubword(const QPoint& pos) {
                 report += QString::fromUtf8(QJsonDocument(changes).toJson());
             }
         }
+        if (!bodyCuts->reviewDetails().isEmpty()) {
+            report += "\n\nBody / cut inspection · " + rules->currentText() + "\n" + bodyCuts->reviewDetails();
+        }
         QApplication::clipboard()->setText(report);
         statusBar()->showMessage(tr("Review details copied."), 3000);
         copyReview->setText(tr("Review details copied"));
@@ -1712,7 +1751,8 @@ void MainWindow::inspectSubword(const QPoint& pos) {
     });
 
     QJsonObject previewed;
-    connect(editor, &QPlainTextEdit::textChanged, &dialog, [&] {
+    connect(bodyCuts, &BodyCutPanel::draftChanged, &dialog, [&] {
+        bodyCuts->invalidate();
         previewed = {};
         save->setEnabled(false);
         preview->scene()->clear();
@@ -1723,10 +1763,26 @@ void MainWindow::inspectSubword(const QPoint& pos) {
         previewed = readDraft();
         save->setEnabled(!previewed.isEmpty());
         if (previewed.isEmpty()) return;
-        const bool ok = sample.segmentSubword(hit.pageIndex, 0, 0, subwordIndex, &font, true, &previewed);
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        const auto inspection = inspectLetterForm(sample, hit.pageIndex, 0, 0, subwordIndex, &font,
+                                                   previewed, rules->currentText());
+        QApplication::restoreOverrideCursor();
+        const bool ok = inspection.complete;
+        bodyCuts->setInspection(inspection);
         render(preview);
         trace->setPlainText(tr("Current\n%1\n\nDraft\n%2").arg(currentTrace, describe(ok)));
         status->setText(ok ? tr("Preview ready.") : tr("Preview is partial. Check the rule trace before saving."));
+    });
+    QString selectedForm = rules->currentText();
+    connect(rules, &QComboBox::currentTextChanged, &dialog, [&](const QString& id) {
+        if (!bodyCuts->selectForm(id)) {
+            const QSignalBlocker blocked(rules);
+            rules->setCurrentText(selectedForm);
+            status->setText(tr("Fix the invalid JSON before switching templates."));
+            return;
+        }
+        selectedForm = id;
+        run->click();
     });
     connect(save, &QPushButton::clicked, &dialog, [&] {
         const auto initialPath = letterFormsSavePath.isEmpty()
@@ -1752,7 +1808,8 @@ void MainWindow::inspectSubword(const QPoint& pos) {
         dialog.accept();
     });
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    QTimer::singleShot(0, &dialog, [current] {
+    QTimer::singleShot(0, &dialog, [current, run] {
+        run->click();
         if (!current->scene()->items().isEmpty())
             current->fitInView(current->sceneRect(), Qt::KeepAspectRatio);
     });

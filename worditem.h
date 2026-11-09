@@ -15,6 +15,7 @@ public:
 
 	explicit WordItem(Word word, int subWordIndex, bool colorBodies = false);
 	~WordItem();
+    void setShowLandmarks(bool visible) { showLandmarks = visible; update(); }
 
 	QRectF boundingRect() const override {
 		auto brec = itemPath.boundingRect();
@@ -30,5 +31,6 @@ private:
 	QTransform	transform;
 	bool showControls = false;
 	bool colorBodies;
+    bool showLandmarks = false;
 
 };

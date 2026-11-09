@@ -185,8 +185,12 @@ void WordItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 		painter->setPen(pen);
 
 
-		painter->drawPolyline(topPolygon * transform);
-		painter->drawPolyline(bottomPolygon * transform);
+        // Legacy stretching guides can include unused default endpoints.
+        // A colored segmentation preview shows the actual assembled cuts.
+        if (!colorBodies) {
+            painter->drawPolyline(topPolygon * transform);
+            painter->drawPolyline(bottomPolygon * transform);
+        }
 
 		auto pen2 = QPen(Qt::darkCyan);
 		pen2.setCosmetic(true);
@@ -204,7 +208,7 @@ void WordItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 
 	}
 
-	for (auto& xextr : subWord.extrema) {
+	if (!colorBodies || showLandmarks) for (auto& xextr : subWord.extrema) {
 
 		pen.setColor(Qt::yellow);
 		painter->setPen(pen);

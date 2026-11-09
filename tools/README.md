@@ -66,11 +66,44 @@ declares its stem/bowl measurements in `body.stem`, then uses
 lām `method` or `legacyLamRoutes` adapter. All lām forms and all six medial
 senna forms use these declarations; other letters can migrate independently.
 
+In the native application, enable **Inspect cuts** and click a subword. Select
+a lām or medial senna template, including an applicable alternative that did not
+match. **Body** shows the landmarks found in uncut ink and edits that form's
+`body` JSON. **Cut policy** edits `cuts` and shows proposed boundaries or the
+final assembled cuts. Hover over landmarks for contour-point numbers; scroll
+to zoom, drag to pan, or use **Fit**. The effective-settings toggle shows inherited
+values without changing the saved overrides. **All templates** retains the full
+JSON editor for other forms and shared settings.
+
+Use **Preview** after editing. The current result stays beside the draft;
+diagnostics separate recognition/cut failures from final assembly and include
+rejected alternatives across retries. A template that was not reached is reported
+as such, rather than as a failed recognition. Some attachment searches still
+report a combined body/cut rejection. **Copy review details** includes this trace.
+Invalid edits disable saving. **Save templates…** saves and activates only the
+previewed draft; closing the dialog leaves active templates unchanged. Tests:
+
+```sh
+python3 tools/tests/check_letter_forms.py form_inspection_test.cpp segmentation_dialog_test.cpp
+```
+
 `body.shape` selects the intrinsic shape vocabulary: contour stem,
 descending stem, forked stem, turning shaft, terminal bowl/fork/return, or an
 attached/detached return. `route` and `exitRoutes` describe contour landmarks;
 the corresponding entries in `cuts` specify projections and offsets.
 `minFlankSpan`, `minRise`, and `maxWidthToHeight` describe the shaft/fork.
+
+Medial lām recognition takes only the uncut outline and `body` settings. It
+records crests, forks, flank turns and route anchors before considering any
+neighboring join. The evidence is reused across retries and cut-policy edits.
+Assembly then assigns candidates to letter slots and checks position, rise
+relative to the incoming stroke, contour order, overlap and shared attachments.
+A rejected assembly leaves the recognized evidence intact; the dialog reports
+these rejections as **Assembly**. Check this contract with:
+
+```sh
+python3 tools/tests/check_letter_forms.py lam_body_independence_test.cpp
+```
 
 `fork-normal` walks `forkOffset` page units along a fork flank, then cuts
 normally to that stroke. `tightJoin: "tip-normal"` permits a cut from the tip
@@ -187,7 +220,9 @@ The body/cut pipeline is in `segmentsubword.cpp`:
 builds the masks. The planner has no hardcoded lām template-name dispatch.
 
 Lām recognition bypasses the legacy method dispatcher through
-`declaredLamBoundary` and `declaredMedialLamCandidates`. Generic contour
+`declaredLamBoundary` and `recognizeMedialLamBodies`. The medial recognizer's
+`LamOutline` input has no neighboring-join state; `assembleMedialLamCuts`
+projects its saved evidence and applies the neighbor checks. Generic contour
 primitives are shared: `recognizeContourRoute` finds landmarks, while
 `projectContourRoute` applies a cut policy. Non-lām forms still use the
 existing matchers during the incremental migration. A failed lām declaration
