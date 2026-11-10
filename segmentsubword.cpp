@@ -1784,15 +1784,24 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                         return id + ": a pen lift needs an exposed side and its allowed forms";
                     continue;
                 }
-                if (rule.contains("exposedBy") || rule.contains("exposedEntry")) {
-                    const auto heads = rule.value("headForms").toArray();
-                    if (rule.contains("exposedEntry") == rule.contains("exposedBy") ||
-                        (rule.contains("exposedBy") && rule.value("exposedBy").toString().isEmpty()) ||
-                        (rule.contains("exposedEntry") && rule.value("exposedEntry") != "shared") ||
-                        heads.isEmpty() || std::any_of(heads.begin(), heads.end(), [](const auto& h) {
-                            return !h.isString() || h.toString().isEmpty();
-                        }) || !rule.value("onUnresolved").toBool() || rule.contains("method"))
-                        return id + ": an exposed medial head needs an entry and allowed head forms";
+                if (rule.contains("assembly")) {
+                    const auto assembly=rule.value("assembly").toObject();
+                    const auto heads=assembly.value("bodyForms").toArray();
+                    const auto entry=assembly.value("entry").toObject();
+                    const auto source=entry.value("source").toString();
+                    if (assembly.size()!=3 || assembly.value("operation")!="exposed-head" || heads.isEmpty() ||
+                        !rule.value("onUnresolved").toBool() || rule.contains("method") || rule.contains("body") ||
+                        !QStringList{"matched-boundary","form"}.contains(source) ||
+                        (source=="matched-boundary" && entry.size()!=1) ||
+                        (source=="form" && (entry.size()!=2 || entry.value("form").toString().isEmpty())))
+                        return id+": exposed-head assembly needs body variants and a shared entry policy";
+                    for(const auto& value:heads) {
+                        const auto child=namedLetterForm(config,value.toString());
+                        if(!value.isString() || child.isEmpty() || !child.contains("body"))
+                            return id+": assembly bodyForms must name declared body templates";
+                    }
+                    if(source=="form" && namedLetterForm(config,entry.value("form").toString()).isEmpty())
+                        return id+": unknown entry form";
                     continue;
                 }
                 const bool feature = rule.contains("terminalArm") || rule.contains("overhangingEntry") || rule.contains("parallelReturn") || rule.contains("enclosedHead") || rule.contains("shaft") || rule.contains("detachedExit") || rule.contains("counterLigature") || rule.contains("mouth") || rule.contains("blade") || !loopSettings(rule).isEmpty() ||
@@ -10170,15 +10179,18 @@ static bool recoverExposedHead(const Word& word, WordResultInfo::SubWordInfo& su
         const auto rule = value.toObject();
         if (!rule.value("current").toString().contains(letters[1]))
             continue;
-        if (knownEntry && rule.contains("exposedEntry")) {
+        const auto assembly=rule.value("assembly").toObject();
+        if(assembly.value("operation")!="exposed-head")continue;
+        const auto entry=assembly.value("entry").toObject();
+        if (knownEntry && entry.value("source")=="matched-boundary") {
             head = rule;
             break;
         }
-        if (!rule.contains("exposedBy"))
+        if (entry.value("source")!="form")
             continue;
         for (const auto& item : config.value("initial").toArray()) {
             const auto form = item.toObject();
-            if (form.value("id") == rule.value("exposedBy") && form.value("current").toString().contains(letters[0]) &&
+            if (form.value("id") == entry.value("form") && form.value("current").toString().contains(letters[0]) &&
                 form.value("ligatureWith").toString().contains(letters[1]) &&
                 descendingStemDescription(config, form).contains("headLip")) {
                 stem = form;
@@ -10224,7 +10236,7 @@ static bool recoverExposedHead(const Word& word, WordResultInfo::SubWordInfo& su
     result.paths = {0}; result.text = letters.mid(1);
     if (!suffix.segmentSubword(-2, 0, 0, 0, nullptr, true, &config) || result.provisional() ||
         result.baseGlyphs.size() + 1 != size_t(letters.size()) ||
-        !head.value("headForms").toArray().contains(result.letterDiagnostics.first().toObject().value("template")))
+        !head.value("assembly").toObject().value("bodyForms").toArray().contains(result.letterDiagnostics.first().toObject().value("template")))
         return false;
     auto candidate = sub;
     candidate.baseGlyphs = std::move(result.baseGlyphs);

@@ -1601,21 +1601,32 @@
       "id": "heh-exposed-head-medi",
       "current": "ه",
       "onUnresolved": true,
-      "exposedEntry": "shared",
-      "headForms": [
-        "heh-init",
-        "heh-paired-rim-init"
-      ]
+      "assembly": {
+        "operation": "exposed-head",
+        "bodyForms": [
+          "heh-init",
+          "heh-paired-rim-init"
+        ],
+        "entry": {
+          "source": "matched-boundary"
+        }
+      }
     },
     {
       "id": "hah-under-shaft-medi",
       "current": "جحخ",
-      "exposedBy": "lam-hah-stacked-init",
-      "headForms": [
-        "hah-open-init",
-        "hah-init"
-      ],
-      "onUnresolved": true
+      "onUnresolved": true,
+      "assembly": {
+        "operation": "exposed-head",
+        "bodyForms": [
+          "hah-open-init",
+          "hah-init"
+        ],
+        "entry": {
+          "source": "form",
+          "form": "lam-hah-stacked-init"
+        }
+      }
     },
     {
       "id": "meem-hanging-medi",
