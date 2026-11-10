@@ -80,11 +80,12 @@ int main(int argc,char** argv) {
             QJsonObject form; for (const auto& v:config["final"].toArray())
                 if (v.toObject()["id"]==at.form) form=v.toObject();
             WordResultInfo::SubWordInfo dummy;auto c=geometry(ink,dummy);c.form=form;
-            check(searchContourWalk(c),"Intrinsic route did not generate a cut"); const auto expected=c.res;
+            const auto locate=[&] {return sharedShapeDescription(form.value("body").toObject()) ? declaredSharedBoundary(c,form) : searchContourWalk(c);};
+            check(locate(),"Intrinsic route did not generate a cut"); const auto expected=c.res;
             c.baseText=QStringLiteral("اختبار");c.pairedStrokeWidth=1000;
             Stretching unrelated{};unrelated.topBaseLine.point={-100,300};unrelated.bottomBaseLine.point={-80,400};
             dummy.joins.insert(unrelated);c.res={};
-            check(searchContourWalk(c) && c.res.topBaseLine.point==expected.topBaseLine.point &&
+            check(locate() && c.res.topBaseLine.point==expected.topBaseLine.point &&
                   c.res.bottomBaseLine.point==expected.bottomBaseLine.point,"Route depends on neighboring geometry");
         }
     }

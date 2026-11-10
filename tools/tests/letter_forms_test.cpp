@@ -129,8 +129,10 @@ int main(int argc, char** argv) {
             for (int i = 0; i < initial.size(); ++i) {
                 auto rule = initial[i].toObject();
                 if (rule.value("id") != "ain-init") continue;
-                rule.insert("top", QJsonArray{QJsonObject{{"direction", "down"},
+                auto body = rule.value("body").toObject(), route = body.value("route").toObject();
+                route.insert("top", QJsonArray{QJsonObject{{"direction", "down"},
                     {"end", QJsonObject{{"sharp", "yes"}}}}});
+                body.insert("route", route); rule.insert("body", body);
                 initial[i] = rule;
             }
         }

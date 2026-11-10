@@ -142,45 +142,69 @@
     {
       "id": "ain-init",
       "current": "عغ",
-      "method": "walk",
-      "top": [
-        "down",
-        "right",
-        "left",
-        {
-          "direction": "right",
-          "minY": 0,
-          "end": {
-            "sharp": true
-          }
+      "retryWithVariants": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            "down",
+            "right",
+            "left",
+            {
+              "direction": "right",
+              "minY": 0,
+              "end": {
+                "sharp": true
+              }
+            }
+          ],
+          "topUseStepEnd": true
         }
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "down",
-      "retryWithVariants": true
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "down"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
+      }
     },
     {
       "id": "ain-round-init",
       "current": "عغ",
-      "method": "walk",
-      "top": [
-        "down",
-        "right",
-        "left",
-        {
-          "direction": "right",
-          "minY": 0,
-          "end": {
-            "sharp": true,
-            "xExtremum": true
-          }
-        }
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "down",
-      "bodyCounters": 0,
       "tryNext": true,
-      "onIncomplete": true
+      "onIncomplete": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            "down",
+            "right",
+            "left",
+            {
+              "direction": "right",
+              "minY": 0,
+              "end": {
+                "sharp": true,
+                "xExtremum": true
+              }
+            }
+          ],
+          "topUseStepEnd": true
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "down"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
+      }
     },
     {
       "id": "lam-hah-stacked-init",
@@ -693,25 +717,37 @@
     {
       "id": "ain-neck-init",
       "current": "عغ",
-      "method": "walk",
       "onPartial": true,
-      "top": [
-        "down",
-        "right",
-        "left",
-        {
-          "direction": "right",
-          "minX": 0.35,
-          "minY": 0,
-          "end": {
-            "sharp": true
-          }
+      "tryNext": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            "down",
+            "right",
+            "left",
+            {
+              "direction": "right",
+              "minX": 0.35,
+              "minY": 0,
+              "end": {
+                "sharp": true
+              }
+            }
+          ],
+          "topUseStepEnd": true
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "down"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
         }
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "down",
-      "bodyCounters": 0,
-      "tryNext": true
+      }
     },
     {
       "id": "kaf-elbow-init",
@@ -1088,21 +1124,33 @@
     {
       "id": "ain-returning-cup-init",
       "current": "عغ",
-      "method": "walk",
-      "start": "top",
-      "traversal": "down",
-      "topTraversal": "forward",
-      "top": [
-        "down",
-        "right"
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "below",
-      "bodyFeatures": {
-        "minHeight": 1.9
-      },
       "tryNext": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "top",
+          "traversal": "down",
+          "topTraversal": "forward",
+          "top": [
+            "down",
+            "right"
+          ],
+          "topUseStepEnd": true
+        },
+        "features": {
+          "minHeight": 1.9
+        }
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "below"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
+      }
     },
     {
       "id": "hah-returning-lip-init",
@@ -1311,9 +1359,22 @@
     {
       "id": "ain-medi",
       "current": "عغ",
-      "openHead": {
-        "minFlankRise": 0.15,
-        "maxFlankRise": 0.8
+      "body": {
+        "shape": "open-head",
+        "head": {
+          "minFlankRise": 0.15,
+          "maxFlankRise": 0.8
+        }
+      },
+      "cuts": {
+        "head": {
+          "depth": 1,
+          "reach": 2
+        },
+        "boundaries": {
+          "left": "head-neck",
+          "right": "head-neck"
+        }
       }
     },
     {
@@ -2906,18 +2967,29 @@
       "tryNext": true,
       "onIncomplete": true,
       "tightJoin": true,
-      "loopBoundaries": {
-        "sideOffset": 0.4,
-        "entryCorner": {
-          "maxDistance": 1.5
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "entryCorner": {
+            "maxDistance": 1.5
+          },
+          "exitCorner": {
+            "maxDistance": 1.5
+          }
         },
-        "exitCorner": {
-          "maxDistance": 1.5
-        },
-        "normalCut": true
+        "counters": 1
       },
-      "bodyCounters": 1,
-      "onUnresolved": true
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.4,
+          "normalCut": true
+        },
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
+        }
+      }
     },
     {
       "id": "meem-stacked-rim-medi",
@@ -4171,22 +4243,34 @@
     {
       "id": "ain-fina",
       "current": "عغ",
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "top": [
-        "up",
-        "left",
-        "up",
-        "right",
-        "left",
-        "right"
-      ],
-      "bottomProbe": "down",
       "tryNext": true,
-      "normalCut": true,
-      "strokeOffsetX": 0.5,
-      "bodyCounters": 0
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "top": [
+            "up",
+            "left",
+            "up",
+            "right",
+            "left",
+            "right"
+          ]
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "down",
+          "normalCut": true,
+          "strokeOffsetX": 0.5
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "alef-return-fina",

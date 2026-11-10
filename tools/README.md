@@ -64,7 +64,7 @@ Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
 declares its stem/bowl measurements in `body.stem`, then uses
 `cuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
 lām `method` or `legacyLamRoutes` adapter. All lām forms, all six medial
-senna forms, all 19 meem forms and all ten feh/qaf forms use these declarations; other letters migrate independently.
+senna forms, all 19 meem forms and all ten feh/qaf forms and all seven ain/ghain forms use these declarations; other letters migrate independently.
 
 In the native application, enable **Inspect cuts** and click a subword. Select
 a declared template, including an applicable alternative that did not
@@ -156,6 +156,8 @@ the crest and both head edges; the third records the free bowl's first turn.
 Normal/probe settings live in `cuts`. Routes share the same saved-landmark
 projection used by lām and meem. `initial_heads_test.cpp`, `medial_heads_test.cpp`
 and `final_feh_test.cpp` check the reviewed head and bowl boundaries.
+
+Ain/ghain uses the same saved contour routes and counter loops. Its open medial head records the crest and both lips in `body.head`; `cuts.head` supplies projection depth and reach. Neighboring cuts select an occurrence only after recognition.
 
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`

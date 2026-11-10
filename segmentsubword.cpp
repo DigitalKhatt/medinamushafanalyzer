@@ -745,7 +745,7 @@ static bool lamDescription(const QJsonObject& body) {
 
 static bool sharedShapeDescription(const QJsonObject& body) {
     static const QStringList shapes{"counter-neck", "counter-shoulder", "counter-bridge", "counter-loop", "counter-rim",
-        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn"};
+        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head"};
     return shapes.contains(body.value("shape").toString());
 }
 
@@ -771,6 +771,11 @@ static QJsonObject loopSettings(const QJsonObject& form) {
 static QJsonObject loopHeadSettings(const QJsonObject& form) {
     return form.value("body").toObject().value("shape") == "crested-loop" ? shapeSettings(form, "head") :
         form.value("headEdges").toObject();
+}
+
+static QJsonObject openHeadSettings(const QJsonObject& form) {
+    return form.value("body").toObject().value("shape") == "open-head" ? shapeSettings(form, "head") :
+        form.value("openHead").toObject();
 }
 
 static bool hasCounterOutline(const QJsonObject& form) {
@@ -800,6 +805,7 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
     }
     if (shape == "counter-loop" || shape == "counter-rim") form.insert("loopBoundaries", loopSettings(form));
     if (shape == "counter-outline") form.insert("bodyOutline", counterOutlineSettings(form));
+    if (shape == "open-head") form.insert("openHead", shapeSettings(form, "head"));
     if (shape == "suspended-loop") form.insert("head", shapeSettings(form, "head"));
     if (shape == "crested-loop") form.insert("headEdges", shapeSettings(form, "head"));
     if (shape == "bowl-turn") {
@@ -820,7 +826,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         (phase == "initial" && boundaries.value("right") != "free") ||
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
-    const QString section = shape == "suspended-loop" || shape == "crested-loop" ? "head" : shape == "bowl-turn" ? "probe" :
+    const QString section = shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : shape == "bowl-turn" ? "probe" :
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
@@ -834,7 +840,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     for (auto it = cuts.begin(); it != cuts.end(); ++it)
         if (!cutKeys.contains(it.key())) return id + ": unknown cut-policy setting " + it.key();
     for (const auto* old : {"method", "counter", "loopBoundaries", "bodyOutline", "top", "bottom", "bottomProbe",
-                          "bodyFeatures", "bodyCounters", "shoulder", "bridge", "head", "headEdges", "probeX", "probeRadius", "minCrossings"})
+                          "bodyFeatures", "bodyCounters", "shoulder", "bridge", "head", "headEdges", "openHead", "probeX", "probeRadius", "minCrossings"})
         if (form.contains(old)) return id + ": declared geometry belongs in body / cuts, not " + old;
     const QStringList projectionKeys{"normalNeck", "normalCut", "offset", "baselineOffset", "sideOffset", "entryBelowCounter",
         "required", "strokeOffsetX", "bottomProbe", "oppositeCorner", "normalOffset", "normalOffsetTolerance",
@@ -849,7 +855,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (!checkBody(checkBody, body)) return id + ": projection settings cannot change recognized body evidence";
     for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
         const auto mode = it.value().toString();
-        const QStringList modes = shape == "suspended-loop" || shape == "crested-loop" ? QStringList{"free", "head-neck"} :
+        const QStringList modes = shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
             shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
             (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? QStringList{"free", "counter-neck", "counter-shoulder", "counter-bridge"} :
             shape == "contour-route" ? QStringList{"free", "contour-route"} :
@@ -861,8 +867,21 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if ((shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge" || shape == "contour-route") && phase == "medial")
         return id + ": this boundary shape needs an initial or final position";
     if (shape == "counter-rim" && phase != "medial") return id + ": counter-rim requires two boundaries";
-    if ((shape == "suspended-loop" && phase != "initial") || (shape == "crested-loop" && phase != "medial") ||
+    if ((shape == "suspended-loop" && phase != "initial") || ((shape == "crested-loop" || shape == "open-head") && phase != "medial") ||
         (shape == "bowl-turn" && phase != "final")) return id + ": shape does not support this letter position";
+    if (shape == "open-head") {
+        const auto head = body.value("head").toObject(), projection = cuts.value("head").toObject();
+        for (auto it = head.begin(); it != head.end(); ++it)
+            if (!QStringList{"minFlankRise", "maxFlankRise"}.contains(it.key()) || !it.value().isDouble() ||
+                !std::isfinite(it.value().toDouble()) || it.value().toDouble() < 0)
+                return id + ": open-head body accepts nonnegative flank rise measurements";
+        if (head.value("maxFlankRise").toDouble(.8) < head.value("minFlankRise").toDouble(.15))
+            return id + ": open-head flank rise limits are reversed";
+        for (auto it = projection.begin(); it != projection.end(); ++it)
+            if (!QStringList{"depth", "reach"}.contains(it.key()) || !it.value().isDouble() ||
+                !std::isfinite(it.value().toDouble()) || it.value().toDouble() <= 0)
+                return id + ": open-head projection accepts positive depth/reach in head heights";
+    }
     return {};
 }
 
@@ -6201,21 +6220,22 @@ static timesortedtype::iterator headFlank(SearchContext& context, timesortedtype
 // The open head has a crest flanked by a rightmost and leftmost contour
 // extremum, without an enclosed counter. Project those two edges onto the
 // joining stroke below the head. All proportions are relative to this head.
-static std::vector<std::pair<Stretching, Stretching>> medialOpenHeadBoundaries(
-        SearchContext& context, const QJsonObject& settings, double minX, double maxX) {
-    std::vector<std::pair<Stretching, Stretching>> candidates;
-    for (auto crest = context.timeSorted.begin(); crest != context.timeSorted.end(); ++crest) {
-        if (crest->point.x() >= maxX || crest->point.x() <= minX ||
-            crest->point.y() >= context.prev(crest)->point.y() ||
-            crest->point.y() >= context.next(crest)->point.y()) continue;
-        const auto a = headFlank(context, crest, true), b = headFlank(context, crest, false);
+struct OpenHeadBody { PathExtrema crest, rightEdge, leftEdge; double height; };
+static std::vector<OpenHeadBody> recognizeOpenHeads(const InkOutline& outline, const QJsonObject& settings) {
+    WordResultInfo::SubWordInfo empty;
+    auto geometry = outline.geometry(empty);
+    std::vector<OpenHeadBody> result;
+    for (auto crest = geometry.timeSorted.begin(); crest != geometry.timeSorted.end(); ++crest) {
+        if (crest->point.y() >= geometry.prev(crest)->point.y() ||
+            crest->point.y() >= geometry.next(crest)->point.y()) continue;
+        const auto a = headFlank(geometry, crest, true), b = headFlank(geometry, crest, false);
         const auto rightEdge = a->point.x() > b->point.x() ? a : b;
         const auto leftEdge = rightEdge == a ? b : a;
         const auto r = rightEdge->point, l = leftEdge->point;
         const double width = r.x() - l.x();
         if (width <= 0 || r.x() <= crest->point.x() || l.x() >= crest->point.x() ||
-            r.x() <= context.prev(rightEdge)->point.x() || r.x() <= context.next(rightEdge)->point.x() ||
-            l.x() >= context.prev(leftEdge)->point.x() || l.x() >= context.next(leftEdge)->point.x()) continue;
+            r.x() <= geometry.prev(rightEdge)->point.x() || r.x() <= geometry.next(rightEdge)->point.x() ||
+            l.x() >= geometry.prev(leftEdge)->point.x() || l.x() >= geometry.next(leftEdge)->point.x()) continue;
         const double minRise = settings.value("minFlankRise").toDouble(0.15) * width;
         const double maxRise = settings.value("maxFlankRise").toDouble(0.8) * width;
         if (r.y() - crest->point.y() < minRise || r.y() - crest->point.y() > maxRise ||
@@ -6223,16 +6243,35 @@ static std::vector<std::pair<Stretching, Stretching>> medialOpenHeadBoundaries(
         const double height = std::max(r.y(), l.y()) - crest->point.y();
         const QRectF head(QPointF(l.x(), crest->point.y()), QPointF(r.x(), crest->point.y() + height));
         bool closed = false;
-        for (size_t i = 1; i < context.subPaths.size(); ++i) {
-            const auto hole = context.subPaths[i].boundingRect();
-            if (head.contains(hole.center()) && !context.transformedPath.contains(hole.center())) {
+        for (size_t i = 1; i < geometry.subPaths.size(); ++i) {
+            const auto hole = geometry.subPaths[i].boundingRect();
+            if (head.contains(hole.center()) && !geometry.transformedPath.contains(hole.center())) {
                 closed = true; break;
             }
         }
         if (closed) continue;
+        result.push_back({*crest, *rightEdge, *leftEdge, height});
+    }
+    return result;
+}
+
+static std::vector<OpenHeadBody> selectOpenHeads(const std::vector<OpenHeadBody>& bodies, double minX, double maxX) {
+    std::vector<OpenHeadBody> selected;
+    for (const auto& body : bodies)
+        if (body.crest.point.x() > minX && body.crest.point.x() < maxX) selected.push_back(body);
+    return selected;
+}
+
+static std::vector<std::pair<Stretching, Stretching>> cutOpenHeads(SearchContext& context,
+        const std::vector<OpenHeadBody>& bodies, const QJsonObject& policy) {
+    std::vector<std::pair<Stretching, Stretching>> candidates;
+    for (const auto& body : bodies) {
+        const auto r = body.rightEdge.point, l = body.leftEdge.point;
+        const double depth = body.height * policy.value("depth").toDouble(1),
+                     reach = body.height * policy.value("reach").toDouble(2);
         Stretching right{}, left{};
-        if (medialChordAt(context, r.x(), r.y() + height, height * 2, right) &&
-            medialChordAt(context, l.x(), l.y() + height, height * 2, left) &&
+        if (medialChordAt(context, r.x(), r.y() + depth, reach, right) &&
+            medialChordAt(context, l.x(), l.y() + depth, reach, left) &&
             right.topBaseLine.point.y() >= r.y() && left.topBaseLine.point.y() >= l.y())
             candidates.emplace_back(right, left);
     }
@@ -8748,6 +8787,7 @@ struct SharedShapeEvidence {
     std::optional<LoopHeadBody> head;
     std::vector<CrestedLoopBody> crestedHeads;
     std::optional<BowlTurnBody> bowlTurn;
+    std::vector<OpenHeadBody> openHeads;
     std::vector<CounterOutlineBody> outlines;
 };
 
@@ -8764,6 +8804,7 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop") result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn") result.bowlTurn = recognizeBowlTurn(outline);
+    else if (shape == "open-head") result.openHeads = recognizeOpenHeads(outline, body.value("head").toObject());
     else if (shape == "counter-loop") result.loops = recognizeLoopBodies(outline, body.value("loop").toObject());
     else if (shape == "counter-rim") result.rims = recognizeRimBodies(outline);
     else if (shape == "counter-outline") result.outlines = recognizeCounterOutlines(outline, body);
@@ -8815,6 +8856,10 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
         inspectLandmark("Right edge", head.rightEdge); inspectLandmark("Left edge", head.leftEdge);
     }
     if (evidence.bowlTurn) inspectLandmark("Bowl turn", evidence.bowlTurn->turn);
+    for (const auto& head : evidence.openHeads) {
+        inspectLandmark("Open crest", head.crest);
+        inspectLandmark("Right lip", head.rightEdge); inspectLandmark("Left lip", head.leftEdge);
+    }
     corner(evidence.terminalNeck);
     for (const auto& loop : evidence.loops) {
         corner(loop.entry);
@@ -8827,6 +8872,13 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
     if (evidence.bridge) for (const auto& pair : evidence.bridge->pairs) {
         inspectLandmark("Bridge corner", pair.first); inspectLandmark("Bridge corner", pair.second);
     }
+}
+
+static std::vector<std::pair<Stretching, Stretching>> declaredOpenHeadCuts(SearchContext& context,
+        const QJsonObject& form, double minX, double maxX) {
+    const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
+    return cutOpenHeads(context, selectOpenHeads(evidence->openHeads, minX, maxX),
+        form.value("cuts").toObject().value("head").toObject());
 }
 
 static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& form) {
@@ -10501,22 +10553,22 @@ static std::optional<Stretching> lipEntry(SearchContext& ctx, const MouthLips& l
 // Match the sending head by its already established right cut. Another crest
 // in this outline can satisfy the same shape template. Only an unambiguous
 // left cut of this particular head can start its outgoing kashida.
-static std::optional<Stretching> matchedOpenHeadExit(SearchContext& ctx, const QJsonArray& forms,
+static std::optional<Stretching> matchedOpenHeadExit(SearchContext& ctx, const QJsonObject& config,
                                                      const QString& id, const Stretching& entry,
                                                      const Stretching& nextEntry) {
     const auto sameSeam = [](const Stretching& a, const Stretching& b) {
         return std::abs(a.topBaseLine.time - b.topBaseLine.time) < 1e-5 &&
                std::abs(a.bottomBaseLine.time - b.bottomBaseLine.time) < 1e-5;
     };
-    for (const auto& value : forms) {
-        const auto rule = value.toObject();
-        if (rule.value("id") != id || !rule.contains("openHead")) continue;
+    for (const auto& value : config.value("medial").toArray()) {
+        const auto rule = resolvedBodyForm(config, value.toObject());
+        if (rule.value("id") != id || openHeadSettings(rule).isEmpty()) continue;
         if (ctx.subPaths.empty()) {
             const auto paths = toSubpaths(ctx.transformedPath);
             ctx.subPaths.assign(paths.cbegin(), paths.cend());
         }
         std::optional<Stretching> exit;
-        for (const auto& [right, left] : medialOpenHeadBoundaries(ctx, rule.value("openHead").toObject(),
+        for (const auto& [right, left] : declaredOpenHeadCuts(ctx, rule,
                                                                  ctx.bbox.left(), ctx.bbox.right())) {
             if (!sameSeam(right, entry)) continue;
             const auto side = getJoinTime(left, ctx.orientation);
@@ -10636,7 +10688,7 @@ void PageAnalysisResult::refineLipCuts(int line, int wordIndex, int subIndex, co
                 }
             }
             if (ain && i > 1 && shared && start && chord(headStart) == chord(*start)) {
-                ainExit = matchedOpenHeadExit(ctx, config.value("medial").toArray(),
+                ainExit = matchedOpenHeadExit(ctx, config,
                     sub.letterDiagnostics[i-1].toObject().value("template").toString(),
                     receiver(cuts[i-2], i-2), headStart);
             }
@@ -10732,8 +10784,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         outline.form = form(position, id);
         outline.nextIter = std::next(outline.xSorted.begin());
         outline.res = {};
-        if (outline.form.isEmpty() || !(outline.form.contains("body") ?
-            declaredLamBoundary(outline, config, outline.form) :
+        if (outline.form.isEmpty() || !(sharedShapeDescription(outline.form.value("body").toObject()) ? declaredSharedBoundary(outline, resolvedBodyForm(config, outline.form)) :
+            outline.form.contains("body") ? declaredLamBoundary(outline, config, outline.form) :
             seen ? searchSeenTeeth(outline) : searchContourWalk(outline))) return {};
         return outline.res;
     };
@@ -12375,7 +12427,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
              formDescription(config, form, "body").value("shape") == "turning-shaft") ||
             !form.value("pairedCounterCorners").toObject().isEmpty() ||
             !loopSettings(form).isEmpty() ||
-            !form.value("openHead").toObject().isEmpty() ||
+            !openHeadSettings(form).isEmpty() ||
             hasToothBody(form) ||
             !form.value("seenTeeth").toObject().isEmpty() ||
             !loopHeadSettings(form).isEmpty() ||
@@ -12717,7 +12769,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 std::vector<MedialCandidate> candidates;
                 const auto contour = form.value("contourBody").toObject();
                 const auto loop = loopSettings(form);
-                const auto openHead = form.value("openHead").toObject();
+                const auto openHead = openHeadSettings(form);
                 const auto pairedCorners = form.value("pairedCounterCorners").toObject();
                 const auto tooth = toothRecognitionSettings(form);
                 const auto head = loopHeadSettings(form);
@@ -12825,7 +12877,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     }
                 }
                 if (!openHead.isEmpty())
-                    for (const auto& [right, left] : medialOpenHeadBoundaries(context, openHead, bodyMinX, entry.x()))
+                    for (const auto& [right, left] : declaredOpenHeadCuts(context, form, bodyMinX, entry.x()))
                         candidates.emplace_back(right, left);
                 auto exit = ordinaryExit;
                 std::optional<Stretching> nextBody;
