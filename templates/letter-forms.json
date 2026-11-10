@@ -5541,11 +5541,24 @@
     {
       "id": "alef-tapered-arm-fina",
       "current": "اأإآٱ",
-      "method": "folded-arm",
-      "minRise": 3,
-      "maxNeck": 1.6,
       "sharedBoundary": true,
-      "onIncomplete": true
+      "onIncomplete": true,
+      "body": {
+        "shape": "tapered-arm",
+        "arm": {
+          "minRise": 3,
+          "maxRootWidth": 1.6
+        }
+      },
+      "cuts": {
+        "arm": {
+          "preferJunction": true
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "arm-root"
+        }
+      }
     },
     {
       "id": "lam-return-fina",

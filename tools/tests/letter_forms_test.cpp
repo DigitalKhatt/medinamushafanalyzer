@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
         auto medial = invalid.value("medial").toArray();
         if (scenario == 0) invalid.insert("version", 1);
         if (scenario == 1) { auto rule = initial[0].toObject(); rule.insert("method", "join"); initial[0] = rule; }
-        if (scenario == 2) { auto rule = initial[0].toObject(); rule.remove("method"); initial[0] = rule; }
+        if (scenario == 2) { auto rule = initial[0].toObject(); rule.remove("body"); rule.remove("cuts"); initial[0] = rule; }
         if (scenario == 3) { auto rule = medial[0].toObject(); rule.insert("id", initial[0].toObject().value("id")); medial[0] = rule; }
         if (scenario == 4) { auto rule = initial[0].toObject(); rule.insert("next", "م"); initial[0] = rule; }
         if (scenario == 5) medial.append(QJsonObject{{"id", "one-sided-medial"}, {"current", "م"},
@@ -246,7 +246,7 @@ int main(int argc, char** argv) {
             }
             invalid.insert("medial", forms);
         }
-        check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Invalid or generic join template accepted");
+        if(PageAnalysisResult::prepareLetterForms(invalid).isEmpty())qFatal("Invalid template scenario %d accepted",scenario);
     }
 
     const auto withForkOffset = [&](QJsonValue offset) {
@@ -421,7 +421,7 @@ int main(int argc, char** argv) {
           "Expected the folded arm to supply the alternative ligature cut");
     QJsonArray withoutFoldedArms;
     for (const auto& value : remainingFinal)
-        if (value.toObject().value("method") != "folded-arm") withoutFoldedArms.append(value);
+        if (value.toObject().value("body").toObject().value("shape") != "tapered-arm") withoutFoldedArms.append(value);
     withoutLigature.insert("final", withoutFoldedArms);
     check(!analysis.segmentSubword(2, 1, 0, 0, nullptr, true, &withoutLigature),
           "Upright alef incorrectly substitutes for the missing folded arm");

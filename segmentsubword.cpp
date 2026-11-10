@@ -745,7 +745,7 @@ static bool lamDescription(const QJsonObject& body) {
 
 static bool sharedShapeDescription(const QJsonObject& body) {
     static const QStringList shapes{"counter-neck", "counter-shoulder", "counter-bridge", "counter-loop", "counter-rim",
-        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips", "inclined-blade", "parallel-return", "stemmed-bowl", "forked-bowl", "counter-attachment", "layered-head", "upright-stem"};
+        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips", "inclined-blade", "parallel-return", "stemmed-bowl", "forked-bowl", "counter-attachment", "layered-head", "upright-stem", "tapered-arm"};
     return shapes.contains(body.value("shape").toString());
 }
 
@@ -816,6 +816,7 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
     const auto body = form.value("body").toObject();
     if (!sharedShapeDescription(body)) return form;
     const auto shape = body.value("shape");
+    if(shape=="tapered-arm") {auto arm=shapeSettings(form,"arm");arm.insert("maxNeck",arm.take("maxRootWidth"));form=withOverrides(form,arm);}
     if(shape=="upright-stem") form=withOverrides(form,shapeSettings(form,"stem"));
     if(shape=="layered-head") form=withOverrides(form,shapeSettings(form,"head"));
     if(shape=="counter-attachment") {
@@ -874,7 +875,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         (phase == "initial" && boundaries.value("right") != "free") ||
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
-    const QString section = shape == "upright-stem" ? "stem" : shape == "layered-head" ? "head" : shape == "counter-attachment" ? "attachment" : shape == "forked-bowl" ? "fork" : shape == "stemmed-bowl" ? "stem" : shape == "inclined-blade" ? "blade" : shape == "parallel-return" ? "bands" : shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
+    const QString section = shape == "tapered-arm" ? "arm" : shape == "upright-stem" ? "stem" : shape == "layered-head" ? "head" : shape == "counter-attachment" ? "attachment" : shape == "forked-bowl" ? "fork" : shape == "stemmed-bowl" ? "stem" : shape == "inclined-blade" ? "blade" : shape == "parallel-return" ? "bands" : shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
@@ -908,7 +909,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (!checkBody(checkBody, body)) return id + ": projection settings cannot change recognized body evidence";
     for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
         const auto mode = it.value().toString();
-        const QStringList modes = shape == "upright-stem" ? QStringList{"free", "stem-turn"} : shape == "layered-head" ? QStringList{"free", "head-probe"} : shape == "counter-attachment" ? QStringList{"free", "counter-bridge", "counter-shoulder"} : shape == "forked-bowl" ? QStringList{"free", "branch-normal"} : shape == "stemmed-bowl" ? QStringList{"free", "stem-turn"} : shape == "inclined-blade" ? QStringList{"corner-normal"} : shape == "parallel-return" ? QStringList{"band-section"} : shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection", "lower-probe"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
+        const QStringList modes = shape == "tapered-arm" ? QStringList{"free", "arm-root"} : shape == "upright-stem" ? QStringList{"free", "stem-turn"} : shape == "layered-head" ? QStringList{"free", "head-probe"} : shape == "counter-attachment" ? QStringList{"free", "counter-bridge", "counter-shoulder"} : shape == "forked-bowl" ? QStringList{"free", "branch-normal"} : shape == "stemmed-bowl" ? QStringList{"free", "stem-turn"} : shape == "inclined-blade" ? QStringList{"corner-normal"} : shape == "parallel-return" ? QStringList{"band-section"} : shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection", "lower-probe"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
             shape == "bowl-neck" ? QStringList{"free", "bowl-neck"} : shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
             (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? QStringList{"free", "counter-neck", "counter-shoulder", "counter-bridge"} :
             shape == "contour-route" ? QStringList{"free", "contour-route"} :
@@ -925,6 +926,11 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (shape == "contour-route" && cuts.contains("recoveryTail") &&
         (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() || cuts.value("tail").toObject().isEmpty()))
         return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    if(shape=="tapered-arm") {
+        const auto arm=body.value("arm").toObject(),policy=cuts.value("arm").toObject();
+        if(phase!="final" || arm.size()!=2 || !(arm.value("minRise").toDouble()>0) || !(arm.value("maxRootWidth").toDouble()>0) ||
+            policy.size()!=1 || !policy.value("preferJunction").isBool())return id+": invalid tapered arm body or root policy";
+    }
     if(shape=="upright-stem") {
         const auto policy=cuts.value("stem").toObject();
         if(phase!="final" || !body.value("stem").toObject().isEmpty() || !(policy.value("turnAngle").toDouble()>0) ||
@@ -1060,6 +1066,7 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString& ph
     const auto shape = form.value("body").toObject().value("shape");
     form = sharedShapeProjectionForm(form);
     form.remove("body"); form.remove("cuts");
+    if(shape=="tapered-arm")form.insert("method","folded-arm");
     if(shape=="upright-stem")form.insert("method","alef-stem");
     if(shape=="layered-head")form.insert("method","hah");
     if(shape=="counter-attachment" && phase=="initial")form.insert("method","counter-ligature");
@@ -1568,7 +1575,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 }
                 const auto arm = declaredBody.value("alefArm");
                 if (!arm.isUndefined() && (!arm.isString() ||
-                    namedLetterForm(config, arm.toString()).value("method") != "folded-arm" ||
+                    formDescription(config, namedLetterForm(config, arm.toString()), "body").value("shape") != "tapered-arm" ||
                     declaredBody.value("alefLetters").toString().isEmpty()))
                     return id + ": body.alefArm needs a folded-arm body template and alefLetters";
                 const auto forkOffset = declaredCuts.value("forkOffset");
@@ -7105,7 +7112,7 @@ static bool readTerminalOutline(SearchContext& context) {
 
 // Phase 1: reusable evidence from the uncut source. Neither masks nor cuts are
 // inputs. A policy can be changed and previewed using this same recognition.
-static bool foldedArmRoot(SearchContext& ctx, const QJsonObject& form, Stretching& result,
+static bool declaredArmRoot(SearchContext& ctx, const QJsonObject& form, Stretching& result,
                           bool* cornerPair = nullptr);
 
 struct LamBodyRecognition {
@@ -7208,7 +7215,7 @@ static SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
                 Stretching attachment{};
                 bool corners = false;
                 std::optional<std::pair<PathExtrema, PathExtrema>> seam;
-                if (!arm.isEmpty() && foldedArmRoot(context, arm, attachment, &corners) && corners)
+                if (!arm.isEmpty() && declaredArmRoot(context, arm, attachment, &corners) && corners)
                     seam = std::pair{attachment.topBaseLine, attachment.bottomBaseLine};
                 root = armFeatures.insert(armId, seam);
             }
@@ -8036,13 +8043,21 @@ static std::vector<std::pair<Stretching, Stretching>> shaftSections(SearchContex
 // The free arm of a folded lam-alef is broad at the nib and tapers down
 // and right into the returning bowl. The two inward corners delimit the
 // contact when both are present; a shorter cross-section can clip its tip.
-static bool foldedArmRoot(SearchContext& ctx, const QJsonObject& form, Stretching& result, bool* cornerPair) {
-    if (cornerPair) *cornerPair = false;
+struct TaperedArmBody {
+    PathExtrema first,second;
+    std::array<QLineF,3> crossSections;
+    QRectF bounds;
+    double width;
+    bool junction;
+    double fit;
+};
+static std::vector<TaperedArmBody> recognizeTaperedArms(const InkOutline& outline,const QJsonObject& form) {
+    WordResultInfo::SubWordInfo empty;auto ctx=outline.geometry(empty);
     const auto& ink = ctx.transformedPath;
     const double minRise = form.value("minRise").toDouble(3.);
-    const double maxNeck = form.value("maxNeck").toDouble(1.6);
+    const double maxNeck = form.value("maxRootWidth").toDouble(1.6);
     const auto curves = baseContourCurves(ink);
-    if (curves.empty()) return false;
+    if (curves.empty()) return {};
     std::set<double> attachmentCorners;
     for (const auto& point : ctx.timeSorted) {
         if (!point.isSharp || std::abs(point.time - std::round(point.time)) > 1e-8) continue;
@@ -8056,7 +8071,7 @@ static bool foldedArmRoot(SearchContext& ctx, const QJsonObject& form, Stretchin
         if (std::abs(turn) > 1e-10 && (turn > 0) == (ctx.orientation == Orientation::CounterClockwise))
             attachmentCorners.insert(point.time);
     }
-    std::pair<int, double> best{1, std::numeric_limits<double>::infinity()};
+    std::vector<TaperedArmBody> bodies;
     for (auto it = ctx.timeSorted.begin(); it != ctx.timeSorted.end(); ++it) {
         if (!it->isSharp || it->point.x() > ctx.bbox.left() + 1.35 * ctx.bbox.height())
             continue;
@@ -8110,23 +8125,33 @@ static bool foldedArmRoot(SearchContext& ctx, const QJsonObject& form, Stretchin
                 // tapered arm above. Smooth roots retain the cross-section search.
                 const bool junction = attachmentCorners.count(cut.topBaseLine.time) &&
                     attachmentCorners.count(cut.bottomBaseLine.time);
-                const auto score = std::pair{junction ? 0 : 1,
-                    neck.length() + 1.5 * (box.bottom() - root.y()) +
-                    1.5 * (box.right() - root.x()) - .12 * box.height()};
-                if (score >= best)
-                    continue;
-                best = score;
-                if (cornerPair) *cornerPair = junction;
-                result = cut;
-                result.topLeft = result.topRight = result.topBaseLine;
-                result.bottomLeft = result.bottomRight = result.bottomBaseLine;
-                result.referenceWidth = neck.length();
-                result.fixedRightBoundary = true;
-                result.kashidaOverrides.insert("enabled", false);
+                const double fit=neck.length()+1.5*(box.bottom()-root.y())+1.5*(box.right()-root.x())-.12*box.height();
+                bodies.push_back({cut.topBaseLine,cut.bottomBaseLine,cross,box,neck.length(),junction,fit});
             }
         }
     }
-    return std::isfinite(best.second);
+    return bodies;
+}
+
+static bool cutTaperedArms(const std::vector<TaperedArmBody>& bodies,const QJsonObject& policy,
+        Stretching& result,bool* cornerPair=nullptr) {
+    if(cornerPair)*cornerPair=false;
+    const TaperedArmBody* best=nullptr;
+    std::pair<int,double> score{2,std::numeric_limits<double>::infinity()};
+    for(const auto& body:bodies) {
+        const auto value=std::pair{policy.value("preferJunction").toBool(true) && !body.junction ? 1 : 0,body.fit};
+        if(value<score){score=value;best=&body;}
+    }
+    if(!best)return false;
+    result={};result.topBaseLine=result.topLeft=result.topRight=best->first;
+    result.bottomBaseLine=result.bottomLeft=result.bottomRight=best->second;
+    result.referenceWidth=best->width;result.fixedRightBoundary=true;result.kashidaOverrides.insert("enabled",false);
+    if(cornerPair)*cornerPair=best->junction;
+    return true;
+}
+static bool declaredArmRoot(SearchContext& context,const QJsonObject& form,Stretching& result,bool* cornerPair) {
+    return cutTaperedArms(recognizeTaperedArms(inkOutline(context),form.value("body").toObject().value("arm").toObject()),
+        form.value("cuts").toObject().value("arm").toObject(),result,cornerPair);
 }
 
 // The incoming branch leaves a notch between the upstroke and the bowl.
@@ -9117,6 +9142,7 @@ struct SharedShapeEvidence {
     std::optional<LayeredHeadBody> layeredHead;
     std::optional<UprightStemBody> uprightStem;
     std::optional<DescendingShaftBody> descendingShaft;
+    std::vector<TaperedArmBody> taperedArms;
     std::vector<OpenHeadBody> openHeads;
     std::optional<HorizontalCounterPair> horizontalPair;
     std::vector<StackedCounterPair> stackedPairs;
@@ -9140,6 +9166,7 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop") result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn") result.bowlTurn = recognizeBowlTurn(outline);
+    else if(shape=="tapered-arm")result.taperedArms=recognizeTaperedArms(outline,body.value("arm").toObject());
     else if(shape=="upright-stem") {result.uprightStem=recognizeUprightStem(outline);result.descendingShaft=recognizeDescendingShaft(outline);}
     else if(shape=="layered-head") result.layeredHead=recognizeLayeredHeads(outline,body);
     else if(shape=="counter-attachment") result.attachment=recognizeCounterAttachments(outline,body.value("attachment").toObject());
@@ -9242,6 +9269,7 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
     }
     if(evidence.layeredHead)for(const auto& neck:evidence.layeredHead->necks){inspectLandmark("Head neck",neck.section.topBaseLine);inspectLandmark("Head neck",neck.section.bottomBaseLine);}
     if(evidence.uprightStem){inspectLandmark("Stem tip",evidence.uprightStem->tip);for(const auto& turn:evidence.uprightStem->turns)inspectLandmark("Lower turn",turn);}
+    for(const auto& arm:evidence.taperedArms){inspectLandmark("Arm root",arm.first);inspectLandmark("Arm root",arm.second);}
     if (evidence.bowlTurn) inspectLandmark("Bowl turn", evidence.bowlTurn->turn);
     for (const auto& head : evidence.openHeads) {
         inspectLandmark("Open crest", head.crest);
@@ -9301,6 +9329,7 @@ static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& fo
             found = cutTailBranches(context, *evidence->tail, shapeSettings(form, "tail"), context.res);
         if (!found) found = projectSavedRoute(context, evidence->route, body.value("route").toObject(), cuts.value("route").toObject());
     }
+    else if(shape=="tapered-arm")found=cutTaperedArms(evidence->taperedArms,cuts.value("arm").toObject(),context.res);
     else if(shape=="upright-stem") {
         const auto policy=cuts.value("stem").toObject();
         if(recovering && cuts.value("recoveryShaft").toBool() && evidence->descendingShaft)
@@ -9857,7 +9886,7 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
         arm = {};
         for (const auto& v : config.value("final").toArray()) {
             auto f = v.toObject();
-            if (f.value("id") == lamBody.value("terminalArm") && f.value("method") == "folded-arm" &&
+            if (f.value("id") == lamBody.value("terminalArm") && f.value("body").toObject().value("shape") == "tapered-arm" &&
                 f.value("current").toString().contains(letters.back())) {
                 arm = f;
                 break;
@@ -9891,7 +9920,7 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
                 context.ySorted.insert(p);
             }
         context.setOrientation();
-        if (!foldedArmRoot(context, arm, seam))
+        if (!declaredArmRoot(context, arm, seam))
             return false;
         auto halves = cutRegions(shape.path, {}, {seam}, context.orientation, true);
         if (halves.size() != 2)
@@ -12575,8 +12604,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         else if (rule.contains("body")) found = declaredLamBoundary(context, config, rule);
         else if (method == "descending-stem") found = descendingStemExit(context,rule.value("descendingStem").toObject(),context.res);
         else if (method == "walk") found = searchContourWalk(context);
-        else if (method == "folded-arm")
-            found = intrinsicTerminal(false, [&] { return foldedArmRoot(context, rule, context.res); });
         else if (method == "tail-entry") found = terminalTailEntry(context,rule.value("tailEntry").toObject(),context.res);
         else qWarning() << "Unknown letter form method:" << method;
         if (found && recoverTeeth && owner == lastIndex &&

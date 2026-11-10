@@ -133,6 +133,7 @@ static QByteArray snapshot(const SharedShapeEvidence& e) {
     if(e.layeredHead){out << quint64(e.layeredHead->envelopes.size());for(const auto& box:e.layeredHead->envelopes)out << box;out << quint64(e.layeredHead->necks.size());for(const auto& n:e.layeredHead->necks){point(n.cursor);point(n.section.topBaseLine);point(n.section.bottomBaseLine);}}
     out << bool(e.uprightStem);if(e.uprightStem){point(e.uprightStem->tip);out << e.uprightStem->y << e.uprightStem->stroke;points(e.uprightStem->turns);}
     out << bool(e.descendingShaft);if(e.descendingShaft){const auto& b=*e.descendingShaft;point(b.tip);out << b.section << b.y << b.width << quint64(b.flanks.size());for(const auto& f:b.flanks){point(f.start);out << f.forward;}points(b.feet);}
+    out << quint64(e.taperedArms.size());for(const auto& a:e.taperedArms){point(a.first);point(a.second);for(const auto& cross:a.crossSections)out << cross;out << a.bounds << a.width << a.junction << a.fit;}
     out << bool(e.bowlTurn); if (e.bowlTurn) { point(e.bowlTurn->tip); point(e.bowlTurn->turn); }
     out << quint64(e.outlines.size());
     for (const auto& shape : e.outlines) { out << shape.eye << quint64(shape.counters.size()); for (const auto& h : shape.counters) hole(h); }
@@ -161,7 +162,7 @@ int main(int argc, char** argv) {
         bad.insert("cuts", policy); invalid.insert(phase, QJsonArray{bad});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
     }
-    check(forms.size() >= 148 && shapes.size() >= 29, "Not all shared shapes exercised");
+    check(forms.size() >= 149 && shapes.size() >= 30, "Not all shared shapes exercised");
     struct Fixture { int page,line,word,sub; };
     const Fixture fixtures[] = {{3,2,9,1}, {6,15,4,1}, {600,2,5,1}, {230,11,3,1}, {6,9,8,2}};
     int checks = 0;
