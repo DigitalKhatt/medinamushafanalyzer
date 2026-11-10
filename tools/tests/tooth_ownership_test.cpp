@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     for (const auto& value:config.value("final").toArray())
         if (value.toObject().value("id")=="meem-counter-fina") final=value.toObject();
     context.form=initial;
-    check(searchContourWalk(context), "Fixture no longer exercises the misleading initial route");
+    check(declaredSharedBoundary(context, initial), "Fixture no longer exercises the misleading initial route");
     auto badInitial=context.res;
     const auto proposals=declaredToothBoundaries(context, tooth);
     check(proposals.size()==1 && std::abs(proposals[0].tip.time-3.65792430518215)<1e-6,

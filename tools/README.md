@@ -161,6 +161,8 @@ Ain/ghain uses the same saved contour routes and counter loops. Its open medial 
 
 Heh counter forms use `horizontal-counters` or `stacked-counters`, alongside the shared loop/neck/outline shapes. Body recognition records counter pairs and all eligible foot corners; projection chooses successful normal sections while preserving the outer step. `medial_heh_test.cpp` checks the reviewed corners, scale invariance and independence from neighboring cuts. Exposed-head and pen-lift composition remain assembly rules.
 
+The five initial beh-family forms also use `contour-route`: directional walks and body proportions belong in `body`, while the lower probe, normal and corner ownership belong in `cuts`. `tooth_ownership_test.cpp` and `beh_hah_ligature_test.cpp` cover the stacked joins and retained initial strokes.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright

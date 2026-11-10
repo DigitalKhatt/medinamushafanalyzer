@@ -396,123 +396,183 @@
     {
       "id": "beh-sloping-init",
       "current": "بتثنيئى",
-      "method": "walk",
-      "start": "top",
-      "traversal": "down",
-      "top": [
-        {
-          "direction": "down",
-          "minY": 3,
-          "maxX": -2,
-          "accumulate": true,
-          "end": {
-            "sharp": true
-          }
-        }
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "corner",
-      "oppositeCorner": {
-        "sharp": false,
-        "yExtremum": true,
-        "minX": -4,
-        "maxX": 0,
-        "minY": 0,
-        "maxY": 3,
-        "minDistance": 0.5,
-        "maxDistance": 4,
-        "flanks": {
-          "maxY": 0
-        }
-      },
-      "bodyFeatures": {
-        "minHeight": 3,
-        "minWidthToHeight": 0.7,
-        "maxWidthToHeight": 1.6,
-        "maxUpperPeaks": 1
-      },
-      "bodyCounters": 0,
       "tryNext": true,
       "retryOnPartial": true,
       "tightJoin": true,
-      "anchorSide": "bottom"
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "top",
+          "traversal": "down",
+          "top": [
+            {
+              "direction": "down",
+              "minY": 3,
+              "maxX": -2,
+              "accumulate": true,
+              "end": {
+                "sharp": true
+              }
+            }
+          ],
+          "topUseStepEnd": true
+        },
+        "features": {
+          "minHeight": 3,
+          "minWidthToHeight": 0.7,
+          "maxWidthToHeight": 1.6,
+          "maxUpperPeaks": 1
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "corner",
+          "oppositeCorner": {
+            "sharp": false,
+            "yExtremum": true,
+            "minX": -4,
+            "maxX": 0,
+            "minY": 0,
+            "maxY": 3,
+            "minDistance": 0.5,
+            "maxDistance": 4,
+            "flanks": {
+              "maxY": 0
+            }
+          },
+          "anchorSide": "bottom"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
+      }
     },
     {
       "id": "beh-init",
       "current": "بتثنيئى",
-      "method": "walk",
-      "top": [
-        "down",
-        {
-          "direction": "left",
-          "maxX": -1,
-          "minY": 0
-        }
-      ],
-      "bottomProbe": "down",
       "tryNext": true,
       "retryOnPartial": true,
-      "bodyFeatures": {
-        "maxWidthToHeight": 0.6
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            "down",
+            {
+              "direction": "left",
+              "maxX": -1,
+              "minY": 0
+            }
+          ]
+        },
+        "features": {
+          "maxWidthToHeight": 0.6
+        }
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "down"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
       }
     },
     {
       "id": "beh-shallow-step-init",
       "current": "بتثنيئى",
-      "method": "walk",
-      "top": [
-        "down",
-        {
-          "direction": "left",
-          "maxX": -0.35,
-          "minY": 0
-        }
-      ],
-      "bottomProbe": "down",
       "tryNext": true,
       "retryOnPartial": true,
-      "bodyFeatures": {
-        "maxWidthToHeight": 0.6
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            "down",
+            {
+              "direction": "left",
+              "maxX": -0.35,
+              "minY": 0
+            }
+          ]
+        },
+        "features": {
+          "maxWidthToHeight": 0.6
+        }
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "down"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
       }
     },
     {
       "id": "beh-hook-init",
       "current": "بتثنيئى",
-      "method": "walk",
-      "top": [
-        {
-          "direction": "down",
-          "minY": 1.5,
-          "accumulate": true
-        },
-        {
-          "direction": "left",
-          "maxX": -0.5,
-          "minY": 0
-        }
-      ],
-      "bottomProbe": "normal",
-      "bodyFeatures": {
-        "minHeight": 3,
-        "maxWidthToHeight": 0.6
-      },
       "tryNext": true,
-      "topTraversal": "backward"
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            {
+              "direction": "down",
+              "minY": 1.5,
+              "accumulate": true
+            },
+            {
+              "direction": "left",
+              "maxX": -0.5,
+              "minY": 0
+            }
+          ],
+          "topTraversal": "backward"
+        },
+        "features": {
+          "minHeight": 3,
+          "maxWidthToHeight": 0.6
+        }
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "normal"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
+      }
     },
     {
       "id": "beh-foot-init",
       "current": "بتثنيئى",
-      "method": "walk",
-      "top": [
-        "down",
-        "up"
-      ],
-      "bottomProbe": "normal",
-      "bodyFeatures": {
-        "minHeight": 1.5,
-        "maxWidthToHeight": 0.95
+      "tryNext": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            "down",
+            "up"
+          ]
+        },
+        "features": {
+          "minHeight": 1.5,
+          "maxWidthToHeight": 0.95
+        }
       },
-      "tryNext": true
+      "cuts": {
+        "route": {
+          "bottomProbe": "normal"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
+      }
     },
     {
       "id": "kaf-ascender-init",

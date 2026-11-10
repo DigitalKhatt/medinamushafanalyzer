@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
     struct Fixture { int page, line, word, sub; const char* id; };
     const Fixture fixtures[] = {
         {3,1,9,3,"heh-init"}, {3,1,6,5,"heh-body-medi"}, {3,2,5,2,"heh-counter-fina"},
+        {3,1,6,5,"beh-init"}, {13,2,6,3,"beh-shallow-step-init"},
         {3,1,5,1,"ain-init"}, {3,2,9,1,"ain-medi"},
         {600,2,9,1,"feh-init"}, {600,2,10,2,"feh-head-medi"}, {13,15,1,1,"feh-fina"},
         {3,2,2,2,"meem-init"}, {3,2,9,1,"meem-medi"}, {3,1,8,1,"meem-counter-fina"},
