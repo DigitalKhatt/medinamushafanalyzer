@@ -745,7 +745,7 @@ static bool lamDescription(const QJsonObject& body) {
 
 static bool sharedShapeDescription(const QJsonObject& body) {
     static const QStringList shapes{"counter-neck", "counter-shoulder", "counter-bridge", "counter-loop", "counter-rim",
-        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return"};
+        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route"};
     return shapes.contains(body.value("shape").toString());
 }
 
@@ -771,6 +771,11 @@ static QJsonObject loopSettings(const QJsonObject& form) {
 static QJsonObject loopHeadSettings(const QJsonObject& form) {
     return form.value("body").toObject().value("shape") == "crested-loop" ? shapeSettings(form, "head") :
         form.value("headEdges").toObject();
+}
+
+static QJsonObject pairedRouteSettings(const QJsonObject& form) {
+    return form.value("body").toObject().value("shape") == "paired-route" ? shapeSettings(form, "routes") :
+        form.value("contourBody").toObject();
 }
 
 static QJsonObject pairedCounterSettings(const QJsonObject& form) {
@@ -810,6 +815,7 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
     }
     if (shape == "counter-loop" || shape == "counter-rim") form.insert("loopBoundaries", loopSettings(form));
     if (shape == "counter-outline") form.insert("bodyOutline", counterOutlineSettings(form));
+    if (shape == "paired-route") form.insert("contourBody", pairedRouteSettings(form));
     if (shape == "stacked-counters") form.insert("pairedCounterCorners", shapeSettings(form, "pair"));
     if (shape == "tail-branch") { form.insert("tailEntry", shapeSettings(form, "tail")); form.insert("start", "left"); }
     if (shape == "rising-return") form.insert("tail", shapeSettings(form, "return"));
@@ -836,7 +842,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         (phase == "initial" && boundaries.value("right") != "free") ||
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
-    const QString section = shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : shape == "bowl-turn" ? "probe" :
+    const QString section = shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : shape == "bowl-turn" ? "probe" :
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
@@ -855,17 +861,17 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     const QStringList projectionKeys{"normalNeck", "normalCut", "offset", "baselineOffset", "sideOffset", "entryBelowCounter",
         "required", "strokeOffsetX", "bottomProbe", "oppositeCorner", "normalOffset", "normalOffsetTolerance",
         "penWidth", "strokeSource", "walkNormalOffset", "anchorSide", "visibleFrom", "maxProjectionInset"};
-    const auto checkBody = [&](auto&& self, const QJsonObject& value) -> bool {
+    const auto checkBody = [&](auto&& self, const QJsonObject& value, bool anchor = false) -> bool {
         for (auto it = value.begin(); it != value.end(); ++it) {
-            if (projectionKeys.contains(it.key())) return false;
-            if (it.value().isObject() && !self(self, it.value().toObject())) return false;
+            if (projectionKeys.contains(it.key()) && !(anchor && it.key() == "offset")) return false;
+            if (it.value().isObject() && !self(self, it.value().toObject(), it.key() == "anchor")) return false;
         }
         return true;
     };
     if (!checkBody(checkBody, body)) return id + ": projection settings cannot change recognized body evidence";
     for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
         const auto mode = it.value().toString();
-        const QStringList modes = shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
+        const QStringList modes = shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
             shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
             (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? QStringList{"free", "counter-neck", "counter-shoulder", "counter-bridge"} :
             shape == "contour-route" ? QStringList{"free", "contour-route"} :
@@ -877,7 +883,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if ((shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge" || shape == "contour-route") && phase == "medial")
         return id + ": this boundary shape needs an initial or final position";
     if (shape == "counter-rim" && phase != "medial") return id + ": counter-rim requires two boundaries";
-    if (((shape == "tail-branch" || shape == "rising-return" || shape == "folded-return") && phase != "final") || (shape == "horizontal-counters" && phase != "initial") || (shape == "stacked-counters" && phase != "medial") || (shape == "suspended-loop" && phase != "initial") || ((shape == "crested-loop" || shape == "open-head") && phase != "medial") ||
+    if ((shape == "paired-route" && phase != "medial") || ((shape == "tail-branch" || shape == "rising-return" || shape == "folded-return") && phase != "final") || (shape == "horizontal-counters" && phase != "initial") || (shape == "stacked-counters" && phase != "medial") || (shape == "suspended-loop" && phase != "initial") || ((shape == "crested-loop" || shape == "open-head") && phase != "medial") ||
         (shape == "bowl-turn" && phase != "final")) return id + ": shape does not support this letter position";
     if (shape == "open-head") {
         const auto head = body.value("head").toObject(), projection = cuts.value("head").toObject();
@@ -6367,14 +6373,17 @@ static std::optional<PathExtrema> contourFlank(SearchContext& context, timesorte
 }
 
 // Reusable paired contour routes, anchored on a feature of the body itself.
-static std::vector<std::pair<Stretching, Stretching>> contourBodyBoundaries(
-        SearchContext& context, const QJsonObject& settings, const Stretching* sharedExit = nullptr) {
-    std::vector<std::pair<Stretching, Stretching>> candidates;
+struct PairedRouteBody {
+    PathExtrema anchor;
+    std::vector<double> retained;
+    std::optional<SavedContourRoute> right, left;
+};
+static std::vector<PairedRouteBody> recognizePairedRoutes(const InkOutline& outline, const QJsonObject& settings) {
+    WordResultInfo::SubWordInfo empty;
+    auto context = outline.geometry(empty);
+    std::vector<PairedRouteBody> bodies;
     const auto feature = settings.value("anchor").toObject();
     const auto flanks = feature.value("flanks").toArray();
-    const auto originalForm = context.form;
-    const auto originalResult = context.res;
-    const auto originalNext = context.nextIter;
     for (auto anchor = context.timeSorted.begin(); anchor != context.timeSorted.end(); ++anchor) {
         if ((feature.contains("sharp") && feature.value("sharp").toBool() != anchor->isSharp) ||
             (feature.contains("xExtremum") && feature.value("xExtremum").toBool() != anchor->isX) ||
@@ -6436,20 +6445,38 @@ static std::vector<std::pair<Stretching, Stretching>> contourBodyBoundaries(
             retainedBranchTimes.push_back(point->time);
         }
         if (!hasFeatures) continue;
-        for (bool reverseProbe : {false, true}) {
-        if (reverseProbe && !rightSettings.value("probeBothSides").toBool()) break;
+        const auto left = recognizeSavedRoute(context, leftSettings, &*leftAnchor);
+        for (bool reverse : {false, true}) {
+            if (reverse && !rightSettings.value("probeBothSides").toBool()) break;
+            const auto right = recognizeSavedRoute(context, rightSettings, &*rightAnchor, reverse);
+            if (right) bodies.push_back({*anchor, retainedBranchTimes, right, left});
+        }
+    }
+    return bodies;
+}
+static std::vector<std::pair<Stretching, Stretching>> cutPairedRoutes(SearchContext& context,
+        const std::vector<PairedRouteBody>& bodies, const QJsonObject& body, const QJsonObject& cuts,
+        const Stretching* sharedExit = nullptr) {
+    std::vector<std::pair<Stretching, Stretching>> candidates;
+    const auto originalForm = context.form;
+    const auto originalResult = context.res;
+    const auto originalNext = context.nextIter;
+    const auto rightSettings = mergeShapeSettings(body.value("right").toObject(), cuts.value("right").toObject());
+    const auto leftSettings = mergeShapeSettings(body.value("left").toObject(), cuts.value("left").toObject());
+    for (const auto& evidence : bodies) {
+        const auto* anchor = &evidence.anchor;
+        const auto& retainedBranchTimes = evidence.retained;
         Stretching right{}, left{};
         context.form = rightSettings; context.res = {};
-        if (!searchContourWalk(context, &*rightAnchor, reverseProbe)) continue;
+        if (!projectSavedRoute(context, evidence.right, body.value("right").toObject(), cuts.value("right").toObject())) continue;
         right = context.res;
-        context.form = leftSettings;
-        context.res = {};
+        context.form = leftSettings; context.res = {};
         if (sharedExit) left = *sharedExit;
         else {
-            if (!searchContourWalk(context, &*leftAnchor)) continue;
+            if (!projectSavedRoute(context, evidence.left, body.value("left").toObject(), cuts.value("left").toObject())) continue;
             left = context.res;
         }
-        if (settings.value("orientToBody").toBool()) {
+        if (cuts.value("orientToBody").toBool()) {
             // "Upper" and "lower" exchange sides on a folded stroke. The
             // retained body feature determines the contour side of each cut.
             if (!getJoinTime(right, context.orientation).isLeft(anchor->time))
@@ -6478,12 +6505,17 @@ static std::vector<std::pair<Stretching, Stretching>> contourBodyBoundaries(
                 QLineF(pair.second.topBaseLine.point, left.topBaseLine.point).length() < 1e-5;
         });
         if (!duplicate) candidates.emplace_back(right, left);
-        }
     }
     context.form = originalForm;
     context.res = originalResult;
     context.nextIter = originalNext;
     return candidates;
+}
+
+// Adapter for not-yet-migrated contour declarations and their direct geometry tests.
+static std::vector<std::pair<Stretching, Stretching>> contourBodyBoundaries(SearchContext& context,
+        const QJsonObject& settings, const Stretching* sharedExit = nullptr) {
+    return cutPairedRoutes(context, recognizePairedRoutes(inkOutline(context), settings), settings, settings, sharedExit);
 }
 
 // Locate a tall stem from its own crest and width; a bowl may extend to its left.
@@ -8797,6 +8829,7 @@ struct SharedShapeEvidence {
     std::vector<StackedCounterPair> stackedPairs;
     std::optional<TailBody> tail;
     std::optional<ReturnSeamBody> returnSeam;
+    std::vector<PairedRouteBody> pairedRoutes;
     std::vector<CounterOutlineBody> outlines;
 };
 
@@ -8813,6 +8846,7 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop") result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn") result.bowlTurn = recognizeBowlTurn(outline);
+    else if (shape == "paired-route") result.pairedRoutes = recognizePairedRoutes(outline, body.value("routes").toObject());
     else if (shape == "tail-branch") result.tail = recognizeTailBranches(outline, body.value("tail").toObject());
     else if (shape == "folded-return") result.returnSeam = recognizeFoldedReturn(outline, body.value("return").toObject());
     else if (shape == "rising-return") result.returnSeam = recognizeRisingReturn(outline, body.value("return").toObject());
@@ -8885,6 +8919,11 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
     if (evidence.returnSeam) {
         inspectLandmark("Return corner", evidence.returnSeam->first);
         inspectLandmark("Return corner", evidence.returnSeam->second);
+    }
+    for (const auto& route : evidence.pairedRoutes) {
+        inspectLandmark("Body anchor", route.anchor);
+        if (route.right) inspectLandmark("Right route anchor", route.right->anchor);
+        if (route.left) inspectLandmark("Left route anchor", route.left->anchor);
     }
     corner(evidence.terminalNeck);
     for (const auto& loop : evidence.loops) {
@@ -12452,7 +12491,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             (final.isEmpty() || (letter + 1 == lastIndex && final.contains(baseText.back())));
     };
     const auto supportsOpenBoundary = [&](const QJsonObject& form) {
-        return form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") || form.contains("counterLigature") || form.contains("mouth") || form.contains("blade") || !form.value("contourBody").toObject().isEmpty() ||
+        return form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") || form.contains("counterLigature") || form.contains("mouth") || form.contains("blade") || !pairedRouteSettings(form).isEmpty() ||
             (formDescription(config, form, "body").value("shape") == "forked-stem" ||
              formDescription(config, form, "body").value("shape") == "turning-shaft") ||
             !pairedCounterSettings(form).isEmpty() ||
@@ -12797,7 +12836,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 const bool composeSeenTail = plan && seenRetry && seenRetry->slot == letter;
                 if (composeSeenTail && !seenRetry->supports(form.value("seenTeeth").toObject())) continue;
                 std::vector<MedialCandidate> candidates;
-                const auto contour = form.value("contourBody").toObject();
+                const auto contour = pairedRouteSettings(form);
                 const auto loop = loopSettings(form);
                 const auto openHead = openHeadSettings(form);
                 const auto pairedCorners = pairedCounterSettings(form);
@@ -12854,7 +12893,13 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 if (!contour.isEmpty()) {
                     const auto key = std::make_pair(form.value("id").toString(), context.pairedStrokeWidth);
                     auto [it, inserted] = outlineCache.contourBodies.try_emplace(key);
-                    if (inserted) it->second = contourBodyBoundaries(context, contour);
+                    if (inserted) {
+                        if (form.value("body").toObject().value("shape") == "paired-route") {
+                            const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
+                            it->second = cutPairedRoutes(context, evidence->pairedRoutes,
+                                form.value("body").toObject().value("routes").toObject(), form.value("cuts").toObject().value("routes").toObject());
+                        } else it->second = contourBodyBoundaries(context, contour);
+                    }
                     for (const auto& [right, left] : it->second) candidates.emplace_back(right, left);
                 }
                 if (!pairedCorners.isEmpty()) {
@@ -12965,8 +13010,12 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     // Generate the head around that seam and recheck its own
                     // retained features, rather than probing into the bowl below.
                     candidates.clear();
-                    for (const auto& [right, left] : contourBodyBoundaries(context, contour, &sharedExit->cut))
-                        candidates.emplace_back(right, left);
+                    const auto evidence = form.value("body").toObject().value("shape") == "paired-route" ?
+                        recognizedSharedShape(context, form.value("body").toObject()) : nullptr;
+                    const auto proposals = evidence ? cutPairedRoutes(context, evidence->pairedRoutes,
+                        form.value("body").toObject().value("routes").toObject(), form.value("cuts").toObject().value("routes").toObject(), &sharedExit->cut) :
+                        contourBodyBoundaries(context, contour, &sharedExit->cut);
+                    for (const auto& [right, left] : proposals) candidates.emplace_back(right, left);
                 }
                 if (lamDescription(form.value("body").toObject())) {
                     const auto evidence = recognizedMedialLamBodies(context, lamBody);

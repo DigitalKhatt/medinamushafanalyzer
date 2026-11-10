@@ -21,14 +21,14 @@ int main(int argc,char**argv){
     check(PageAnalysisResult::prepareLetterForms(config).isEmpty(),"Bundled forms rejected");
     QJsonObject form;
     for(const auto& v:config.value("medial").toArray())if(v.toObject().value("id")=="kaf-flat-medi")form=v.toObject();
-    check(form.value("bodyCounters").toInt(-1)==0,"Open kaf must reject counters");
-    const auto settings=form.value("contourBody").toObject();
+    check(form.value("body").toObject().value("counters").toInt(-1)==0,"Open kaf must reject counters");
+    const auto settings=pairedRouteSettings(form);
     for(const auto bad:QJsonArray{QJsonObject{{"maxX","zero"}},QJsonObject{{"unknown",0}},
                                   QJsonObject{{"minDistance",-1}},QJsonObject{{"minX",2},{"maxX",1}},
                                   QJsonObject{{"flanks",QJsonObject{{"minY",2},{"maxY",1}}}},
                                   QJsonObject{{"flanks",QJsonObject{{"minY","zero"}}}}}){
-        auto invalid=config,rule=form,body=settings,right=body.value("right").toObject();
-        right.insert("oppositeCorner",bad);body.insert("right",right);rule.insert("contourBody",body);
+        auto invalid=config,rule=form,body=form.value("cuts").toObject().value("routes").toObject(),right=body.value("right").toObject();
+        right.insert("oppositeCorner",bad);body.insert("right",right);auto cuts = rule.value("cuts").toObject(); cuts.insert("routes",body); rule.insert("cuts",cuts);
         invalid.insert("medial",QJsonArray{rule});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(),"Invalid opposing corner bounds accepted");
     }

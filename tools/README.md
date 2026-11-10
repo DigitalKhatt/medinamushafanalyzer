@@ -167,6 +167,8 @@ Final reh uses contour routes plus `tail-branch` and `rising-return`. Tail recog
 
 Final yeh shares the contour-route and return-seam machinery. `folded-return` records the bowl tip, both first-return corners and shoulder extent. Its cut policy limits the chord and preserves the shared ligature seam. `yeh_remainder_test.cpp` verifies that provisional two-letter remainders keep exactly the same masks and cuts.
 
+Five medial kaf contour forms use `paired-route`: the recognizer records a body anchor, secondary anchors, retained branches and both routes. `cuts.routes` applies the probes, offsets and orientation. The same intrinsic route evidence can be projected again with a shared ligature exit.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright

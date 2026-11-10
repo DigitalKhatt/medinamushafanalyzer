@@ -32,15 +32,15 @@ int main(int argc, char** argv) {
     QJsonObject form;
     for (const auto& v : config.value("medial").toArray())
         if (v.toObject().value("id") == "kaf-zigzag-medi") form = v.toObject();
-    check(form.value("bodyCounters").toInt(-1) == 0, "Open zigzag kaf must reject counters");
-    const auto settings = form.value("contourBody").toObject();
+    check(form.value("body").toObject().value("counters").toInt(-1) == 0, "Open zigzag kaf must reject counters");
+    const auto settings = pairedRouteSettings(form);
     check(!settings.isEmpty(), "Missing zigzag kaf contour routes");
     check(settings.value("anchor").toObject().value("flanks").toArray()[1].toObject().value("insideBody").toBool(),
           "The defining rising arm must remain inside kaf");
-    auto invalid = config, badForm = form, badSettings = settings;
+    auto invalid = config, badForm = form, badSettings = form.value("body").toObject().value("routes").toObject();
     auto badAnchor = badSettings.value("anchor").toObject(); auto badFlanks = badAnchor.value("flanks").toArray();
     auto badFlank = badFlanks[1].toObject(); badFlank.insert("insideBody", "yes"); badFlanks[1] = badFlank;
-    badAnchor.insert("flanks", badFlanks); badSettings.insert("anchor", badAnchor); badForm.insert("contourBody", badSettings);
+    badAnchor.insert("flanks", badFlanks); badSettings.insert("anchor", badAnchor); auto badBody = badForm.value("body").toObject(); badBody.insert("routes",badSettings); badForm.insert("body",badBody);
     invalid.insert("medial", QJsonArray{badForm});
     check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Invalid insideBody setting accepted");
     QFile f("pages/page4.dat"); check(f.open(QIODevice::ReadOnly), "Page 4 fixture missing");

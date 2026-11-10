@@ -1839,55 +1839,70 @@
     {
       "id": "kaf-fork-medi",
       "current": "ك",
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 1,
-              "minY": 1
-            },
-            {
-              "minX": 1,
-              "maxY": -3
-            }
-          ]
-        },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            "left",
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down",
-          "normalCut": true
-        },
-        "left": {
+      "body": {
+        "shape": "paired-route",
+        "routes": {
           "anchor": {
-            "sharp": true,
-            "offset": {
-              "minX": 0,
-              "minY": 0
-            },
-            "flanks": {
-              "minX": 0,
-              "minY": 0
-            }
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 1,
+                "minY": 1
+              },
+              {
+                "minX": 1,
+                "maxY": -3
+              }
+            ]
           },
-          "topTraversal": "forward",
-          "top": [
-            {
-              "direction": "down",
-              "minX": 0
-            }
-          ],
-          "bottomProbe": "normal",
-          "anchorSide": "bottom"
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up",
+              "left",
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "anchor": {
+              "sharp": true,
+              "offset": {
+                "minX": 0,
+                "minY": 0
+              },
+              "flanks": {
+                "minX": 0,
+                "minY": 0
+              }
+            },
+            "topTraversal": "forward",
+            "top": [
+              {
+                "direction": "down",
+                "minX": 0
+              }
+            ]
+          }
+        }
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "down",
+            "normalCut": true
+          },
+          "left": {
+            "bottomProbe": "normal",
+            "anchorSide": "bottom"
+          }
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
         }
       }
     },
@@ -2473,63 +2488,78 @@
     {
       "id": "kaf-flat-medi",
       "current": "ك",
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 1,
-              "maxY": -1,
-              "accumulate": true
-            }
-          ],
-          "convex": true
-        },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            "down",
-            "left",
-            "right",
-            "up",
-            "down",
-            {
-              "direction": "left",
-              "minY": 0,
-              "accumulate": true,
-              "end": {
-                "xMinimum": true
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 1,
+                "maxY": -1,
+                "accumulate": true
               }
-            }
-          ],
-          "bottomProbe": "corner",
-          "topUseStepEnd": true,
-          "oppositeCorner": {
-            "maxX": 0,
-            "flanks": {
-              "minY": -0.1
-            }
+            ],
+            "convex": true
           },
-          "walkNormalOffset": 0.5
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up",
+              "down",
+              "left",
+              "right",
+              "up",
+              "down",
+              {
+                "direction": "left",
+                "minY": 0,
+                "accumulate": true,
+                "end": {
+                  "xMinimum": true
+                }
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          }
         },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below",
-          "normalCut": true,
-          "strokeOffsetX": -0.5
-        }
+        "counters": 0
       },
-      "bodyCounters": 0
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "corner",
+            "oppositeCorner": {
+              "maxX": 0,
+              "flanks": {
+                "minY": -0.1
+              }
+            },
+            "walkNormalOffset": 0.5
+          },
+          "left": {
+            "bottomProbe": "below",
+            "normalCut": true,
+            "strokeOffsetX": -0.5
+          }
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
+        }
+      }
     },
     {
       "id": "heh-stacked-band-medi",
@@ -2555,50 +2585,65 @@
     {
       "id": "kaf-zigzag-medi",
       "current": "ك",
-      "bodyCounters": 0,
       "tightJoin": true,
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 1,
-              "maxY": -3,
-              "accumulate": true,
-              "insideBody": true
-            }
-          ],
-          "convex": true
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 1,
+                "maxY": -3,
+                "accumulate": true,
+                "insideBody": true
+              }
+            ],
+            "convex": true
+          },
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up",
+              "down",
+              "left",
+              {
+                "direction": "right",
+                "minY": 1,
+                "accumulate": true
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "top": [
+              "right",
+              {
+                "direction": "left",
+                "minY": 0
+              }
+            ]
+          }
         },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            "down",
-            "left",
-            {
-              "direction": "right",
-              "minY": 1,
-              "accumulate": true
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down",
-          "normalCut": true
+        "counters": 0
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "down",
+            "normalCut": true
+          },
+          "left": {
+            "bottomProbe": "normal"
+          }
         },
-        "left": {
-          "top": [
-            "right",
-            {
-              "direction": "left",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "normal"
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
         }
       }
     },
@@ -2624,53 +2669,68 @@
     {
       "id": "kaf-bent-neck-medi",
       "current": "ك",
-      "bodyCounters": 0,
       "tightJoin": true,
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 1,
-              "maxY": -3,
-              "accumulate": true,
-              "insideBody": true
-            }
-          ],
-          "convex": true
-        },
-        "right": {
+      "body": {
+        "shape": "paired-route",
+        "routes": {
           "anchor": {
-            "sharp": true,
-            "offset": {
-              "minX": 0,
-              "minY": 0
-            },
-            "flanks": {
-              "minY": 0
-            }
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 1,
+                "maxY": -3,
+                "accumulate": true,
+                "insideBody": true
+              }
+            ],
+            "convex": true
           },
-          "top": [
-            "right"
-          ],
-          "bottomProbe": "normal",
-          "anchorSide": "bottom"
+          "right": {
+            "anchor": {
+              "sharp": true,
+              "offset": {
+                "minX": 0,
+                "minY": 0
+              },
+              "flanks": {
+                "minY": 0
+              }
+            },
+            "top": [
+              "right"
+            ]
+          },
+          "left": {
+            "top": [
+              "right",
+              {
+                "direction": "left",
+                "minY": 0
+              }
+            ]
+          }
         },
-        "left": {
-          "top": [
-            "right",
-            {
-              "direction": "left",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "normal"
+        "counters": 0
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "normal",
+            "anchorSide": "bottom"
+          },
+          "left": {
+            "bottomProbe": "normal"
+          },
+          "orientToBody": true
         },
-        "orientToBody": true
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
+        }
       }
     },
     {
@@ -2750,65 +2810,80 @@
     {
       "id": "kaf-parallel-return-medi",
       "current": "ك",
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 1,
-              "maxY": -1,
-              "accumulate": true
-            }
-          ],
-          "convex": true
-        },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            "down",
-            "left",
-            "right",
-            "up",
-            "down",
-            {
-              "direction": "left",
-              "minY": 0,
-              "accumulate": true,
-              "end": {
-                "xMinimum": true
-              }
-            }
-          ],
-          "bottomProbe": "corner",
-          "topUseStepEnd": true,
-          "oppositeCorner": {
-            "maxX": 0,
-            "flanks": {
-              "minY": -0.1
-            }
-          },
-          "walkNormalOffset": 0.5
-        },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below",
-          "normalCut": true,
-          "strokeOffsetX": -0.5
-        }
-      },
-      "bodyCounters": 0,
       "onIncomplete": true,
-      "reclaimEntry": true
+      "reclaimEntry": true,
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 1,
+                "maxY": -1,
+                "accumulate": true
+              }
+            ],
+            "convex": true
+          },
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up",
+              "down",
+              "left",
+              "right",
+              "up",
+              "down",
+              {
+                "direction": "left",
+                "minY": 0,
+                "accumulate": true,
+                "end": {
+                  "xMinimum": true
+                }
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          }
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "corner",
+            "oppositeCorner": {
+              "maxX": 0,
+              "flanks": {
+                "minY": -0.1
+              }
+            },
+            "walkNormalOffset": 0.5
+          },
+          "left": {
+            "bottomProbe": "below",
+            "normalCut": true,
+            "strokeOffsetX": -0.5
+          }
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
+        }
+      }
     },
     {
       "id": "lam-turning-flanks-medi",

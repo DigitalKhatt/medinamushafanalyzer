@@ -70,6 +70,16 @@ static QByteArray snapshot(const SharedShapeEvidence& e) {
     }
     out << bool(e.returnSeam);
     if (e.returnSeam) { point(e.returnSeam->tip); point(e.returnSeam->first); point(e.returnSeam->second); out << e.returnSeam->shoulderX; }
+    out << quint64(e.pairedRoutes.size());
+    for (const auto& body : e.pairedRoutes) {
+        point(body.anchor); out << quint64(body.retained.size()); for (auto t : body.retained) out << t;
+        for (const auto* route : {&body.right, &body.left}) {
+            out << bool(*route); if (!*route) continue;
+            point((*route)->start); point((*route)->origin); point((*route)->anchor);
+            point((*route)->topBefore); point((*route)->topEnd);
+            out << (*route)->forwardPrevious << (*route)->topPrevious << (*route)->endpointTolerance;
+        }
+    }
     out << bool(e.bowlTurn); if (e.bowlTurn) { point(e.bowlTurn->tip); point(e.bowlTurn->turn); }
     out << quint64(e.outlines.size());
     for (const auto& shape : e.outlines) { out << shape.eye << quint64(shape.counters.size()); for (const auto& h : shape.counters) hole(h); }
@@ -98,7 +108,7 @@ int main(int argc, char** argv) {
         bad.insert("cuts", policy); invalid.insert(phase, QJsonArray{bad});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
     }
-    check(forms.size() >= 61 && shapes.size() >= 16, "Not all shared shapes exercised");
+    check(forms.size() >= 66 && shapes.size() >= 17, "Not all shared shapes exercised");
     struct Fixture { int page,line,word,sub; };
     const Fixture fixtures[] = {{3,2,9,1}, {6,15,4,1}, {600,2,5,1}, {230,11,3,1}};
     int checks = 0;
