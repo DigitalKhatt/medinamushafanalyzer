@@ -165,6 +165,8 @@ The five initial beh-family forms also use `contour-route`: directional walks an
 
 Final reh uses contour routes plus `tail-branch` and `rising-return`. Tail recognition records its fork, intrinsic width and return corners. Cut policy selects the contour walk or shared seam; retained-bowl checks run during projection and assembly. The unused generic reh join matcher has been removed.
 
+Final yeh shares the contour-route and return-seam machinery. `folded-return` records the bowl tip, both first-return corners and shoulder extent. Its cut policy limits the chord and preserves the shared ligature seam. `yeh_remainder_test.cpp` verifies that provisional two-letter remainders keep exactly the same masks and cuts.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright

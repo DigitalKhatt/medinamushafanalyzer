@@ -3617,40 +3617,60 @@
     {
       "id": "yeh-first-turn-fina",
       "current": "يئى",
-      "method": "folded-bowl",
-      "start": "left",
       "ownsLeftTip": true,
       "retainBodyFeatures": true,
-      "fold": {
-        "minBowlRun": 2.5,
-        "minFoldRun": 0.65,
-        "minReturn": 0.45,
-        "maxChord": 3
-      },
       "sharedBoundary": true,
       "tightJoin": true,
       "tryNext": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "folded-return",
+        "return": {
+          "minBowlRun": 2.5,
+          "minFoldRun": 0.65,
+          "minReturn": 0.45
+        }
+      },
+      "cuts": {
+        "return": {
+          "maxChord": 3
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "return-seam"
+        }
+      }
     },
     {
       "id": "yeh-fina",
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "bottom": [
-        "up",
-        "left",
-        "right"
-      ],
-      "top": [
-        "down",
-        "up",
-        "left",
-        "right"
-      ],
       "current": "يئى",
       "tryNext": true,
-      "tightJoin": true
+      "tightJoin": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "bottom": [
+            "up",
+            "left",
+            "right"
+          ],
+          "top": [
+            "down",
+            "up",
+            "left",
+            "right"
+          ]
+        }
+      },
+      "cuts": {
+        "route": {},
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "noon-raised-entry-fina",
@@ -4331,18 +4351,30 @@
     {
       "id": "yeh-return-fina",
       "current": "يئى",
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "top": [
-        "down",
-        "up",
-        "left",
-        "right"
-      ],
-      "bottomProbe": "normal",
       "tryNext": true,
-      "tightJoin": true
+      "tightJoin": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "top": [
+            "down",
+            "up",
+            "left",
+            "right"
+          ]
+        }
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "normal"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "hah-fina",
@@ -4782,28 +4814,40 @@
       "current": "يئى",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "topTraversal": "forward",
-      "top": [
-        "down",
-        "up",
-        "left",
-        {
-          "direction": "right",
-          "end": {
-            "sharp": true
-          }
-        }
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "normal",
       "ownsLeftTip": true,
       "tightJoin": true,
       "returningStroke": true,
-      "bodyCounters": 0,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "topTraversal": "forward",
+          "top": [
+            "down",
+            "up",
+            "left",
+            {
+              "direction": "right",
+              "end": {
+                "sharp": true
+              }
+            }
+          ],
+          "topUseStepEnd": true
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "normal"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "reh-rising-root-fina",
