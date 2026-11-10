@@ -81,7 +81,7 @@ bool isSeparateFoldedArm(const QPainterPath& body, const QPainterPath& arm, bool
 
 } // namespace MedinaCutter
 
-// A folded alef meets the lam bowl either at a thin bridge or as a separate source outline.
+// Separate a terminal arm at its root or use its existing detached contour.
 bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
                                           bool attached) {
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
@@ -89,32 +89,47 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
         return false;
     const auto findRule = [&](const char* phase, const char* feature, QChar ch) {
         for (const auto& value : config.value(phase).toArray()) {
-            const auto rule = bodyConstraintForm(config, value.toObject());
-            if ((rule.contains(feature) || formDescription(config, rule, "body").contains(feature)) &&
-                rule.value("current").toString().contains(ch))
+            const auto form = value.toObject();
+            if (!form.value("current").toString().contains(ch)) continue;
+            const auto rule = bodyConstraintForm(config, form);
+            if (rule.contains(feature) || formDescription(config, rule, "body").contains(feature))
                 return rule;
         }
         return QJsonObject{};
     };
-    auto lam = findRule("medial", attached ? "terminalArm" : "detachedExit", letters[letters.size() - 2]);
-    if (lam.isEmpty())
-        return false;
-    const auto lamBody = formDescription(config, lam, "body");
-    const auto lamCuts = formDescription(config, lam, "cuts");
-    auto arm = findRule("final", "detachedArm", letters.back());
-    if (attached) {
-        arm = {};
-        for (const auto& v : config.value("final").toArray()) {
-            auto f = v.toObject();
-            if (f.value("id") == lamBody.value("terminalArm") &&
-                f.value("body").toObject().value("shape") == "tapered-arm" &&
-                f.value("current").toString().contains(letters.back())) {
-                arm = f;
-                break;
-            }
+    const QChar previous = letters[letters.size() - 2];
+    const auto legacy = findRule("medial", attached ? "terminalArm" : "detachedExit", previous);
+    QJsonObject arm, mode, prefixForm;
+    QString sourceTemplate, variant;
+    if (legacy.isEmpty()) {
+        for (const auto& value : config.value("medial").toArray()) {
+            const auto form = value.toObject();
+            if (!form.value("current").toString().contains(previous)) continue;
+            const auto recipe = terminalArmRecipe(config, form);
+            mode = recipe.value(attached ? "attached" : "detached").toObject();
+            if (mode.isEmpty() || (recipe.contains("letters") &&
+                !recipe.value("letters").toString().contains(letters.back()))) continue;
+            auto candidate = mode.contains("form") ? namedLetterForm(config, mode.value("form").toString())
+                                                   : findRule("final", "detachedArm", letters.back());
+            prefixForm = namedLetterForm(config, recipe.value("prefixForm").toString());
+            if (!candidate.value("current").toString().contains(letters.back()) ||
+                !prefixForm.value("current").toString().contains(previous)) continue;
+            sourceTemplate = form.value("id").toString();
+            variant = mode.value("variant").toString();
+            arm = resolvedBodyForm(config, candidate);
+            break;
         }
-    } else if (!lamBody.value("detachedExit").toString().contains(letters.back()))
-        return false;
+    } else {
+        const auto body = formDescription(config, legacy, "body");
+        if (attached) {
+            const auto candidate = namedLetterForm(config, body.value("terminalArm").toString());
+            if (candidate.value("body").toObject().value("shape") == "tapered-arm" &&
+                candidate.value("current").toString().contains(letters.back()))
+                arm = candidate;
+        } else if (body.value("detachedExit").toString().contains(letters.back())) {
+            arm = findRule("final", "detachedArm", letters.back());
+        }
+    }
     if (arm.isEmpty())
         return false;
     auto shape = word.bodyShape(sub);
@@ -178,10 +193,16 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
         return false;
     connected.setFillRule(shape.path.fillRule());
     const auto component = toPage(separate);
-    const auto settings = arm.value("detachedArm").toObject();
+    const auto armBodySettings = arm.value("body").toObject().value("arm").toObject();
+    const auto armCuts = arm.value("cuts").toObject().value("arm").toObject();
+    const auto legacySettings = arm.value("detachedArm").toObject();
+    const double minRise = sourceTemplate.isEmpty() ? legacySettings.value("minRise").toDouble(3)
+        : mode.value("minRise").toDouble(armBodySettings.value("minRise").toDouble(3));
+    const double maxTipGap = sourceTemplate.isEmpty() ? legacySettings.value("maxTipGap").toDouble(.75)
+        : mode.value("maxTipGap").toDouble(armCuts.value("maxTipGap").toDouble(.75));
     std::optional<ComponentArmBody> armBody;
     if (attached)
-        armBody = recognizeArmEnvelope(component, settings.value("minRise").toDouble(3), false);
+        armBody = recognizeArmEnvelope(component, minRise, false);
     else {
         const auto candidate = std::find_if(componentBodies.begin(), componentBodies.end(),
                                             [&](const auto &body) { return body.index == separateIndex; });
@@ -194,8 +215,7 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
     const auto tip =
         attached ? QLineF(seam.topBaseLine.point, seam.bottomBaseLine.point).center() : armBody->bottom.point;
 
-    // Segment the attached prefix normally, with the lam's own stem and
-    // returning bowl as its last body. Keep the original Beziers in both parts.
+    // Segment the prefix with its own final form and keep the original curves.
     PageAnalysisResult prefix;
     prefix.page.lines.resize(1);
     prefix.page.lines[0].words.resize(1);
@@ -206,36 +226,41 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
     result.paths = {0};
     result.text = letters.chopped(1);
     auto prefixForms = config;
-    if (lamBody.value("shape") == "detached-return") {
+    const auto legacyBody = formDescription(config, legacy, "body");
+    const auto legacyCuts = formDescription(config, legacy, "cuts");
+    if (legacyBody.value("shape") == "detached-return") {
         auto rules = prefixForms.value("final").toArray();
-        auto body = lamBody;
+        auto body = legacyBody;
         body.insert("shape", "terminal-return");
         body.insert("counters", false);
-        auto cuts = lamCuts;
+        auto cuts = legacyCuts;
         cuts.insert("beforeFinal", false);
         cuts.insert("boundaries", QJsonObject{{"right", "fork-normal"}, {"left", "free"}});
-        rules.append(QJsonObject{{"id", lam.value("id")}, {"current", lam.value("current")},
+        rules.append(QJsonObject{{"id", legacy.value("id")}, {"current", legacy.value("current")},
             {"ownsLeftTip", true}, {"body", body}, {"cuts", cuts}});
+        prefixForms.insert("final", rules);
+    }
+    const auto sectionOverride = mode.value("prefixSection").toObject();
+    if (!sectionOverride.isEmpty() || (attached && sourceTemplate.isEmpty())) {
+        auto rules = prefixForms.value("final").toArray();
+        for (int i = 0; i < rules.size(); ++i) {
+            auto form = rules[i].toObject();
+            const bool matches = sourceTemplate.isEmpty() ?
+                formDescription(prefixForms, form, "body").value("shape") == "terminal-return" &&
+                    form.value("current").toString().contains(previous)
+                : form.value("id") == prefixForm.value("id");
+            if (!matches) continue;
+            auto cuts = formDescription(prefixForms, form, "cuts");
+            const auto overrides = sourceTemplate.isEmpty() ?
+                QJsonObject{{"turnAngle", legacyCuts.value("entryTurnAngle")}} : sectionOverride;
+            cuts.insert("section", withOverrides(cuts.value("section").toObject(), overrides));
+            form.insert("cuts", cuts);
+            rules[i] = form;
+        }
         prefixForms.insert("final", rules);
     }
     bool prefixComplete;
     if (attached) {
-        auto rules = prefixForms.value("final").toArray();
-        for (int i = 0; i < rules.size(); ++i) {
-            auto form = rules[i].toObject();
-            auto body = formDescription(prefixForms, form, "body");
-            if (body.value("shape") == "terminal-return" &&
-                form.value("current").toString().contains(result.text.back())) {
-                auto cuts = formDescription(prefixForms, form, "cuts");
-                auto section = cuts.value("section").toObject();
-                section.insert("turnAngle", lamCuts.value("entryTurnAngle"));
-                cuts.insert("section", section);
-                form.insert("cuts", cuts);
-                rules[i] = form;
-            }
-
-        }
-        prefixForms.insert("final", rules);
         prefixForms["reconsiderForms"] =
             QJsonObject{{"initial", result.text}, {"medial", result.text}, {"final", result.text}};
         prefixComplete = prefix.segmentSubword(-2, 0, 0, 0, nullptr, true, &prefixForms);
@@ -244,11 +269,11 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
     }
     if (!prefixComplete || result.provisional() || result.baseGlyphs.size() + 1 != size_t(letters.size()))
         return false;
-    const auto bowl = toPage(result.baseGlyphs.back().path);
+    const auto prefixBody = toPage(result.baseGlyphs.back().path);
     QPainterPathStroker envelope;
-    envelope.setWidth(2 * settings.value("maxTipGap").toDouble(.75));
-    if (!envelope.createStroke(bowl).contains(tip) || bowl.boundingRect().top() >= box.center().y() ||
-        bowl.boundingRect().bottom() <= tip.y())
+    envelope.setWidth(2 * maxTipGap);
+    if (!envelope.createStroke(prefixBody).contains(tip) || prefixBody.boundingRect().top() >= box.center().y() ||
+        prefixBody.boundingRect().bottom() <= tip.y())
         return false;
     if (attached) {
         if (result.joins.empty())
@@ -282,8 +307,10 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
     auto stem = sub.letterDiagnostics.last().toObject();
     stem.insert("position", "medial");
     stem.insert("prefixTemplate", stem.value("template"));
-    stem.insert("template", lam.value("id"));
-    stem.insert("candidates", QJsonArray{lam.value("id")});
+    const auto selected = sourceTemplate.isEmpty() ? legacy.value("id").toString() : sourceTemplate;
+    stem.insert("template", selected);
+    if (!variant.isEmpty()) stem.insert("variant", variant);
+    stem.insert("candidates", QJsonArray{selected});
     sub.letterDiagnostics[sub.letterDiagnostics.size() - 1] = stem;
     sub.letterDiagnostics.append(QJsonObject{{"letterIndex", letters.size()},
                                              {"position", "final"},
@@ -293,11 +320,11 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
                                              {"boundaryKind", attached ? "shared-folded-arm" : "separate-contours"},
                                              {"candidates", QJsonArray{arm.value("id")}}});
     sub.templateTrace = result.templateTrace;
-    sub.templateTrace.append(lam.value("id").toString() + " · attached stem and returning bowl");
+    sub.templateTrace.append(selected + " · prefix body recovered with its terminal arm");
     sub.templateTrace.append(arm.value("id").toString() +
                              (attached ? " · sloping arm cut at its root" : " · separate sloping arm"));
     sub.matchedTemplates = result.matchedTemplates;
-    sub.matchedTemplates << lam.value("id").toString() << arm.value("id").toString();
+    sub.matchedTemplates << selected << arm.value("id").toString();
     sub.matchedTemplates.removeDuplicates();
     sub.correct = true;
     return true;

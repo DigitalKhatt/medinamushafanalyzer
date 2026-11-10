@@ -20,6 +20,15 @@ verifies the fork from the uncut ink and proposes cuts.
 [attachment_policy.cpp](forms/lam/attachment_policy.cpp) applies the chosen
 fork or ligature policy.
 
+A medial form can declare `terminalArmRecovery` with a final `prefixForm`
+for its own letters and an `attached` or `detached` mode. Each mode names a
+final arm profile and a catalog variant label. An attached mode uses a tapered
+arm profile, and a detached mode uses a component arm profile. The prefix is
+segmented with the usual matching priority. `prefixSection` overrides section
+settings for the named prefix form if it matches, and `maxTipGap` controls how
+far the arm tip may sit from the prefix body. The recipe's `cuts` override the
+medial cut policy after recovery. Medial lām uses both arm modes.
+
 Use the [native tests and catalog comparison](../tools/README.md#letter-audit)
 to check a change. Audit and training snapshots fingerprint the cutter’s
 sources and headers.

@@ -629,7 +629,9 @@ QString catalogParts(const QJsonObject& cut, const QJsonObject& source, const QS
         const auto body = bodies[i].toObject();
         if (body.value("letter").toString() != letters.mid(indices[i],1)) return "letter-order";
         const auto diagnostic = diagnostics.at(i).toObject();
-        add(body, {{"role","body"}, {"owner",owners[indices[i]]}, {"variant",diagnostic.value("template")},
+        const auto variant = diagnostic.value("variant");
+        add(body, {{"role","body"}, {"owner",owners[indices[i]]},
+                   {"variant",variant.isUndefined() ? diagnostic.value("template") : variant},
                    {"metrics",QJsonObject{{"quality",provisional ? "provisional" : "template"}}}});
     }
     for (const auto& value : cut.value("joins").toArray()) {

@@ -1140,6 +1140,7 @@ struct DeclaredBodyForm {
 
 struct BodyCutProgram {
     QMap<QString, DeclaredBodyForm> forms;
+    QMap<QString, DeclaredBodyForm> recoveryBodies;
     std::array<QHash<QChar, QVector<QString>>, 3> formsByPosition;
 };
 
@@ -1149,6 +1150,8 @@ inline bool hasFollowingLetter(QStringView letters, int slot, QStringView allowe
 }
 
 const BodyCutProgram& bodyCutProgram(const QJsonObject& config);
+
+QJsonObject terminalArmRecipe(const QJsonObject& config, const QJsonObject& form);
 
 QByteArray bodyDescriptionKey(const QJsonObject& body);
 

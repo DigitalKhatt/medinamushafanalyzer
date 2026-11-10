@@ -189,6 +189,46 @@ static void checkSeparateAlefTip() {
         check(!isSeparateFoldedArm(body, mapping.map(outlines.back().translated(.2, 0)), true),
               "Overlapping alef tip accepted as a separate contour");
     }
+
+    // Use the same ink with new selectors to isolate recipe dispatch from shape recognition.
+    auto config = PageAnalysisResult::letterForms();
+    auto prefix = namedLetterForm(config, "lam-return-fina");
+    prefix.insert("id", "test-prefix-fina");
+    prefix.insert("current", QStringLiteral("پ"));
+    auto arm = namedLetterForm(config, "alef-detached-fina");
+    arm.insert("id", "test-arm-fina");
+    arm.insert("current", QStringLiteral("ڤ"));
+    auto medial = namedLetterForm(config, "lam-medi");
+    medial.insert("id", "test-prefix-medi");
+    medial.insert("current", prefix.value("current"));
+    medial.insert("terminalArmRecovery", QJsonObject{{"prefixForm", prefix.value("id")},
+        {"detached", QJsonObject{{"form", arm.value("id")}, {"variant", "test-detached-arm"}}},
+        {"cuts", medial.value("terminalArmRecovery").toObject().value("cuts")}});
+    auto finals = config.value("final").toArray();
+    finals.append(prefix);
+    finals.append(arm);
+    config.insert("final", finals);
+    auto medials = config.value("medial").toArray();
+    medials.append(medial);
+    config.insert("medial", medials);
+    check(PageAnalysisResult::prepareLetterForms(config).isEmpty(), "Recovery recipe rejected other letter selectors");
+
+    PageAnalysisResult sample;
+    sample.page.lines.resize(1);
+    sample.page.lines[0].words.resize(1);
+    auto& sampleWord = sample.page.lines[0].words[0];
+    sampleWord.paths.append(shape);
+    auto& relabeled = sampleWord.wordResultInfo.subWords.emplace_back();
+    relabeled.paths = {0};
+    relabeled.text = PageAnalysisResult::bodyLetters(sub.text).chopped(2) + QStringLiteral("پڤ");
+    check(sample.segmentSubword(-2, 0, 0, 0, nullptr, true, &config), "Recovery recipe did not run for other letters");
+    const auto recovered = relabeled.letterDiagnostics[2].toObject();
+    check(recovered.value("template") == medial.value("id") && recovered.value("prefixTemplate") == prefix.value("id") &&
+          recovered.value("variant") == "test-detached-arm" &&
+          relabeled.letterDiagnostics.last().toObject().value("template") == arm.value("id"),
+          "Recovery ignored the declared prefix or arm profile");
+    check(relabeled.baseGlyphs.back().path == outlines.back() && coversOriginalInk(sampleWord, relabeled),
+          "Reused recovery lost the detached outline or changed ink ownership");
 }
 
 static void checkTerminalReturnPolicy() {

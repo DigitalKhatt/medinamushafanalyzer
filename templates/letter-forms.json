@@ -1666,6 +1666,27 @@
     {
       "id": "lam-medi",
       "current": "ل",
+      "terminalArmRecovery": {
+        "prefixForm": "lam-return-fina",
+        "attached": {
+          "form": "alef-tapered-arm-fina",
+          "variant": "lam-returning-bowl-medi",
+          "maxTipGap": 0.75,
+          "prefixSection": {
+            "turnAngle": 45
+          }
+        },
+        "detached": {
+          "form": "alef-detached-fina",
+          "variant": "lam-detached-arm-medi"
+        },
+        "cuts": {
+          "boundaries": {
+            "right": "preserve",
+            "left": "preserve"
+          }
+        }
+      },
       "body": {
         "minFlankSpan": 0.25,
         "minRise": 3,
@@ -3182,32 +3203,6 @@
       }
     },
     {
-      "id": "lam-detached-arm-medi",
-      "current": "ل",
-      "onIncomplete": true,
-      "body": {
-        "inherit": "lam-medi",
-        "counters": false,
-        "shape": "detached-return",
-        "detachedExit": "اأإآٱ",
-        "tail": {
-          "minRise": 3,
-          "minRun": 0.75,
-          "maxRun": 75
-        }
-      },
-      "cuts": {
-        "inherit": "lam-medi",
-        "boundaries": {
-          "right": "preserve",
-          "left": "preserve"
-        },
-        "section": {
-          "walkWidths": 0.5
-        }
-      }
-    },
-    {
       "id": "lam-turning-flanks-medi",
       "current": "ل",
       "tightJoin": true,
@@ -3272,25 +3267,6 @@
           "left": "component-form",
           "right": "component-form"
         }
-      }
-    },
-    {
-      "id": "lam-returning-bowl-medi",
-      "current": "ل",
-      "onIncomplete": true,
-      "body": {
-        "inherit": "lam-medi",
-        "counters": false,
-        "shape": "attached-return",
-        "terminalArm": "alef-tapered-arm-fina"
-      },
-      "cuts": {
-        "inherit": "lam-medi",
-        "boundaries": {
-          "right": "preserve",
-          "left": "preserve"
-        },
-        "entryTurnAngle": 45
       }
     },
     {

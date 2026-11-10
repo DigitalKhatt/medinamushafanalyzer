@@ -74,12 +74,20 @@ SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
         if (candidates == forms.cend()) continue;
         for (const auto& id : candidates.value()) {
             const auto& form = program.forms.constFind(id).value();
-            if (!lamDescription(form.body)) continue;
             if (!form.nextLetters.isEmpty() &&
                 !hasFollowingLetter(letters, slot, form.nextLetters, position == 1)) continue;
-            auto& [body, needsAlefArm] = descriptions[form.key];
-            body = form.body;
-            needsAlefArm |= hasFollowingLetter(letters, slot, body.value("alefLetters").toString(), true);
+            const auto addProfile = [&](const DeclaredBodyForm& profile) {
+                if (!lamDescription(profile.body)) return;
+                auto& [body, needsAlefArm] = descriptions[profile.key];
+                body = profile.body;
+                needsAlefArm |= hasFollowingLetter(letters, slot, body.value("alefLetters").toString(), true);
+            };
+            addProfile(form);
+            if (slot + 1 == last) {
+                const auto recovery = program.recoveryBodies.constFind(id);
+                if (recovery != program.recoveryBodies.cend() && recovery->nextLetters.contains(letters.back()))
+                    addProfile(recovery.value());
+            }
         }
     }
     if (descriptions.isEmpty()) return result;
@@ -135,9 +143,12 @@ SubwordCutPlan makeSubwordCutPlan(WordResultInfo::SubWordInfo proposals, const Q
     const auto& program = bodyCutProgram(config);
     const std::vector<Stretching> joins(sub.joins.begin(), sub.joins.end());
     for (int slot = 0; slot < letters.size(); ++slot) {
-        const auto id = sub.letterDiagnostics[slot].toObject().value("template").toString();
-        const auto form = program.forms.constFind(id);
-        if (form == program.forms.cend()) continue;
+        const auto diagnostic = sub.letterDiagnostics[slot].toObject();
+        const auto id = diagnostic.value("template").toString();
+        const auto& forms = diagnostic.contains("prefixTemplate") && program.recoveryBodies.contains(id)
+            ? program.recoveryBodies : program.forms;
+        const auto form = forms.constFind(id);
+        if (form == forms.cend()) continue;
         const auto& body = form->body;
         const auto policy = bodyCutPolicy(form->cuts, letters, slot);
         const auto boundaries = policy.value("boundaries").toObject();

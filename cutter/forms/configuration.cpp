@@ -900,6 +900,20 @@ const PreparedPassRules& preparePassRules(const QJsonObject& config, bool recove
     return result;
 }
 
+QJsonObject terminalArmRecipe(const QJsonObject& config, const QJsonObject& form) {
+    if (form.contains("terminalArmRecovery")) return form.value("terminalArmRecovery").toObject();
+    // Adapt saved recipes that used implicit alef selectors and arm profiles.
+    const auto saved = form.value("foldedArmRecovery").toObject();
+    if (saved.isEmpty()) return {};
+    const auto body = formDescription(config, form, "body");
+    return {{"prefixForm", saved.value("prefixForm")}, {"letters", body.value("alefLetters")},
+            {"attached", QJsonObject{{"form", body.value("alefArm")}, {"variant", saved.value("attachedVariant")},
+                                     {"maxTipGap", .75}, {"minRise", 3},
+                                     {"prefixSection", QJsonObject{{"turnAngle", saved.value("entryTurnAngle")}}}}},
+            {"detached", QJsonObject{{"variant", saved.value("detachedVariant")}}},
+            {"cuts", QJsonObject{{"boundaries", QJsonObject{{"right", "preserve"}, {"left", "preserve"}}}}}};
+}
+
 // The cutter alternates between the full declarations and the smaller sets
 // used by the search and recovery passes. Keep those programs ready across
 // subwords. Compare declarations by value so template previews see edits.
@@ -928,6 +942,20 @@ const BodyCutProgram& bodyCutProgram(const QJsonObject& config) {
                                       nextLetters});
             for (QChar letter : form.value("current").toString())
                 program.formsByPosition[position][letter].append(id);
+            if (position != 1) continue;
+            const auto recipe = terminalArmRecipe(config, form);
+            if (recipe.isEmpty()) continue;
+            const auto prefix = namedLetterForm(config, recipe.value("prefixForm").toString());
+            if (prefix.isEmpty()) continue;
+            const auto recoveredBody = formDescription(config, prefix, "body");
+            auto followers = recipe.value("letters").toString();
+            for (const auto* mode : {"attached", "detached"}) {
+                const auto final = namedLetterForm(config, recipe.value(mode).toObject().value("form").toString());
+                followers += final.value("current").toString();
+            }
+            program.recoveryBodies.insert(id, {recoveredBody,
+                withOverrides(formDescription(config, form, "cuts"), recipe.value("cuts").toObject()),
+                bodyDescriptionKey(recoveredBody), followers});
         }
     }
     compiled = declarations;
@@ -1100,6 +1128,36 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             const auto positive = [](const QJsonValue& value) {
                 return value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble() > 0;
             };
+            if (rule.contains("terminalArmRecovery")) {
+                const auto recipe = rule.value("terminalArmRecovery").toObject();
+                const auto findFinal = [&](const QJsonValue& id) {
+                    for (const auto& entry : config.value("final").toArray())
+                        if (entry.toObject().value("id") == id) return entry.toObject();
+                    return QJsonObject{};
+                };
+                const auto prefix = findFinal(recipe.value("prefixForm"));
+                const auto prefixLetters = prefix.value("current").toString();
+                const auto letters = rule.value("current").toString();
+                if (QString(phase) != "medial" || rule.contains("foldedArmRecovery") || prefix.isEmpty() ||
+                    !prefix.value("body").isObject() || !prefix.value("cuts").isObject() ||
+                    std::any_of(letters.begin(), letters.end(), [&](QChar letter) { return !prefixLetters.contains(letter); }) ||
+                    (!recipe.contains("attached") && !recipe.contains("detached")) ||
+                    (recipe.contains("cuts") && !recipe.value("cuts").isObject()))
+                    return id + ": terminalArmRecovery needs a final prefix profile for the same letters and an arm mode";
+                for (const auto* key : {"attached", "detached"}) {
+                    if (!recipe.contains(key)) continue;
+                    const auto mode = recipe.value(key).toObject();
+                    const auto arm = resolvedBodyForm(config, findFinal(mode.value("form")));
+                    const auto shape = arm.value("body").toObject().value("shape");
+                    const bool attached = QLatin1String(key) == "attached";
+                    if (shape != (attached ? "tapered-arm" : "component-arm") ||
+                        mode.value("variant").toString().trimmed().isEmpty() ||
+                        (mode.contains("prefixSection") && !mode.value("prefixSection").isObject()) ||
+                        (mode.contains("minRise") && (!attached || !positive(mode.value("minRise")))) ||
+                        (mode.contains("maxTipGap") && !positive(mode.value("maxTipGap"))))
+                        return id + ": invalid terminalArmRecovery." + key + " arm profile, variant or cut settings";
+                }
+            }
             const auto rimValue = loopSettings(rule).value("rimAnchors");
             if (!rimValue.isUndefined()) {
                 const auto rim = rimValue.toObject();
@@ -1407,6 +1465,24 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                          "tapered-arm" ||
                      declaredBody.value("alefLetters").toString().isEmpty()))
                     return id + ": body.alefArm needs a folded-arm body template and alefLetters";
+                if (rule.contains("foldedArmRecovery")) {
+                    const auto recovery = rule.value("foldedArmRecovery").toObject();
+                    const auto prefix = namedLetterForm(config, recovery.value("prefixForm").toString());
+                    const auto detached = recovery.value("detachedVariant").toString();
+                    const auto attached = recovery.value("attachedVariant").toString();
+                    const auto angle = recovery.value("entryTurnAngle");
+                    if (QString(phase) != "medial" || shape != "forked-stem" || arm.isUndefined() ||
+                        recovery.size() != 4 || detached.trimmed().isEmpty() || attached.trimmed().isEmpty() ||
+                        detached == attached || !positive(angle) || angle.toDouble() >= 90 ||
+                        formDescription(config, prefix, "body").value("shape") != "terminal-return")
+                        return id + ": foldedArmRecovery needs a medial fork, a terminal return, two variant labels and an entry angle";
+                    const auto prefixLetters = prefix.value("current").toString();
+                    const auto letters = rule.value("current").toString();
+                    if (std::any_of(letters.begin(), letters.end(), [&](QChar letter) {
+                            return !prefixLetters.contains(letter);
+                        }))
+                        return id + ": foldedArmRecovery prefixForm must support the same letters";
+                }
                 const auto forkOffset = declaredCuts.value("forkOffset");
                 if (!forkOffset.isUndefined() && !positive(forkOffset))
                     return id + ": cuts.forkOffset must be positive in page units";
@@ -1439,6 +1515,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                             return id + ": unknown cuts setting " + key.key();
                 }
             }
+            if (rule.contains("foldedArmRecovery") && !lamDescription(declaredBody))
+                return id + ": foldedArmRecovery requires a medial lām body";
             if (rule.contains("shaftTurn") && (method != "alef-stem" || !rule.value("shaftTurn").isBool()))
                 return id + ": shaftTurn requires an alef stem and must be true or false";
             if (rule.contains("tailEntry")) {

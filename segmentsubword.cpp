@@ -625,7 +625,7 @@ LetterFormInspection inspectLetterForm(PageAnalysisResult& sample, int page, int
         if (index > 0 && index - 1 < int(joins.size())) appendBoundary(index - 1, true);
         if (index < letters.size() - 1 && index < int(joins.size())) appendBoundary(index, false);
         result.candidates.prepend(selectedCuts);
-        for (const auto* field : {"bodyForm", "cutPolicy", "entryPolicy", "junctionPolicy", "entryFork", "entryWalk"})
+        for (const auto* field : {"bodyForm", "variant", "cutPolicy", "entryPolicy", "junctionPolicy", "entryFork", "entryWalk"})
             if (slot.contains(field)) result.assembly.append(QString::fromLatin1(field) + ": " +
                 slot.value(field).toVariant().toString());
     }
