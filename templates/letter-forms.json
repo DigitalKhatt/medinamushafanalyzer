@@ -5011,36 +5011,11 @@
       "tightJoin": true,
       "returningStroke": true,
       "body": {
-        "inherit": "noon-returning-bowl-fina"
+        "inherit": "noon-returning-bowl-fina",
+        "maxShoulderBacktrackWidths": 0.4
       },
       "cuts": {
         "inherit": "noon-returning-bowl-fina"
-      }
-    },
-    {
-      "id": "beh-bowl-fina",
-      "current": "بتث",
-      "body": {
-        "shape": "bowl-neck",
-        "neck": {
-          "lookback": 4,
-          "previousOffset": 1,
-          "minX": 0,
-          "maxX": 1,
-          "minY": 0.8,
-          "maxY": 1.5,
-          "lookahead": 14
-        }
-      },
-      "cuts": {
-        "probe": {
-          "offsetX": 1.2,
-          "minCrossings": 2
-        },
-        "boundaries": {
-          "left": "free",
-          "right": "bowl-neck"
-        }
       }
     },
     {

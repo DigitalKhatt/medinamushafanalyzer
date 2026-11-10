@@ -135,6 +135,32 @@ int main(int argc, char** argv) {
     }
     check(getJoinTime(roundedEntry, roundedGeometry.orientation).isLeft(roundedBowl.branches.front().corner.time),
           "Assembly moved the cut inside the rounded bowl shoulder");
+
+    // The exit flank has turned right after half a width, but is still
+    // slightly left of the shoulder. Recover that shoulder and preserve
+    // its stroke-normal cut through assembly.
+    auto hooked = fixture(105);
+    auto& hookedWord = hooked.page.lines[0].words[1];
+    auto& hookedSub = hookedWord.wordResultInfo.subWords[1];
+    const auto hookedSource = hookedWord.bodyShape(hookedSub);
+    auto hookedInk = hookedSource.transform.map(hookedSource.path).translated(hookedSource.pos);
+    hookedInk.setFillRule(Qt::WindingFill);
+    SearchContext hookedGeometry{.transformedPath=hookedInk, .subword=empty};
+    OutlineSearchCache hookedCache;
+    check(preparePassOutline(hookedGeometry, hookedCache), "Cannot prepare hooked bowl outline");
+    hookedGeometry.bbox = hookedInk.boundingRect();
+    const auto hookedBody = recognizedSharedShape(hookedGeometry, form.value("body").toObject());
+    PathExtrema shoulder{};
+    Stretching hookedCut{};
+    check(hookedBody->tail && cutTailBranches(hookedGeometry, *hookedBody->tail, settings, hookedCut, &shoulder)
+          && shoulder.time == 33, "Hooked bowl skipped its shoulder and cut at a neighboring landmark");
+    check(hooked.segmentSubword(104,0,1,1,nullptr,true) &&
+          hookedSub.letterDiagnostics.last().toObject().value("template") == "beh-return-fina" &&
+          !hookedSub.kashidaCuts.empty(), "Hooked bowl did not assemble with the returning form");
+    const auto cap = hookedSub.kashidaCuts.back().second;
+    check(QLineF(cap.p1(), hookedCut.topBaseLine.point).length() < 1e-5 &&
+          QLineF(cap.p2(), hookedCut.bottomBaseLine.point).length() < 1e-5,
+          "Assembly replaced the hooked bowl's stroke-normal cut");
     qInfo() << "Bowl shoulder passed: point 19, normal cut" << expected
             << "; scale, landmarks, independent recognition, rounded shoulder and adjacent tooth ownership.";
 }

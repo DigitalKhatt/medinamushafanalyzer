@@ -1137,6 +1137,8 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     }
     if (shape == "upright-stem")
         cutKeys << "recoveryShaft";
+    if (shape == "tail-branch")
+        bodyKeys << "maxShoulderBacktrackWidths";
     if (shape == "layered-head")
         bodyKeys << "neck";
     if (shape == "bowl-neck") {
@@ -1229,6 +1231,11 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     if (!flankSample.isUndefined() && (!flankSample.isDouble() || !std::isfinite(flankSample.toDouble()) ||
         flankSample.toDouble() <= 0 || flankSample.toDouble() > 1))
         return id + ": tail.flankSampleWidths must be greater than zero and at most one";
+    const auto shoulderBacktrack = body.value("maxShoulderBacktrackWidths");
+    if (!shoulderBacktrack.isUndefined() && (!shoulderBacktrack.isDouble() ||
+        !std::isfinite(shoulderBacktrack.toDouble()) || shoulderBacktrack.toDouble() <= 0 ||
+        shoulderBacktrack.toDouble() > .5))
+        return id + ": body.maxShoulderBacktrackWidths must be greater than zero and at most one half";
     if (shape == "separate-components") {
         const auto parts = body.value("parts").toObject(), policy = cuts.value("parts").toObject();
         if (phase != "medial" || parts.value("count") != 2)
@@ -7464,6 +7471,7 @@ struct TailBranch {
     PathExtrema corner;
     bool forward;
     double width;
+    bool recovered = false;
 };
 struct TailBody {
     PathExtrema tip;
@@ -7476,40 +7484,61 @@ static TailBody recognizeTailBranches(const InkOutline &outline, const QJsonObje
     TailBody body{*std::prev(context.xSorted.end()), static_cast<int>(baseContourCurves(outline.ink).size()), {}};
     const auto& ink = context.transformedPath;
     const auto tail = context.timeSorted.find(*std::prev(context.xSorted.end()));
-    for (const auto advance : {&SearchContext::prev, &SearchContext::next}) {
-        auto corner = tail;
-        for (size_t i = 1; i < context.timeSorted.size(); ++i) {
-            const auto next = (context.*advance)(corner);
-            const auto step = next->point - corner->point;
-            if (step.x() < -.01) break;
-            if ((corner->isSharp || corner->isX || corner->isY) && i > 1) {
-                const bool forward = advance == &SearchContext::prev;
+    const auto collect = [&](double backtrackWidths) {
+        for (const auto advance : {&SearchContext::prev, &SearchContext::next}) {
+            auto corner = tail;
+            double rightmost = tail->point.x(), lastWidth = 0;
+            const bool forward = advance == &SearchContext::prev;
+            for (size_t i = 1; i < context.timeSorted.size(); ++i) {
+                const auto next = (context.*advance)(corner);
+                const auto step = next->point - corner->point;
+                if (!backtrackWidths && step.x() < -.01) break;
                 Stretching first{};
-                if (contourNormalCut(context, *corner, forward, false, first, true)) {
+                const bool landmark = (corner->isSharp || corner->isX || corner->isY) && i > 1;
+                const bool normal = (landmark || backtrackWidths) &&
+                    contourNormalCut(context, *corner, forward, false, first, true);
+                if (backtrackWidths) {
+                    rightmost = std::max(rightmost, corner->point.x());
+                    if (normal) lastWidth = first.referenceWidth;
+                    if (rightmost - next->point.x() > std::max(.01, backtrackWidths * lastWidth)) break;
+                }
+                if (landmark && normal) {
                     const double width = first.referenceWidth;
                     // A microscopic reverse bend can insert a smooth extremum
                     // immediately after the shoulder. Keep the shoulder
                     // as the anchor; judge each flank after a meaningful walk.
                     const double distance = settings.value("flankSampleWidths").toDouble(.25) * width;
-                    const auto sample = [&](bool direction, PathExtrema& point) {
+                    const auto sample = [&](bool direction, double length, PathExtrema& point, QPointF& tangent) {
                         auto limit = *corner;
                         limit.time += (direction ? 1 : -1) * body.curveCount;
-                        QPointF tangent;
-                        return advanceOnContour(ink, *corner, limit, direction, distance, point, tangent);
+                        return advanceOnContour(ink, *corner, limit, direction, length, point, tangent);
                     };
                     PathExtrema incoming{}, outgoing{};
+                    QPointF tangent;
                     const double run = corner->point.x() - tail->point.x();
-                    if (sample(!forward, incoming) && sample(forward, outgoing) &&
+                    const bool recovered = backtrackWidths > 0;
+                    // The outgoing flank can already be turning right while
+                    // its position is still slightly left of the shoulder.
+                    if (sample(!forward, distance, incoming, tangent) &&
+                        sample(forward, recovered ? std::max(distance, .5 * width) : distance, outgoing, tangent) &&
                         incoming.point.y() > corner->point.y() && outgoing.point.y() > corner->point.y() &&
-                        outgoing.point.x() > corner->point.x() &&
+                        (recovered ? (forward ? tangent.x() : -tangent.x()) > 0 :
+                                     outgoing.point.x() > corner->point.x()) &&
                         run >= settings.value("minRun").toDouble(2) * width && run <= settings.value("maxRun").toDouble(12) * width) {
-                        body.branches.push_back({*corner, forward, width});
+                        body.branches.push_back({*corner, forward, width, recovered});
                     }
                 }
+                corner = next;
             }
-            corner = next;
         }
-    }
+    };
+    collect(0);
+    // A slight hook can turn left before the contour joins the incoming
+    // stroke. Only widen the landmark search when the ordinary walk found
+    // no shoulder; keep the same normal cut and ownership checks.
+    const double backtrack = settings.value("maxShoulderBacktrackWidths").toDouble();
+    if (body.branches.empty() && backtrack > 0)
+        collect(backtrack);
     return body;
 }
 static bool cutTailBranches(SearchContext &context, const TailBody &body, const QJsonObject &settings,
@@ -7537,10 +7566,17 @@ static bool cutTailBranches(SearchContext &context, const TailBody &body, const 
         } else {
             found = advanceOnContour(ink, *corner, limit, forward, settings.value("walkWidths").toDouble(1) * width,
                                      lower, tangent) &&
-                    lower.point.x() > corner->point.x() && lower.point.y() > corner->point.y() &&
+                    (branch.recovered ? (forward ? tangent.x() : -tangent.x()) > 0 :
+                                        lower.point.x() > corner->point.x()) &&
+                    lower.point.y() > corner->point.y() &&
                     contourNormalCut(context, lower, forward, false, cut, true);
-            if (found)
+            if (found) {
                 std::swap(cut.topBaseLine, cut.bottomBaseLine);
+                // At a tight turn the lower edge alone can point across
+                // the stroke. Use the direction of both edges here.
+                if (branch.recovered)
+                    found = strokeNormalCut(context, cut);
+            }
         }
         if (found) {
             const auto side = getJoinTime(cut, context.orientation);
@@ -10249,9 +10285,11 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const
             candidate.probe = recognizeBowlProbe(outline, candidate.section, neck.value("lookahead").toInt(14));
     } else if (shape == "paired-route")
         result.pairedRoutes = recognizePairedRoutes(outline, body.value("routes").toObject());
-    else if (shape == "tail-branch")
-        result.tail = recognizeTailBranches(outline, body.value("tail").toObject());
-    else if (shape == "folded-return")
+    else if (shape == "tail-branch") {
+        auto tail = body.value("tail").toObject();
+        tail.insert("maxShoulderBacktrackWidths", body.value("maxShoulderBacktrackWidths"));
+        result.tail = recognizeTailBranches(outline, tail);
+    } else if (shape == "folded-return")
         result.returnSeam = recognizeFoldedReturn(outline, body.value("return").toObject());
     else if (shape == "rising-return")
         result.returnSeam = recognizeRisingReturn(outline, body.value("return").toObject());
