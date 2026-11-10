@@ -707,20 +707,32 @@
     {
       "id": "hah-open-init",
       "current": "جحخ",
-      "method": "walk",
-      "top": [
-        "left",
-        {
-          "direction": "right",
-          "minY": 0,
-          "start": {
-            "xExtremum": true
-          }
+      "tryNext": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            "left",
+            {
+              "direction": "right",
+              "minY": 0,
+              "start": {
+                "xExtremum": true
+              }
+            }
+          ]
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "below"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
         }
-      ],
-      "bottomProbe": "below",
-      "bodyCounters": 0,
-      "tryNext": true
+      }
     },
     {
       "id": "hah-init",
@@ -736,21 +748,33 @@
     {
       "id": "hah-counter-init",
       "current": "جحخ",
-      "method": "walk",
-      "top": [
-        "up",
-        {
-          "direction": "down",
-          "end": {
-            "sharp": true,
-            "yExtremum": true
-          }
+      "tryNext": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            "up",
+            {
+              "direction": "down",
+              "end": {
+                "sharp": true,
+                "yExtremum": true
+              }
+            }
+          ],
+          "topUseStepEnd": true
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "down"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
         }
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "down",
-      "bodyCounters": 1,
-      "tryNext": true
+      }
     },
     {
       "id": "hah-enclosed-head-init",
@@ -1235,22 +1259,34 @@
     {
       "id": "hah-returning-lip-init",
       "current": "جحخ",
-      "method": "walk",
-      "start": "top",
-      "traversal": "down",
-      "topTraversal": "forward",
-      "top": [
-        "left",
-        "down",
-        "right"
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "below",
-      "bodyFeatures": {
-        "minHeight": 1.5
-      },
       "tryNext": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "top",
+          "traversal": "down",
+          "topTraversal": "forward",
+          "top": [
+            "left",
+            "down",
+            "right"
+          ],
+          "topUseStepEnd": true
+        },
+        "features": {
+          "minHeight": 1.5
+        }
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "below"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
+      }
     },
     {
       "id": "heh-paired-rim-init",
@@ -1909,187 +1945,232 @@
     {
       "id": "hah-oblique-folded-yeh-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
+      "sharedFoldWithFinal": "يئى",
+      "reclaimEntry": true,
+      "tightJoin": true,
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 0.5,
+                "maxY": -0.5,
+                "accumulate": true
+              }
+            ]
+          },
+          "right": {
+            "anchor": {
+              "xExtremum": true,
+              "offset": {
+                "minX": 1.5,
+                "maxX": 12,
+                "minY": -6,
+                "maxY": -2
+              },
+              "flanks": {
+                "minX": 0
+              },
+              "sharp": true
             },
+            "topAtAnchor": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          },
+          "retain": [
             {
-              "minX": 0.5,
-              "maxY": -0.5,
-              "accumulate": true
+              "yExtremum": true,
+              "offset": {
+                "minX": 0,
+                "maxX": 3.5,
+                "minY": -6,
+                "maxY": -1
+              },
+              "flanks": {
+                "minY": 0
+              }
             }
           ]
         },
-        "right": {
-          "anchor": {
-            "xExtremum": true,
-            "offset": {
-              "minX": 1.5,
-              "maxX": 12,
-              "minY": -6,
-              "maxY": -2
-            },
-            "flanks": {
-              "minX": 0
-            },
-            "sharp": true
-          },
-          "topAtAnchor": true,
-          "bottomProbe": "corner",
-          "oppositeCorner": {
-            "sharp": false,
-            "yExtremum": true,
-            "minX": -4,
-            "maxX": 0,
-            "minY": 0,
-            "maxY": 3,
-            "maxDistance": 4,
-            "flanks": {
-              "maxY": 0
-            }
-          }
-        },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below"
-        },
-        "retain": [
-          {
-            "yExtremum": true,
-            "offset": {
-              "minX": 0,
-              "maxX": 3.5,
-              "minY": -6,
-              "maxY": -1
-            },
-            "flanks": {
-              "minY": 0
-            }
-          }
-        ],
-        "orientToBody": true
+        "counters": 0
       },
-      "sharedFoldWithFinal": "يئى",
-      "reclaimEntry": true,
-      "tightJoin": true
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "corner",
+            "oppositeCorner": {
+              "sharp": false,
+              "yExtremum": true,
+              "minX": -4,
+              "maxX": 0,
+              "minY": 0,
+              "maxY": 3,
+              "maxDistance": 4,
+              "flanks": {
+                "maxY": 0
+              }
+            }
+          },
+          "left": {
+            "bottomProbe": "below"
+          },
+          "orientToBody": true
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
+        }
+      }
     },
     {
       "id": "hah-folded-yeh-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
+      "sharedFoldWithFinal": "يئى",
+      "reclaimEntry": true,
+      "tightJoin": true,
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 0.5,
+                "maxY": -0.5,
+                "accumulate": true
+              }
+            ]
+          },
+          "right": {
+            "anchor": {
+              "xExtremum": true,
+              "offset": {
+                "minX": 1.5,
+                "maxX": 12,
+                "minY": -6,
+                "maxY": -0.25
+              },
+              "flanks": {
+                "minX": 0
+              }
             },
+            "topAtAnchor": true,
+            "probeBothSides": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          },
+          "retain": [
             {
-              "minX": 0.5,
-              "maxY": -0.5,
-              "accumulate": true
+              "yExtremum": true,
+              "offset": {
+                "minX": 0,
+                "maxX": 3.5,
+                "minY": -6,
+                "maxY": -1
+              },
+              "flanks": {
+                "minY": 0
+              }
             }
           ]
         },
-        "right": {
-          "anchor": {
-            "xExtremum": true,
-            "offset": {
-              "minX": 1.5,
-              "maxX": 12,
-              "minY": -6,
-              "maxY": -0.25
-            },
-            "flanks": {
-              "minX": 0
-            }
-          },
-          "topAtAnchor": true,
-          "bottomProbe": "normal",
-          "probeBothSides": true
-        },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below"
-        },
-        "retain": [
-          {
-            "yExtremum": true,
-            "offset": {
-              "minX": 0,
-              "maxX": 3.5,
-              "minY": -6,
-              "maxY": -1
-            },
-            "flanks": {
-              "minY": 0
-            }
-          }
-        ],
-        "orientToBody": true
+        "counters": 0
       },
-      "sharedFoldWithFinal": "يئى",
-      "reclaimEntry": true,
-      "tightJoin": true
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "normal"
+          },
+          "left": {
+            "bottomProbe": "below"
+          },
+          "orientToBody": true
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
+        }
+      }
     },
     {
       "id": "hah-wedge-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 2,
-              "maxY": -1
-            }
-          ]
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 2,
+                "maxY": -1
+              }
+            ]
+          },
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up",
+              "down",
+              "left",
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          }
         },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            "down",
-            "left",
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down",
-          "normalCut": true,
-          "strokeOffsetX": -0.5
+        "counters": 0
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "down",
+            "normalCut": true,
+            "strokeOffsetX": -0.5
+          },
+          "left": {
+            "bottomProbe": "below"
+          }
         },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below"
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
         }
       }
     },
@@ -2118,7 +2199,6 @@
     {
       "id": "hah-stacked-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
       "upperAttachment": {
         "letters": "بتثنيىئ",
         "headFlank": {
@@ -2132,271 +2212,362 @@
           "maxY": -1.5
         }
       },
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 2,
-              "maxY": -1
-            }
-          ]
-        },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            {
-              "direction": "left",
-              "minY": 0,
-              "end": {
-                "sharp": true
+      "sharedEntry": true,
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 2,
+                "maxY": -1
               }
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "left",
-          "anchorSide": "bottom"
+            ]
+          },
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up",
+              {
+                "direction": "left",
+                "minY": 0,
+                "end": {
+                  "sharp": true
+                }
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          }
         },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below"
-        }
+        "counters": 0
       },
-      "sharedEntry": true
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "left",
+            "anchorSide": "bottom"
+          },
+          "left": {
+            "bottomProbe": "below"
+          }
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
+        }
+      }
     },
     {
       "id": "hah-rising-entry-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
       "sharedEntry": true,
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 2,
-              "maxY": -1
-            }
-          ]
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 2,
+                "maxY": -1
+              }
+            ]
+          },
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up"
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          }
         },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up"
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "normal"
+        "counters": 0
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "normal"
+          },
+          "left": {
+            "bottomProbe": "below"
+          }
         },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below"
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
         }
       }
     },
     {
       "id": "hah-flat-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 0.5,
-              "maxY": -0.5,
-              "accumulate": true
-            }
-          ]
-        },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            "down",
-            "left",
-            {
-              "direction": "down",
-              "end": {
-                "xExtremum": true
+      "tightJoin": true,
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 0.5,
+                "maxY": -0.5,
+                "accumulate": true
               }
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "normal"
+            ]
+          },
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up",
+              "down",
+              "left",
+              {
+                "direction": "down",
+                "end": {
+                  "xExtremum": true
+                }
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          }
         },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below"
-        }
+        "counters": 0
       },
-      "tightJoin": true
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "normal"
+          },
+          "left": {
+            "bottomProbe": "below"
+          }
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
+        }
+      }
     },
     {
       "id": "hah-shoulder-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
       "sharedEntry": true,
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 2,
-              "maxY": -1,
-              "accumulate": true
-            }
-          ]
-        },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            {
-              "direction": "right",
-              "end": {
-                "xExtremum": true
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 2,
+                "maxY": -1,
+                "accumulate": true
               }
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "normal"
+            ]
+          },
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up",
+              {
+                "direction": "right",
+                "end": {
+                  "xExtremum": true
+                }
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          }
         },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below"
+        "counters": 0
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "normal"
+          },
+          "left": {
+            "bottomProbe": "below"
+          }
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
         }
       }
     },
     {
       "id": "hah-compact-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
-      "contourBody": {
-        "anchor": {
-          "xExtremum": true,
-          "flanks": [
-            {
-              "minX": 0,
-              "minY": 0
-            },
-            {
-              "minX": 0.5,
-              "maxY": -0.5,
-              "accumulate": true
-            }
-          ]
+      "body": {
+        "shape": "paired-route",
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "minX": 0,
+                "minY": 0
+              },
+              {
+                "minX": 0.5,
+                "maxY": -0.5,
+                "accumulate": true
+              }
+            ]
+          },
+          "right": {
+            "topTraversal": "forward",
+            "top": [
+              "up",
+              "down",
+              "left",
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "right",
+                "minY": 0
+              }
+            ]
+          }
         },
-        "right": {
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            "down",
-            "left",
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down",
-          "normalCut": true,
-          "strokeOffsetX": -0.5
+        "counters": 0
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "down",
+            "normalCut": true,
+            "strokeOffsetX": -0.5
+          },
+          "left": {
+            "bottomProbe": "below"
+          }
         },
-        "left": {
-          "top": [
-            {
-              "direction": "right",
-              "minY": 0
-            }
-          ],
-          "bottomProbe": "below"
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
         }
       }
     },
     {
       "id": "hah-open-mouth-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
       "tightJoin": true,
-      "contourBody": {
-        "anchor": {
-          "sharp": true,
-          "xExtremum": true,
-          "flanks": [
-            {
-              "maxX": -2,
-              "maxY": -0.5
-            },
-            {
-              "maxX": -2,
-              "minY": 0.5
-            }
-          ]
-        },
-        "right": {
+      "body": {
+        "shape": "paired-route",
+        "routes": {
           "anchor": {
             "sharp": true,
-            "offset": {
-              "minX": -3,
-              "maxX": 0,
-              "minY": -3.5,
-              "maxY": -1
-            },
-            "flanks": {
-              "maxX": 0
-            }
+            "xExtremum": true,
+            "flanks": [
+              {
+                "maxX": -2,
+                "maxY": -0.5
+              },
+              {
+                "maxX": -2,
+                "minY": 0.5
+              }
+            ]
           },
-          "top": [
-            "left"
-          ],
-          "bottomProbe": "normal"
+          "right": {
+            "anchor": {
+              "sharp": true,
+              "offset": {
+                "minX": -3,
+                "maxX": 0,
+                "minY": -3.5,
+                "maxY": -1
+              },
+              "flanks": {
+                "maxX": 0
+              }
+            },
+            "top": [
+              "left"
+            ]
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "left",
+                "minY": 0.5
+              }
+            ],
+            "topUseStepEnd": true
+          }
         },
-        "left": {
-          "top": [
-            {
-              "direction": "left",
-              "minY": 0.5
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down"
+        "counters": 0
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "normal"
+          },
+          "left": {
+            "bottomProbe": "down"
+          }
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
         }
       }
     },
@@ -2415,57 +2586,72 @@
     {
       "id": "hah-shallow-mouth-medi",
       "current": "جحخ",
-      "bodyCounters": 0,
       "tightJoin": true,
-      "contourBody": {
-        "anchor": {
-          "sharp": true,
-          "xExtremum": true,
-          "flanks": [
-            {
-              "maxX": -1,
-              "minY": 0.25,
-              "accumulate": true
-            },
-            {
-              "maxX": -1,
-              "maxY": -0.25,
-              "accumulate": true
-            }
-          ]
-        },
-        "right": {
+      "onIncomplete": true,
+      "reclaimEntry": true,
+      "body": {
+        "shape": "paired-route",
+        "routes": {
           "anchor": {
             "sharp": true,
-            "offset": {
-              "minX": -5,
-              "maxX": 1.2,
-              "minY": -4,
-              "maxY": -0.35
-            },
-            "flanks": {
-              "maxX": 0
-            }
+            "xExtremum": true,
+            "flanks": [
+              {
+                "maxX": -1,
+                "minY": 0.25,
+                "accumulate": true
+              },
+              {
+                "maxX": -1,
+                "maxY": -0.25,
+                "accumulate": true
+              }
+            ]
           },
-          "top": [
-            "left"
-          ],
-          "bottomProbe": "normal"
+          "right": {
+            "anchor": {
+              "sharp": true,
+              "offset": {
+                "minX": -5,
+                "maxX": 1.2,
+                "minY": -4,
+                "maxY": -0.35
+              },
+              "flanks": {
+                "maxX": 0
+              }
+            },
+            "top": [
+              "left"
+            ]
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "left",
+                "minY": 0.2,
+                "accumulate": true
+              }
+            ],
+            "topUseStepEnd": true
+          }
         },
-        "left": {
-          "top": [
-            {
-              "direction": "left",
-              "minY": 0.2,
-              "accumulate": true
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down"
-        }
+        "counters": 0
       },
-      "onIncomplete": true,
-      "reclaimEntry": true
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "normal"
+          },
+          "left": {
+            "bottomProbe": "down"
+          }
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
+        }
+      }
     },
     {
       "id": "hah-returning-lips-medi",
@@ -4454,87 +4640,111 @@
     {
       "id": "hah-fina",
       "current": "جحخ",
-      "method": "walk",
-      "start": "left",
-      "top": [
-        {
-          "direction": "up",
-          "minDistance": 2,
-          "end": {
-            "xMinimum": true
-          }
+      "tryNext": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "top": [
+            {
+              "direction": "up",
+              "minDistance": 2,
+              "end": {
+                "xMinimum": true
+              }
+            },
+            {
+              "direction": "right",
+              "accumulate": true,
+              "minX": 2,
+              "maxY": -3,
+              "end": {
+                "sharp": true,
+                "xExtremum": true
+              }
+            },
+            {
+              "direction": "down",
+              "maxX": 0,
+              "start": {
+                "sharp": true,
+                "xExtremum": true
+              }
+            }
+          ]
         },
-        {
-          "direction": "right",
-          "accumulate": true,
-          "minX": 2,
-          "maxY": -3,
-          "end": {
-            "sharp": true,
-            "xExtremum": true
-          }
+        "features": {
+          "minHeight": 12,
+          "maxWidthToHeight": 1.3
         },
-        {
-          "direction": "down",
-          "maxX": 0,
-          "start": {
-            "sharp": true,
-            "xExtremum": true
-          }
-        }
-      ],
-      "bottomProbe": "walk-stroke-normal",
-      "penWidth": 0.5,
-      "bodyCounters": 0,
-      "bodyFeatures": {
-        "minHeight": 12,
-        "maxWidthToHeight": 1.3
+        "counters": 0
       },
-      "tryNext": true
+      "cuts": {
+        "route": {
+          "bottomProbe": "walk-stroke-normal",
+          "penWidth": 0.5
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "hah-stacked-fina",
       "current": "جحخ",
-      "method": "walk",
-      "start": "left",
-      "top": [
-        {
-          "direction": "right",
-          "accumulate": true,
-          "minX": 3,
-          "maxY": -3,
-          "end": {
-            "xExtremum": true
-          }
-        },
-        {
-          "direction": "left",
-          "accumulate": true,
-          "maxX": -2,
-          "minY": -1,
-          "maxY": 1,
-          "end": {
-            "sharp": true,
-            "xMinimum": true
-          }
-        },
-        {
-          "direction": "right",
-          "minX": 1,
-          "maxY": -2,
-          "start": {
-            "sharp": true,
-            "xMinimum": true
-          }
-        }
-      ],
-      "bottomProbe": "left",
-      "anchorSide": "bottom",
       "sharedBoundary": true,
-      "bodyCounters": 0,
-      "bodyFeatures": {
-        "minHeight": 4,
-        "maxWidthToHeight": 1.3
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "top": [
+            {
+              "direction": "right",
+              "accumulate": true,
+              "minX": 3,
+              "maxY": -3,
+              "end": {
+                "xExtremum": true
+              }
+            },
+            {
+              "direction": "left",
+              "accumulate": true,
+              "maxX": -2,
+              "minY": -1,
+              "maxY": 1,
+              "end": {
+                "sharp": true,
+                "xMinimum": true
+              }
+            },
+            {
+              "direction": "right",
+              "minX": 1,
+              "maxY": -2,
+              "start": {
+                "sharp": true,
+                "xMinimum": true
+              }
+            }
+          ]
+        },
+        "features": {
+          "minHeight": 4,
+          "maxWidthToHeight": 1.3
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "left",
+          "anchorSide": "bottom"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
       }
     },
     {

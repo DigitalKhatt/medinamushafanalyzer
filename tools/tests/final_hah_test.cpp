@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
     for (const auto& value : config.value("final").toArray()) {
         auto rule = value.toObject();
         if (rule.value("id") != "hah-fina") continue;
+        rule = shapeSettings(rule, "route");
         check(rule.value("penWidth").toDouble() == 0.5, "Use the manuscript's pen width in page units");
         for (const auto& invalid : QJsonArray{0, -0.5, "half"}) {
             rule.insert("penWidth", invalid);
@@ -105,7 +106,8 @@ int main(int argc, char** argv) {
             for (int i = 0; i < finals.size(); ++i) {
                 auto rule = finals[i].toObject();
                 if (rule.value("id") != "hah-fina") continue;
-                rule.insert("penWidth", 0.25);
+                auto cuts=rule.value("cuts").toObject(), route=cuts.value("route").toObject();
+                route.insert("penWidth", 0.25); cuts.insert("route",route); rule.insert("cuts",cuts);
                 finals[i] = rule;
             }
             preview.insert("final", finals);

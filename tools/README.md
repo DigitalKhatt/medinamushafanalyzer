@@ -169,6 +169,8 @@ Final yeh shares the contour-route and return-seam machinery. `folded-return` re
 
 Five medial kaf contour forms use `paired-route`: the recognizer records a body anchor, secondary anchors, retained branches and both routes. `cuts.routes` applies the probes, offsets and orientation. The same intrinsic route evidence can be projected again with a shared ligature exit.
 
+Fifteen hah-family contour forms share the single and paired route recognizers. Their zero/one-counter constraints and retained lips/branches remain body requirements; shared folded-yeh or stacked attachments remain assembly policies. The hah ownership and final-hah tests also check preview edits through `cuts.route.penWidth`.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright

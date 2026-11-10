@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
     QJsonObject form;
     for (const auto& value : config.value("initial").toArray())
         if (value.toObject().value("id") == "hah-counter-init") form = value.toObject();
-    check(!form.isEmpty() && form.value("method") == "walk" && form.value("bodyCounters").toInt() == 1,
+    check(!form.isEmpty() && form.value("body").toObject().value("shape") == "contour-route" && form.value("body").toObject().value("counters").toInt() == 1,
           "Missing closed-head contour template");
     QFile file("pages/page600.dat"); check(file.open(QIODevice::ReadOnly), "Missing page 600");
     PageAnalysisResult a; QDataStream in(&file); in >> a.page;
@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     auto source = shape.transform.map(shape.path); source.translate(shape.pos); source.setFillRule(Qt::WindingFill);
     WordResultInfo::SubWordInfo dummy;
     auto c = geometry(source, dummy, form);
-    check(searchContourWalk(c), "Closed hah did not find its corner");
+    check(declaredSharedBoundary(c,form), "Closed hah did not find its corner");
     const auto cut = c.res;
     check(cut.topBaseLine.time == 15 && std::abs(cut.bottomBaseLine.time - 5.10839) < 1e-5 &&
           std::abs(cut.topBaseLine.point.x() - cut.bottomBaseLine.point.x()) < 1e-6,
@@ -44,12 +44,12 @@ int main(int argc, char** argv) {
     c.baseText = QStringLiteral("unrelated"); c.pairedStrokeWidth = 1000;
     Stretching unrelated{}; unrelated.topBaseLine.point = {-200, 300}; unrelated.bottomBaseLine.point = {-100, 500};
     dummy.joins.insert(unrelated);
-    check(searchContourWalk(c) && c.res.topBaseLine.point == cut.topBaseLine.point &&
+    check(declaredSharedBoundary(c,form) && c.res.topBaseLine.point == cut.topBaseLine.point &&
           c.res.bottomBaseLine.point == cut.bottomBaseLine.point, "Hah geometry uses neighboring text or joins");
     for (double scale : {.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(source), dummy, form);
-        check(searchContourWalk(scaled) &&
+        check(declaredSharedBoundary(scaled,form) &&
               QLineF(mapping.map(cut.topBaseLine.point), scaled.res.topBaseLine.point).length() < 1e-5 &&
               QLineF(mapping.map(cut.bottomBaseLine.point), scaled.res.bottomBaseLine.point).length() < 1e-5,
               "Closed-head cut changed under scale/translation");
@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
     const auto& cp = cw.paths[cs.paths[0]];
     auto controlInk = cp.transform.map(cp.path); controlInk.translate(cp.pos);
     auto controlGeometry = geometry(controlInk, dummy, form);
-    check(searchContourWalk(controlGeometry) && controlGeometry.res.topBaseLine.time == 18,
+    check(declaredSharedBoundary(controlGeometry,form) && controlGeometry.res.topBaseLine.time == 18,
           "Closed kha before lam did not find its own corner");
     const auto controlBodies = cutRegions(controlInk, {}, {controlGeometry.res}, controlGeometry.orientation, true);
     check(controlBodies.size() == 2 && toSubpaths(controlBodies[0].path).size() == 2,

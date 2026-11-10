@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
     ink.setFillRule(Qt::WindingFill);
     WordResultInfo::SubWordInfo dummy;
     auto context = geometry(ink, dummy);
-    const auto settings = rule.value("contourBody").toObject();
+    const auto settings = pairedRouteSettings(rule);
     const auto pairs = contourBodyBoundaries(context, settings);
     check(pairs.size() == 1, "Expected one compact head, distinct from the preceding jeem");
     const auto [right, left] = pairs.front();

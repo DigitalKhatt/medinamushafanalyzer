@@ -10,13 +10,13 @@ int main(int argc, char** argv) {
     QJsonObject stacked;
     for (const auto& value:config.value("medial").toArray()) {
         const auto form=value.toObject();
-        if (form.value("current")==QStringLiteral("جحخ") && form.contains("contourBody"))
-            check(form.value("bodyCounters").toInt(-1)==0,"Open hah form lacks a zero-counter constraint");
+        if (form.value("current")==QStringLiteral("جحخ") && !pairedRouteSettings(form).isEmpty())
+            check(form.value("body").toObject().value("counters").toInt(-1)==0,"Open hah form lacks a zero-counter constraint");
         if (form.value("id")=="hah-stacked-medi") stacked=form;
     }
     for (const auto bad:QJsonArray{-1,.5,"0",true}) {
         auto invalid=config, rule=stacked;
-        rule.insert("bodyCounters",bad);invalid.insert("medial",QJsonArray{rule});
+        auto body=rule.value("body").toObject();body.insert("counters",bad);rule.insert("body",body);invalid.insert("medial",QJsonArray{rule});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(),"Invalid medial counter count accepted");
     }
     for (int page:{13,24}) {
@@ -32,12 +32,12 @@ int main(int argc, char** argv) {
         QVector<PathExtrema> extrema;ShapeItem::getExtrema(ink,context.subPaths,extrema);
         for(const auto& p:extrema)if(p.pathIndex==0){context.timeSorted.insert(p);context.xSorted.insert(p);context.ySorted.insert(p);}
         context.setOrientation();context.nextIter=std::next(context.xSorted.begin());
-        check(contourBodyBoundaries(context,stacked.value("contourBody").toObject()).empty(),
+        check(contourBodyBoundaries(context,pairedRouteSettings(stacked)).empty(),
               "Wrapped stacked-hah cut excludes its own defining anchor");
         auto unguarded=config;
         unguarded.insert("retryUnresolvedForms", false);
         auto forms=unguarded.value("medial").toArray();
-        for(int i=0;i<forms.size();++i){auto f=forms[i].toObject();f.remove("bodyCounters");forms[i]=f;}
+        for(int i=0;i<forms.size();++i){auto f=forms[i].toObject();f.remove("bodyCounters");if(f.contains("body")){auto b=f.value("body").toObject();b.remove("counters");f.insert("body",b);}forms[i]=f;}
         unguarded.insert("medial",forms);
         check(!analysis.segmentSubword(page-1,line,3,0,nullptr,true,&unguarded) &&
               sub.matchedTemplates.contains("hah-wedge-medi"),"Fixture no longer exposes a closed head claiming hah");

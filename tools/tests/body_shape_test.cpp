@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     c.form = lamNormal; c.res = {};
     check(declaredLamBoundary(c, config, c.form) && matchesBoundaryBody(c, lamNormal, c.res, true), "Lam stem was rejected");
     const auto lamCut = c.res;
-    const auto badShared = contourBodyBoundaries(c, rule("medial", "hah-stacked-medi").value("contourBody").toObject());
+    const auto badShared = contourBodyBoundaries(c, pairedRouteSettings(rule("medial", "hah-stacked-medi")));
     check(!badShared.empty(), "Expected the former lam-tip ligature proposal");
     for (const auto& pair : badShared)
         check(!matchesBoundaryBody(c, lamNormal, pair.first, true), "Shared entry bypassed lam body constraints");

@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
     QJsonObject openHah;
     for (const auto& value : config.value("initial").toArray())
         if (value.toObject().value("id") == "hah-open-init") openHah = value.toObject();
-    check(openHah.value("bodyCounters").toInt(-1) == 0, "Open hah must exclude a neighboring counter");
+    check(openHah.value("body").toObject().value("counters").toInt(-1) == 0, "Open hah must exclude a neighboring counter");
     QFile page600("pages/page600.dat");
     check(page600.open(QIODevice::ReadOnly), "Page 600 is required");
     PageAnalysisResult other;
@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
         Stretching hahCut{};
         if (wi == 0) {
             own.form = openHah; own.res = {};
-            check(searchContourWalk(own), "Open hah did not find its own lip");
+            check(declaredSharedBoundary(own,openHah), "Open hah did not find its own lip");
             hahCut = own.res;
             const auto head = cutRegions(ink, {}, {hahCut}, own.orientation, true);
             check(head.size() == 2 && toSubpaths(head[0].path).size() == 1,
@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
                   "Page 600 sad cuts changed under scale/translation");
             if (wi == 0) {
                 changed.form = openHah; changed.res = {};
-                check(searchContourWalk(changed) && same(hahCut, changed.res, mapping),
+                check(declaredSharedBoundary(changed,openHah) && same(hahCut, changed.res, mapping),
                       "Open hah cut changed under scale/translation");
             }
         }

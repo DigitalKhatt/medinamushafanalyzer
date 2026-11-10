@@ -856,7 +856,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     for (auto it = cuts.begin(); it != cuts.end(); ++it)
         if (!cutKeys.contains(it.key())) return id + ": unknown cut-policy setting " + it.key();
     for (const auto* old : {"method", "counter", "loopBoundaries", "bodyOutline", "top", "bottom", "bottomProbe",
-                          "bodyFeatures", "bodyCounters", "shoulder", "bridge", "head", "headEdges", "openHead", "pairedCounterCorners", "counterOffset", "baselineOffset", "probeX", "probeRadius", "minCrossings"})
+                          "bodyFeatures", "bodyCounters", "shoulder", "bridge", "head", "headEdges", "openHead", "contourBody", "pairedCounterCorners", "counterOffset", "baselineOffset", "probeX", "probeRadius", "minCrossings"})
         if (form.contains(old)) return id + ": declared geometry belongs in body / cuts, not " + old;
     const QStringList projectionKeys{"normalNeck", "normalCut", "offset", "baselineOffset", "sideOffset", "entryBelowCounter",
         "required", "strokeOffsetX", "bottomProbe", "oppositeCorner", "normalOffset", "normalOffsetTolerance",
