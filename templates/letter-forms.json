@@ -4300,41 +4300,69 @@
     {
       "id": "waw-corner-bridge-fina",
       "current": "وؤ",
-      "method": "final-counter",
       "tryNext": true,
-      "bodyCounters": 1,
-      "bridge": {
-        "maxWidth": 3
-      },
       "terminalAttachment": true,
       "tightJoin": true,
       "returningStroke": true,
-      "onFinalRetry": true
+      "onFinalRetry": true,
+      "body": {
+        "shape": "counter-bridge",
+        "counters": 1
+      },
+      "cuts": {
+        "boundaries": {
+          "left": "free",
+          "right": "counter-bridge"
+        },
+        "bridge": {
+          "maxWidth": 3
+        }
+      }
     },
     {
       "id": "waw-fina",
-      "method": "waw",
-      "probeHalfWidth": 0.2,
-      "crossings": 2,
-      "neighbors": [
-        {
-          "to": "bottomLeft",
-          "maxX": 0,
-          "minY": 0,
-          "from": "bottom"
-        },
-        {
-          "to": "bottomRight",
-          "minX": 0,
-          "maxY": 0,
-          "from": "bottom"
-        }
-      ],
       "current": "وؤ",
       "tryNext": true,
       "ownsLeftTip": true,
-      "start": "left",
-      "bodyCounters": 1
+      "body": {
+        "shape": "profile-neck",
+        "neck": {
+          "lookback": 4,
+          "previousOffset": 1,
+          "minX": 0,
+          "maxX": 1,
+          "minY": 0.8,
+          "maxY": 1.5,
+          "bottomCheck": false,
+          "neighbors": [
+            {
+              "to": "bottomLeft",
+              "maxX": 0,
+              "minY": 0,
+              "from": "bottom"
+            },
+            {
+              "to": "bottomRight",
+              "minX": 0,
+              "maxY": 0,
+              "from": "bottom"
+            }
+          ]
+        },
+        "profile": {
+          "strip": {
+            "radius": 0.2,
+            "count": 2
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "boundaries": {
+          "left": "free",
+          "right": "neck-section"
+        }
+      }
     },
     {
       "id": "dal-fina",
@@ -4675,39 +4703,56 @@
     {
       "id": "waw-neck-fina",
       "current": "وؤ",
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "placement": "top-right",
-          "maxDistance": 2,
-          "normalCut": true,
-          "required": true
-        }
-      },
       "tryNext": true,
       "ownsLeftTip": true,
       "start": "left",
-      "bodyCounters": 1
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "placement": "top-right",
+            "maxDistance": 2
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "boundaries": {
+          "left": "free",
+          "right": "counter-neck"
+        },
+        "counter": {
+          "entryCorner": {
+            "normalCut": true,
+            "required": true
+          }
+        }
+      }
     },
     {
       "id": "waw-shoulder-fina",
       "current": "وؤ",
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "maxDistance": 2
-        }
-      },
-      "shoulder": {
-        "radius": 2.5,
-        "maxWidth": 2.4,
-        "maxCapRise": 2
-      },
       "tryNext": true,
       "onIncomplete": true,
       "ownsLeftTip": true,
       "start": "left",
-      "bodyCounters": 1
+      "body": {
+        "shape": "counter-shoulder",
+        "shoulder": {
+          "radius": 2.5,
+          "maxCapRise": 2
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "boundaries": {
+          "left": "free",
+          "right": "counter-shoulder"
+        },
+        "shoulder": {
+          "maxWidth": 2.4
+        }
+      }
     },
     {
       "id": "meem-upper-neck-fina",
