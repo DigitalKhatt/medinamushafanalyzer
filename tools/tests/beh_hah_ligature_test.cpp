@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     for (const auto& value : config.value("final").toArray())
         if (value.toObject().value("id") == "noon-corner-fina") noonRule = value.toObject();
     check(hahRule.value("sharedEntry").toBool(), "Stacked hah must have a shared ligature entry");
-    check(noonRule.value("strokeOffsetX").toDouble() == .5, "Noon offset must be half a stroke width");
+    check(shapeSettings(noonRule, "route").value("strokeOffsetX").toDouble() == .5, "Noon offset must be half a stroke width");
     struct StackedWord {
         int page, line, word;
         double cornerTime, oppositeTime;
@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
         source.translate(shape.pos);
         WordResultInfo::SubWordInfo dummy;
         auto context = geometry(source, dummy);
-        const auto pairs = contourBodyBoundaries(context, hahRule.value("contourBody").toObject());
+        const auto pairs = contourBodyBoundaries(context, pairedRouteSettings(hahRule));
         check(pairs.size() == 1, "Expected one stacked-hah body");
         const auto& cut = pairs.front().first;
         check(cut.bottomBaseLine.time == location[3] && cut.bottomBaseLine.isSharp &&
@@ -125,13 +125,13 @@ int main(int argc, char** argv) {
         dummy.joins.insert(unrelated);
         context.pairedStrokeWidth = 1000;
         context.baseText = QStringLiteral("اختبار");
-        const auto independent = contourBodyBoundaries(context, hahRule.value("contourBody").toObject());
+        const auto independent = contourBodyBoundaries(context, pairedRouteSettings(hahRule));
         check(independent.size() == 1 && same(cut, independent.front().first),
               "Neighboring landmarks changed the ligature cut");
         for (double scale : {.7, 1.6}) {
             const QTransform mapping(scale, 0, 0, scale, 37, -21);
             auto scaled = geometry(mapping.map(source), dummy);
-            const auto result = contourBodyBoundaries(scaled, hahRule.value("contourBody").toObject());
+            const auto result = contourBodyBoundaries(scaled, pairedRouteSettings(hahRule));
             check(result.size() == 1 && same(cut, result.front().first, mapping),
                   "Ligature cut is not scale/translation invariant");
         }
@@ -146,18 +146,18 @@ int main(int argc, char** argv) {
         check(sub.matchedTemplates.contains("noon-corner-fina"), "Noon corner form was not used");
         auto noonContext = geometry(source, dummy);
         noonContext.form = noonRule;
-        noonContext.form.insert("normalCut", false);
-        check(searchContourWalk(noonContext), "Noon corner projection was not found");
+        { auto cuts = noonContext.form.value("cuts").toObject(), route = cuts.value("route").toObject(); route.insert("normalCut", false); cuts.insert("route", route); noonContext.form.insert("cuts", cuts); }
+        check(declaredSharedBoundary(noonContext, noonContext.form), "Noon corner projection was not found");
         const auto unshifted = noonContext.res;
         check(unshifted.bottomBaseLine.time == 18, "Noon did not find its own corner 18");
         noonContext.form = noonRule;
-        noonContext.form.insert("strokeOffsetX", 0);
+        { auto cuts = noonContext.form.value("cuts").toObject(), route = cuts.value("route").toObject(); route.insert("strokeOffsetX", 0); cuts.insert("route", route); noonContext.form.insert("cuts", cuts); }
         noonContext.res = {};
-        check(searchContourWalk(noonContext), "The noon neck has no measurable normal width");
+        check(declaredSharedBoundary(noonContext, noonContext.form), "The noon neck has no measurable normal width");
         const double width = QLineF(noonContext.res.topBaseLine.point, noonContext.res.bottomBaseLine.point).length();
         noonContext.form = noonRule;
         noonContext.res = {};
-        check(searchContourWalk(noonContext), "Shifted noon cut was not found");
+        check(declaredSharedBoundary(noonContext, noonContext.form), "Shifted noon cut was not found");
         const auto shifted = noonContext.res;
         const double dx = QLineF(shifted.topBaseLine.point, shifted.bottomBaseLine.point).center().x() -
             unshifted.bottomBaseLine.point.x();

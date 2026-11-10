@@ -173,6 +173,8 @@ Fifteen hah-family contour forms share the single and paired route recognizers. 
 
 Sad/tah loop forms reuse counter-loop, rim, outline, shoulder and route evidence. Counter loops record their entry routes and attached teeth before projection; cut policies then place the entry and exit boundaries. The independence test compares the saved route and tooth evidence after changing neighboring joins and cursor state.
 
+Final noon and beh bowls use saved contour routes, return branches or `bowl-neck`. Neck recognition records the opposing contour landmarks and the bowl turn; assembly filters candidates against the active cursor and previous boundary. The neck-flank calculations are shared with the remaining legacy callers.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright
@@ -256,8 +258,8 @@ Lām recognition bypasses the legacy method dispatcher through
 `InkOutline` input has no neighboring-join state; `assembleMedialLamCuts`
 projects its saved evidence and applies the neighbor checks. Generic contour
 primitives are shared: `recognizeContourRoute` finds landmarks, while
-`projectContourRoute` applies a cut policy. Non-lām forms still use the
-existing matchers during the incremental migration. A failed lām declaration
+`projectContourRoute` applies a cut policy. Migrated families share `recognizedSharedShape` and `declaredSharedBoundary`;
+remaining forms use the existing matchers during the incremental migration. A failed lām declaration
 cannot fall back to a legacy lām rule.
 
 Run `python3 tools/tests/check_letter_forms.py lam_alef_test.cpp

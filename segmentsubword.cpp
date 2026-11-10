@@ -745,7 +745,7 @@ static bool lamDescription(const QJsonObject& body) {
 
 static bool sharedShapeDescription(const QJsonObject& body) {
     static const QStringList shapes{"counter-neck", "counter-shoulder", "counter-bridge", "counter-loop", "counter-rim",
-        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route"};
+        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck"};
     return shapes.contains(body.value("shape").toString());
 }
 
@@ -842,10 +842,11 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         (phase == "initial" && boundaries.value("right") != "free") ||
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
-    const QString section = shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : shape == "bowl-turn" ? "probe" :
+    const QString section = shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
+    if (shape == "bowl-neck") { bodyKeys.removeAll("probe"); bodyKeys << "neck"; }
     if (shape == "bowl-turn") {
         bodyKeys.removeAll("probe"); bodyKeys << "origin";
         if (body.value("origin") != "left") return id + ": bowl-turn starts at the free left end";
@@ -872,7 +873,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
         const auto mode = it.value().toString();
         const QStringList modes = shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
-            shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
+            shape == "bowl-neck" ? QStringList{"free", "bowl-neck"} : shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
             (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? QStringList{"free", "counter-neck", "counter-shoulder", "counter-bridge"} :
             shape == "contour-route" ? QStringList{"free", "contour-route"} :
             shape == "counter-outline" ? QStringList{"free", "outline-entry", "outline-exit"} :
@@ -884,7 +885,21 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         return id + ": this boundary shape needs an initial or final position";
     if (shape == "counter-rim" && phase != "medial") return id + ": counter-rim requires two boundaries";
     if ((shape == "paired-route" && phase != "medial") || ((shape == "tail-branch" || shape == "rising-return" || shape == "folded-return") && phase != "final") || (shape == "horizontal-counters" && phase != "initial") || (shape == "stacked-counters" && phase != "medial") || (shape == "suspended-loop" && phase != "initial") || ((shape == "crested-loop" || shape == "open-head") && phase != "medial") ||
-        (shape == "bowl-turn" && phase != "final")) return id + ": shape does not support this letter position";
+        ((shape == "bowl-turn" || shape == "bowl-neck") && phase != "final")) return id + ": shape does not support this letter position";
+    if (shape == "bowl-neck") {
+        const auto neck = body.value("neck").toObject(), probe = cuts.value("probe").toObject();
+        for (auto it = neck.begin(); it != neck.end(); ++it)
+            if (!QStringList{"lookback", "previousOffset", "lookahead", "minX", "maxX", "minY", "maxY"}.contains(it.key()) ||
+                !it.value().isDouble() || !std::isfinite(it.value().toDouble()) || it.value().toDouble() < 0)
+                return id + ": invalid bowl-neck body measurement";
+        for (const auto* axis : {"X", "Y"})
+            if (neck.value(QString("min") + axis).toDouble() > neck.value(QString("max") + axis).toDouble())
+                return id + ": reversed bowl-neck limits";
+        for (auto it = probe.begin(); it != probe.end(); ++it)
+            if (!QStringList{"offsetX", "minCrossings"}.contains(it.key()) || !it.value().isDouble() ||
+                !std::isfinite(it.value().toDouble()) || it.value().toDouble() < 0)
+                return id + ": invalid bowl-neck cut policy";
+    }
     if (shape == "open-head") {
         const auto head = body.value("head").toObject(), projection = cuts.value("head").toObject();
         for (auto it = head.begin(); it != head.end(); ++it)
@@ -914,6 +929,7 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString& ph
     else if (shape == "horizontal-counters") form.insert("method", "heh-initial-counters");
     else if (shape == "suspended-loop") form.insert("method", "initial-loop-head");
     else if (shape == "bowl-turn") form.insert("method", "qaf");
+    else if (shape == "bowl-neck") form.insert("method", "noon");
     else if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") form.insert("method", phase == "initial" ? "initial-counter" : "final-counter");
     else if (shape == "counter-loop" && phase == "initial") form.insert("method", "initial-loop-body");
     return form;
@@ -1816,6 +1832,151 @@ struct JoinCheck {
 	std::function<bool(xsortedtype::iterator)> customCheck = defaultCheck;
 };
 
+static bool traceNeckFlanks(SearchContext& context, const JoinCheck& joinCheck) {
+    auto& res = context.res;
+    const auto& timeSorted = context.timeSorted;
+    const auto& transformedPath = context.transformedPath;
+    constexpr double minDistance = .01;
+    auto item = timeSorted.find(res.bottomBaseLine);
+    auto prev = item;
+    auto next = item;
+
+    int nbTentative = 3;
+
+    while (nbTentative != 0) {
+        nbTentative--;
+        prev = context.prev(prev);
+
+        if (prev == timeSorted.end()) {
+            prev = --timeSorted.end();
+        }
+
+        if (std::abs(res.bottomBaseLine.point.x() - prev->point.x()) > minDistance || std::abs(res.bottomBaseLine.point.y() - prev->point.y()) > minDistance) {
+            break;
+        }
+    }
+    nbTentative = 3;
+
+    while (nbTentative != 0) {
+        nbTentative--;
+
+        next = std::next(next);
+
+        if (next == timeSorted.end()) {
+            next = timeSorted.begin();
+        }
+
+        if (std::abs(res.bottomBaseLine.point.x() - next->point.x()) > minDistance || std::abs(res.bottomBaseLine.point.y() - next->point.y()) > minDistance) {
+            break;
+        }
+
+    }
+
+    bool bottomClockWiseOrder;
+    if (prev->point.x() < next->point.x()) {
+        res.bottomLeft = *prev;
+        res.bottomRight = *next;
+        bottomClockWiseOrder = true;
+    }
+    else {
+        res.bottomRight = *prev;
+        res.bottomLeft = *next;
+        bottomClockWiseOrder = false;
+    }
+
+    if (joinCheck.bottomCheck) {
+        if (res.bottomLeft.point.x() > res.bottomBaseLine.point.x()
+            || res.bottomRight.point.x() < res.bottomBaseLine.point.x()
+            || res.bottomLeft.point.y() > res.bottomBaseLine.point.y()
+            || res.bottomRight.point.y() > res.bottomBaseLine.point.y()
+            ) {
+
+            return false;
+        }
+    }
+
+    item = timeSorted.find(res.topBaseLine);
+    prev = item;
+    next = item;
+
+    nbTentative = 3;
+
+    while (nbTentative != 0) {
+        nbTentative--;
+
+        next = std::next(next);
+
+        if (next == timeSorted.end()) {
+            next = timeSorted.begin();
+        }
+
+        if (std::abs(res.topBaseLine.point.x() - next->point.x()) > minDistance || std::abs(res.topBaseLine.point.y() - next->point.y()) > minDistance) {
+            break;
+        }
+
+    }
+
+    nbTentative = 3;
+
+    while (nbTentative != 0) {
+        nbTentative--;
+
+        prev = context.prev(prev);
+
+        if (prev == timeSorted.end()) {
+            prev = --timeSorted.end();
+        }
+
+        if (std::abs(res.topBaseLine.point.x() - prev->point.x()) > minDistance || std::abs(res.topBaseLine.point.y() - prev->point.y()) > minDistance) {
+            break;
+        }
+
+    }
+
+    bool topClockWiseOrder;
+
+    if (prev->point.x() < next->point.x()) {
+        res.topLeft = *prev;
+        res.topRight = *next;
+        topClockWiseOrder = false;
+    }
+    else {
+        res.topRight = *prev;
+        res.topLeft = *next;
+        topClockWiseOrder = true;
+    }
+
+    if (joinCheck.topCheck) {
+        if (res.topLeft.point.x() > res.topBaseLine.point.x()
+            || res.topRight.point.x() < res.topBaseLine.point.x()
+            || res.topLeft.point.y() > res.topBaseLine.point.y()
+            || res.topRight.point.y() > res.topBaseLine.point.y()
+            ) {
+
+            return false;
+        }
+    }
+
+    if (joinCheck.sameDirectionCheck) {
+        if (topClockWiseOrder != bottomClockWiseOrder) {
+
+            return false;
+        }
+    }
+
+    res.clockWise = topClockWiseOrder;
+
+    //check if joining segment belongs to the interior of the path area
+    QLineF segment{ res.topBaseLine.point,res.bottomBaseLine.point };
+
+    if (!transformedPath.contains(segment.center())) {
+
+        return false;
+    }
+
+    return true;
+}
+
 bool static getJoin(SearchContext& context, const JoinCheck& joinCheck) {
     const auto bounds = withOverrides(context.joinDefaults,
                                       context.form.value("join").toObject());
@@ -1826,9 +1987,6 @@ bool static getJoin(SearchContext& context, const JoinCheck& joinCheck) {
 	auto xiter = context.nextIter;
 	auto& xSorted = context.xSorted;
 	auto& res = context.res;
-	auto& timeSorted = context.timeSorted;
-	auto& transformedPath = context.transformedPath;
-	double minDistance = 0.01;
 
 	for (; xiter != xSorted.end(); xiter++) {
 		auto& curr = *xiter;
@@ -1879,144 +2037,7 @@ bool static getJoin(SearchContext& context, const JoinCheck& joinCheck) {
 			}
 
 
-			auto item = timeSorted.find(res.bottomBaseLine);
-			auto prev = item;
-			auto next = item;
-
-			int nbTentative = 3;
-
-			while (nbTentative != 0) {
-				nbTentative--;
-				prev = context.prev(prev);
-
-				if (prev == timeSorted.end()) {
-					prev = --timeSorted.end();
-				}
-
-				if (std::abs(res.bottomBaseLine.point.x() - prev->point.x()) > minDistance || std::abs(res.bottomBaseLine.point.y() - prev->point.y()) > minDistance) {
-					break;
-				}
-			}
-			nbTentative = 3;
-
-			while (nbTentative != 0) {
-				nbTentative--;
-
-				next = std::next(next);
-
-				if (next == timeSorted.end()) {
-					next = timeSorted.begin();
-				}
-
-				if (std::abs(res.bottomBaseLine.point.x() - next->point.x()) > minDistance || std::abs(res.bottomBaseLine.point.y() - next->point.y()) > minDistance) {
-					break;
-				}
-
-			}
-
-			bool bottomClockWiseOrder;
-			if (prev->point.x() < next->point.x()) {
-				res.bottomLeft = *prev;
-				res.bottomRight = *next;
-				bottomClockWiseOrder = true;
-			}
-			else {
-				res.bottomRight = *prev;
-				res.bottomLeft = *next;
-				bottomClockWiseOrder = false;
-			}
-
-			if (joinCheck.bottomCheck) {
-				if (res.bottomLeft.point.x() > res.bottomBaseLine.point.x()
-					|| res.bottomRight.point.x() < res.bottomBaseLine.point.x()
-					|| res.bottomLeft.point.y() > res.bottomBaseLine.point.y()
-					|| res.bottomRight.point.y() > res.bottomBaseLine.point.y()
-					) {
-					//lookbackward--;
-					continue;
-				}
-			}
-
-			item = timeSorted.find(res.topBaseLine);
-			prev = item;
-			next = item;
-
-			nbTentative = 3;
-
-			while (nbTentative != 0) {
-				nbTentative--;
-
-				next = std::next(next);
-
-				if (next == timeSorted.end()) {
-					next = timeSorted.begin();
-				}
-
-				if (std::abs(res.topBaseLine.point.x() - next->point.x()) > minDistance || std::abs(res.topBaseLine.point.y() - next->point.y()) > minDistance) {
-					break;
-				}
-
-			}
-
-			nbTentative = 3;
-
-			while (nbTentative != 0) {
-				nbTentative--;
-
-				prev = context.prev(prev);
-
-
-				if (prev == timeSorted.end()) {
-					prev = --timeSorted.end();
-				}
-
-				if (std::abs(res.topBaseLine.point.x() - prev->point.x()) > minDistance || std::abs(res.topBaseLine.point.y() - prev->point.y()) > minDistance) {
-					break;
-				}
-
-			}
-
-			bool topClockWiseOrder;
-
-			if (prev->point.x() < next->point.x()) {
-				res.topLeft = *prev;
-				res.topRight = *next;
-				topClockWiseOrder = false;
-			}
-			else {
-				res.topRight = *prev;
-				res.topLeft = *next;
-				topClockWiseOrder = true;
-			}
-
-			if (joinCheck.topCheck) {
-				if (res.topLeft.point.x() > res.topBaseLine.point.x()
-					|| res.topRight.point.x() < res.topBaseLine.point.x()
-					|| res.topLeft.point.y() > res.topBaseLine.point.y()
-					|| res.topRight.point.y() > res.topBaseLine.point.y()
-					) {
-					//lookbackward--;
-					continue;
-				}
-			}
-
-			if (joinCheck.sameDirectionCheck) {
-				if (topClockWiseOrder != bottomClockWiseOrder) {
-					//lookbackward--;
-					continue;
-				}
-			}
-
-
-			res.clockWise = topClockWiseOrder;
-
-			//check if joining segment belongs to the interior of the path area
-			QLineF segment{ res.topBaseLine.point,res.bottomBaseLine.point };
-
-			if (!transformedPath.contains(segment.center())) {
-				//lookbackward--;
-				continue;
-			}
+			if (!traceNeckFlanks(context, joinCheck)) continue;
 
 			const auto neighbors = context.form.value("neighbors").toArray();
             if ((!neighbors.isEmpty() && !matchesNeighbors(neighbors, res)) ||
@@ -2025,15 +2046,7 @@ bool static getJoin(SearchContext& context, const JoinCheck& joinCheck) {
 				continue;
 			}
 
-			/*
-			QPainterPath temp;
-			temp.addPolygon(QPolygonF{ {res.bottomLeft.point + QPointF(0, 0.03) ,res.bottomBaseLine.point + QPointF(-0.03,0),QPointF{res.bottomLeft.point.x(),res.bottomBaseLine.point.y()}} });
 
-			if (!transformedPath.intersects(temp)) {
-				continue;
-			}
-
-			context.subword.debugPath.addPath(temp);*/
 
 			auto rightKash = std::min(res.topRight.point.x(), res.bottomRight.point.x());
 			auto leftKash = std::max(res.topLeft.point.x(), res.bottomLeft.point.x());
@@ -2048,6 +2061,135 @@ bool static getJoin(SearchContext& context, const JoinCheck& joinCheck) {
 
 	return false;
 
+}
+
+struct BowlProbeBody { PathExtrema extremum; std::optional<PathExtrema> smooth; };
+struct BowlNeckBody { PathExtrema cursor; Stretching section; std::optional<BowlProbeBody> probe; };
+static std::vector<BowlNeckBody> recognizeBowlNecks(const InkOutline& outline, const QJsonObject& bounds) {
+    WordResultInfo::SubWordInfo empty;
+    auto context = outline.geometry(empty);
+    context.res = {};
+    const JoinCheck joinCheck;
+    std::vector<BowlNeckBody> bodies;
+    const int plookbackward = bounds.value("lookback").toInt(4);
+    const int prevOff = bounds.value("previousOffset").toInt(1);
+    if (plookbackward < 1 || prevOff < 1) return {};
+
+	auto xiter = context.xSorted.begin();
+	auto& xSorted = context.xSorted;
+	auto& res = context.res;
+
+	for (; xiter != xSorted.end(); xiter++) {
+		auto& curr = *xiter;
+
+        auto prevBasePoint = xiter;
+        int offset = prevOff;
+        while (offset > 0 && prevBasePoint != xSorted.begin()) {
+            --prevBasePoint;
+            --offset;
+        }
+        if (offset > 0) continue;
+
+		auto lookbackward = plookbackward;
+
+		while (lookbackward != 0 && prevBasePoint != xSorted.end()) {
+
+			auto& prec = *prevBasePoint;
+
+			prevBasePoint = prevBasePoint == xSorted.begin() ? xSorted.end() : std::prev(prevBasePoint);
+
+			auto yDiff = std::abs(curr.point.y() - prec.point.y());
+			auto xDiff = std::abs(curr.point.x() - prec.point.x());
+
+
+			if (!within(bounds, "minX", "maxX", xDiff) || !within(bounds, "minY", "maxY", yDiff)) {
+				lookbackward--;
+				continue;
+			}
+
+			if (prec.point.y() > curr.point.y()) {
+				res.bottomBaseLine = prec;
+				res.topBaseLine = curr;
+
+			}
+			else {
+				res.bottomBaseLine = curr;
+				res.topBaseLine = prec;
+			}
+
+
+
+			if (!traceNeckFlanks(context, joinCheck)) continue;
+
+			auto rightKash = std::min(res.topRight.point.x(), res.bottomRight.point.x());
+			auto leftKash = std::max(res.topLeft.point.x(), res.bottomLeft.point.x());
+
+			res.length = rightKash - leftKash;
+
+
+			bodies.push_back({curr, res, {}});
+		}
+	}
+
+	return bodies;
+}
+
+static std::optional<BowlProbeBody> recognizeBowlProbe(const InkOutline& outline, const Stretching& section, int lookahead) {
+    const auto& points = outline.time;
+    auto it = points.find(section.topBaseLine);
+    if (it == points.end()) return {};
+    const auto advance = [&](timesortedtype::iterator current) {
+        return section.clockWise ? (current == points.begin() ? points.end() : std::prev(current)) : std::next(current);
+    };
+    auto previous = it, current = advance(it);
+    while (current != points.end() && current->point.y() <= previous->point.y()) {
+        previous = current; current = advance(current);
+    }
+    if (current == points.end()) return {};
+    BowlProbeBody body{*previous, {}};
+    current = advance(current);
+    while (current != points.end() && !(!current->isSharp && current->isY) && lookahead != 0) {
+        current = advance(current); --lookahead;
+    }
+    if (current != points.end() && lookahead != 0) body.smooth = *current;
+    return body;
+}
+
+static bool cutBowlNecks(SearchContext& context, const std::vector<BowlNeckBody>& bodies, const QJsonObject& policy) {
+    if (context.nextIter == context.xSorted.end()) return false;
+    std::vector<const BowlNeckBody*> selected;
+    auto cursor = context.nextIter;
+    for (const auto& body : bodies) {
+        const auto position = context.xSorted.find(body.cursor);
+        if (position == context.xSorted.end() || context.xSorted.key_comp()(*position, *cursor)) continue;
+        if (!context.subword.joins.empty()) {
+            const auto& previous = *context.subword.joins.rbegin();
+            const auto a = body.section.topBaseLine.time, b = body.section.bottomBaseLine.time;
+            if (previous.topBaseLine.time == a || previous.bottomBaseLine.time == a ||
+                previous.topBaseLine.time == b || previous.bottomBaseLine.time == b) continue;
+        }
+        selected.push_back(&body);
+        cursor = std::next(position);
+        if (cursor == context.xSorted.end()) break;
+    }
+    if (selected.empty()) return false;
+    if (selected.size() >= 2) {
+        const auto& body = *selected[selected.size()-2];
+        context.res = body.section;
+        context.nextIter = std::next(context.xSorted.find(body.cursor));
+        return true;
+    }
+    const auto& body = *selected.front();
+    if (!body.probe) return false;
+    const double x = body.probe->smooth ? body.probe->smooth->point.x() :
+        body.probe->extremum.point.x() + policy.value("offsetX").toDouble(1.2);
+    auto hits = FindInterections(context.transformedPath, QLineF(x, context.bbox.top(), x, context.bbox.bottom()));
+    if (hits.size() < std::max(2., policy.value("minCrossings").toDouble(2))) return false;
+    std::sort(hits.begin(), hits.end(), [](const auto& a, const auto& b) { return a.point.y() < b.point.y(); });
+    context.res = body.section;
+    context.res.topBaseLine = hits[0]; context.res.bottomBaseLine = hits[1]; context.res.length = 0;
+    context.nextIter = cursor;
+    return true;
 }
 
 bool static searchWawFina(SearchContext& context) {
@@ -3082,99 +3224,6 @@ bool static searchHah(SearchContext& context) {
 	return getJoin(context, joinCheck);
 
 }
-
-auto lambdaPrev = [](timesortedtype::iterator it, typename std::iterator_traits<timesortedtype::iterator>::difference_type n) {
-      return std::prev(it, n);
-    };
-
-	auto lambdaNext = [](timesortedtype::iterator it, typename std::iterator_traits<timesortedtype::iterator>::difference_type n) {
-      return std::next(it, n);
-    };
-
-bool static searchNoonFina(SearchContext& context) {
-
-	JoinCheck joinCheck;
-
-	auto res = context.res;
-	auto nextIter = context.nextIter;
-
-	auto prevRes = context.res;
-	auto prevNextIter = context.nextIter;
-
-	int nbFound = 0;
-
-	while (getJoin(context, joinCheck)) {
-		prevRes = res;
-		prevNextIter = nextIter;
-		res = context.res;
-		nextIter = context.nextIter;
-		nbFound++;
-	}
-
-	if (nbFound == 0) {
-		return false;
-	}
-
-	if (nbFound >= 2) {
-		context.res = prevRes;
-		context.nextIter = prevNextIter;
-		return true;
-	}
-
-	auto nextFunc = res.clockWise ? lambdaPrev: lambdaNext;
-
-	auto item = context.timeSorted.find(res.topBaseLine);
-	if (item == context.timeSorted.end()) return false;
-	auto prev = item;
-	auto advance = [&](timesortedtype::iterator it) {
-		return res.clockWise && it == context.timeSorted.begin() ? context.timeSorted.end() : nextFunc(it, 1);
-	};
-	auto curr = advance(item);
-	while (curr != context.timeSorted.end() && (curr->point.y() <= prev->point.y())) {
-		prev = curr;
-		curr = advance(curr);
-	}
-	if (curr == context.timeSorted.end()) return false;
-	PathExtrema extremum = *prev;
-
-	auto tentative = context.form.value("lookahead").toInt(14);
-	curr = advance(curr);
-	while (curr != context.timeSorted.end() && !(!curr->isSharp && curr->isY) && tentative != 0) {
-		curr = advance(curr);
-		tentative--;
-	}
-
-	double x;
-
-	if (curr != context.timeSorted.end() && tentative != 0) {
-		x = curr->point.x();
-	}
-	else {
-		x = extremum.point.x() + formNumber(context, "probeX", 1.2);
-	}
-
-	auto bbox = context.transformedPath.boundingRect();
-
-	QLineF line{ {x ,bbox.top()}, {x ,bbox.bottom()} };
-
-	auto intersections = FindInterections(context.transformedPath, line);
-
-	if (intersections.size() < std::max(2.0, formNumber(context, "minCrossings", 2))) {
-		return false;
-	}
-
-	std::sort(intersections.begin(), intersections.end(), [](const PathExtrema& a, const PathExtrema& b) { return a.point.y() < b.point.y(); });
-
-	context.res.bottomBaseLine = intersections[1];
-	context.res.topBaseLine = intersections[0];
-
-	context.res.length = 0;
-
-	return true;
-
-}
-
-
 
 /*FROM qpathclipper.cpp */
 static QVector<QPainterPath> toSubpaths(const QPainterPath& path)
@@ -8843,6 +8892,7 @@ struct SharedShapeEvidence {
     std::optional<LoopHeadBody> head;
     std::vector<CrestedLoopBody> crestedHeads;
     std::optional<BowlTurnBody> bowlTurn;
+    std::vector<BowlNeckBody> bowlNecks;
     std::vector<OpenHeadBody> openHeads;
     std::optional<HorizontalCounterPair> horizontalPair;
     std::vector<StackedCounterPair> stackedPairs;
@@ -8865,6 +8915,12 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop") result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn") result.bowlTurn = recognizeBowlTurn(outline);
+    else if (shape == "bowl-neck") {
+        const auto neck = body.value("neck").toObject();
+        result.bowlNecks = recognizeBowlNecks(outline, neck);
+        for (auto& candidate : result.bowlNecks)
+            candidate.probe = recognizeBowlProbe(outline, candidate.section, neck.value("lookahead").toInt(14));
+    }
     else if (shape == "paired-route") result.pairedRoutes = recognizePairedRoutes(outline, body.value("routes").toObject());
     else if (shape == "tail-branch") result.tail = recognizeTailBranches(outline, body.value("tail").toObject());
     else if (shape == "folded-return") result.returnSeam = recognizeFoldedReturn(outline, body.value("return").toObject());
@@ -8921,6 +8977,11 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
     for (const auto& head : evidence.crestedHeads) {
         inspectLandmark("Head crest", head.crest);
         inspectLandmark("Right edge", head.rightEdge); inspectLandmark("Left edge", head.leftEdge);
+    }
+    for (const auto& neck : evidence.bowlNecks) {
+        inspectLandmark("Bowl neck", neck.section.topBaseLine);
+        inspectLandmark("Bowl neck", neck.section.bottomBaseLine);
+        if (neck.probe) inspectLandmark("Bowl turn", neck.probe->extremum);
     }
     if (evidence.bowlTurn) inspectLandmark("Bowl turn", evidence.bowlTurn->turn);
     for (const auto& head : evidence.openHeads) {
@@ -8986,6 +9047,8 @@ static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& fo
         found = evidence->horizontalPair && cutHorizontalPair(context, *evidence->horizontalPair, cuts.value("pair").toObject());
     else if (shape == "suspended-loop")
         found = evidence->head && cutLoopHead(context, *evidence->head, body.value("head").toObject(), cuts.value("head").toObject());
+    else if (shape == "bowl-neck")
+        found = cutBowlNecks(context, evidence->bowlNecks, cuts.value("probe").toObject());
     else if (shape == "bowl-turn")
         found = evidence->bowlTurn && cutBowlTurn(context, *evidence->bowlTurn, cuts.value("probe").toObject());
     else if (shape == "counter-neck") {
@@ -12386,7 +12449,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             found = rule.value("stemFoot").toBool() ? terminalStemFork(context, rule, context.res)
                                                     : terminalFork(context, rule, context.res);
         else if (method == "tail-entry") found = terminalTailEntry(context,rule.value("tailEntry").toObject(),context.res);
-        else if (method == "noon") found = searchNoonFina(context);
         else if (method == "alef-stem") {
             const bool shaftTurn = recoverTeeth && rule.value("shaftTurn").toBool();
             found = intrinsicTerminal(shaftTurn, [&] {

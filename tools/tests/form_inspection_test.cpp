@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
         {600,2,9,1,"yeh-fina"},
         {13,15,5,1,"kaf-flat-medi"},
         {3,13,3,1,"hah-stacked-medi"},
-        {3,3,1,2,"sad-medi"},
+        {3,3,1,2,"sad-medi"}, {3,13,3,1,"noon-corner-fina"},
         {3,1,5,1,"ain-init"}, {3,2,9,1,"ain-medi"},
         {600,2,9,1,"feh-init"}, {600,2,10,2,"feh-head-medi"}, {13,15,1,1,"feh-fina"},
         {3,2,2,2,"meem-init"}, {3,2,9,1,"meem-medi"}, {3,1,8,1,"meem-counter-fina"},
