@@ -42,9 +42,38 @@ static QByteArray snapshot(const LamMedialBodyEvidence& evidence) {
     return bytes;
 }
 
+static void checkConnectedShafts() {
+    // Two ascenders in one continuous outline, one with a flat nib.
+    // Each fork must be associated only with the shaft above its own ink.
+    QPainterPath ink;
+    ink.moveTo(0, 7);
+    for (const QPointF& point : {QPointF{2, 7}, {2, 1}, {2.5, 0}, {3, 1}, {3, 7},
+                                {5, 7}, {5, 1}, {5.45, 0}, {5.55, 0}, {6, 1}, {6, 7}, {9, 7},
+                                {9, 9}, {6, 9}, {5.5, 8}, {5, 9}, {3, 9}, {2.5, 8},
+                                {2, 9}, {0, 9}})
+        ink.lineTo(point);
+    ink.closeSubpath();
+    WordResultInfo::SubWordInfo empty;
+    SearchContext context{.transformedPath = ink, .subword = empty};
+    check(readTerminalOutline(context), "Two-shaft fixture outline missing");
+    const auto evidence = recognizeMedialLamBodies(inkOutline(context),
+        QJsonObject{{"shape", "forked-stem"}, {"minFlankSpan", .25}});
+    int shafts = 0;
+    for (const auto& stem : evidence.stems) {
+        if (stem.crest.point.y() != 0) continue;
+        ++shafts;
+        check(stem.forks.size() == 1, "Shaft did not claim exactly its own fork");
+        const auto tip = evidence.features.forks[stem.forks[0]].tip.point;
+        check(tip == QPointF(stem.crest.point.x() < 4 ? 2.5 : 5.5, 8),
+              "Shaft claimed the fork of another letter");
+    }
+    check(shafts == 2, "The two shaft crests were not found");
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
+    checkConnectedShafts();
     const auto config = PageAnalysisResult::letterForms();
     struct Fixture { int page, line, word, sub; const char* form; };
     const std::array fixtures{

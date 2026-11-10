@@ -3286,12 +3286,18 @@ static std::vector<LamForkBody> recognizeLamForkBodies(const SearchContext& cont
 }
 
 // Cache intrinsic body evidence independently of route and cut-policy alternatives.
-static LamBodyEvidence recognizeLamBodies(const SearchContext& context, double flankSpan) {
+static LamBodyEvidence recognizeLamBodies(const SearchContext& context, double flankSpan, bool allowLevelCrest) {
     LamBodyEvidence result;
     result.forks = recognizeLamForkBodies(context, flankSpan);
-    for (auto crest = context.timeSorted.begin(); crest != context.timeSorted.end(); ++crest)
-        if (crest->point.y() < context.prev(crest)->point.y() &&
-            crest->point.y() < context.next(crest)->point.y()) result.crests.push_back(*crest);
+    for (auto crest = context.timeSorted.begin(); crest != context.timeSorted.end(); ++crest) {
+        const double y = crest->point.y();
+        if (y >= context.prev(crest)->point.y()) continue;
+        auto edge = context.next(crest);
+        // A level nib can have several contour nodes at its top. Keep
+        // its first node if the outline descends on both sides of the cap.
+        while (allowLevelCrest && edge != crest && edge->point.y() == y) edge = context.next(edge);
+        if (y < edge->point.y()) result.crests.push_back(*crest);
+    }
     return result;
 }
 
@@ -7962,8 +7968,107 @@ static bool readTerminalOutline(SearchContext& context) {
 static bool declaredArmRoot(SearchContext &ctx, const QJsonObject &form, Stretching &result,
                             bool *cornerPair = nullptr);
 
+using LamShaftEdges = std::array<std::optional<PathExtrema>, 2>;
+
+static LamShaftEdges traceLamShaftEdges(const SearchContext& context, const PathExtrema& crest,
+                                       bool allowLevel) {
+    LamShaftEdges edges;
+    const auto cap = context.timeSorted.find(crest);
+    int side = 0;
+    for (const auto advance : {&SearchContext::next, &SearchContext::prev}) {
+        auto foot = cap;
+        auto point = cap;
+        for (size_t step = 0; step < context.timeSorted.size(); ++step) {
+            const auto next = (context.*advance)(point);
+            if (next == cap) break;
+            const double fall = next->point.y() - foot->point.y();
+            // Several almost coincident extrema can describe a rounded nib.
+            // Follow through that cap before measuring the descending edge.
+            if (allowLevel) {
+                if (fall < -1e-8 && QLineF(cap->point, next->point).length() > .05) break;
+            } else if (fall <= 0) break;
+            if (fall >= 0) foot = next;
+            point = next;
+        }
+        if (foot != cap) edges[side] = *foot;
+        ++side;
+    }
+    return edges;
+}
+
+// Follow the two contour arcs down from the cap. A fork must lead into the
+// ink strip bounded by those same arcs, even when another stroke is nearby.
+static bool forkBelongsToLamShaft(const SearchContext& context, const PathExtrema& crest,
+                                const LamShaftEdges& edges, const PathExtrema& tip,
+                                const std::vector<QBezier>& curves) {
+    if (!edges[0] || !edges[1] || curves.empty() || tip.point.y() <= crest.point.y()) return false;
+    const double foot = std::min({edges[0]->point.y(), edges[1]->point.y(), tip.point.y()});
+    if (foot <= crest.point.y()) return false;
+    const double period = curves.size();
+    const auto edgeAt = [&](double y, int side) {
+        const int direction = side == 0 ? -1 : 1;
+        double low = 0, high = std::fmod(direction * (edges[side]->time - crest.time) + period, period);
+        // Bracket the crossing on this edge. A whole-outline polynomial
+        // probe can lose a root on a nearly straight Bézier segment.
+        QPointF point;
+        for (int step = 0; step < 36; ++step) {
+            const double middle = (low + high) / 2;
+            const double time = std::fmod(crest.time + direction * middle + period, period);
+            point = curves[size_t(time)].pointAt(time - std::floor(time));
+            (point.y() < y ? low : high) = middle;
+        }
+        return point;
+    };
+    const auto section = [&](double y) -> QLineF {
+        const QLineF span(edgeAt(y, 0), edgeAt(y, 1));
+        const auto [left, right] = std::minmax({span.x1(), span.x2()});
+        if (right - left <= 1e-6 || !context.transformedPath.contains(span.center())) return {};
+        const auto hits = FindInterections(context.transformedPath, QLineF(left, y, right, y), true);
+        if (std::ranges::any_of(hits, [&](const PathExtrema& hit) {
+                return hit.point.x() > left + 1e-6 && hit.point.x() < right - 1e-6;
+            })) return {};
+        return span;
+    };
+    const double tracedRise = foot - crest.point.y();
+    const auto sample = [&](double preferred, double alternate) {
+        const auto span = section(crest.point.y() + preferred * tracedRise);
+        return span.isNull() ? section(crest.point.y() + alternate * tracedRise) : span;
+    };
+    // A slice can pass through a turn or a tangent on one edge. Sample
+    // just above it, keeping the same two contour arcs.
+    const auto upper = sample(.5, .375);
+    const auto lower = sample(.75, .625);
+    if (upper.isNull() || lower.isNull()) return false;
+    const double width = std::max(upper.length(), lower.length());
+    if (tracedRise < 2 * width) return false;
+    const auto axis = QLineF(upper.center(), lower.center());
+    const double atTip = (tip.point.y() - axis.y1()) / axis.dy();
+    const double remainingFall = tip.point.y() - lower.center().y();
+    if (std::abs(axis.pointAt(atTip).x() - tip.point.x()) > width + .15 * remainingFall) return false;
+    // A counter or a bent foot can turn one edge out before the other.
+    // Check the ink from the remaining traced strip to the fork itself.
+    const std::array shaftProbes{.5, .25, .75};
+    return std::ranges::any_of(shaftProbes, [&](double t) {
+        return interiorInkSegment(context.transformedPath, lower.pointAt(t), tip.point);
+    });
+}
+
+static std::vector<size_t> lamShaftForks(const SearchContext& context, const PathExtrema& crest,
+                                        const std::vector<LamForkBody>& forks,
+                                        const std::vector<QBezier>& curves) {
+    const auto edges = traceLamShaftEdges(context, crest, true);
+    std::vector<size_t> owned;
+    for (size_t i = 0; i < forks.size(); ++i) {
+        const auto& fork = forks[i];
+        if ((fork.fork || fork.folded()) &&
+            forkBelongsToLamShaft(context, crest, edges, fork.tip, curves)) owned.push_back(i);
+    }
+    return owned;
+}
+
 struct LamBodyRecognition {
     LamBodyEvidence lamBodies;
+    std::vector<std::vector<size_t>> shaftForks;
     std::optional<std::pair<PathExtrema, PathExtrema>> alefAttachment;
 };
 
@@ -8046,15 +8151,22 @@ static SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
     result.orientation = context.orientation;
     result.contours = context.subPaths;
     for (const auto& point : context.timeSorted) result.landmarks.append(point);
-    QMap<double, LamBodyEvidence> forkFeatures;
+    QMap<std::pair<double, bool>, LamBodyEvidence> forkFeatures;
     QMap<QString, std::optional<std::pair<PathExtrema, PathExtrema>>> armFeatures;
     for (auto it = descriptions.begin(); it != descriptions.end(); ++it) {
         const auto& body = it.value();
         LamBodyRecognition features;
         const auto span = body.value("minFlankSpan").toDouble();
-        auto forks = forkFeatures.find(span);
-        if (forks == forkFeatures.end()) forks = forkFeatures.insert(span, recognizeLamBodies(context, span));
+        const bool verifyShaft = body.value("shape") == "forked-stem" || body.value("shape") == "turning-shaft";
+        const auto key = std::pair{span, verifyShaft};
+        auto forks = forkFeatures.find(key);
+        if (forks == forkFeatures.end()) forks = forkFeatures.insert(key, recognizeLamBodies(context, span, verifyShaft));
         features.lamBodies = forks.value();
+        if (verifyShaft) {
+            const auto curves = baseContourCurves(context.transformedPath);
+            for (const auto& crest : features.lamBodies.crests)
+                features.shaftForks.push_back(lamShaftForks(context, crest, features.lamBodies.forks, curves));
+        }
         if (letters.size() >= 2 && body.value("alefLetters").toString().contains(letters.back())) {
             const auto armId = body.value("alefArm").toString();
             auto root = armFeatures.find(armId);
@@ -9191,31 +9303,15 @@ static LamMedialBodyEvidence recognizeMedialLamBodies(const InkOutline &outline,
     if (body.value("shape") != "forked-stem") return result;
     WordResultInfo::SubWordInfo empty;
     auto geometry = outline.geometry(empty);
-    result.features = recognizeLamBodies(geometry, body.value("minFlankSpan").toDouble());
+    result.features = recognizeLamBodies(geometry, body.value("minFlankSpan").toDouble(), true);
     const auto routes = body.value("exitRoutes").toArray();
+    const auto curves = baseContourCurves(geometry.transformedPath);
     for (const auto& crest : result.features.crests) {
-        LamStemBody stem{crest, {}, {}, {}};
-        // Pair this shaft only with intrinsic forks below its crest. Later
-        // placement still applies the exact existing stroke-scaled distances.
-        // This removes impossible pairs without narrowing any accepted range.
-        for (size_t i = 0; i < result.features.forks.size(); ++i) {
-            const auto& fork = result.features.forks[i];
-            if (!fork.isConcave(geometry.orientation) || (!fork.fork && !fork.folded())) continue;
-            if (body.value("minRise").toDouble() > 0 && fork.tip.point.y() <= crest.point.y()) continue;
-            stem.forks.push_back(i);
-        }
-        const auto at = geometry.timeSorted.find(crest);
-        int flank = 0;
-        for (const auto advance : {&SearchContext::next, &SearchContext::prev}) {
-            auto limit = at;
-            for (size_t step = 0; step < geometry.timeSorted.size(); ++step) {
-                const auto next = (geometry.*advance)(limit);
-                if (next->point.y() <= limit->point.y()) break;
-                limit = next;
-            }
-            if (limit != at) stem.descendingFlanks[flank] = *limit;
-            ++flank;
-        }
+        LamStemBody stem{crest, traceLamShaftEdges(geometry, crest, false), {}, {},
+                         lamShaftForks(geometry, crest, result.features.forks, curves)};
+        std::erase_if(stem.forks, [&](size_t i) {
+            return !result.features.forks[i].isConcave(geometry.orientation);
+        });
         if (body.value("entryRoute").isObject())
             for (int reverse = 0; reverse < 2; ++reverse)
                 stem.entryRoutes[reverse] =
@@ -12638,12 +12734,16 @@ static bool resolveLamForkEntry(const Word& word, const LamBodyRecognition& reco
     // Assign the recognized shaft to this transcript slot. The crest and fork
     // come from uncut ink; no landmark of the preceding letter defines them.
     std::vector<std::pair<double, const LamForkBody*>> candidates;
-    for (const auto& body : recognition.lamBodies.forks) {
+    for (size_t index = 0; index < recognition.lamBodies.forks.size(); ++index) {
+        const auto& body = recognition.lamBodies.forks[index];
         if (!body.isConcave(context.orientation) || (!body.fork && !body.folded()) ||
             !entrySide.isStrictLeft(body.tip.time) ||
             (hasExit && !getJoinTime(joins[slot], context.orientation).isStrictRight(body.tip.time))) continue;
         double score = std::numeric_limits<double>::infinity();
-        for (const auto& crest : recognition.lamBodies.crests) {
+        for (size_t i = 0; i < recognition.lamBodies.crests.size(); ++i) {
+            if (!recognition.shaftForks.empty() &&
+                std::ranges::find(recognition.shaftForks[i], index) == recognition.shaftForks[i].end()) continue;
+            const auto& crest = recognition.lamBodies.crests[i];
             const double rise = body.tip.point.y() - crest.point.y();
             const double lean = std::abs(body.tip.point.x() - crest.point.x());
             if (same(crest.point.y(), bounds.top()) && entrySide.isStrictLeft(crest.time) &&
@@ -13069,8 +13169,24 @@ static bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition
             std::vector<std::pair<Stretching, Stretching>> tipFallbacks;
             std::vector<Stretching> foldedEntries;
             bool refined = false;
-            for (const auto& body : recognizedBodies) {
+            for (size_t index = 0; index < recognizedBodies.size(); ++index) {
                 if (refined) break;
+                const auto& body = recognizedBodies[index];
+                if (!recognized->shaftForks.empty()) {
+                    bool ownsFork = false;
+                    for (size_t j = 0; j < recognized->shaftForks.size(); ++j) {
+                        const auto& crest = recognized->lamBodies.crests[j];
+                        // The true cap can lie above the sampled crest on a
+                        // flat or slanted nib. Use membership in this body.
+                        if (!bounds.adjusted(-.01, -.01, .01, .01).contains(crest.point)) continue;
+                        const auto& forks = recognized->shaftForks[j];
+                        if (std::ranges::find(forks, index) != forks.end()) {
+                            ownsFork = true;
+                            break;
+                        }
+                    }
+                    if (!ownsFork) continue;
+                }
                 if (!body.isConcave(context.orientation)) continue;
                 const auto* tip = &body.tip;
                 if (tip->point.y() - bounds.top() < lamBody.value("minRise").toDouble() * stroke ||
