@@ -1,5 +1,7 @@
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool condition, const char* message) {
     if (!condition) qFatal("%s", message);

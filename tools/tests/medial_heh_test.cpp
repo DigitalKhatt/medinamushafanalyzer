@@ -1,7 +1,9 @@
 // Exercise the private geometry detector without the segmentation dispatcher
 // or any neighboring letter templates. The test runner omits its normal object.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool passed, const char* message) {
     if (!passed) qFatal("%s", message);

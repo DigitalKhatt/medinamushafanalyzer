@@ -1,6 +1,8 @@
 // Native corpus regressions for eight previously unresolved shape families.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 static QByteArray read(const QString& path) {

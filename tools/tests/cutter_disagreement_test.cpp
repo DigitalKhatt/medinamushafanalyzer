@@ -1,6 +1,8 @@
 // Protect letter ownership in the first ranked disagreement batch and its controls.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void require(bool condition, const QString& message) {
     if (!condition) qFatal("%s", qPrintable(message));

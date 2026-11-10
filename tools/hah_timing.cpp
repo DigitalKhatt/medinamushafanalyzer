@@ -1,5 +1,5 @@
 // Read-only timing harness for the native cutter. Never writes page/cache data.
-#include "../segmentsubword.cpp"
+#include "../pageanalysisresult.h"
 #include "../lettersegmentationcache.h"
 #include <QApplication>
 #include <QElapsedTimer>

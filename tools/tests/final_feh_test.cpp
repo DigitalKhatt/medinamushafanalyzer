@@ -1,7 +1,9 @@
 // Final feh owns its head and bowl; its incoming cut uses its own corner pair.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
 #include <array>
+
+using namespace MedinaCutter;
 
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 

@@ -1,6 +1,8 @@
 // Exercise the shared loop/walk/tooth composition without neighboring templates.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool passed, const char* message) {
     if (!passed) qFatal("%s", message);

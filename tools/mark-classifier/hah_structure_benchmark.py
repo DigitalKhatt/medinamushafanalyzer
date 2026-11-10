@@ -44,7 +44,7 @@ def bridge_source(destination):
     for before,after in changes:
         if text.count(before)!=1:raise ValueError(f'Instrumentation anchor changed: {before}')
         text=text.replace(before,after)
-    for header in ['segmentsubword.cpp','lettersegmentationcache.h']:
+    for header in ['cutter/detail.h','lettersegmentationcache.h']:
         text=text.replace(f'"../{header}"',f'"{NATIVE/header}"')
     destination.write_text(text)
 
@@ -149,7 +149,9 @@ def run(folder,repeats):
         print(label,results['trials'][label]['coreTotal'],flush=True)
     results['native']['stableOutputs']=all(w['stable'] for w in native['words'])
     results['native']['completeWords']=sum(w['complete'] for w in native['words'])
-    results['preservation']={str(p):scorer.digest(p) for p in [ROOT/'hah_structure.py',ROOT/'hah_shape_trial.py',NATIVE/'segmentsubword.cpp',NATIVE/'templates/letter-forms.json',TRIALS['v3']/'model.json']}
+    from cutter_source import cutter_source_digest
+    results['preservation']={str(p):scorer.digest(p) for p in [ROOT/'hah_structure.py',ROOT/'hah_shape_trial.py',NATIVE/'templates/letter-forms.json',TRIALS['v3']/'model.json']}
+    results['preservation'][str(NATIVE/'segmentsubword.cpp')]=cutter_source_digest(NATIVE)
     results['nativeVsV3CoreRatio']=results['trials']['v3']['coreTotal']['totalSecondsMedian']/results['native']['totalSecondsMedian']
     scorer.write_json(folder/'timing.json',results)
 

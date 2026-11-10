@@ -1,6 +1,8 @@
 // The open zigzag kaf is located from its own elbow and two return branches.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 static SearchContext geometry(QPainterPath ink, WordResultInfo::SubWordInfo& dummy) {

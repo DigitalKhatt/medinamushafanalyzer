@@ -167,7 +167,7 @@ the occurrence, enforces contour order, checks retained ink and assigns shared
 seams or connectors. Top-level selectors, retry order and shared-attachment
 constraints govern assembly; they are not inputs to intrinsic recognition.
 Assembly cannot change cached evidence. The shared schema registry in
-`segmentsubword.cpp` lists the supported shape and boundary names.
+`../cutter/forms/configuration.cpp` lists the supported shape and boundary names.
 
 For a returning bowl, `body.tail.flankSampleWidths` measures each shoulder
 flank over a local stroke-scaled arc (default `0.25`), accepting sharp or rounded
@@ -266,21 +266,8 @@ Open the report through a local static server. For two saved page caches,
 `tools/letter_audit/review_letter_forms.py --help` shows the before-and-after
 comparison options.
 
-The body/cut pipeline is in `segmentsubword.cpp`:
-`bodyCutProgram` resolves per-form descriptions (cached until the config changes);
-`recognizeSubwordBodies` gathers reusable features from uncut ink;
-`makeSubwordCutPlan` reads the matched form's right/left and ligature policies;
-`resolveSubwordCutPlan` resolves compatible cuts before `assembleBodyPartition`
-builds the masks. The planner has no hardcoded lām template-name dispatch.
-
-Lām recognition bypasses the legacy method dispatcher through
-`declaredLamBoundary` and `recognizeMedialLamBodies`. The medial recognizer's
-`InkOutline` input has no neighboring-join state; `assembleMedialLamCuts`
-projects its saved evidence and applies the neighbor checks. Generic contour
-primitives are shared: `recognizeContourRoute` finds landmarks, while
-`projectContourRoute` applies a cut policy. Migrated families share `recognizedSharedShape` and `declaredSharedBoundary`;
-remaining forms use the existing matchers during the incremental migration. A failed lām declaration
-cannot fall back to a legacy lām rule.
+See [the cutter layout](../cutter/README.md) for the search pipeline,
+shared contour geometry, and the recognition and assembly files for each form.
 
 Run `python3 tools/tests/check_letter_forms.py lam_alef_test.cpp
 letter_forms_test.cpp body_shape_test.cpp` for recognition, inheritance,

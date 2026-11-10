@@ -1,6 +1,8 @@
 // Meem's two necks belong to its own loop, including suspended ligatures.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 

@@ -45,7 +45,38 @@ set(TFMatcherCpp TFMatcherCpp/AlignedTF.cpp TFMatcherCpp/AlignedTF.h TFMatcherCp
 add_executable(${PROJECT_NAME} ${ALL_FILES} ${TFMatcherCpp} main.cpp proposalexport.cpp proposalexport.h
     markassignment.cpp markassignment.h markassignment_p.h markgeometry.cpp markcharacterlinks.cpp waqfrecognition.cpp)
 
+target_sources(${PROJECT_NAME} PRIVATE
+    cutter/detail.h
+    cutter/engine/body_cut_plan.cpp
+    cutter/engine/diagnostics.cpp
+    cutter/engine/partition_assembly.cpp
+    cutter/engine/recovery.cpp
+    cutter/engine/search_pass.cpp
+    cutter/forms/configuration.cpp
+    cutter/forms/counters_and_bowls.cpp
+    cutter/forms/dispatch.cpp
+    cutter/forms/heads_and_ligatures.cpp
+    cutter/forms/lam/attachment_policy.cpp
+    cutter/forms/lam/recognition.cpp
+    cutter/forms/ownership_repairs.cpp
+    cutter/forms/stems_and_routes.cpp
+    cutter/forms/teeth.cpp
+    cutter/geometry/contours.cpp
+    cutter/geometry/intersections.cpp
+    cutter/geometry/partition.cpp
+)
+
 target_precompile_headers(${PROJECT_NAME} PRIVATE CommonPCH.h)
+
+# Keep cross-file optimization for the separately compiled cutter in release builds.
+# MSVC currently uses Edit and Continue and incremental linking instead.
+if(NOT MSVC)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_supported LANGUAGES CXX)
+    if(ipo_supported)
+        set_property(TARGET ${PROJECT_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    endif()
+endif()
 
 # The resolved AI input is independent of letter templates and the cutter.
 # Rebuilding any upstream parser/assignment dependency invalidates that cache.

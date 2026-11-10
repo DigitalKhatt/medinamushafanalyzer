@@ -21,6 +21,9 @@ class ResumeTests(unittest.TestCase):
             font = root / 'input/font.dat'
             font.write_bytes(b'font')
             (root / 'segmentsubword.cpp').write_bytes(b'cutter')
+            cutter_part = root / 'cutter/forms/fixture.cpp'
+            cutter_part.parent.mkdir(parents=True)
+            cutter_part.write_bytes(b'fixture cutter')
             executable = root / 'exporter'
             executable.write_bytes(b'export')
             snapshot = root / 'report'
@@ -64,3 +67,7 @@ class ResumeTests(unittest.TestCase):
                 self.assertFalse(audit.run(snapshot, executable, jobs=1))
                 self.assertEqual(regenerated, [372])
                 self.assertEqual(json.loads((pages / 'page372.json').read_bytes()), page_data(372))
+
+                cutter_part.write_bytes(b'changed cutter')
+                with self.assertRaisesRegex(ValueError, 'Cutter or executable changed'):
+                    audit.run(snapshot, executable, jobs=1)

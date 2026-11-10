@@ -1,6 +1,8 @@
 // Independent body constraints and baseline-entry teeth in the lam-kha ligature.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool value, const char* message) {
     if (!value) qFatal("%s", message);

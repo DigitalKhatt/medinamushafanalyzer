@@ -1,5 +1,7 @@
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool passed, const char* message) {
     if (!passed) qFatal("%s", message);
@@ -28,7 +30,8 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
     const auto rootsAre = [](double a, double b, double c, double d, std::vector<double> expected) {
-        auto roots = cubicRoots(a, b, c, d);
+        std::array<double, 3> storage;
+        auto roots = cubicRoots(a, b, c, d, storage);
         std::sort(roots.begin(), roots.end());
         check(roots.size() == expected.size(), "Wrong number of polynomial intersections");
         for (size_t i = 0; i < roots.size(); ++i)

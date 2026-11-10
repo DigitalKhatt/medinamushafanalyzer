@@ -17,7 +17,6 @@ def build(destination, source):
     subprocess.run(shlex.split(command.split(' -MD ')[0]) + ['-I'+str(ROOT), '-o', obj, '-c',
                    str(ROOT/'tools'/source)], cwd=build_dir, check=True)
     link = shlex.split(commands[-1].removeprefix(': && ').removesuffix(' && :'))
-    link = [s for s in link if not s.endswith('/segmentsubword.cpp.o')]
     link[next(i for i,s in enumerate(link) if s.endswith('/main.cpp.o'))] = obj
     link[link.index('-o')+1] = str(destination)
     subprocess.run(link, cwd=build_dir, check=True)

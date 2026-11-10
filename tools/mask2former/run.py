@@ -13,6 +13,9 @@ import venv
 
 from workspace import ENV, HERE, NATIVE, latest_report, read, run_path
 
+sys.path.insert(0, str(NATIVE / 'tools'))
+from cutter_source import cutter_source_digest
+
 
 PRETRAINED_REPO = 'facebook/mask2former-swin-tiny-coco-instance'
 PRETRAINED_REVISION = '22c4a2f15dc88149b8b8d9f4d42c54431fbd66f6'
@@ -60,7 +63,7 @@ def pretrained_checkpoint(explicit, previous):
 
 
 def current_snapshot():
-    engine = digest(NATIVE / 'segmentsubword.cpp')
+    engine = cutter_source_digest(NATIVE)
     templates = digest(NATIVE / 'templates' / 'letter-forms.json')
     font = digest(NATIVE / 'input' / 'font.dat')
     for path in sorted((NATIVE / 'output').glob('*/generation.json'),

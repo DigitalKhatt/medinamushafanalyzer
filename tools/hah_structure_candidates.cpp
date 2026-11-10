@@ -1,11 +1,13 @@
 // Vector materialization only. Structural probes are generated independently
 // from raw ink by hah_structure.py. No contour-walk matcher is called here.
-#include "../segmentsubword.cpp"
+#include "../cutter/detail.h"
 #include "../lettersegmentationcache.h"
 #include <QApplication>
 #include <QBuffer>
 #include <QImage>
 #include <QPainter>
+
+using namespace MedinaCutter;
 
 static QPointF point(const QJsonValue& v){const auto a=v.toArray();return {a[0].toDouble(),a[1].toDouble()};}
 static QJsonArray xy(const QPointF& p){return {p.x(),p.y()};}

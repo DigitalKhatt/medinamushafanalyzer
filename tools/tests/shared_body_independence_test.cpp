@@ -1,6 +1,8 @@
 // Shared counter/route evidence belongs to the uncut ink, not a neighboring join.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool ok, const char *message) {
     if (!ok)
@@ -395,7 +397,10 @@ int main(int argc, char **argv) {
             invalid.insert(phase, QJsonArray{bad});
             check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
         }
-    check(forms.size() >= 153 && shapes.size() >= 32, "Not all shared shapes exercised");
+    const auto& schemas = sharedShapeSchemas();
+    for (auto schema = schemas.cbegin(); schema != schemas.cend(); ++schema)
+        if (!shapes.contains(schema.key()))
+            qFatal("No configured template exercises shared shape %s", qPrintable(schema.key()));
     struct Fixture {
         int page, line, word, sub;
     };

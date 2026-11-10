@@ -1,8 +1,10 @@
 // Read-only corpus audit. Run from a separate report runtime directory so the
 // existing cache exporter cannot overwrite the native application's live cache.
-#include "../segmentsubword.cpp"
+#include "../afont.h"
+#include "../pageanalysisresult.h"
 #include "../lettersegmentationcache.h"
 #include <QApplication>
+#include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <iostream>
 

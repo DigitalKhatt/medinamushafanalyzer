@@ -1,7 +1,8 @@
 // Test the private detector without neighboring templates or join landmarks.
-// The runner omits the normal segmentsubword object when linking this file.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool passed, const char* message) {
     if (!passed) qFatal("%s", message);

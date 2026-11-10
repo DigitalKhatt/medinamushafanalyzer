@@ -1,6 +1,8 @@
 // A shoulder-entry hah head, measured independently of surrounding letters.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool passed, const char* message) {
     if (!passed) qFatal("%s", message);

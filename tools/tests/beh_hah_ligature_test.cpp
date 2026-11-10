@@ -1,6 +1,8 @@
 // Private geometry checks run without the surrounding letter templates.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool passed, const QString& message) {
     if (!passed) qFatal("%s", qPrintable(message));

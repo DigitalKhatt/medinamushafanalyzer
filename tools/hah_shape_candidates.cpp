@@ -1,11 +1,13 @@
 // Isolated experiment: export intrinsic medial-hah candidates. Never writes live caches.
-// Including the engine keeps the experiment on the exact production geometry code.
-#include "../segmentsubword.cpp"
+// Links against the production contour recognizers.
+#include "../cutter/detail.h"
 #include "../lettersegmentationcache.h"
 #include <QApplication>
 #include <QBuffer>
 #include <QImage>
 #include <QPainter>
+
+using namespace MedinaCutter;
 
 static QJsonArray xy(const QPointF& p) { return {p.x(), p.y()}; }
 static QJsonObject pathJson(const QPainterPath& path) {

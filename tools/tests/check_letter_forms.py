@@ -10,7 +10,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / "build/ninja-nmc"
 
-# These tests include the cutter implementation to exercise its private geometry.
+# These tests exercise the cutter’s private geometry.
 CUTTER_TESTS = (
     "tail_shoulder_test.cpp",
     "candidate_search_test.cpp",
@@ -48,8 +48,6 @@ def main():
             compile_args += ["-I" + str(ROOT), "-o", obj, "-c", str(ROOT / "tools/tests" / source)]
             subprocess.run(compile_args, cwd=BUILD, check=True)
             link = shlex.split(commands[-1].removeprefix(": && ").removesuffix(" && :"))
-            if source in CUTTER_TESTS:
-                link = [arg for arg in link if not arg.endswith("/segmentsubword.cpp.o")]
             main_objects = [i for i, arg in enumerate(link) if arg.endswith("/main.cpp.o")]
             if len(main_objects) != 1:
                 raise RuntimeError("Expected one main object in the application's Ninja link command")

@@ -8,9 +8,12 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tools'))
+from cutter_source import cutter_source_digest
 
 def digest(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -18,7 +21,7 @@ def run(output, executable, jobs=4, templates=None, page_timeout=180):
     if page_timeout <= 0:raise ValueError('Page timeout must be positive')
     output=output.resolve();output.mkdir(parents=True,exist_ok=True)
     executable=executable.resolve()
-    engine_hash=digest(ROOT/'segmentsubword.cpp');executable_hash=digest(executable)
+    engine_hash=cutter_source_digest(ROOT);executable_hash=digest(executable)
     previous=output/'generation.json'
     generation={}
     if previous.exists():
@@ -90,7 +93,7 @@ def run(output, executable, jobs=4, templates=None, page_timeout=180):
             if (len(completed)+len(failures))%20==0:print(f'{len(completed)}/604 pages; {len(failures)} failures; {time.monotonic()-started:.0f}s',flush=True)
     if digest(config)!=config_hash or digest(original)!=config_hash:raise ValueError('Live templates changed during audit')
     if digest(font_path)!=font_hash:raise ValueError('Source font changed during audit')
-    if digest(ROOT/'segmentsubword.cpp')!=engine_hash or digest(executable)!=executable_hash:raise ValueError('Cutter changed during audit')
+    if cutter_source_digest(ROOT)!=engine_hash or digest(executable)!=executable_hash:raise ValueError('Cutter changed during audit')
     if any(digest(ROOT/f'pages/page{n}.dat')!=h for n,h in hashes.items()):raise ValueError('Source page changed during audit')
     # A verified no-op must preserve timing and the manifest hash embedded in downstream reports.
     if (pending or generation.get('completedPages') != sorted(completed) or generation.get('failures')

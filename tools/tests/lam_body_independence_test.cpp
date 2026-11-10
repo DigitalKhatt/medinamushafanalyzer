@@ -1,6 +1,8 @@
 // Neighbor changes may reject an assembly, never remove intrinsic lām evidence.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 

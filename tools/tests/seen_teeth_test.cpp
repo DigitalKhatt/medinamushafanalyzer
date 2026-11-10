@@ -1,6 +1,8 @@
 // Exercise the seen detector independently of the neighboring letter rules.
-#include "../../segmentsubword.cpp"
+#include "../../cutter/detail.h"
 #include <QApplication>
+
+using namespace MedinaCutter;
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 static SearchContext geometry(QPainterPath path, WordResultInfo::SubWordInfo& dummy) {
     path.setFillRule(Qt::WindingFill);
