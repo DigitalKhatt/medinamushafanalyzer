@@ -900,10 +900,48 @@ const PreparedPassRules& preparePassRules(const QJsonObject& config, bool recove
     return result;
 }
 
+// The cutter alternates between the full declarations and the smaller sets
+// used by the search and recovery passes. Keep those programs ready across
+// subwords. Compare declarations by value so template previews see edits.
+const BodyCutProgram& bodyCutProgram(const QJsonObject& config) {
+    constexpr std::array sections{"initial", "medial", "final"};
+    using DeclarationLists = std::array<QJsonArray, sections.size()>;
+    const DeclarationLists declarations{config.value(sections[0]).toArray(), config.value(sections[1]).toArray(),
+                                        config.value(sections[2]).toArray()};
+    static thread_local std::array<std::pair<DeclarationLists, BodyCutProgram>, 4> programs;
+    static thread_local size_t nextProgram = 0;
+    for (const auto& [compiled, program] : programs)
+        if (compiled == declarations) return program;
+    auto& [compiled, program] = programs[nextProgram];
+    nextProgram = (nextProgram + 1) % programs.size();
+    program = {};
+    for (size_t position = 0; position < declarations.size(); ++position) {
+        for (const auto& value : declarations[position]) {
+            const auto form = value.toObject();
+            if (!form.contains("body") || !form.contains("cuts")) continue;
+            const auto id = form.value("id").toString();
+            const auto body = formDescription(config, form, "body");
+            QString nextLetters;
+            if (position == 0) nextLetters = form.value("ligatureWith").toString();
+            if (position == 1) nextLetters = form.value("sharedFoldWithFinal").toString();
+            program.forms.insert(id, {body, formDescription(config, form, "cuts"), bodyDescriptionKey(body),
+                                      nextLetters});
+            for (QChar letter : form.value("current").toString())
+                program.formsByPosition[position][letter].append(id);
+        }
+    }
+    compiled = declarations;
+    return program;
+}
+
+QByteArray bodyDescriptionKey(const QJsonObject& body) {
+    return QJsonDocument(body).toJson(QJsonDocument::Compact);
+}
+
 QJsonObject bodyCutPolicy(const QJsonObject& description, const QString& letters, int slot) {
     auto policy = description;
     const auto terminal = policy.take("beforeFinal").toObject();
-    if (slot + 2 == letters.size() && terminal.value("letters").toString().contains(letters.back()))
+    if (hasFollowingLetter(letters, slot, terminal.value("letters").toString(), true))
         policy = withOverrides(policy, terminal);
     return policy;
 }

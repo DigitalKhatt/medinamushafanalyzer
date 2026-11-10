@@ -51,32 +51,6 @@ bool preparePassOutline(SearchContext& context, OutlineSearchCache& cache) {
     return true;
 }
 
-// QJsonObject copies share their data until edited. Reuse the resolved
-// declarations across a page; a template preview invalidates this bounded
-// cache by value, without keeping any source geometry or segmentation result.
-const BodyCutProgram& bodyCutProgram(const QJsonObject& config) {
-    static thread_local QJsonObject compiledConfig;
-    static thread_local BodyCutProgram program;
-    if (compiledConfig == config) return program;
-    program = {};
-    for (const auto* phase : {"initial", "medial", "final"})
-        for (const auto& value : config.value(phase).toArray()) {
-            const auto form = value.toObject();
-            if (!form.contains("body") || !form.contains("cuts")) continue;
-            const auto current = form.value("current").toString();
-            program.forms.insert(form.value("id").toString(), {current,
-                formDescription(config, form, "body"), formDescription(config, form, "cuts")});
-            for (QChar letter : current)
-                if (!program.letters.contains(letter)) program.letters += letter;
-        }
-    compiledConfig = config;
-    return program;
-}
-
-QByteArray bodyDescriptionKey(const QJsonObject& body) {
-    return QJsonDocument(body).toJson(QJsonDocument::Compact);
-}
-
 const LamBodyRecognition* recognizedLamBody(const SubwordBodyRecognition& recognition,
                                                    const QJsonObject& description) {
     const auto found = recognition.lamProfiles.constFind(bodyDescriptionKey(description));
@@ -89,18 +63,24 @@ SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
     if (sub.paths.empty() || sub.paths.front() < 0 || sub.paths.front() >= int(word.paths.size()) ||
         sub.secondaryBodyPath >= int(word.paths.size())) return result;
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
+    if (letters.size() < 2) return result;
     const auto& program = bodyCutProgram(config);
-    if (std::none_of(letters.begin(), letters.end(), [&](QChar letter) { return program.letters.contains(letter); }))
-        return result;
-    QMap<QByteArray, QJsonObject> descriptions;
-    for (const auto& form : program.forms) {
-        // Tooth declarations have their own intrinsic recognizer. They must
-        // not be interpreted as stems or trigger the lām fork search.
-        if (!lamDescription(form.body))
-            continue;
-        if (std::none_of(letters.begin(), letters.end(), [&](QChar letter) { return form.current.contains(letter); }))
-            continue;
-        descriptions.insert(bodyDescriptionKey(form.body), form.body);
+    const int last = letters.size() - 1;
+    QMap<QByteArray, std::pair<QJsonObject, bool>> descriptions;
+    for (int slot = 0; slot <= last; ++slot) {
+        const size_t position = slot == 0 ? 0 : slot == last ? 2 : 1;
+        const auto& forms = program.formsByPosition[position];
+        const auto candidates = forms.constFind(letters[slot]);
+        if (candidates == forms.cend()) continue;
+        for (const auto& id : candidates.value()) {
+            const auto& form = program.forms.constFind(id).value();
+            if (!lamDescription(form.body)) continue;
+            if (!form.nextLetters.isEmpty() &&
+                !hasFollowingLetter(letters, slot, form.nextLetters, position == 1)) continue;
+            auto& [body, needsAlefArm] = descriptions[form.key];
+            body = form.body;
+            needsAlefArm |= hasFollowingLetter(letters, slot, body.value("alefLetters").toString(), true);
+        }
     }
     if (descriptions.isEmpty()) return result;
     const auto shape = word.bodyShape(sub);
@@ -114,7 +94,7 @@ SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
     QMap<std::pair<double, bool>, LamBodyEvidence> forkFeatures;
     QMap<QString, std::optional<std::pair<PathExtrema, PathExtrema>>> armFeatures;
     for (auto it = descriptions.begin(); it != descriptions.end(); ++it) {
-        const auto& body = it.value();
+        const auto& [body, needsAlefArm] = it.value();
         LamBodyRecognition features;
         const auto span = body.value("minFlankSpan").toDouble();
         const bool verifyShaft = body.value("shape") == "forked-stem" || body.value("shape") == "turning-shaft";
@@ -127,7 +107,7 @@ SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
             for (const auto& crest : features.lamBodies.crests)
                 features.shaftForks.push_back(lamShaftForks(context, crest, features.lamBodies.forks, curves));
         }
-        if (letters.size() >= 2 && body.value("alefLetters").toString().contains(letters.back())) {
+        if (needsAlefArm) {
             const auto armId = body.value("alefArm").toString();
             auto root = armFeatures.find(armId);
             if (root == armFeatures.end()) {

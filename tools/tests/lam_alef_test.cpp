@@ -105,6 +105,19 @@ static void checkBodyRecognitionSeparation() {
     check(evidence.valid && !bodyEvidence(evidence, config).lamBodies.forks.empty() && !bodyEvidence(evidence, config).lamBodies.crests.empty(),
           "Uncut ink did not produce reusable lam body evidence");
 
+    const auto hasProfile = [&](const SubwordBodyRecognition& recognized, const char* id) {
+        return recognizedLamBody(recognized, formDescription(config, namedLetterForm(config, id), "body")) != nullptr;
+    };
+    auto initialLam = sub;
+    initialLam.text = QStringLiteral("لَهُمْ");
+    const auto initialEvidence = recognizeSubwordBodies(word, initialLam, config);
+    check(hasProfile(initialEvidence, "lam-init") && !hasProfile(initialEvidence, "lam-medi") &&
+          !hasProfile(initialEvidence, "lam-bowl-fina") && !hasProfile(initialEvidence, "lam-hah-stacked-init"),
+          "Initial lām admitted a template for another position or neighbor");
+    initialLam.text = QStringLiteral("لَحَمَ");
+    check(hasProfile(recognizeSubwordBodies(word, initialLam, config), "lam-hah-stacked-init"),
+          "An adjacent hah did not enable the stacked lām ligature");
+
     // Changing every lam cut option must not change body recognition. Nor may
     // leftover masks or joins from a previous preview affect its landmarks.
     auto changed = config;
@@ -281,6 +294,11 @@ static void checkSharedAlefJunctionPolicy() {
     const auto evidence = recognizeSubwordBodies(word, sub, config);
     check(bodyEvidence(evidence, config).alefAttachment.has_value() && bodyEvidence(evidence, config).alefAttachment->first.time == 5 &&
           bodyEvidence(evidence, config).alefAttachment->second.time == 13, "Uncut alef junction was not recognized");
+    auto separated = sub;
+    separated.text = PageAnalysisResult::bodyLetters(sub.text);
+    separated.text.insert(separated.text.size() - 1, QChar(0x0628));
+    const auto separatedEvidence = recognizeSubwordBodies(word, separated, config);
+    check(!bodyEvidence(separatedEvidence, config).alefAttachment, "A nonadjacent alef triggered arm recognition");
     const auto otherPolicy = recognizeSubwordBodies(word, sub, routePolicy);
     check(bodyEvidence(otherPolicy, config).alefAttachment && bodyEvidence(otherPolicy, config).alefAttachment->first.point == bodyEvidence(evidence, config).alefAttachment->first.point &&
           bodyEvidence(otherPolicy, config).alefAttachment->second.point == bodyEvidence(evidence, config).alefAttachment->second.point,

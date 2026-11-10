@@ -1133,14 +1133,20 @@ struct SubwordBodyRecognition {
 };
 
 struct DeclaredBodyForm {
-    QString current;
     QJsonObject body, cuts;
+    QByteArray key;
+    QString nextLetters;
 };
 
 struct BodyCutProgram {
     QMap<QString, DeclaredBodyForm> forms;
-    QString letters;
+    std::array<QHash<QChar, QVector<QString>>, 3> formsByPosition;
 };
+
+inline bool hasFollowingLetter(QStringView letters, int slot, QStringView allowed, bool mustBeFinal = false) {
+    const int next = slot + 1;
+    return next < letters.size() && (!mustBeFinal || next + 1 == letters.size()) && allowed.contains(letters[next]);
+}
 
 const BodyCutProgram& bodyCutProgram(const QJsonObject& config);
 

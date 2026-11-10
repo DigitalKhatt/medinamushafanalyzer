@@ -129,7 +129,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         const auto next = rule.value("next");
         return (!current.isString() || current.toString().contains(baseText[index])) &&
                (!next.isString() || next.toString().contains(baseText[index + 1])) &&
-               (!rule.contains("ligatureWith") || rule.value("ligatureWith").toString().contains(baseText[index + 1])) &&
+               (!rule.contains("ligatureWith") || hasFollowingLetter(baseText, index, rule.value("ligatureWith").toString())) &&
                (!rule.contains("first") || rule.value("first").toBool() == (index == 0)) &&
                (!rule.contains("last") || rule.value("last").toBool() == (index + 1 == lastIndex));
     };
@@ -225,7 +225,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     const auto matchesBody = [&](const QJsonObject& form, int letter) {
         const auto final = form.value("sharedFoldWithFinal").toString();
         return form.value("current").toString().contains(baseText[letter]) &&
-            (final.isEmpty() || (letter + 1 == lastIndex && final.contains(baseText.back())));
+            (final.isEmpty() || hasFollowingLetter(baseText, letter, final, true));
     };
     const auto canProposeMedialBoundary = [&](int letter) {
         return letter > 0 && letter < lastIndex &&
