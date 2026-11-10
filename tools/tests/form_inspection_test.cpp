@@ -75,6 +75,27 @@ int main(int argc, char** argv) {
         analysis.segmentSubword(f.page-1, f.line-1, f.word-1, f.sub-1, nullptr, true, &config);
         samePartition(expected, analysis.page.lines[f.line-1].words[f.word-1].wordResultInfo.subWords[f.sub-1]);
     }
+    // A normal form may share geometry with a recovery-only parent. Filtering
+    // the parent's execution must not discard that shared description.
+    auto inlineDescriptions = config;
+    for (const auto* phase : {"initial", "medial", "final"}) {
+        auto forms = config.value(phase).toArray();
+        for (int i = 0; i < forms.size(); ++i) {
+            const auto id = forms[i].toObject().value("id").toString();
+            forms[i] = resolvedLetterForm(config, id);
+        }
+        inlineDescriptions.insert(phase, forms);
+    }
+    for (const auto f : {Fixture{2,3,6,2,"beh-return-fina"}, Fixture{1,6,6,2,"beh-return-fina"}}) {
+        auto analysis = fixture(f.page);
+        check(analysis.segmentSubword(f.page-1, f.line-1, f.word-1, f.sub-1, nullptr, true, &inlineDescriptions),
+              "Inline body description did not complete the fixture");
+        const auto expected = analysis.page.lines[f.line-1].words[f.word-1].wordResultInfo.subWords[f.sub-1];
+        check(expected.matchedTemplates.contains(f.id), "Inheritance regression did not exercise the intended form");
+        check(analysis.segmentSubword(f.page-1, f.line-1, f.word-1, f.sub-1, nullptr, true, &config),
+              "Inherited description failed after recovery filtering");
+        samePartition(expected, analysis.page.lines[f.line-1].words[f.word-1].wordResultInfo.subWords[f.sub-1]);
+    }
     check(PageAnalysisResult::letterForms() == config, "Preview activated a draft globally");
 
     auto* full = new QPlainTextEdit;

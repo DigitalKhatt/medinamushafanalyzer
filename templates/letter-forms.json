@@ -4783,18 +4783,16 @@
     {
       "id": "beh-return-fina",
       "current": "بتث",
-      "method": "tail-entry",
-      "start": "left",
       "ownsLeftTip": true,
-      "tailEntry": {
-        "minRise": 0.35,
-        "minRun": 0.4,
-        "maxRun": 75,
-        "walkWidths": 0.5
-      },
       "tryNext": true,
       "tightJoin": true,
-      "returningStroke": true
+      "returningStroke": true,
+      "body": {
+        "inherit": "noon-returning-bowl-fina"
+      },
+      "cuts": {
+        "inherit": "noon-returning-bowl-fina"
+      }
     },
     {
       "id": "beh-bowl-fina",

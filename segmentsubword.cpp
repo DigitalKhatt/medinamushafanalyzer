@@ -11894,7 +11894,9 @@ bool PageAnalysisResult::segmentWithRecovery(int pageIndex, int lineIndex, int w
             QJsonArray original, searchable, headForms;
             QString characters;
             for (const auto& value : requested.value(position).toArray()) {
-                const auto form = value.toObject();
+                // Resolve references before recovery-only parents leave the active
+                // form list. Eligibility controls execution, not shared geometry.
+                const auto form = resolvedBodyForm(requested, value.toObject());
                 if (form.value("onHeadConflict").toBool()) headForms.append(form);
                 if (!hasCounterOutline(form)) {
                     auto retry = form;

@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
         bad.insert("cuts", policy); invalid.insert(phase, QJsonArray{bad});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
     }
-    check(forms.size() >= 131 && shapes.size() >= 21, "Not all shared shapes exercised");
+    check(forms.size() >= 132 && shapes.size() >= 21, "Not all shared shapes exercised");
     struct Fixture { int page,line,word,sub; };
     const Fixture fixtures[] = {{3,2,9,1}, {6,15,4,1}, {600,2,5,1}, {230,11,3,1}, {6,9,8,2}};
     int checks = 0;
