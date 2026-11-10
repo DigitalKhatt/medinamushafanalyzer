@@ -5,7 +5,7 @@
 namespace {
 
 // Bump when a change to the segmenter or exported geometry invalidates old results.
-constexpr int CacheVersion = 120;
+constexpr int CacheVersion = 121;
 
 QJsonArray point(const QPointF& p) {
     return {p.x(), p.y()};

@@ -36,6 +36,22 @@ static QByteArray snapshot(const SharedShapeEvidence& e) {
         point(e.route->start); point(e.route->origin); point(e.route->anchor); point(e.route->topBefore); point(e.route->topEnd);
         out << e.route->forwardPrevious << e.route->topPrevious << e.route->endpointTolerance;
     }
+    out << bool(e.head);
+    if (e.head) {
+        out << e.head->counter << bool(e.head->edge); if (e.head->edge) point(*e.head->edge);
+        out << quint64(e.head->necks.size());
+        for (const auto& neck : e.head->necks) {
+            point(neck.crest); out << neck.distance << bool(neck.route);
+            if (neck.route) {
+                point(neck.route->start); point(neck.route->origin); point(neck.route->anchor);
+                point(neck.route->topBefore); point(neck.route->topEnd);
+                out << neck.route->forwardPrevious << neck.route->topPrevious << neck.route->endpointTolerance;
+            }
+        }
+    }
+    out << quint64(e.crestedHeads.size());
+    for (const auto& head : e.crestedHeads) { out << head.counter; point(head.crest); point(head.rightEdge); point(head.leftEdge); }
+    out << bool(e.bowlTurn); if (e.bowlTurn) { point(e.bowlTurn->tip); point(e.bowlTurn->turn); }
     out << quint64(e.outlines.size());
     for (const auto& shape : e.outlines) { out << shape.eye << quint64(shape.counters.size()); for (const auto& h : shape.counters) hole(h); }
     return bytes;
@@ -49,10 +65,10 @@ int main(int argc, char** argv) {
     QSet<QString> shapes;
     for (const auto* phase : {"initial", "medial", "final"}) for (const auto& value : config.value(phase).toArray()) {
         const auto form = resolvedBodyForm(config, value.toObject());
-        if (!form.value("id").toString().startsWith("meem-")) continue;
+        if (!sharedShapeDescription(form.value("body").toObject())) continue;
         check(sharedShapeDescription(form.value("body").toObject()) && !form.contains("method") &&
               !form.contains("loopBoundaries") && !form.contains("counter") && !form.contains("bodyOutline"),
-              "A meem form still dispatches through legacy geometry");
+              "A declared form still dispatches through legacy geometry");
         forms.append(form); shapes.insert(form.value("body").toObject().value("shape").toString());
         auto invalid = config, bad = form, body = form.value("body").toObject();
         body.insert("normalCut", true); bad.insert("body", body);
@@ -63,7 +79,7 @@ int main(int argc, char** argv) {
         bad.insert("cuts", policy); invalid.insert(phase, QJsonArray{bad});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
     }
-    check(forms.size() == 19 && shapes.size() == 7, "Not all meem shapes exercised");
+    check(forms.size() >= 29 && shapes.size() >= 10, "Not all shared shapes exercised");
     struct Fixture { int page,line,word,sub; };
     const Fixture fixtures[] = {{3,2,9,1}, {6,15,4,1}, {600,2,5,1}, {230,11,3,1}};
     int checks = 0;
@@ -94,5 +110,5 @@ int main(int argc, char** argv) {
             ++checks;
         }
     }
-    qInfo("Shared evidence passed: %d fresh recognition/neighbor/cache comparisons, all 19 meem forms and 7 shapes.", checks);
+    qInfo("Shared evidence passed: %d fresh recognition/neighbor/cache comparisons, %d declarations and %d shapes.", checks, forms.size(), shapes.size());
 }

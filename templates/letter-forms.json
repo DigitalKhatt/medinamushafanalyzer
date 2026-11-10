@@ -51,26 +51,46 @@
     {
       "id": "feh-init",
       "current": "ف",
-      "method": "initial-loop-head",
-      "head": {
-        "maxEdgeDistance": 1.5,
-        "maxNeckDistance": 3,
-        "maxProjectionInset": 2,
-        "normalCut": true
+      "tryNext": true,
+      "body": {
+        "shape": "suspended-loop",
+        "head": {
+          "maxEdgeDistance": 1.5
+        }
       },
-      "tryNext": true
+      "cuts": {
+        "head": {
+          "maxNeckDistance": 3,
+          "maxProjectionInset": 2,
+          "normalCut": true
+        },
+        "boundaries": {
+          "left": "head-neck",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "qaf-init",
       "current": "ق",
-      "method": "initial-loop-head",
-      "head": {
-        "maxEdgeDistance": 1.5,
-        "maxNeckDistance": 3,
-        "maxProjectionInset": 2,
-        "normalCut": true
+      "tryNext": true,
+      "body": {
+        "shape": "suspended-loop",
+        "head": {
+          "maxEdgeDistance": 1.5
+        }
       },
-      "tryNext": true
+      "cuts": {
+        "head": {
+          "maxNeckDistance": 3,
+          "maxProjectionInset": 2,
+          "normalCut": true
+        },
+        "boundaries": {
+          "left": "head-neck",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "meem-init",
@@ -752,23 +772,35 @@
     {
       "id": "feh-descending-init",
       "current": "ف",
-      "method": "initial-loop-head",
-      "head": {
-        "maxNeckDistance": 4,
-        "neckWalk": {
-          "top": [
-            "down",
-            "left",
-            "right"
-          ],
-          "traversal": "down",
-          "bottomProbe": "left",
-          "anchorSide": "bottom"
-        }
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
-      "tryNext": true
+      "tryNext": true,
+      "body": {
+        "shape": "suspended-loop",
+        "head": {
+          "neckWalk": {
+            "top": [
+              "down",
+              "left",
+              "right"
+            ],
+            "traversal": "down"
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "head": {
+          "maxNeckDistance": 4,
+          "neckWalk": {
+            "bottomProbe": "left",
+            "anchorSide": "bottom"
+          }
+        },
+        "boundaries": {
+          "left": "head-neck",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "lam-outward-foot-init",
@@ -1439,16 +1471,27 @@
     {
       "id": "feh-head-medi",
       "current": "فق",
-      "headEdges": {
-        "crestToRight": {
-          "minY": 0.5,
-          "maxY": 3
+      "body": {
+        "shape": "crested-loop",
+        "head": {
+          "crestToRight": {
+            "minY": 0.5,
+            "maxY": 3
+          },
+          "crestToLeft": {
+            "minY": 0.5,
+            "maxY": 3
+          }
+        }
+      },
+      "cuts": {
+        "head": {
+          "maxNeckDistance": 2
         },
-        "crestToLeft": {
-          "minY": 0.5,
-          "maxY": 3
-        },
-        "maxNeckDistance": 2
+        "boundaries": {
+          "left": "head-neck",
+          "right": "head-neck"
+        }
       }
     },
     {
@@ -1590,10 +1633,20 @@
     {
       "id": "feh-loop-medi",
       "current": "فق",
-      "loopBoundaries": {
-        "sideOffset": 0.35,
-        "baselineOffset": 0.2,
-        "normalCut": true
+      "body": {
+        "shape": "counter-loop",
+        "loop": {}
+      },
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.35,
+          "baselineOffset": 0.2,
+          "normalCut": true
+        },
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
+        }
       }
     },
     {
@@ -2816,23 +2869,36 @@
       "current": "فق",
       "tryNext": true,
       "onIncomplete": true,
-      "bodyCounters": 1,
       "sharedEntry": true,
       "tightJoin": true,
-      "loopBoundaries": {
-        "entryCorner": {
-          "placement": "upper",
-          "maxDistance": 2.4,
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "entryCorner": {
+            "placement": "upper",
+            "maxDistance": 2.4
+          },
+          "exitCorner": {
+            "maxDistance": 2.2
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "loop": {
+          "entryCorner": {
+            "normalCut": true
+          },
+          "sideOffset": 0.4,
+          "baselineOffset": 0.2,
           "normalCut": true
         },
-        "exitCorner": {
-          "maxDistance": 2.2
-        },
-        "sideOffset": 0.4,
-        "baselineOffset": 0.2,
-        "normalCut": true
-      },
-      "onUnresolved": true
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
+        }
+      }
     },
     {
       "id": "ain-paired-neck-medi",
@@ -3064,57 +3130,68 @@
       "onUnresolved": true,
       "rimOffset": 0.65,
       "requiresExitTemplate": "yeh-first-turn-fina",
-      "bodyOutline": {
+      "body": {
+        "shape": "counter-outline",
         "counters": 1,
-        "aspect": [
-          0.95,
-          1.85
-        ],
-        "rim": {
-          "left": [
-            0.25,
-            0.85
+        "outline": {
+          "aspect": [
+            0.95,
+            1.85
           ],
-          "top": [
-            0.85,
-            1.55
-          ],
-          "right": [
-            0.45,
-            3.3
-          ],
-          "bottom": [
-            2.7,
-            4.15
-          ]
+          "rim": {
+            "left": [
+              0.25,
+              0.85
+            ],
+            "top": [
+              0.85,
+              1.55
+            ],
+            "right": [
+              0.45,
+              3.3
+            ],
+            "bottom": [
+              2.7,
+              4.15
+            ]
+          }
+        }
+      },
+      "cuts": {
+        "outline": {
+          "entry": {
+            "x": [
+              1.3,
+              3.3
+            ],
+            "y": [
+              0.25,
+              1.7
+            ],
+            "width": [
+              0.65,
+              1.65
+            ]
+          },
+          "exit": {
+            "x": [
+              0.1,
+              0.9
+            ],
+            "y": [
+              3.4,
+              4.7
+            ],
+            "width": [
+              1.75,
+              2.7
+            ]
+          }
         },
-        "entry": {
-          "x": [
-            1.3,
-            3.3
-          ],
-          "y": [
-            0.25,
-            1.7
-          ],
-          "width": [
-            0.65,
-            1.65
-          ]
-        },
-        "exit": {
-          "x": [
-            0.1,
-            0.9
-          ],
-          "y": [
-            3.4,
-            4.7
-          ],
-          "width": [
-            1.75,
-            2.7
-          ]
+        "boundaries": {
+          "left": "outline-exit",
+          "right": "outline-entry"
         }
       }
     },
@@ -3251,28 +3328,50 @@
     {
       "id": "feh-fina",
       "current": "ف",
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "placement": "right-corner-pair",
-          "maxDistance": 1.5,
-          "strokeOffsetX": 0.5,
-          "normalCut": true,
-          "required": true
+      "tryNext": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "placement": "right-corner-pair",
+            "maxDistance": 1.5
+          }
         }
       },
-      "tryNext": true
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "strokeOffsetX": 0.5,
+            "normalCut": true,
+            "required": true
+          }
+        },
+        "boundaries": {
+          "right": "counter-neck",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "qaf-fina",
-      "method": "qaf",
-      "probeX": 0.2,
-      "probeRadius": 2,
-      "minCrossings": 2,
       "current": "ق",
       "ownsLeftTip": true,
-      "start": "left",
-      "bodyCounters": 1
+      "body": {
+        "shape": "bowl-turn",
+        "origin": "left",
+        "counters": 1
+      },
+      "cuts": {
+        "probe": {
+          "probeX": 0.2,
+          "probeRadius": 2,
+          "minCrossings": 2
+        },
+        "boundaries": {
+          "right": "turn-probe",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "yeh-first-turn-fina",
@@ -4192,17 +4291,29 @@
       "current": "ق",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "placement": "top-right",
-          "maxDistance": 2.1,
-          "required": true
-        }
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "placement": "top-right",
+            "maxDistance": 2.1
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "required": true
+          }
+        },
+        "boundaries": {
+          "right": "counter-neck",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "sad-diagonal-fina",

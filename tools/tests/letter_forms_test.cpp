@@ -230,11 +230,13 @@ int main(int argc, char** argv) {
             for (int i = 0; i < forms.size(); ++i) {
                 auto form = forms[i].toObject();
                 if (form.value("id") != "feh-head-medi") continue;
-                auto settings = form.value("headEdges").toObject();
+                auto policy = form.value("cuts").toObject();
+                auto settings = policy.value("head").toObject();
                 if (scenario == 26) settings.insert("maxExitDistance", 2.5);
                 else settings.insert("maxNeckDistance", scenario == 27 ? QJsonValue(0) :
                     scenario == 28 ? QJsonValue(-1) : QJsonValue("2"));
-                form.insert("headEdges", settings);
+                policy.insert("head", settings);
+                form.insert("cuts", policy);
                 forms[i] = form;
             }
             invalid.insert("medial", forms);

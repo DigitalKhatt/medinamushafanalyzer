@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     check(proposals.size()==1 && std::abs(proposals[0].tip.time-3.65792430518215)<1e-6,
           "The meem loop was mistaken for the medial tooth");
     context.form=final;
-    check(searchFinalCounter(context) && matchesBoundaryBody(context,final,context.res,false),
+    check(declaredSharedBoundary(context,final) && matchesBoundaryBody(context,final,context.res,false),
           "Actual final meem boundary lost its counter");
     // The old false tooth exit sliced the head away from the final meem.
     Stretching tailOnly{};

@@ -64,7 +64,7 @@ Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
 declares its stem/bowl measurements in `body.stem`, then uses
 `cuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
 lām `method` or `legacyLamRoutes` adapter. All lām forms, all six medial
-senna forms and all 19 meem forms use these declarations; other letters migrate independently.
+senna forms, all 19 meem forms and all ten feh/qaf forms use these declarations; other letters migrate independently.
 
 In the native application, enable **Inspect cuts** and click a subword. Select
 a declared template, including an applicable alternative that did not
@@ -149,6 +149,13 @@ selects the occurrence and checks retained ink and neighboring boundaries. Its
 selection cannot skip a failed loop to borrow a later letter's loop. Run
 `shared_body_independence_test.cpp`, `medial_meem_test.cpp` and
 `final_meem_test.cpp` through `check_letter_forms.py` to check these contracts.
+
+Feh/qaf add `suspended-loop`, `crested-loop` and `bowl-turn` shapes. The first
+records a counter, side edge and any descending neck route; the second records
+the crest and both head edges; the third records the free bowl's first turn.
+Normal/probe settings live in `cuts`. Routes share the same saved-landmark
+projection used by lām and meem. `initial_heads_test.cpp`, `medial_heads_test.cpp`
+and `final_feh_test.cpp` check the reviewed head and bowl boundaries.
 
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`

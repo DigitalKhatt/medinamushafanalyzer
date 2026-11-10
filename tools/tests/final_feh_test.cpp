@@ -25,17 +25,19 @@ int main(int argc, char** argv) {
     check(PageAnalysisResult::prepareLetterForms(config).isEmpty(), "Bundled forms failed validation");
     QJsonObject form;
     for (const auto& value:config.value("final").toArray())
-        if (value.toObject().value("id")=="feh-fina") form=value.toObject();
-    check(form.value("method")=="final-counter", "Feh must reuse the counter method");
-    const auto settings=form.value("counter").toObject();
+        if (value.toObject().value("id")=="feh-fina") form=resolvedBodyForm(config,value.toObject());
+    check(form.value("body").toObject().value("shape")=="counter-neck", "Feh must reuse intrinsic counter-neck recognition");
+    const auto settings=shapeSettings(form,"counter");
     const auto corner=settings.value("entryCorner").toObject();
     for (const auto bad:QJsonArray{QJsonObject{{"placement","wrong"}},
                                   QJsonObject{{"strokeOffsetX","half"}},
                                   QJsonObject{{"maxDistance",0}}}) {
-        auto invalid=config, rule=form, bounds=settings, entry=corner;
+        auto invalid=config, rule=form;
         const auto fields=bad.toObject();
+        const auto key=fields.contains("strokeOffsetX") ? "cuts" : "body";
+        auto section=rule.value(key).toObject(), bounds=section.value("counter").toObject(), entry=bounds.value("entryCorner").toObject();
         for (auto it=fields.begin();it!=fields.end();++it) entry.insert(it.key(),it.value());
-        bounds.insert("entryCorner",entry); rule.insert("counter",bounds);
+        bounds.insert("entryCorner",entry); section.insert("counter",bounds); rule.insert(key,section);
         invalid.insert("final",QJsonArray{rule});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Invalid neck settings were accepted");
     }
@@ -47,15 +49,15 @@ int main(int argc, char** argv) {
     const auto ink=inPage(shape.path);
     WordResultInfo::SubWordInfo dummy;
     auto context=geometry(ink,dummy,form);
-    auto unshifted=form, bounds=settings, entry=corner;
+    auto unshifted=form, policy=form.value("cuts").toObject(), bounds=policy.value("counter").toObject(), entry=bounds.value("entryCorner").toObject();
     entry.insert("strokeOffsetX",0); entry.insert("normalCut",false); bounds.insert("entryCorner",entry);
-    unshifted.insert("counter",bounds); context.form=unshifted;
-    check(searchFinalCounter(context), "Own corner pair was not found");
+    policy.insert("counter",bounds); unshifted.insert("cuts",policy); context.form=unshifted;
+    check(declaredSharedBoundary(context,context.form), "Own corner pair was not found");
     const auto pair=context.res;
     check(pair.topBaseLine.time==2 && pair.bottomBaseLine.time==11,
           "Feh borrowed a neighbor's landmark instead of its reviewed corners 2 and 11");
     context.form=form;
-    check(searchFinalCounter(context) && matchesBoundaryBody(context,form,context.res,false),
+    check(declaredSharedBoundary(context,context.form) && matchesBoundaryBody(context,bodyConstraintForm(config,form),context.res,false),
           "Offset feh boundary failed to preserve its counter");
     const auto cut=context.res;
     const QLineF seed(pair.topBaseLine.point,pair.bottomBaseLine.point), chord(cut.topBaseLine.point,cut.bottomBaseLine.point);
@@ -79,17 +81,17 @@ int main(int argc, char** argv) {
     };
     Stretching unrelated{}; unrelated.topBaseLine.point={-200,300};unrelated.bottomBaseLine.point={-100,500};
     dummy.joins.insert(unrelated);context.baseText=QStringLiteral("اختبار");context.pairedStrokeWidth=1000;
-    check(searchFinalCounter(context)&&same(context.res), "Feh depends on neighboring text or cuts");
+    check(declaredSharedBoundary(context,context.form)&&same(context.res), "Feh depends on neighboring text or cuts");
     for(double scale:{.7,1.6}) {
         const QTransform map(scale,0,0,scale,37,-21);auto scaled=geometry(map.map(ink),dummy,form);
-        check(searchFinalCounter(scaled)&&same(scaled.res,map), "Feh cut changed under scale or translation");
+        check(declaredSharedBoundary(scaled,form)&&same(scaled.res,map), "Feh cut changed under scale or translation");
     }
     auto withoutHole=geometry(context.subPaths.front(),dummy,form);
-    check(!searchFinalCounter(withoutHole), "Feh was matched without its counter");
+    check(!declaredSharedBoundary(withoutHole,form), "Feh was matched without its counter");
     auto missingCorner=geometry(ink,dummy,form);
     for(auto it=missingCorner.timeSorted.begin();it!=missingCorner.timeSorted.end();++it)
         if(it->time==11) { missingCorner.timeSorted.erase(it);break; }
-    check(!searchFinalCounter(missingCorner), "Required corner pair fell back to a neighbor's neck");
+    check(!declaredSharedBoundary(missingCorner,form), "Required corner pair fell back to a neighbor's neck");
 
     check(analysis.segmentSubword(12,14,0,0,nullptr,true), "Ghain-lam-feh remains partial");
     check(sub.baseGlyphs.size()==3 && sub.kashidaPaths.size()==2 &&

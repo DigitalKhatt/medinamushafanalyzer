@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
                     const bool direct = lamRouteCut(context, route, policy, &stem.crest, reverse);
                     const auto expected = context.res;
                     context.res = {};
-                    const bool stored = projectLamRoute(context,
+                    const bool stored = projectSavedRoute(context,
                         r < 0 ? stem.entryRoutes[reverse] : stem.exitRoutes[r][reverse], route, policy);
                     check(direct == stored, "Saved route changed projection success");
                     if (!direct) continue;

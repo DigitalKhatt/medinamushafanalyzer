@@ -38,9 +38,13 @@ static QImage mask(const QPainterPath& path, const QRectF& box) {
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
-    QJsonObject settings;
+    const auto config=PageAnalysisResult::letterForms();
+    QJsonObject form;
     for (const auto& value : PageAnalysisResult::letterForms().value("medial").toArray())
-        if (value.toObject().value("id") == "feh-head-medi") settings = value.toObject().value("headEdges").toObject();
+        if (value.toObject().value("id") == "feh-head-medi") form = resolvedBodyForm(config,value.toObject());
+    const auto settings=shapeSettings(form,"head");
+    const auto locate=[&](SearchContext& c) { const auto e=recognizedSharedShape(c,form.value("body").toObject());
+        return cutCrestedLoops(c,e->crestedHeads,form.value("cuts").toObject().value("head").toObject()); };
     check(!settings.isEmpty() && !settings.contains("maxExitDistance"), "Head still uses its neighboring exit cut");
     QFile file("pages/page600.dat");
     check(file.open(QIODevice::ReadOnly), "Page 600 fixture is required");
@@ -55,7 +59,7 @@ int main(int argc, char** argv) {
     source.translate(shape.pos);
     WordResultInfo::SubWordInfo dummy;
     auto context = geometry(source, dummy);
-    const auto boundaries = medialLoopHeadBoundaries(context, settings);
+    const auto boundaries = locate(context);
     check(boundaries.size() == 1, "Qaf head was missed or the lam/waw was also accepted as this head");
     const auto& [right, left] = boundaries.front();
     const auto landmark = [&](double time) -> PathExtrema {
@@ -80,22 +84,22 @@ int main(int argc, char** argv) {
     dummy.joins.insert(unrelated);
     context.baseText = QStringLiteral("اختبار");
     context.pairedStrokeWidth = 1000;
-    const auto independent = medialLoopHeadBoundaries(context, settings);
+    const auto independent = locate(context);
     check(independent.size() == 1 && same(right, independent[0].first) && same(left, independent[0].second),
           "Head cuts depend on neighboring joins, text, or stroke width");
     for (double scale : {0.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(source), dummy);
-        const auto transformed = medialLoopHeadBoundaries(scaled, settings);
+        const auto transformed = locate(scaled);
         check(transformed.size() == 1 && same(right, transformed[0].first, mapping) && same(left, transformed[0].second, mapping),
               "Head proportions are not scale/translation invariant");
     }
     auto noCounters = geometry(context.subPaths.front(), dummy);
-    check(medialLoopHeadBoundaries(noCounters, settings).empty(), "Head without a counter accepted a stem strip");
+    check(locate(noCounters).empty(), "Head without a counter accepted a stem strip");
     auto noQafCounterPath = context.subPaths.front();
     noQafCounterPath.addPath(context.subPaths[2]); // Keep the final waw's counter.
     auto noQafCounter = geometry(noQafCounterPath, dummy);
-    check(medialLoopHeadBoundaries(noQafCounter, settings).empty(), "Missing qaf counter was replaced by the waw's counter");
+    check(locate(noQafCounter).empty(), "Missing qaf counter was replaced by the waw's counter");
 
     check(analysis.segmentSubword(599, 1, 9, 1, nullptr, true), "Lam-qaf-beh-waw became partial");
     check(sub.baseGlyphs.size() == 4 && sub.matchedTemplates.contains("feh-head-medi"), "Missing qaf body");
@@ -137,7 +141,7 @@ int main(int argc, char** argv) {
     const auto& controlShape = controlWord.paths[controlSub.paths.front()];
     auto controlInk = controlShape.transform.map(controlShape.path); controlInk.translate(controlShape.pos);
     auto controlContext = geometry(controlInk, dummy);
-    const auto controlHeads = medialLoopHeadBoundaries(controlContext, settings);
+    const auto controlHeads = locate(controlContext);
     check(controlHeads.size() == 1 && std::abs(controlHeads[0].first.topBaseLine.point.x() - 231.739293484) < 1e-5 &&
           std::abs(controlHeads[0].second.topBaseLine.point.x() - 228.672162506) < 1e-5,
           "Reviewed feh edges 12.58/15.39 moved");
@@ -153,7 +157,7 @@ int main(int argc, char** argv) {
         const auto& sh = w.paths[s.paths.front()];
         auto ink = sh.transform.map(sh.path); ink.translate(sh.pos);
         auto c = geometry(ink, dummy);
-        const auto heads = medialLoopHeadBoundaries(c, settings);
+        const auto heads = locate(c);
         check(heads.size() == 1, "Tall feh/qaf head was rejected");
         check(tall.segmentSubword(285, location[0] - 1, location[1] - 1, 0, nullptr, true) &&
               s.matchedTemplates.contains("feh-head-medi") && toSubpaths(s.baseGlyphs[1].path).size() == 2,
