@@ -177,10 +177,11 @@ int main(int argc, char** argv) {
             for (int i = 0; i < medial.size(); ++i) {
                 auto rule = medial[i].toObject();
                 if (rule.value("id") != "heh-body-medi") continue;
-                auto settings = rule.value("pairedCounterCorners").toObject();
+                auto body = rule.value("body").toObject();
+                auto settings = body.value("pair").toObject();
                 settings.insert("maxFootInwardAngle", scenario == 14 ? QJsonValue(-1) :
                     scenario == 15 ? QJsonValue(90) : QJsonValue("10"));
-                rule.insert("pairedCounterCorners", settings);
+                body.insert("pair", settings); rule.insert("body", body);
                 medial[i] = rule;
             }
         }

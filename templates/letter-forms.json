@@ -120,11 +120,21 @@
     {
       "id": "heh-init",
       "current": "ه",
-      "method": "heh-initial-counters",
-      "counterOffset": 0.35,
-      "baselineOffset": 0.6,
       "tryNext": true,
-      "retryOnPartial": true
+      "retryOnPartial": true,
+      "body": {
+        "shape": "horizontal-counters"
+      },
+      "cuts": {
+        "pair": {
+          "counterOffset": 0.35,
+          "baselineOffset": 0.6
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "pair-neck"
+        }
+      }
     },
     {
       "id": "seen-init",
@@ -1111,15 +1121,25 @@
       "current": "ه",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "initial-counter",
-      "counter": {
-        "maxOuterDistance": 3.0,
-        "maxNeckDistance": 3.0,
-        "normalNeck": true
-      },
-      "bodyCounters": 2,
       "tightJoin": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "maxOuterDistance": 3.0,
+          "maxNeckDistance": 3.0
+        },
+        "counters": 2
+      },
+      "cuts": {
+        "counter": {
+          "normalNeck": true
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "counter-neck"
+        }
+      }
     },
     {
       "id": "ain-returning-cup-init",
@@ -1176,43 +1196,54 @@
       "id": "heh-paired-rim-init",
       "current": "ه",
       "onUnresolved": true,
-      "bodyOutline": {
+      "body": {
+        "shape": "counter-outline",
         "counters": 2,
-        "aspect": [
-          0.6,
-          2.5
-        ],
-        "rim": {
-          "left": [
-            0.08,
-            0.65
+        "outline": {
+          "aspect": [
+            0.6,
+            2.5
           ],
-          "top": [
-            0.38,
-            1.5
-          ],
-          "right": [
-            0.05,
-            0.75
-          ],
-          "bottom": [
-            0.18,
-            1.1
-          ]
+          "rim": {
+            "left": [
+              0.08,
+              0.65
+            ],
+            "top": [
+              0.38,
+              1.5
+            ],
+            "right": [
+              0.05,
+              0.75
+            ],
+            "bottom": [
+              0.18,
+              1.1
+            ]
+          }
+        }
+      },
+      "cuts": {
+        "outline": {
+          "exit": {
+            "x": [
+              -0.36,
+              0.4
+            ],
+            "y": [
+              1,
+              1.85
+            ],
+            "width": [
+              0.12,
+              0.8
+            ]
+          }
         },
-        "exit": {
-          "x": [
-            -0.36,
-            0.4
-          ],
-          "y": [
-            1,
-            1.85
-          ],
-          "width": [
-            0.12,
-            0.8
-          ]
+        "boundaries": {
+          "left": "outline-exit",
+          "right": "free"
         }
       }
     },
@@ -1684,11 +1715,22 @@
     {
       "id": "heh-body-medi",
       "current": "ه",
-      "pairedCounterCorners": {
-        "maxCounterGap": 2,
-        "maxCornerDistance": 2,
-        "maxFootInwardAngle": 10,
-        "normalCut": true
+      "body": {
+        "shape": "stacked-counters",
+        "pair": {
+          "maxCounterGap": 2,
+          "maxCornerDistance": 2,
+          "maxFootInwardAngle": 10
+        }
+      },
+      "cuts": {
+        "pair": {
+          "normalCut": true
+        },
+        "boundaries": {
+          "right": "pair-neck",
+          "left": "pair-neck"
+        }
       }
     },
     {
@@ -1979,12 +2021,23 @@
     {
       "id": "heh-loop-medi",
       "current": "ه",
-      "loopBoundaries": {
-        "counterPair": "horizontal",
-        "sideOffset": 0.15,
-        "baselineOffset": 0.15,
-        "normalCut": true,
-        "entryBelowCounter": true
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "counterPair": "horizontal"
+        }
+      },
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.15,
+          "baselineOffset": 0.15,
+          "normalCut": true,
+          "entryBelowCounter": true
+        },
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
+        }
       }
     },
     {
@@ -2421,12 +2474,23 @@
     {
       "id": "heh-stacked-band-medi",
       "current": "ه",
-      "loopBoundaries": {
-        "counterPair": "vertical",
-        "sideOffset": 0.06,
-        "normalCut": false
+      "tightJoin": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "counterPair": "vertical"
+        }
       },
-      "tightJoin": true
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.06,
+          "normalCut": false
+        },
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
+        }
+      }
     },
     {
       "id": "kaf-zigzag-medi",
@@ -3073,57 +3137,68 @@
       "id": "heh-crowned-pair-medi",
       "current": "ه",
       "onUnresolved": true,
-      "bodyOutline": {
+      "body": {
+        "shape": "counter-outline",
         "counters": 2,
-        "aspect": [
-          1.4,
-          2.25
-        ],
-        "rim": {
-          "left": [
-            0.4,
-            1.15
+        "outline": {
+          "aspect": [
+            1.4,
+            2.25
           ],
-          "top": [
-            0.55,
-            1.55
-          ],
-          "right": [
-            0.1,
-            0.55
-          ],
-          "bottom": [
-            0.28,
-            0.95
-          ]
+          "rim": {
+            "left": [
+              0.4,
+              1.15
+            ],
+            "top": [
+              0.55,
+              1.55
+            ],
+            "right": [
+              0.1,
+              0.55
+            ],
+            "bottom": [
+              0.28,
+              0.95
+            ]
+          }
+        }
+      },
+      "cuts": {
+        "outline": {
+          "entry": {
+            "x": [
+              0.25,
+              0.7
+            ],
+            "y": [
+              -1.15,
+              -0.3
+            ],
+            "width": [
+              0.45,
+              1.2
+            ]
+          },
+          "exit": {
+            "x": [
+              -0.65,
+              0.05
+            ],
+            "y": [
+              0.95,
+              1.65
+            ],
+            "width": [
+              0.3,
+              0.8
+            ]
+          }
         },
-        "entry": {
-          "x": [
-            0.25,
-            0.7
-          ],
-          "y": [
-            -1.15,
-            -0.3
-          ],
-          "width": [
-            0.45,
-            1.2
-          ]
-        },
-        "exit": {
-          "x": [
-            -0.65,
-            0.05
-          ],
-          "y": [
-            0.95,
-            1.65
-          ],
-          "width": [
-            0.3,
-            0.8
-          ]
+        "boundaries": {
+          "left": "outline-exit",
+          "right": "outline-entry"
         }
       }
     },
@@ -3739,14 +3814,23 @@
     },
     {
       "id": "heh-counter-fina",
-      "method": "final-counter",
-      "counter": {
-        "offset": 0.45,
-        "baselineOffset": 0.2,
-        "normalCut": true
-      },
       "tryNext": true,
-      "current": "هة"
+      "current": "هة",
+      "body": {
+        "shape": "counter-neck",
+        "counter": {}
+      },
+      "cuts": {
+        "counter": {
+          "offset": 0.45,
+          "baselineOffset": 0.2,
+          "normalCut": true
+        },
+        "boundaries": {
+          "right": "counter-neck",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "meem-counter-fina",
@@ -4356,19 +4440,30 @@
     {
       "id": "heh-shoulder-fina",
       "current": "هة",
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "maxDistance": 2
+      "tryNext": true,
+      "onIncomplete": true,
+      "body": {
+        "shape": "counter-shoulder",
+        "counter": {
+          "entryCorner": {
+            "maxDistance": 2
+          }
+        },
+        "shoulder": {
+          "radius": 2.5,
+          "maxCapRise": 2
         }
       },
-      "shoulder": {
-        "radius": 2.5,
-        "maxWidth": 2.4,
-        "maxCapRise": 2
-      },
-      "tryNext": true,
-      "onIncomplete": true
+      "cuts": {
+        "counter": {},
+        "boundaries": {
+          "right": "counter-shoulder",
+          "left": "free"
+        },
+        "shoulder": {
+          "maxWidth": 2.4
+        }
+      }
     },
     {
       "id": "qaf-top-bridge-fina",

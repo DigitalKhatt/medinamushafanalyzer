@@ -159,6 +159,8 @@ and `final_feh_test.cpp` check the reviewed head and bowl boundaries.
 
 Ain/ghain uses the same saved contour routes and counter loops. Its open medial head records the crest and both lips in `body.head`; `cuts.head` supplies projection depth and reach. Neighboring cuts select an occurrence only after recognition.
 
+Heh counter forms use `horizontal-counters` or `stacked-counters`, alongside the shared loop/neck/outline shapes. Body recognition records counter pairs and all eligible foot corners; projection chooses successful normal sections while preserving the outer step. `medial_heh_test.cpp` checks the reviewed corners, scale invariance and independence from neighboring cuts. Exposed-head and pen-lift composition remain assembly rules.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright

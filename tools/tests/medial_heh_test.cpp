@@ -23,13 +23,19 @@ static SearchContext geometry(QPainterPath path, WordResultInfo::SubWordInfo& du
     return context;
 }
 
+static std::vector<std::pair<Stretching, Stretching>> hehCuts(SearchContext& context, QJsonObject settings) {
+    QJsonObject policy{{"normalCut", settings.take("normalCut")}};
+    const auto evidence = recognizeStackedPairs(inkOutline(context), settings);
+    return cutStackedPairs(context, evidence, policy);
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
     const auto config = PageAnalysisResult::letterForms();
     QJsonObject settings;
     for (const auto& value : config.value("medial").toArray())
-        if (value.toObject().value("id") == "heh-body-medi") settings = value.toObject().value("pairedCounterCorners").toObject();
+        if (value.toObject().value("id") == "heh-body-medi") settings = shapeSettings(value.toObject(), "pair");
     check(!settings.isEmpty(), "Missing intrinsic heh corner settings");
     QFile file("pages/page3.dat");
     check(file.open(QIODevice::ReadOnly), "Page 3 cache is required");
@@ -44,7 +50,7 @@ int main(int argc, char** argv) {
     source.translate(shape.pos);
     WordResultInfo::SubWordInfo dummy;
     auto context = geometry(source, dummy);
-    const auto pairs = medialPairedCounterBoundaries(context, settings);
+    const auto pairs = hehCuts(context, settings);
     check(pairs.size() == 1, "Expected one heh counter pair");
     const auto& [right, left] = pairs.front();
     check(right.bottomBaseLine.time == 21 && left.bottomBaseLine.time == 17,
@@ -70,19 +76,19 @@ int main(int argc, char** argv) {
     dummy.joins.insert(unrelated);
     context.baseText = QStringLiteral("اختبار");
     context.pairedStrokeWidth = 1000;
-    const auto independent = medialPairedCounterBoundaries(context, settings);
+    const auto independent = hehCuts(context, settings);
     check(independent.size() == 1 && same(right, independent[0].first) && same(left, independent[0].second),
           "Neighboring landmarks or text changed the heh proposal");
     for (double scale : {0.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(source), dummy);
-        const auto proposed = medialPairedCounterBoundaries(scaled, settings);
+        const auto proposed = hehCuts(scaled, settings);
         check(proposed.size() == 1 && same(right, proposed[0].first, mapping) && same(left, proposed[0].second, mapping),
               "Heh proposal is not scale/translation invariant");
     }
     // With only the outer outline there is no two-counter heh to recognize.
     auto solid = geometry(context.subPaths.front(), dummy);
-    check(medialPairedCounterBoundaries(solid, settings).empty(), "Missing counters triggered a generic cut");
+    check(hehCuts(solid, settings).empty(), "Missing counters triggered a generic cut");
 
     const auto verifyAnchors = [&] {
         check(subword.matchedTemplates.contains("heh-body-medi"), "Integrated heh template was not matched");
@@ -107,7 +113,7 @@ int main(int argc, char** argv) {
     auto targetInk = targetShape.transform.map(targetShape.path);
     targetInk.translate(targetShape.pos);
     auto targetContext = geometry(targetInk, dummy);
-    const auto targetPairs = medialPairedCounterBoundaries(targetContext, settings);
+    const auto targetPairs = hehCuts(targetContext, settings);
     check(targetPairs.size() == 1, "Expected one heh counter pair in muhtadi");
     const auto& [targetRight, targetLeft] = targetPairs.front();
     check(targetRight.bottomBaseLine.time == 16 && targetLeft.bottomBaseLine.time == 10,
@@ -117,18 +123,18 @@ int main(int argc, char** argv) {
           "Corner 10 cut is not normal to the outgoing branch");
     auto strict = settings;
     strict.insert("maxFootInwardAngle", 0);
-    const auto strictPairs = medialPairedCounterBoundaries(targetContext, strict);
+    const auto strictPairs = hehCuts(targetContext, strict);
     check(strictPairs.size() == 1 && strictPairs[0].second.bottomBaseLine.time == 13,
           "Zero inward-angle tolerance did not reproduce the previous inner-corner selection");
     targetContext.baseText = QStringLiteral("اختبار");
     targetContext.pairedStrokeWidth = 1000;
-    const auto targetIndependent = medialPairedCounterBoundaries(targetContext, settings);
+    const auto targetIndependent = hehCuts(targetContext, settings);
     check(targetIndependent.size() == 1 && same(targetRight, targetIndependent[0].first) &&
           same(targetLeft, targetIndependent[0].second), "Corner 10 depends on neighboring landmarks or text");
     for (double scale : {0.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(targetInk), dummy);
-        const auto proposed = medialPairedCounterBoundaries(scaled, settings);
+        const auto proposed = hehCuts(scaled, settings);
         check(proposed.size() == 1 && same(targetRight, proposed[0].first, mapping) &&
               same(targetLeft, proposed[0].second, mapping), "Stepped heh is not scale/translation invariant");
     }
@@ -148,7 +154,7 @@ int main(int argc, char** argv) {
     auto stepInk = stepShape.transform.map(stepShape.path);
     stepInk.translate(stepShape.pos);
     auto stepContext = geometry(stepInk, dummy);
-    const auto stepPairs = medialPairedCounterBoundaries(stepContext, settings);
+    const auto stepPairs = hehCuts(stepContext, settings);
     check(stepPairs.size() == 1 && stepPairs[0].second.bottomBaseLine.time == 22,
           "The inner attachment 24 displaced the outer foot 22");
     check(analysis.segmentSubword(2, 5, 4, 1, nullptr, true), "Bihim became partial");
