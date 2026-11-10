@@ -821,7 +821,10 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
         form.insert("seenTeeth", seenSettings(form));
         if (form.value("cuts").toObject().value("boundaries").toObject().value("left") == "free") form.insert("side", "right");
     }
-    if (shape == "contour-route") form = withOverrides(form, shapeSettings(form, "route"));
+    if (shape == "contour-route") {
+        form = withOverrides(form, shapeSettings(form, "route"));
+        if (body.contains("tail")) form.insert("tailEntry", shapeSettings(form, "tail"));
+    }
     if (shape == "profile-neck") form.insert("start", "left");
     if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
         form.insert("counter", shapeSettings(form, "counter"));
@@ -862,6 +865,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
+    if (shape == "contour-route") { bodyKeys << "tail"; cutKeys << "tail" << "recoveryTail"; }
     if (shape == "bowl-neck") { bodyKeys.removeAll("probe"); bodyKeys << "neck"; }
     if (shape == "profile-neck") { bodyKeys = QStringList{"shape", "counters", "features", "neck", "profile"}; cutKeys = QStringList{"boundaries"}; }
     if (shape == "bowl-turn") {
@@ -903,6 +907,9 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (shape == "counter-rim" && phase != "medial") return id + ": counter-rim requires two boundaries";
     if ((shape == "paired-route" && phase != "medial") || ((shape == "tail-branch" || shape == "rising-return" || shape == "folded-return") && phase != "final") || (shape == "horizontal-counters" && phase != "initial") || (shape == "stacked-counters" && phase != "medial") || (shape == "suspended-loop" && phase != "initial") || ((shape == "crested-loop" || shape == "open-head") && phase != "medial") ||
         ((shape == "bowl-turn" || shape == "bowl-neck") && phase != "final")) return id + ": shape does not support this letter position";
+    if (shape == "contour-route" && cuts.contains("recoveryTail") &&
+        (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() || cuts.value("tail").toObject().isEmpty()))
+        return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
     if (shape == "tooth-cluster") {
         const auto cluster = body.value("cluster").toObject(), policy = cuts.value("cluster").toObject();
         for (auto it = cluster.begin(); it != cluster.end(); ++it)
@@ -8940,6 +8947,7 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
         WordResultInfo::SubWordInfo empty;
         auto geometry = outline.geometry(empty);
         const auto route = recognizeContourRoute(geometry, body.value("route").toObject());
+        if (body.contains("tail")) result.tail = recognizeTailBranches(outline, body.value("tail").toObject());
         if (route) result.route = SavedContourRoute{*route->start, *route->origin, route->anchor, route->topBefore, route->topEnd,
             route->forward == &SearchContext::prev, route->topDirection == &SearchContext::prev, route->endpointTolerance};
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
@@ -9065,14 +9073,17 @@ static std::vector<std::pair<Stretching, Stretching>> declaredOpenHeadCuts(Searc
         form.value("cuts").toObject().value("head").toObject());
 }
 
-static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& form, const SeenExitRetry* retry = nullptr) {
+static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& form, const SeenExitRetry* retry = nullptr, bool recovering = false) {
     InspectFormScope inspection(form, context.transformedPath);
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto evidence = recognizedSharedShape(context, body);
     const auto shape = body.value("shape");
     bool found = false;
-    if (shape == "contour-route")
-        found = projectSavedRoute(context, evidence->route, body.value("route").toObject(), cuts.value("route").toObject());
+    if (shape == "contour-route") {
+        if (recovering && cuts.value("recoveryTail").toBool() && evidence->tail)
+            found = cutTailBranches(context, *evidence->tail, shapeSettings(form, "tail"), context.res);
+        if (!found) found = projectSavedRoute(context, evidence->route, body.value("route").toObject(), cuts.value("route").toObject());
+    }
     else if (shape == "tail-branch")
         found = evidence->tail && cutTailBranches(context, *evidence->tail, shapeSettings(form, "tail"), context.res);
     else if (shape == "rising-return" || shape == "folded-return")
@@ -12488,16 +12499,12 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         bool found = false;
         if (sharedShapeDescription(rule.value("body").toObject())) {
             const bool terminal = owner == lastIndex && rule.value("body").toObject().value("shape").toString().startsWith("counter-");
-            found = terminal ? intrinsicTerminal(false, [&] { return declaredSharedBoundary(context, rule, seenRetryFor(owner, rule)); }) :
-                               declaredSharedBoundary(context, rule, seenRetryFor(owner, rule));
+            found = terminal ? intrinsicTerminal(false, [&] { return declaredSharedBoundary(context, rule, seenRetryFor(owner, rule), recoverTeeth); }) :
+                               declaredSharedBoundary(context, rule, seenRetryFor(owner, rule), recoverTeeth);
         }
         else if (rule.contains("body")) found = declaredLamBoundary(context, config, rule);
         else if (method == "descending-stem") found = descendingStemExit(context,rule.value("descendingStem").toObject(),context.res);
-        else if (method == "walk") {
-            if (recoverTeeth && rule.contains("tailEntry"))
-                found = terminalTailEntry(context,rule.value("tailEntry").toObject(),context.res);
-            if (!found) found = searchContourWalk(context);
-        }
+        else if (method == "walk") found = searchContourWalk(context);
         else if (method == "folded-arm")
             found = intrinsicTerminal(false, [&] { return foldedArmRoot(context, rule, context.res); });
         else if (method == "bowl-fork")

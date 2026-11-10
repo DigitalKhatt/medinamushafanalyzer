@@ -4459,29 +4459,44 @@
     },
     {
       "id": "dal-fina",
-      "tailEntry": {
-        "walkWidths": 1,
-        "minRise": 2
-      },
       "pairedOnly": true,
       "tightJoin": true,
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "topTraversal": "forward",
-      "top": [
-        "down",
-        {
-          "direction": "up",
-          "minX": 1
+      "current": "دذ",
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "topTraversal": "forward",
+          "top": [
+            "down",
+            {
+              "direction": "up",
+              "minX": 1
+            },
+            {
+              "direction": "down",
+              "minX": 1
+            }
+          ]
         },
-        {
-          "direction": "down",
-          "minX": 1
+        "tail": {
+          "minRise": 2
         }
-      ],
-      "bottomProbe": "walk-stroke-normal",
-      "current": "دذ"
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "walk-stroke-normal"
+        },
+        "tail": {
+          "walkWidths": 1
+        },
+        "recoveryTail": true,
+        "boundaries": {
+          "left": "free",
+          "right": "contour-route"
+        }
+      }
     },
     {
       "id": "seen-bowl-entry-fina",
