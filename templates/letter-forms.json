@@ -38,15 +38,27 @@
     {
       "id": "kaf-upright-bridge-init",
       "current": "ك",
-      "method": "counter-ligature",
       "ligatureWith": "اآأإٱل",
-      "maxBridgeRatio": 1.8,
-      "minAscenderRise": 0.65,
-      "lowerBridge": "stem-side",
       "tryNext": true,
-      "forkRise": 0.28,
-      "maxBridgeBend": 0.16,
-      "onFinalRetry": true
+      "onFinalRetry": true,
+      "body": {
+        "shape": "counter-attachment",
+        "attachment": {
+          "forkRise": 0.28,
+          "minAscenderRise": 0.65
+        }
+      },
+      "cuts": {
+        "attachment": {
+          "maxBridgeRatio": 1.8,
+          "lowerBridge": "stem-side",
+          "maxBridgeBend": 0.16
+        },
+        "boundaries": {
+          "left": "counter-bridge",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "feh-init",
@@ -589,55 +601,79 @@
     {
       "id": "kaf-ascender-init",
       "current": "ك",
-      "method": "counter-ligature",
       "ligatureWith": "اآأإٱل",
-      "outer": {
-        "start": "top",
-        "traversal": "down",
-        "topTraversal": "forward",
-        "top": [
-          {
-            "direction": "left",
-            "end": {
-              "sharp": true,
-              "yExtremum": true
-            }
-          }
-        ],
-        "topUseStepEnd": true
+      "tryNext": true,
+      "body": {
+        "shape": "counter-attachment",
+        "attachment": {
+          "outer": {
+            "start": "top",
+            "traversal": "down",
+            "topTraversal": "forward",
+            "top": [
+              {
+                "direction": "left",
+                "end": {
+                  "sharp": true,
+                  "yExtremum": true
+                }
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "minAscenderRise": 0.9
+        }
       },
-      "maxBridgeRatio": 1,
-      "minAscenderRise": 0.9,
-      "lowerBridge": "bottom-extrema",
-      "tryNext": true
+      "cuts": {
+        "attachment": {
+          "maxBridgeRatio": 1,
+          "lowerBridge": "bottom-extrema"
+        },
+        "boundaries": {
+          "left": "counter-bridge",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "kaf-fork-ascender-init",
       "current": "ك",
-      "method": "counter-ligature",
       "ligatureWith": "اآأإٱل",
-      "outer": {
-        "start": "top",
-        "traversal": "down",
-        "topTraversal": "forward",
-        "top": [
-          {
-            "direction": "left",
-            "end": {
-              "sharp": true,
-              "yExtremum": true
-            }
-          }
-        ],
-        "topUseStepEnd": true
-      },
-      "maxBridgeRatio": 1,
-      "minAscenderRise": 0.9,
-      "lowerBridge": "bottom-extrema",
       "tryNext": true,
-      "forkRise": 0.8,
       "onIncomplete": true,
-      "maxBridgeBend": 0.16
+      "body": {
+        "shape": "counter-attachment",
+        "attachment": {
+          "outer": {
+            "start": "top",
+            "traversal": "down",
+            "topTraversal": "forward",
+            "top": [
+              {
+                "direction": "left",
+                "end": {
+                  "sharp": true,
+                  "yExtremum": true
+                }
+              }
+            ],
+            "topUseStepEnd": true
+          },
+          "forkRise": 0.8,
+          "minAscenderRise": 0.9
+        }
+      },
+      "cuts": {
+        "attachment": {
+          "maxBridgeRatio": 1,
+          "lowerBridge": "bottom-extrema",
+          "maxBridgeBend": 0.16
+        },
+        "boundaries": {
+          "left": "counter-bridge",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "kaf-zigzag-init",
@@ -3175,37 +3211,59 @@
     {
       "id": "kaf-upright-bridge-medi",
       "current": "ك",
-      "counterLigature": {
-        "letters": "اأإآٱل",
-        "forkRise": 0.25,
-        "maxBridgeRatio": 1,
-        "minAscenderRise": 0.55,
-        "lowerBridge": "stem-side",
-        "shoulder": {
-          "radius": 2.25
-        },
-        "maxBridgeBend": 0.16
-      },
       "tightJoin": true,
       "onIncomplete": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-attachment",
+        "attachment": {
+          "forkRise": 0.25,
+          "minAscenderRise": 0.55,
+          "shoulder": {
+            "radius": 2.25
+          }
+        }
+      },
+      "cuts": {
+        "attachment": {
+          "letters": "اأإآٱل",
+          "maxBridgeRatio": 1,
+          "lowerBridge": "stem-side",
+          "maxBridgeBend": 0.16
+        },
+        "boundaries": {
+          "left": "counter-bridge",
+          "right": "counter-shoulder"
+        }
+      }
     },
     {
       "id": "kaf-fork-ascender-medi",
       "current": "ك",
       "tightJoin": true,
-      "counterLigature": {
-        "letters": "اأإآٱل",
-        "forkRise": 0.8,
-        "maxBridgeRatio": 1,
-        "minAscenderRise": 0.9,
-        "lowerBridge": "bottom-extrema",
-        "shoulder": {
-          "radius": 2.25
-        },
-        "maxBridgeBend": 0.16
+      "onIncomplete": true,
+      "body": {
+        "shape": "counter-attachment",
+        "attachment": {
+          "forkRise": 0.8,
+          "minAscenderRise": 0.9,
+          "shoulder": {
+            "radius": 2.25
+          }
+        }
       },
-      "onIncomplete": true
+      "cuts": {
+        "attachment": {
+          "letters": "اأإآٱل",
+          "maxBridgeRatio": 1,
+          "lowerBridge": "bottom-extrema",
+          "maxBridgeBend": 0.16
+        },
+        "boundaries": {
+          "left": "counter-bridge",
+          "right": "counter-shoulder"
+        }
+      }
     },
     {
       "id": "kaf-descending-blade-medi",

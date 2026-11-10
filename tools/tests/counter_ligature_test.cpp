@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     auto source = shape.transform.map(shape.path); source.translate(shape.pos); source.setFillRule(Qt::WindingFill);
     WordResultInfo::SubWordInfo dummy;
     auto context = geometry(source, dummy, form);
-    check(searchCounterLigature(context), "Joined kaf-ascender did not match");
+    check(declaredSharedBoundary(context, form), "Joined kaf-ascender did not match");
     const auto cut = context.res;
     check(cut.topBaseLine.pathIndex == 0 && cut.topBaseLine.time == 3 &&
           cut.counterEntry.pathIndex == 1 && cut.counterEntry.time == 3 &&
@@ -73,15 +73,15 @@ int main(int argc, char** argv) {
           "Ascender lost its stem/return or kaf lost its upper arm");
     partition(source, pieces);
     auto noCounter = geometry(context.subPaths[0], dummy, form);
-    check(!searchCounterLigature(noCounter), "Counter ligature accepted without its counter");
+    check(!declaredSharedBoundary(noCounter, form), "Counter ligature accepted without its counter");
     Stretching unrelated{}; unrelated.topBaseLine.point = {-200, 300}; unrelated.bottomBaseLine.point = {-100, 500};
     dummy.joins.insert(unrelated); context.baseText = QStringLiteral("اختبار"); context.pairedStrokeWidth = 1000;
-    check(searchCounterLigature(context) && context.res.topBaseLine.time == 3 && context.res.counterEntry.time == 3,
+    check(declaredSharedBoundary(context, form) && context.res.topBaseLine.time == 3 && context.res.counterEntry.time == 3,
           "Ligature geometry depends on neighboring text or landmarks");
     for (double scale : {0.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(source), dummy, form);
-        check(searchCounterLigature(scaled) && scaled.res.topBaseLine.time == 3 && scaled.res.counterEntry.time == 3,
+        check(declaredSharedBoundary(scaled, form) && scaled.res.topBaseLine.time == 3 && scaled.res.counterEntry.time == 3,
               "Ligature landmarks changed under scale or translation");
         check(std::abs(scaled.res.bottomBaseLine.time - cut.bottomBaseLine.time) < 1e-6 &&
               std::abs(scaled.res.counterExit.time - cut.counterExit.time) < 1e-6 &&
