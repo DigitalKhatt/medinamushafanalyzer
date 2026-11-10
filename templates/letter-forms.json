@@ -642,20 +642,40 @@
     {
       "id": "kaf-zigzag-init",
       "current": "ك",
-      "method": "kaf-zigzag",
-      "probeWidth": 1,
-      "probeY": 0.1,
-      "edge": {
-        "minX": -5,
-        "maxX": 1,
-        "minY": -4,
-        "maxY": -1
-      },
-      "edgeFlank": {
-        "minX": 1
-      },
       "tryNext": true,
-      "retryOnPartial": true
+      "retryOnPartial": true,
+      "body": {
+        "shape": "profile-neck",
+        "neck": {
+          "lookback": 4,
+          "previousOffset": 1,
+          "minX": 0,
+          "maxX": 1,
+          "minY": 0.8,
+          "maxY": 1.5
+        },
+        "profile": {
+          "clearBelow": {
+            "width": 1,
+            "offsetY": 0.1
+          },
+          "edge": {
+            "minX": -5,
+            "maxX": 1,
+            "minY": -4,
+            "maxY": -1
+          },
+          "edgeFlank": {
+            "minX": 1
+          }
+        }
+      },
+      "cuts": {
+        "boundaries": {
+          "left": "edge-projection",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "kaf-descending-hook-init",
@@ -731,13 +751,33 @@
     {
       "id": "kaf-init",
       "current": "ك",
-      "method": "kaf",
-      "probeWidth": 1,
-      "probeY": 0.1,
       "tryNext": true,
       "retryOnPartial": true,
-      "bodyFeatures": {
-        "minHeight": 2
+      "body": {
+        "shape": "profile-neck",
+        "neck": {
+          "lookback": 4,
+          "previousOffset": 1,
+          "minX": 0,
+          "maxX": 1,
+          "minY": 0.8,
+          "maxY": 1.5
+        },
+        "profile": {
+          "clearBelow": {
+            "width": 1,
+            "offsetY": 0.1
+          }
+        },
+        "features": {
+          "minHeight": 2
+        }
+      },
+      "cuts": {
+        "boundaries": {
+          "left": "neck-section",
+          "right": "free"
+        }
       }
     },
     {

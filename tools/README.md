@@ -175,7 +175,7 @@ Sad/tah loop forms reuse counter-loop, rim, outline, shoulder and route evidence
 
 Final noon and beh bowls use saved contour routes, return branches or `bowl-neck`. Neck recognition records the opposing contour landmarks and the bowl turn; assembly filters candidates against the active cursor and previous boundary. The neck-flank calculations are shared with the remaining legacy callers.
 
-Waw shares counter necks, shoulders and bridges. Its `profile-neck` body records eligible neck flanks and the head’s strip-intersection count; assembly chooses the available neck. The old initial/final counter dispatchers have been removed.
+Waw shares counter necks, shoulders and bridges. Its `profile-neck` body records eligible neck flanks and the head’s strip-intersection count; assembly chooses the available neck. Kaf uses the same profile recognizer for the clear area beneath its neck and its zigzag edge. Edge projection is a cut policy. The old initial/final counter and kaf neck dispatchers have been removed.
 
 Seen/sheen uses `tooth-cluster`: recognition records three tips, the intervening valleys and admissible spacing on the uncut contour. Boundary policies project entry and exit sections. Fold compatibility, neighboring limits and retry selection are applied afterward; they cannot change the cached cluster evidence.
 
