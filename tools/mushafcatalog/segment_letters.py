@@ -136,7 +136,7 @@ def prepare_page(database, pid, binary, work, selected=None, templates=None, *, 
     for sid, result in results.items():
         if result['status'] not in ('template','single-letter'):
             result['text'] = texts[sid]
-        if result['status'] in ('template','provisional'):
+        if result['status'] == 'template':
             record_kashida_spans(result['parts'], [owner for owner, _ in owners[sid]])
         for part in result.get('parts', []):
             if 'outline' in part:
@@ -172,7 +172,7 @@ def publish_page(db, pid, data, vectors, producer, counts, *, partial=False):
     generated = json.loads(zlib.decompress(vectors))
     if meta(db,VECTOR_STORAGE):
         require(not generated['rasterMarks'], f'{pid}: cutter could not verify all mark vectors')
-        require(all(result['status'] in ('template','provisional','single-letter')
+        require(all(result['status'] in ('template','single-letter')
                     for result in data['results'].values()), f'{pid}: cutter left a body unresolved')
     if partial:
         saved = db.execute('SELECT vectors FROM catalog_page_art WHERE page_id=? AND source_sha=? AND report_sha=?',
@@ -201,7 +201,7 @@ def publish_page(db, pid, data, vectors, producer, counts, *, partial=False):
             counts['preserved'] += 1
             continue
         status = result['status']
-        if status in ('template','provisional','single-letter'):
+        if status in ('template','single-letter'):
             attach_record(db, dict(version=VERSION, subword=sid, sourceKey=data['keys'][sid],
                                    producer=producer, parts=result['parts']),vector_parts=generated['parts'])
             counts[status] += 1
@@ -283,9 +283,9 @@ def segment_pages(database, selection, workers, subwords, log):
                 diagnostics.update(log_page(log,pid,json.loads((work/(pid+'.json')).read_bytes())['results']))
                 log.flush()
                 print(f'Cut {i}/{len(pages)} pages ({pid})',file=sys.stderr,flush=True)
-        unresolved = sum(value for key,value in diagnostics.items() if key not in ('template','single-letter','provisional'))
+        unresolved = sum(value for key,value in diagnostics.items() if key not in ('template','single-letter'))
         print('Summary: '+', '.join(f'{key}={value}' for key,value in sorted(diagnostics.items())), file=log)
-        print(f'Unresolved: {unresolved}. Provisional: {diagnostics["provisional"]}.', file=log)
+        print(f'Unresolved: {unresolved}.', file=log)
         print(f'Partial matches: {diagnostics["partial-match"]}. No matches: {diagnostics["no-match"]}.', file=log)
         require(len(revisions)==1 and sha(binary.read_bytes())==binary_hash, 'Cutter or templates changed during segmentation; retry')
         producer = NATIVE + revisions.pop() + '/' + binary_hash + '/cut-span-x-v1'

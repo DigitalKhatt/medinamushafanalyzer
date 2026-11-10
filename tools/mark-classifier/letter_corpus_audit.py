@@ -90,7 +90,6 @@ def prepare_example(row, document):
     vector = vector_row(row, document)
     ink, bbox = source_crop(vector, document['raster']['width'])
     reference, roles, status = reference_crop(vector, document['raster']['width'], ink, bbox)
-    status['valid'] = bool((row['complete'] or row.get('provisional')) and not status['rasterError'])
     example = inference_example(vector, ink)
     example['record']['pdfToRaster'] = document['pdfToRaster']
     return dict(row=row, vector=vector, ink=ink, bbox=bbox, reference=reference,
@@ -155,7 +154,7 @@ def save_example(db, item, prediction, predicted_roles, raw, document, split, tr
     completed = disagreement(reference, prediction, roles, predicted_roles, ink, pen_width)
     original = disagreement(reference, raw, roles, predicted_roles, ink, pen_width)
     status = item['status']
-    state = ('provisional' if row.get('provisional') else 'complete') if status['valid'] else 'partial'
+    state = 'complete' if status['valid'] else 'partial'
     score = completed['differenceFraction'] if status['valid'] else None
     raw_score = original['differenceFraction'] if status['valid'] else None
     worst = completed['worstBodyDifference'] if status['valid'] else None

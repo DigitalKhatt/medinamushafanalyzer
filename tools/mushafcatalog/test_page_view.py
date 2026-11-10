@@ -36,20 +36,17 @@ class CutterLogTests(unittest.TestCase):
         log = StringIO()
         missing = dict(position='medial',character='ص',status='no-match',candidates=['sad-medi'])
         matched = dict(position='initial',character='ل',status='matched')
-        remainder = dict(position='final',character='ي',status='remainder')
         results = {
             'partial': dict(status='incomplete',text='لصح',letters=[matched,missing],trace=['Contour rejected']),
             'unmatched': dict(status='incomplete',text='صح',letters=[missing]),
-            'provisional': dict(status='provisional',text='لي',letters=[matched,remainder]),
             'accepted': dict(status='template'),
         }
         self.assertEqual(log_page(log,'page435',results),
-                         {'partial-match':1,'no-match':1,'provisional':1,'template':1})
+                         {'partial-match':1,'no-match':1,'template':1})
         self.assertIn('partial-match: partial لصح',log.getvalue())
         self.assertIn('no-match: unmatched صح',log.getvalue())
         self.assertIn('medial ص: no-match (sad-medi)',log.getvalue())
         self.assertIn('Contour rejected',log.getvalue())
-        self.assertIn('final ي: remainder',log.getvalue())
 
     def test_aborted_segmentation_publishes_its_log(self):
         with TemporaryDirectory() as folder:
@@ -216,13 +213,13 @@ class PageViewTests(unittest.TestCase):
                 self.assertEqual(search(reader,params,True)['distribution'],[[1.5,1]])
             self.assertEqual(search(reader,dict(query,min='10'))['emptyMessage'],'No measured kashidas match these filters.')
 
-    def test_includes_provisional_and_preserves_reviewed(self):
+    def test_replaces_automatic_cuts_and_preserves_reviewed(self):
         counts = Counter()
         producer = NATIVE+'fixture'
         with self.db:
-            publish_page(self.db,PID,self.batch('provisional'),pack_vectors(),producer,counts)
-            publish_page(self.db,PID,self.batch('provisional'),pack_vectors(),producer,counts)
-        self.assertEqual(counts,{'provisional':2})
+            publish_page(self.db,PID,self.batch('template'),pack_vectors(),producer,counts)
+            publish_page(self.db,PID,self.batch('template'),pack_vectors(),producer,counts)
+        self.assertEqual(counts,{'template':2})
         self.assertEqual(self.db.execute('SELECT count(*) FROM catalog_parts').fetchone()[0],3)
         with self.db:
             publish_page(self.db,PID,self.batch('incomplete'),pack_vectors(),producer,counts)
@@ -234,7 +231,7 @@ class PageViewTests(unittest.TestCase):
         self.assertEqual(counts['preserved'],1)
 
     def test_broken_partition_rolls_back_earlier_record_and_artwork(self):
-        batch = self.batch('provisional')
+        batch = self.batch('template')
         batch['results'][S2] = dict(status='template',parts=self.parts)
         batch['keys'][S2] = 'stale'
         with self.assertRaisesRegex(ValueError,'source key'),self.db:

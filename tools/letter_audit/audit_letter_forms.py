@@ -24,7 +24,6 @@ def audit(cache):
         counts["connectedSubwords" if connected else "singleLetterSubwords"] += 1
         counts["completeSubwords"] += bool(subword["complete"])
         counts["completeConnectedSubwords"] += connected and bool(subword["complete"])
-        counts["provisionalSubwords"] += bool(subword.get("provisional"))
         counts["expectedRegionCount"] += len(subword["bodies"]) == len(text)
         letters = subword.get("letters", [])
         if len(letters) != len(text):
@@ -32,9 +31,10 @@ def audit(cache):
         location = {key: subword[key] for key in ("line", "word", "subword", "text")}
         location["id"] = f"page{cache['page']:03d}:l{location['line']}-w{location['word']}-s{location['subword']}"
         missing = []
-        for letter in letters:
-            status = letter["status"]
-            if status not in {"matched", "not-required", "no-template", "no-match", "blocked", "remainder"}:
+        for diagnostic in letters:
+            status = diagnostic.get("templateStatus", diagnostic["status"])
+            letter = dict(diagnostic, status=status)
+            if status not in {"matched", "not-required", "no-template", "no-match", "blocked"}:
                 raise ValueError(f"Unknown letter status: {status}")
             status_counts[status] += 1
             if status in {"matched", "not-required"}:
@@ -47,8 +47,7 @@ def audit(cache):
             raise ValueError(f"Complete subword has unresolved bodies: {location['id']}")
         if not subword["complete"]:
             unresolved.append({**location, "letters": missing, "trace": subword["trace"],
-                               "reason": "provisional-remainder" if subword.get("provisional") else
-                                         "unresolved-forms" if missing else "cut-conflict"})
+                               "reason": "unresolved-forms" if missing else "cut-conflict"})
     grouped = [{"status": key[0], "position": key[1], "character": key[2],
                 "candidates": list(key[3]), "count": len(examples), "examples": examples}
                for key, examples in sorted(groups.items(), key=lambda item: (item[0][0], -len(item[1]), item[0][1:]))]
@@ -65,15 +64,13 @@ def format_report(report):
              f"Tracker enabled: {report['trackingEnabled']}",
              f"Templates: {report['templateHash']}",
              f"Connected subwords complete: {summary['completeConnectedSubwords']}/{summary['connectedSubwords']}",
-             f"Connected subwords partial: {summary['connectedSubwords'] - summary['completeConnectedSubwords'] - summary['provisionalSubwords']}",
-             f"Provisional remainder partitions: {summary['provisionalSubwords']}",
+             f"Connected subwords partial: {summary['connectedSubwords'] - summary['completeConnectedSubwords']}",
              f"Single-letter subwords (no cut needed): {summary['singleLetterSubwords']}",
              "Counts below are letter occurrences, not subword counts.",
              "Coverage reports accepted body templates; it is not a visual accuracy measurement."]
     descriptions = {"no-template": "No template selects this character in this position",
                     "no-match": "A template was tried but its body boundary was not accepted",
-                    "blocked": "A template exists but an earlier unresolved boundary blocked its search",
-                    "remainder": "Assigned from a final-yeh cut; initial form still missing, review required"}
+                    "blocked": "A template exists but an earlier unresolved boundary blocked its search"}
     for status, description in descriptions.items():
         lines.extend(["", f"{status}: {description} ({report['letterStatuses'].get(status, 0)} occurrences)"])
         for group in report["groups"]:
@@ -98,7 +95,7 @@ def main():
     summary = report["summary"]
     print(f"Page {report['page']}: {summary['completeConnectedSubwords']}/{summary['connectedSubwords']} connected subwords have complete body templates.")
     print(f"{summary['singleLetterSubwords']} single-letter subwords need no cuts. Tracker enabled: {report['trackingEnabled']}")
-    for status in ("no-template", "no-match", "blocked", "remainder"):
+    for status in ("no-template", "no-match", "blocked"):
         print(f"\n{status}:")
         for group in report["groups"]:
             if group["status"] == status:

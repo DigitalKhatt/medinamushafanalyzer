@@ -408,7 +408,7 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
             const bool receiving = !before(left, next);
             if (!sharedTip || sending == receiving || !before(right, left)) return retainNearBoundary();
 
-            // The half-unit anchors are fixed. If a provisional adjacent cap
+            // The half-unit anchors are fixed. If a tentative adjacent cap
             // crosses one of them, try a nearby section of that same join.
             const auto oldCap = sending ? previousCap : nextCap;
             const auto flank = chord(sending ? right : left);

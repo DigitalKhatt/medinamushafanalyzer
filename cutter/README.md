@@ -20,6 +20,13 @@ verifies the fork from the uncut ink and proposes cuts.
 [attachment_policy.cpp](forms/lam/attachment_policy.cpp) applies the chosen
 fork or ligature policy.
 
+The `initial`, `medial` and `final` arrays set the priority within each pass.
+An initial form with `sharedFoldWithFinal` takes its turn in the initial array
+and uses the first matching final boundary for the declared adjacent letters.
+`sharedFoldForm` can name the specific final template supplying the cut.
+`onUnresolved` reserves a form for extended recovery. `onIncomplete` enables
+it on a retry within that pass. The folded fāʾ form uses both settings.
+
 A medial form can declare `terminalArmRecovery` with a final `prefixForm`
 for its own letters and an `attached` or `detached` mode. Each mode names a
 final arm profile and a catalog variant label. An attached mode uses a tapered

@@ -172,7 +172,7 @@ static void checkSeparateAlefTip() {
     const auto& sub = word.wordResultInfo.subWords[2];
     const auto shape = word.bodyShape(sub);
     const auto outlines = toSubpaths(shape.path);
-    check(outlines.size() == 3 && sub.baseGlyphs.size() == 4 && !sub.provisional(), "Expected four matched bodies");
+    check(outlines.size() == 3 && sub.baseGlyphs.size() == 4, "Expected four matched bodies");
     check(sub.letterDiagnostics.last().toObject().value("template") == "alef-detached-fina" &&
           sub.baseGlyphs.back().path == outlines.back(), "Final alef must own its entire original diagonal");
     const auto lam = shape.transform.map(sub.baseGlyphs[2].path).translated(shape.pos);

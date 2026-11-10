@@ -48,15 +48,15 @@ class IncompleteCorpusTests(unittest.TestCase):
         self.assertEqual(result['summary']['reportedCompleteButInconsistent'], 1)
         self.assertEqual(result['summary']['incompleteWords'], 1)
 
-    def test_provisional_remainder_is_still_incomplete(self):
+    def test_matched_final_does_not_certify_unmatched_initial(self):
         cache = self.cache()
         sub = cache['subwords'][0]
-        sub.update(text='فِي', provisional=True)
-        sub['letters'][0].update(character='ف', status='remainder', candidates=['feh-init'])
+        sub.update(text='فِي')
+        sub['letters'][0].update(character='ف', status='no-match', candidates=['feh-init'])
         sub['letters'][1].update(character='ي', status='matched', candidates=['yeh-fina'])
         result = analyse_page(cache)
-        self.assertEqual(result['summary']['provisionalSubwords'], 1)
-        self.assertEqual(result['items'][0]['reason'], 'provisional-remainder')
+        self.assertEqual(result['summary']['incompleteConnectedSubwords'], 1)
+        self.assertEqual([letter['character'] for letter in result['items'][0]['direct']], ['ف'])
 
     def test_spacing_and_marks_do_not_add_letter_slots(self):
         cache = self.cache()

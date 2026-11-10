@@ -103,7 +103,7 @@ def main():
     b.add_argument('--report',type=Path,default=REPORT)
     b.add_argument('--expected-manifest',help=argparse.SUPPRESS)
     b.add_argument('--restore-bodies-from',type=Path,help=argparse.SUPPRESS)
-    letters = commands.add_parser('segment-letters',help='Cut native letter bodies, including provisional cuts, and update the catalog')
+    letters = commands.add_parser('segment-letters',help='Cut native letter bodies and update the catalog')
     letters.add_argument('--pages',default='all',help='All catalog pages, or a selection such as 3,8-12')
     letters.add_argument('--workers',type=int,choices=range(1,17),default=4)
     letters.add_argument('--subwords-file',type=Path,help='Update only these multi-letter subword IDs, one per line')

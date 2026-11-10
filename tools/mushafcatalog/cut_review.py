@@ -37,7 +37,7 @@ def compare_page(db, pid, folder):
         spec = expected[sid]
         if data['keys'][sid] != spec['body_key']:
             issues.append(dict(id=sid, issue='source-key-changed'))
-        if result['status'] not in ('template', 'provisional'):
+        if result['status'] != 'template':
             issues.append(dict(id=sid, issue='unresolved', status=result['status']))
         if sum(p['role']=='body' for p in result.get('parts', [])) != spec['letter_count']:
             issues.append(dict(id=sid, issue='letter-count'))

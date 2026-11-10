@@ -31,7 +31,7 @@ stores the native page contours, grouped surah titles, basmalas and ayah
 markers, and frame openings in the catalog. The viewer draws them directly.
 Each letter-segmentation run writes `output/mushafcatalog/letter-segmentation.log`
 with page totals and the subword IDs, letter diagnostics, and cutter traces
-for provisional or unresolved cases. The log also records whether the catalog
+for unresolved cases. The log also records whether the catalog
 update committed. Use `segment-letters --log PATH` to keep a separate log.
 
 Check individual template edits against the saved cuts with
@@ -77,8 +77,8 @@ Declared forms use `body` for recognition and `cuts` for cut placement.
 Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
 declares its stem/bowl measurements in `body.stem`, then uses
 `cuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
-lām `method` or `legacyLamRoutes` adapter. All 176 geometric forms use these
-declarations. The two exposed-head recipes use `assembly` to combine existing body templates at a shared seam;
+lām `method` or `legacyLamRoutes` adapter. The two exposed-head recipes use
+`assembly` to combine existing body templates at a shared seam;
 they are recovery composition rules, not additional shape recognizers.
 
 In the native application, enable **Inspect cuts** and click a subword. Select

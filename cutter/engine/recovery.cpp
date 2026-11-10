@@ -267,7 +267,7 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
     } else {
         prefixComplete = prefix.segmentWithLetterForms(-2, 0, 0, 0, nullptr, prefixForms, true);
     }
-    if (!prefixComplete || result.provisional() || result.baseGlyphs.size() + 1 != size_t(letters.size()))
+    if (!prefixComplete || result.baseGlyphs.size() + 1 != size_t(letters.size()))
         return false;
     const auto prefixBody = toPage(result.baseGlyphs.back().path);
     QPainterPathStroker envelope;
@@ -405,7 +405,7 @@ bool recoverExposedHead(const Word& word, WordResultInfo::SubWordInfo& sub,
     tail.paths.append(shape);
     auto& result = tail.wordResultInfo.subWords.emplace_back();
     result.paths = {0}; result.text = letters.mid(1);
-    if (!suffix.segmentSubword(-2, 0, 0, 0, nullptr, true, &config) || result.provisional() ||
+    if (!suffix.segmentSubword(-2, 0, 0, 0, nullptr, true, &config) ||
         result.baseGlyphs.size() + 1 != size_t(letters.size()) ||
         !head.value("assembly")
              .toObject()
@@ -522,7 +522,7 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
         if (!separate && !form.value("current").toString().contains(letters[slot])) continue;
         const int prefixSize = separate ? slot : slot + 1;
         auto prefix = fit(pieces[0], letters.left(prefixSize)), suffix = fit(pieces[1], letters.mid(slot));
-        if (!suffix.correct || prefix.provisional() || suffix.provisional() ||
+        if (!suffix.correct ||
             prefix.baseGlyphs.size() != size_t(prefixSize) || suffix.baseGlyphs.size() != size_t(letters.size() - slot) ||
             prefix.joins.size() != size_t(prefixSize - 1) || suffix.joins.size() + 1 != suffix.baseGlyphs.size() ||
             prefix.letterDiagnostics.size() != prefixSize || suffix.letterDiagnostics.size() != letters.size() - slot)
@@ -648,7 +648,7 @@ bool stableTemplateCuts(const Word& word, WordResultInfo::SubWordInfo& sub, QJso
         auto& result = item.wordResultInfo.subWords.emplace_back();
         result.paths = {0};
         result.text = sub.text;
-        if (!page.segmentSubword(-2, 0, 0, 0, nullptr, true, &config) || result.provisional())
+        if (!page.segmentSubword(-2, 0, 0, 0, nullptr, true, &config))
             return false;
         // Masks are stored in the original path coordinates. Only inspection
         // landmarks, measured distances, and connector lines use page units.
@@ -838,7 +838,7 @@ bool recoverSharedTerminal(const Word& word, WordResultInfo::SubWordInfo& sub,
                               const QJsonObject& config, const QJsonObject& checks) {
     const auto text = PageAnalysisResult::bodyLetters(sub.text);
     const int count = text.size();
-    if (count < 2 || sub.paths.empty() || sub.provisional() || sub.letterDiagnostics.size() != count ||
+    if (count < 2 || sub.paths.empty() || sub.letterDiagnostics.size() != count ||
         sub.baseGlyphs.size() != sub.joins.size() + 1 ||
         (sub.joins.size() != size_t(count - 1) && sub.joins.size() != size_t(count - 2)))
         return false;
@@ -999,7 +999,7 @@ bool recoverSharedTerminal(const Word& word, WordResultInfo::SubWordInfo& sub,
 
 bool confirmCounterOutlines(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const QJsonObject& recoveryChecks) {
     const auto text = PageAnalysisResult::bodyLetters(sub.text);
-    if (sub.provisional() || text.size() < 2 || sub.baseGlyphs.size() != size_t(text.size()) ||
+    if (text.size() < 2 || sub.baseGlyphs.size() != size_t(text.size()) ||
         sub.letterDiagnostics.size() != text.size() || sub.joins.size() + 1 != sub.baseGlyphs.size())
         return false;
     const auto shape = word.bodyShape(sub);

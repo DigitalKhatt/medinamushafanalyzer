@@ -22,7 +22,7 @@ import torch
 
 from automatic.common import unpack_runs
 from letter_retest import CANVAS, boundary, metric, model_for, predict, summarize
-from letter_retest_data import pixels, weak_partition
+from letter_retest_data import pixels, weak_label_exclusion, weak_partition
 from letter_retest_report import colored
 from workbench_paths import NATIVE
 
@@ -71,10 +71,11 @@ def repair_reference_seams(ink, labels, count, region_count):
 
 def reference_crop(row, width, ink, bbox):
     """Keep failed references unknown apart from bounded one-pixel raster seams."""
+    complete = weak_label_exclusion(row) is None
     try:
         labels, roles, rb, repaired, extra = weak_partition(row, width)
         assert rb == bbox
-        return labels, roles, dict(valid=bool(row['complete']) and not row.get('provisional'), rasterError=None,
+        return labels, roles, dict(valid=complete, rasterError=None,
                                    repairedPixels=repaired, clippedExtraPixels=extra)
     except ValueError as error:
         labels = np.zeros(ink.shape, 'uint16')
@@ -94,7 +95,7 @@ def reference_crop(row, width, ink, bbox):
             if repaired is not None:
                 labels, conflicts, extra = repaired
                 return labels, np.asarray(roles, 'uint8'), dict(
-                    valid=bool(row['complete']) and not row.get('provisional'), rasterError=None,
+                    valid=complete, rasterError=None,
                     rasterRepair='one-pixel-boundary', originalRasterError=str(error),
                     repairedPixels=conflicts, clippedExtraPixels=extra)
         return labels, np.asarray(roles, 'uint8'), dict(valid=False, rasterError=str(error),
@@ -296,7 +297,7 @@ def main(args):
             pred, pr, raw = file['instances'], file['roles'], file['raw']
         assert not ((pred > 0) & ~ink).any() and not ((raw > 0) & ~ink).any()
         item = dict(id=row['id'], text=row['text'], line=row['line'], word=row['word'], subword=row['subword'],
-                    bbox=bbox, complete=row['complete'], provisional=bool(row.get('provisional')),
+                    bbox=bbox, complete=row['complete'],
                     referenceStatus=status, templates=row['templates'],
                     letters=row['letters'], trace=row.get('trace', []), results={}, images={})
         pictures = {'input': Image.fromarray(np.where(ink, 25, 255).astype('uint8')).convert('RGB'),
@@ -333,7 +334,6 @@ def main(args):
     overview.save(output/'page-comparison.png')
     summary = dict(page=page, examples=len(rows), exportedExamples=len(document['examples']), excludedExamples=excluded,
         templateComplete=sum(r['complete'] for r in rows),
-        provisionalExamples=sum(r['provisional'] for r in rows),
         comparableExamples=len(metrics), templateRasterIssues=sum(bool(r['referenceStatus']['rasterError']) for r in rows),
         counts=dict(Counter(r['results']['completed']['priority'] for r in rows)),
         rawCounts=dict(Counter(r['results']['raw']['priority'] for r in rows)),
@@ -344,7 +344,7 @@ def main(args):
         modelSha256=model_hash, frozenThreshold=settings['threshold'], trainingStep=settings['step'],
         inference=cached, templateTrackerEnabled=config.get('kashidaDefaults', {}).get('trackingEnabled'),
         noTranscriptAtInference=True, sourceArtworkModified=False, humanAnnotationsModified=False,
-        caveat='Agreement with automatic templates is not segmentation accuracy. Inference is per existing subword body; gray dots/marks are context. Provisional, partial and raster-invalid references are displayed but excluded from aggregate metrics.')
+        caveat='Inference is per subword body. Gray dots and marks show context. Agreement is scored on complete, raster-valid template references.')
     payload = dict(summary=summary, width=shape[1], height=shape[0], viewBox=[x0, y0, x1-x0, y1-y0], rows=rows)
     (output/'comparison.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2)+'\n')
     (output/'comparison-data.js').write_text('window.PAGE_COMPARISON = '+json.dumps(payload, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')+';\n')

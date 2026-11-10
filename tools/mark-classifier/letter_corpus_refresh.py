@@ -124,10 +124,10 @@ def refresh(folder, baseline, snapshot, output, batch_file=None):
                     old_geometry, new_geometry = geometry(previous), geometry(row)
                     mask_changed = old_geometry != new_geometry
                     metadata_changed = any(previous.get(k) != row.get(k) for k in
-                                           ('complete', 'provisional', 'letters', 'templates'))
+                                           ('complete', 'letters', 'templates'))
                     if not mask_changed and not metadata_changed:
                         continue
-                    status_changed = any(previous.get(k) != row.get(k) for k in ('complete', 'provisional'))
+                    status_changed = previous['complete'] != row['complete']
                     if mask_changed or status_changed:
                         if document is None:
                             raw = json.loads((NATIVE / 'output/vector-review' / f'page{page:03}.raw.json').read_bytes())

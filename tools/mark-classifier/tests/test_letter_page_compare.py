@@ -10,10 +10,10 @@ if AVAILABLE:
 
 @unittest.skipUnless(AVAILABLE, 'Optional letter-model dependencies are not installed')
 class PageComparisonTests(unittest.TestCase):
-    def test_provisional_reference_is_not_a_valid_scoring_target(self):
+    def test_unmatched_letter_is_not_a_valid_scoring_target(self):
         row = {'id': 'test', 'sourceRuns': [22, 6, 32, 6, 42, 6, 52, 6, 62, 6, 72, 6, 82, 6],
                'regions': [{'role': 'body', 'runs': [22, 6, 32, 6, 42, 6, 52, 6, 62, 6, 72, 6, 82, 6]}],
-               'complete': True, 'provisional': True}
+               'complete': True, 'letters': [{'status': 'no-match'}]}
         ink, bbox = source_crop(row, 10)
         _, _, status = reference_crop(row, 10, ink, bbox)
         self.assertFalse(status['valid'])

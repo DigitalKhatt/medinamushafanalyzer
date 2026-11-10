@@ -19,10 +19,9 @@ def digest(path):
 
 
 def weak_label_exclusion(row):
-    if (row.get('provisional') or any(letter.get('status') == 'remainder' for letter in row.get('letters', []))
-            or any(region.get('labelSource') == 'remainder' for region in row.get('regions', []))):
-        return 'provisional-remainder'
-    if not row['complete']:
+    if (not row['complete']
+            or any(letter.get('status') not in {'matched', 'not-required'} for letter in row.get('letters', []))
+            or any(region.get('labelSource') not in (None, 'template') for region in row.get('regions', []))):
         return 'partial'
     return None
 

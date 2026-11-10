@@ -23,11 +23,11 @@ CUTTER_TESTS = (
     "hah_compact_test.cpp", "tooth_ownership_test.cpp", "final_feh_test.cpp",
     "medial_hah_ownership_test.cpp", "medial_kaf_flat_test.cpp", "medial_meem_test.cpp",
     "medial_kaf_zigzag_test.cpp", "additional_shape_forms_test.cpp",
-    "final_hah_test.cpp", "cutter_disagreement_test.cpp",
+    "final_hah_test.cpp", "cutter_disagreement_test.cpp", "feh_fold_test.cpp",
 )
 TESTS = (
     "segmentation_dialog_test.cpp", "form_inspection_test.cpp", "letter_forms_test.cpp", "initial_heads_test.cpp", "body_letters_test.cpp", "compound_body_test.cpp",
-    "page3_corpus_test.cpp", "yeh_remainder_test.cpp", "recovered_letter_masks_test.cpp",
+    "page3_corpus_test.cpp", "recovered_letter_masks_test.cpp",
     *CUTTER_TESTS,
 )
 

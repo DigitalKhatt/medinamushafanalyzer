@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
         check(analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true),
               "Native subword remains partial");
         const auto& sub = word.wordResultInfo.subWords[f.subword - 1];
-        check(!sub.provisional() && sub.matchedTemplates.contains(f.form), "Expected body form did not match");
+        check(sub.matchedTemplates.contains(f.form), "Expected body form did not match");
         if (f.corner < 0) continue;
 
         const auto& outline = word.paths[sub.paths.front()];

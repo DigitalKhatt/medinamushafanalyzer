@@ -11,7 +11,7 @@ import unicodedata
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 RESOLVED={'matched','not-required'}
-DIRECT={'no-template','no-match','remainder'}
+DIRECT={'no-template','no-match'}
 STATUSES=RESOLVED|DIRECT|{'blocked'}
 
 def write(path,value):path.write_text(json.dumps(value,ensure_ascii=False,separators=(',',':'))+'\n')
@@ -43,23 +43,23 @@ def analyse_page(cache, partition_failures=frozenset()):
         counts['subwords']+=1;connected=len(base)>1
         counts['connectedSubwords' if connected else 'singleLetterSubwords']+=1
         known_words[word_id]=word.get('text',row.get('wordText',text));word_rows[word_id]=word
-        letters=row.get('letters',[])
+        letters=[dict(letter,status=letter.get('templateStatus',letter['status'])) for letter in row.get('letters',[])]
         for letter in letters:
             if letter['status'] not in STATUSES:raise ValueError(f"Unknown status {letter['status']}")
             statuses[letter['status']]+=1
         missing=[l for l in letters if l['status'] not in RESOLVED]
         direct=[l for l in missing if l['status'] in DIRECT]
         blocked=[l for l in missing if l['status']=='blocked']
-        reason='provisional-remainder' if row.get('provisional') else 'unresolved-forms'
+        reason='unresolved-forms'
         consistent=len(letters)==len(base)
         failed_partition=identifier(page,row) in partition_failures
-        complete=bool(row['complete']) and not missing and consistent and len(row['bodies'])==len(base) and not row.get('provisional') and not failed_partition
+        complete=bool(row['complete']) and not missing and consistent and len(row['bodies'])==len(base) and not failed_partition
         if complete:
             counts['completeSubwords']+=1
             counts['completeConnectedSubwords']+=connected
             continue
         counts['incompleteSubwords']+=1;counts['incompleteConnectedSubwords']+=connected
-        counts['provisionalSubwords']+=bool(row.get('provisional'));partial_words.add(word_id)
+        partial_words.add(word_id)
         if not consistent:
             reason='missing-diagnostics';primary={'status':'input-issue','position':'unknown','character':'?', 'letterIndex':0,'candidates':[]}
             direct=[];blocked=[]
@@ -73,7 +73,7 @@ def analyse_page(cache, partition_failures=frozenset()):
         keys={group_id(group_key(l)) for l in relevant};primary_id=group_id(group_key(primary))
         item={'id':identifier(page,row),'page':page,'line':row['line'],'word':row['word'],'subword':row['subword'],
               'text':text,'baseText':base,'wordText':known_words[word_id],'primaryGroup':primary_id,'groups':sorted(keys),
-              'direct':direct,'blocked':blocked,'reason':reason,'provisional':bool(row.get('provisional')),
+              'direct':direct,'blocked':blocked,'reason':reason,
               'bodyCount':len(row['bodies']),'expectedBodyCount':len(base),'bounds':row.get('bounds'),
               'reportedComplete':bool(row['complete'])}
         items.append(item)
@@ -89,7 +89,7 @@ def analyse_page(cache, partition_failures=frozenset()):
         gid=group_id(group_key(primary));item={'id':f'page{page:03}:l{word_id[0]}-w{word_id[1]}-s0','page':page,'line':word_id[0],
              'word':word_id[1],'subword':0,'text':word['text'],'baseText':body_letters(word['text']),'wordText':word['text'],
              'primaryGroup':gid,'groups':[gid],'direct':[],'blocked':[],'reason':'word-without-letter-subwords' if word.get('subwords',0) else 'word-without-subwords',
-             'provisional':False,'bodyCount':0,'expectedBodyCount':0,'bounds':None,'reportedComplete':False}
+             'bodyCount':0,'expectedBodyCount':0,'bounds':None,'reportedComplete':False}
         items.append(item);occurrences.append((primary,item))
     counts['words']=len(known_words);counts['incompleteWords']=len(partial_words);counts['completeWords']=len(known_words)-len(partial_words)
     return {'page':page,'summary':dict(counts),'statuses':dict(statuses),'items':items,'occurrences':occurrences,

@@ -1165,11 +1165,35 @@ std::optional<LoopHeadBody> recognizeLoopHead(const InkOutline &outline, const Q
 }
 
 bool cutLoopHead(SearchContext &context, const LoopHeadBody &evidence, const QJsonObject &bodySettings,
-                        const QJsonObject &policy) {
+                        const QJsonObject &policy, const Stretching *finalFold) {
     const auto &ink = context.transformedPath;
     const auto settings = mergeShapeSettings(bodySettings, policy);
     const auto *counter = &evidence.counter;
     const double scale = counter->height();
+    if (finalFold) {
+        const auto &a = finalFold->topBaseLine;
+        const auto &b = finalFold->bottomBaseLine;
+        const auto left = std::min(a.point.x(), b.point.x());
+        const auto right = std::max(a.point.x(), b.point.x());
+        const auto depth = std::min(a.point.y(), b.point.y()) - counter->bottom();
+        if (!evidence.edge || left < evidence.edge->point.x() || left >= counter->left() ||
+            right <= counter->right() || depth < policy.value("minFoldDepth").toDouble(2) * scale ||
+            depth > settings.value("maxNeckDistance").toDouble(4) * scale ||
+            QLineF(a.point, b.point).length() > 3 * scale || !interiorChord(ink, a, b))
+            return false;
+        const auto leftTurn = [&](const PathExtrema& point) {
+            const auto at = context.timeSorted.find(point);
+            return at != context.timeSorted.end() && at->point.x() < context.prev(at)->point.x() &&
+                   at->point.x() < context.next(at)->point.x();
+        };
+        if (!leftTurn(a) || !leftTurn(b)) return false;
+        const auto pieces = cutRegions(ink, {}, {*finalFold}, context.orientation, true);
+        if (pieces.size() != 2 || !pieces.front().path.boundingRect().contains(*counter) ||
+            toSubpaths(pieces.front().path).size() != 2 || toSubpaths(pieces.back().path).size() != 1)
+            return false;
+        context.res = *finalFold;
+        return true;
+    }
     const auto neckWalk = bodySettings.value("neckWalk").toObject();
     if (!neckWalk.isEmpty()) {
         // A descending loop has a return bend rather than a horizontal neck

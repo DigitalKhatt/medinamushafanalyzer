@@ -340,11 +340,13 @@ int exportLetterTraining(const QString& output, const QString& selection) {
                 if (sub.paths.empty()) continue;
                 const auto path = worldPath(word.bodyShape(sub));
                 QJsonArray regions;
-                for (const auto& body : item.value("bodies").toArray())
-                    regions.append(QJsonObject{{"role", "body"}, {"letter", body.toObject().value("letter")},
-                        {"labelSource", body.toObject().value("labelSource")},
-                        {"reviewRequired", body.toObject().value("reviewRequired").toBool()},
-                        {"runs", runs(letterSegmentationPath(body.toObject()), width, height, sx, sy)}});
+                for (const auto& body : item.value("bodies").toArray()) {
+                    const auto outline = body.toObject();
+                    if (!outline.contains("letter")) continue;
+                    regions.append(QJsonObject{{"role", "body"}, {"letter", outline.value("letter")},
+                        {"labelSource", outline.value("labelSource")},
+                        {"runs", runs(letterSegmentationPath(outline), width, height, sx, sy)}});
+                }
                 for (const auto& join : item.value("joins").toArray()) {
                     const auto kashida = join.toObject().value("kashida").toObject();
                     if (!kashida.isEmpty()) regions.append(QJsonObject{{"role", "kashida"},
@@ -592,7 +594,7 @@ QJsonArray validateCatalogMarks(const QJsonArray& marks, const QHash<QString,QPa
 // both claim (or both lose) an antialiased pixel along their common cut.
 QString catalogParts(const QJsonObject& cut, const QJsonObject& source, const QSize& raster,
                      const QTransform& toRaster, QJsonArray& parts) {
-    if (!cut.value("complete").toBool() && !cut.value("provisional").toBool()) return "incomplete";
+    if (!cut.value("complete").toBool()) return "incomplete";
     const auto owners = source.value("owners").toArray();
     const auto letters = source.value("letters").toString();
     const auto bodies = cut.value("bodies").toArray();
@@ -624,7 +626,6 @@ QString catalogParts(const QJsonObject& cut, const QJsonObject& source, const QS
         part.insert("outline",outline);
         parts.append(part);
     };
-    const bool provisional = cut.value("provisional").toBool();
     for (int i = 0; i < bodies.size(); ++i) {
         const auto body = bodies[i].toObject();
         if (body.value("letter").toString() != letters.mid(indices[i],1)) return "letter-order";
@@ -632,7 +633,7 @@ QString catalogParts(const QJsonObject& cut, const QJsonObject& source, const QS
         const auto variant = diagnostic.value("variant");
         add(body, {{"role","body"}, {"owner",owners[indices[i]]},
                    {"variant",variant.isUndefined() ? diagnostic.value("template") : variant},
-                   {"metrics",QJsonObject{{"quality",provisional ? "provisional" : "template"}}}});
+                   {"metrics",QJsonObject{{"quality","template"}}}});
     }
     for (const auto& value : cut.value("joins").toArray()) {
         const auto join = value.toObject();
@@ -643,7 +644,7 @@ QString catalogParts(const QJsonObject& cut, const QJsonObject& source, const QS
         // An explicitly transcribed tatweel owns the connecting stroke and its marks.
         if (next == previous+2 && letters[previous+1].unicode() == 0x0640) {
             add(join.value("kashida").toObject(), {{"role","body"}, {"owner",owners[previous+1]},
-                {"variant","tatweel"}, {"metrics",QJsonObject{{"quality",provisional ? "provisional" : "template"}}}});
+                {"variant","tatweel"}, {"metrics",QJsonObject{{"quality","template"}}}});
             continue;
         }
         if (next != previous+1) return "tatweel-without-stroke";
@@ -817,7 +818,7 @@ int segmentCatalogPage(const QString& request, const QString& output) {
             QJsonArray parts;
             const auto reason = paths.empty() || pathId != item.value("bodyPath").toString() ? QString("source-path")
                 : catalogParts(cut, item, size, toRaster, parts);
-            const auto status = !reason.isEmpty() ? reason : cut.value("provisional").toBool() ? QString("provisional") : QString("template");
+            const auto status = !reason.isEmpty() ? reason : QString("template");
             QJsonObject result{{"status",status}};
             if (reason.isEmpty()) result.insert("parts",parts);
             if (status != "template") {

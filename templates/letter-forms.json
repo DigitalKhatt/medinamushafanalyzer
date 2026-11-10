@@ -1,9 +1,6 @@
 {
   "version": 2,
   "strokeWidth": 1,
-  "provisionalFallbacks": {
-    "finalYehRemainder": true
-  },
   "joinDefaults": {
     "lookback": 4,
     "previousOffset": 1,
@@ -147,6 +144,26 @@
         "boundaries": {
           "right": "free",
           "left": "pair-neck"
+        }
+      }
+    },
+    {
+      "id": "seen-folded-init",
+      "current": "سش",
+      "tryNext": true,
+      "sharedFoldWithFinal": "يئى",
+      "body": {
+        "shape": "tooth-cluster",
+        "cluster": {
+          "minLastPitch": 5,
+          "maxLastPitch": 8,
+          "convexTips": true
+        }
+      },
+      "cuts": {
+        "boundaries": {
+          "right": "free",
+          "left": "tooth-exit"
         }
       }
     },
@@ -1117,6 +1134,32 @@
             "bottomProbe": "left",
             "anchorSide": "bottom"
           }
+        },
+        "boundaries": {
+          "left": "head-neck",
+          "right": "free"
+        }
+      }
+    },
+    {
+      "id": "feh-folded-init",
+      "current": "ف",
+      "tryNext": true,
+      "onIncomplete": true,
+      "onUnresolved": true,
+      "sharedFoldWithFinal": "يئى",
+      "sharedFoldForm": "yeh-fina",
+      "body": {
+        "shape": "suspended-loop",
+        "head": {
+          "maxEdgeDistance": 1.5
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "head": {
+          "minFoldDepth": 2,
+          "maxNeckDistance": 4
         },
         "boundaries": {
           "left": "head-neck",

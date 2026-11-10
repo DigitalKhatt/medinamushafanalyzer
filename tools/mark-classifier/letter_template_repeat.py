@@ -86,7 +86,7 @@ def vector_row(row, document):
     width, height = raster['width'], raster['height']
     regions = []
     for body in row['bodies']:
-        if 'letter' not in body and not row['complete'] and not row.get('provisional'):
+        if 'letter' not in body and not row['complete']:
             # Unassigned contours are still available in the uncut source ink.
             continue
         regions.append(dict(role='body', letter=body['letter'], labelSource=body.get('labelSource'),
@@ -97,7 +97,7 @@ def vector_row(row, document):
             runs = raster_runs(path, width, height, transform)
             if runs: regions.append(dict(role='kashida', runs=runs))
     return dict(id=document['page']+f":l{row['line']}-w{row['word']}-s{row['subword']}",
-                text=row['text'], complete=row['complete'], provisional=row.get('provisional', False),
+                text=row['text'], complete=row['complete'],
                 templates=row.get('templates', []), letters=row.get('letters', []), regions=regions,
                 sourceRuns=raster_runs(row['sourceInk'], width, height, transform))
 
@@ -145,13 +145,10 @@ def choose_diverse(pool, per_case, limit, seed):
     return list(selected.values())
 
 
-def complete_row(row, incomplete_ids, identifier, include_provisional=False):
-    if include_provisional and row.get('provisional'):
-        return (bool(row.get('sourceInk')) and len(row['bodies']) == len(row['letters'])
-                and all(letter['status'] in {'matched', 'not-required', 'remainder'} for letter in row['letters']))
-    return (row['complete'] and not row.get('provisional') and identifier not in incomplete_ids
+def complete_row(row, incomplete_ids, identifier):
+    return (row['complete'] and identifier not in incomplete_ids
             and row.get('sourceInk') and all(l['status'] in {'matched', 'not-required'} for l in row['letters'])
-            and not any(b.get('labelSource') == 'remainder' or b.get('reviewRequired') for b in row['bodies']))
+            and all(b.get('labelSource') in (None, 'template') for b in row['bodies']))
 
 
 def cover_used_templates(pools, pages, used, protected_validation):
@@ -278,7 +275,7 @@ def prepare(args):
             if identifier in reviewed_ids:
                 excluded['excluded-reviewed-crop' if args.cutter_only else 'human-override'] += 1
                 continue
-            if not complete_row(row, bad, identifier, args.include_provisional): excluded['not-complete'] += 1; continue
+            if not complete_row(row, bad, identifier): excluded['not-complete'] += 1; continue
             if split == 'train' and base_character_count(row['text']) < MIN_TRAINING_BASES:
                 excluded['fewer-than-two-training-bases'] += 1
                 continue
@@ -360,7 +357,6 @@ def prepare(args):
                       sourceSha256=document['sourceSha256'], sourceCacheSha256=document['sourceCacheSha256'],
                       raster=document['raster'], pdfToRaster=document['pdfToRaster'], templateSha256=document['templateSha256'],
                       templates=row['templates'], templateCases=cases(row), letters=row['letters'],
-                      provisional=bool(row.get('provisional')),
                       repairedPixels=repaired, clippedExtraPixels=extra)
         save_record(record, labels, roles)
         for case in cases(row): sampled_usage[split][case] += 1
@@ -442,7 +438,6 @@ def prepare(args):
         minimumTrainingBaseCharacters=MIN_TRAINING_BASES,
         groups=dict(groups), records=sorted(records,key=lambda r:r['id']), decoder=decoder,
         sampling=dict(coverEveryTrainingExample=True,method='template/position/character coverage plus text/aspect diversity; shuffled passes during training',trainingPool=len(pools['train'])),
-        includeProvisional=args.include_provisional,
         pageSplitOverrides=split_overrides,
         vectorSnapshotHashes={f'page{n:03}.json':sha(folder/'vector'/f'page{n:03}.json') for n in frozen_vectors})
     if args.cutter_only:
@@ -526,14 +521,14 @@ def write_report_site(folder, rows, summary, coverage):
 <div class="stats"><div><strong>__RULES__</strong>template rules represented in training</div><div><strong>__TRAIN__</strong>automatic training crops</div><div><strong>__MIN__ pixels</strong>minimum predicted region area</div></div>
 <p class="muted">The cutoff is one tenth of the mean tooth area, measured on completed training examples only. Filtered regions do not delete source ink. Purple shows ink without an accepted assignment; gold shows connections.</p>
 <nav><a href="../template-coverage.json">Template coverage</a><a href="../tooth-area.json">Tooth measurements</a><a href="items.json">All prediction counts</a><a href="summary.json">Run summary</a><a href="../mask2former/evaluation.json">Held-out evaluation</a></nav></header>
-<details class="panel"><summary>Training coverage and settings</summary><p>Fresh generic pretrained weights, __STEPS__ updates, batch 4; the selected checkpoint is update __SELECTED__. Only complete, nonprovisional cuts enter the automatic training set. Page splits are preserved. The model receives binary source ink without text or expected counts.</p><p>Mean tooth area: __MEAN__ raster pixels at the reference scale; fraction: 0.1. The exact page transform adjusts the cutoff when needed.</p><div class="table"><table><thead><tr><th>Template</th><th>Position</th><th>Letter</th><th>Available complete training cases</th><th>Selected</th><th>Status</th></tr></thead><tbody>__COVERAGE__</tbody></table></div></details>
+<details class="panel"><summary>Training coverage and settings</summary><p>Fresh generic pretrained weights, __STEPS__ updates, batch 4; the selected checkpoint is update __SELECTED__. Only complete cuts enter the automatic training set. Page splits are preserved. The model receives binary source ink without text or expected counts.</p><p>Mean tooth area: __MEAN__ raster pixels at the reference scale; fraction: 0.1. The exact page transform adjusts the cutoff when needed.</p><div class="table"><table><thead><tr><th>Template</th><th>Position</th><th>Letter</th><th>Available complete training cases</th><th>Selected</th><th>Status</th></tr></thead><tbody>__COVERAGE__</tbody></table></div></details>
 <section class="panel"><div class="filters"><label>Search<input id="search" placeholder="Subword, full word or page location"></label><label>Count comparison<select id="comparison"><option value="all">All unfinished subwords</option><option value="diff">Different body count</option><option value="match">Matching body count</option><option value="unavailable">Inference unavailable</option></select></label><label>Page<select id="page"><option value="all">All pages</option></select></label><label>Page split<select id="split"><option value="all">All splits</option><option>train</option><option>validation</option><option>test</option></select></label><label>Examples per page<select id="size"><option>24</option><option selected>48</option><option>96</option></select></label><label>Prediction view<select id="view"><option value="completed">Ink completed</option><option value="raw">Raw supported masks</option></select></label><button id="clear">Clear filters</button></div><div class="pager"><span id="count" aria-live="polite"></span><nav><button id="previous">Previous</button><span id="pageNumber"></span><button id="next">Next</button></nav></div><div class="legend"><span><i style="background:#26769f"></i>Body instances</span><span><i style="background:#e5b63d"></i>Connections</span><span><i style="background:#9f7db9"></i>Unknown ink</span></div></section>
 <section id="cards"></section><footer>Machine predictions from a frozen template/source revision. Existing human annotations and source artwork were preserved. Unfinished subwords were not used as automatic training targets. Training-page predictions are identified; count agreement is a transcript consistency check, not measured segmentation accuracy.</footer>
 <script id="data" type="application/json">__DATA__</script><script>
 const items=JSON.parse(document.getElementById('data').textContent),$=id=>document.getElementById(id);let offset=0,filtered=[];const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const norm=v=>v.normalize('NFD').replace(/[\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]/g,'').toLowerCase();
 for(const n of [...new Set(items.map(x=>x.page))].sort((a,b)=>a-b)){let o=document.createElement('option');o.value=n;o.textContent='Page '+n;$('page').append(o)}
 function render(){const size=Number($('size').value),page=Math.floor(offset/size),shown=filtered.slice(offset,offset+size);$('count').textContent=filtered.length.toLocaleString()+' subwords'+(filtered.length?' · '+(offset+1)+'–'+Math.min(offset+size,filtered.length):'');$('pageNumber').textContent=(filtered.length?page+1:0)+' / '+Math.ceil(filtered.length/size);$('previous').disabled=offset===0;$('next').disabled=offset+size>=filtered.length;
-$('cards').innerHTML=shown.map(x=>{const status=x.predictedBodyCount==null?'unavailable':x.predictedBodyCount===x.expectedBodyCount?'match':'diff';const view=$('view').value==='raw'?x.rawImage:x.predictionImage;return `<article class="case ${status}" id="${esc(x.id)}"><div class="location">${esc(x.id)} · ${esc(x.split)}${x.usedForTraining?' · reviewed training example':''}</div><bdi class="arabic" dir="rtl">${esc(x.text)}</bdi><div class="word">Word: <bdi dir="rtl">${esc(x.wordText)}</bdi></div><div class="count"><span>Predicted bodies <strong>${x.predictedBodyCount??'—'}</strong></span><span>Expected bodies <strong>${x.expectedBodyCount??'—'}</strong></span></div>${x.predictedBodyCount!=null?`<div class="detail">${x.predictedConnectionCount} connections · ${x.predictedRegionCount} total regions · ${x.discardedSmallRegions} tiny regions filtered${x.countDifference?' · count difference '+(x.countDifference>0?'+':'')+x.countDifference:''}</div>`:''}${x.sourceImage?`<div class="images"><figure><img loading="lazy" src="${esc(x.sourceImage)}" alt="Original subword ink"><figcaption>Original ink</figcaption></figure><figure><img loading="lazy" src="${esc(view)}" alt="Predicted letter regions"><figcaption>${$('view').value==='raw'?'Raw supported masks':'Predicted regions · ink completed'}</figcaption></figure></div>`:`<p>${esc(x.unavailableReason||'Source geometry unavailable')}</p>`}<div class="detail">Template state: ${esc(x.reason)}${x.provisional?' · provisional remainder':''}${x.rawUnknownPixels?' · '+x.rawUnknownPixels+' raw unassigned ink pixels':''}</div><details><summary>Letter diagnostics and provenance</summary><pre>${esc(JSON.stringify({letters:x.letters,minimumRegionAreaPixels:x.minimumRegionAreaPixels,sourceInkPixels:x.sourceInkPixels,completedUnknownPixels:x.completedUnknownPixels,inputHash:x.inputHash,unavailableReason:x.unavailableReason},null,2))}</pre></details></article>`}).join('')}
+$('cards').innerHTML=shown.map(x=>{const status=x.predictedBodyCount==null?'unavailable':x.predictedBodyCount===x.expectedBodyCount?'match':'diff';const view=$('view').value==='raw'?x.rawImage:x.predictionImage;return `<article class="case ${status}" id="${esc(x.id)}"><div class="location">${esc(x.id)} · ${esc(x.split)}${x.usedForTraining?' · reviewed training example':''}</div><bdi class="arabic" dir="rtl">${esc(x.text)}</bdi><div class="word">Word: <bdi dir="rtl">${esc(x.wordText)}</bdi></div><div class="count"><span>Predicted bodies <strong>${x.predictedBodyCount??'—'}</strong></span><span>Expected bodies <strong>${x.expectedBodyCount??'—'}</strong></span></div>${x.predictedBodyCount!=null?`<div class="detail">${x.predictedConnectionCount} connections · ${x.predictedRegionCount} total regions · ${x.discardedSmallRegions} tiny regions filtered${x.countDifference?' · count difference '+(x.countDifference>0?'+':'')+x.countDifference:''}</div>`:''}${x.sourceImage?`<div class="images"><figure><img loading="lazy" src="${esc(x.sourceImage)}" alt="Original subword ink"><figcaption>Original ink</figcaption></figure><figure><img loading="lazy" src="${esc(view)}" alt="Predicted letter regions"><figcaption>${$('view').value==='raw'?'Raw supported masks':'Predicted regions · ink completed'}</figcaption></figure></div>`:`<p>${esc(x.unavailableReason||'Source geometry unavailable')}</p>`}<div class="detail">Template state: ${esc(x.reason)}${x.rawUnknownPixels?' · '+x.rawUnknownPixels+' raw unassigned ink pixels':''}</div><details><summary>Letter diagnostics and provenance</summary><pre>${esc(JSON.stringify({letters:x.letters,minimumRegionAreaPixels:x.minimumRegionAreaPixels,sourceInkPixels:x.sourceInkPixels,completedUnknownPixels:x.completedUnknownPixels,inputHash:x.inputHash,unavailableReason:x.unavailableReason},null,2))}</pre></details></article>`}).join('')}
 function filter(){const q=norm($('search').value),c=$('comparison').value;filtered=items.filter(x=>(!q||norm(x.id+' '+x.text+' '+x.wordText).includes(q))&&($('page').value==='all'||x.page===Number($('page').value))&&($('split').value==='all'||x.split===$('split').value)&&(c==='all'||c==='unavailable'&&x.predictedBodyCount==null||c==='match'&&x.predictedBodyCount!=null&&x.countDifference===0||c==='diff'&&x.predictedBodyCount!=null&&x.countDifference!==0));offset=0;render()}
 for(const id of ['comparison','page','split','size'])$(id).addEventListener('change',filter);$('search').addEventListener('input',filter);$('view').addEventListener('change',render);$('previous').onclick=()=>{offset=Math.max(0,offset-Number($('size').value));render()};$('next').onclick=()=>{offset+=Number($('size').value);render()};$('clear').onclick=()=>{$('search').value='';for(const id of ['comparison','page','split'])$(id).value='all';filter()};filter();
 </script></main></body></html>'''
@@ -658,10 +653,7 @@ def verify(args):
         groups[record['split']].add(record['page'])
         if record['split']=='train':training_ids.add(record['id'])
         if record['provenance']=='machine-weak':
-            allowed_statuses = {'matched', 'not-required'}
-            if manifest.get('includeProvisional') and record.get('provisional'):
-                allowed_statuses.add('remainder')
-            if any(letter['status'] not in allowed_statuses for letter in record['letters']):
+            if any(letter['status'] not in {'matched', 'not-required'} for letter in record['letters']):
                 raise ValueError('Unfinished target entered training/evaluation')
     if any(groups[a]&groups[b] for a,b in [('train','validation'),('train','test'),('validation','test')]):
         raise ValueError('Page split leakage')
@@ -716,8 +708,6 @@ def main():
     parser.add_argument('--data',type=Path,default=ROOT/'data')
     parser.add_argument('--pretrained',type=Path,default=ROOT/'data/automatic/experiments/letter-pretrained-repro-20261104/pretrained')
     parser.add_argument('--training-examples',type=int,default=4500)
-    parser.add_argument('--include-provisional',action='store_true',
-                        help='Include complete provisional partitions as automatic targets')
     parser.add_argument('--cover-used-templates',action='store_true',
                         help='Move whole unreviewed validation pages into training to cover rare used templates')
     parser.add_argument('--review-index',type=Path,help='Directory with the original reviewed training queue and validation IDs')

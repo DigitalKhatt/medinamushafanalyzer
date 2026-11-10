@@ -34,13 +34,13 @@ class TemplateRepeatTests(unittest.TestCase):
             'heh-body|medial|ه', 'heh-lip|medial|ه', 'shared-entry|medial|ه',
             'heh-body|used|*', 'attachment|used|*'})
 
-    def test_provisional_targets_require_a_full_partition_and_explicit_inclusion(self):
-        row = dict(complete=False, provisional=True, sourceInk={'commands': ['ink']},
-                   bodies=[{}, {}], letters=[dict(status='remainder'), dict(status='matched')])
+    def test_automatic_targets_require_all_letters_to_match(self):
+        row = dict(complete=True, sourceInk={'commands': ['ink']},
+                   bodies=[{}, {}], letters=[dict(status='matched'), dict(status='matched')])
+        self.assertTrue(complete_row(row, set(), 'example'))
         self.assertFalse(complete_row(row, {'example'}, 'example'))
-        self.assertTrue(complete_row(row, {'example'}, 'example', include_provisional=True))
-        row['letters'][1]['status'] = 'blocked'
-        self.assertFalse(complete_row(row, {'example'}, 'example', include_provisional=True))
+        row['letters'][0]['status'] = 'no-match'
+        self.assertFalse(complete_row(row, set(), 'example'))
 
     def test_rare_case_survives_selection(self):
         pool=[dict(id=str(i),cases=['common'],signature=str(i)) for i in range(100)]

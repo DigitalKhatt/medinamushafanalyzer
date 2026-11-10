@@ -33,7 +33,7 @@ int main(int argc,char** argv) {
     const Case cases[]={{1,2,1,1,"seen-compact-medi"},{1,8,2,3,"beh-tooth-medi"},
         {4,12,4,1,"beh-tooth-medi"},{3,6,2,1,"seen-medi"},
         {5,14,3,1,"feh-descending-init"},{4,11,6,1,"alef-return-fina"},
-        {5,15,6,1,"yeh-return-fina"},{19,4,2,2,"kaf-bent-neck-medi"},
+        {62,1,11,1,"yeh-return-fina"},{19,4,2,2,"kaf-bent-neck-medi"},
         {11,6,2,2,"reh-hook-fina"},{5,15,2,1,"ain-fina"},
         {251,11,4,2,"qaf-fina",9,21},{4,5,1,3,"qaf-fina",2,14},
         {19,4,4,1,"qaf-fina",4,15},{70,3,1,2,"qaf-fina",13,24},
@@ -51,7 +51,7 @@ int main(int argc,char** argv) {
         auto& sub=word.wordResultInfo.subWords[at.s-1];
         qInfo("Checking page%d:l%d-w%d-s%d · %s",at.p,at.l,at.w,at.s,at.form);
         check(a.segmentSubword(at.p-1,at.l-1,at.w-1,at.s-1,&font,true),"Shape remains partial");
-        check(!sub.provisional() && sub.matchedTemplates.contains(at.form),"Required intrinsic form did not match");
+        check(sub.matchedTemplates.contains(at.form),"Required intrinsic form did not match");
         check(sub.baseGlyphs.size()==PageAnalysisResult::bodyLetters(sub.text).size(),"Wrong body count");
         const auto& sh=word.paths[sub.paths.front()];
         const auto mapped=[&](const QPainterPath& p) {auto q=sh.transform.map(p);q.translate(sh.pos);return q;};

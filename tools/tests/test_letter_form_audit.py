@@ -12,7 +12,7 @@ class LetterFormAuditTests(unittest.TestCase):
     def test_owner_provenance_is_not_a_geometry_change(self):
         before = {'bodies': [{'commands': [['M', 0, 0], ['L', 1, 1]], 'fillRule': 'evenodd'}], 'joins': []}
         after = copy.deepcopy(before)
-        after['bodies'][0].update(letter='ف', labelSource='remainder', reviewRequired=True)
+        after['bodies'][0].update(letter='ف', labelSource='template')
         self.assertFalse(geometry_changed(before, after))
         after['bodies'][0]['commands'][1][1] = 2
         self.assertTrue(geometry_changed(before, after))
@@ -71,17 +71,16 @@ class LetterFormAuditTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 audit(cache)
 
-    def test_remainder_is_provisional_and_still_needs_a_template(self):
+    def test_final_match_alone_leaves_subword_unresolved(self):
         cache = self.cache()
         sub = cache["subwords"][0]
-        sub.update(text="فِي", provisional=True)
-        sub["letters"][0].update(character="ف", status="remainder", template="", candidates=["feh-init"])
+        sub.update(text="فِي")
+        sub["letters"][0].update(character="ف", status="no-match", template="", candidates=["feh-init"])
         sub["letters"][1].update(character="ي", status="matched", template="yeh-fina", candidates=["yeh-fina"])
         result = audit(cache)
-        self.assertEqual(result["summary"]["provisionalSubwords"], 1)
         self.assertEqual(result["summary"]["completeSubwords"], 0)
-        self.assertEqual(result["groups"][0]["status"], "remainder")
-        self.assertEqual(result["unresolvedSubwords"][0]["reason"], "provisional-remainder")
+        self.assertEqual(result["groups"][0]["status"], "no-match")
+        self.assertEqual(result["unresolvedSubwords"][0]["reason"], "unresolved-forms")
         sub["complete"] = True
         with self.assertRaises(ValueError): audit(cache)
 

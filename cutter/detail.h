@@ -766,7 +766,7 @@ struct LoopHeadBody {
 std::optional<LoopHeadBody> recognizeLoopHead(const InkOutline &outline, const QJsonObject &settings);
 
 bool cutLoopHead(SearchContext &context, const LoopHeadBody &evidence, const QJsonObject &bodySettings,
-                        const QJsonObject &policy);
+                        const QJsonObject &policy, const Stretching *finalFold = nullptr);
 
 // Projected tooth boundaries retain their intrinsic tip and bend for the
 // assembler to verify that the complete body survives its neighboring cuts.
@@ -1502,7 +1502,8 @@ std::vector<std::pair<Stretching, Stretching>>
 declaredOpenHeadCuts(SearchContext &context, const QJsonObject &form, double minX, double maxX);
 
 bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
-                                   const SeenExitRetry *retry = nullptr, bool recovering = false);
+                                   const SeenExitRetry *retry = nullptr, bool recovering = false,
+                                   const Stretching *finalFold = nullptr);
 
 } // namespace MedinaCutter
 
@@ -1543,7 +1544,7 @@ namespace MedinaCutter {
 
 bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
                                     const QJsonObject& rule, bool terminal, bool recoverTeeth,
-                                    const SeenExitRetry* seenRetry);
+                                    const SeenExitRetry* seenRetry, const Stretching* finalFold = nullptr);
 
 bool supportsOpenMedialBoundary(const QJsonObject& config, const QJsonObject& form);
 

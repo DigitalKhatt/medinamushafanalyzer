@@ -66,8 +66,7 @@ def main():
         raise ValueError("Comparison requires the same subword inventory")
     changed = [item for item in after["subwords"] if not old[location(item)]["complete"] or
                geometry_changed(old[location(item)], item) or
-               old[location(item)]["complete"] != item["complete"] or
-               bool(old[location(item)].get("provisional")) != bool(item.get("provisional"))]
+               old[location(item)]["complete"] != item["complete"]]
     summary = {
         "page": after["page"], "sourceHash": after["pageDataSha256"],
         "beforeCacheVersion": before["version"], "afterCacheVersion": after["version"],
@@ -76,7 +75,6 @@ def main():
         "total": len(after["subwords"]),
         "beforeComplete": sum(item["complete"] for item in before["subwords"]),
         "afterComplete": sum(item["complete"] for item in after["subwords"]),
-        "afterProvisional": sum(bool(item.get("provisional")) for item in after["subwords"]),
         "comparedSubwords": len(changed),
         "geometryChanged": sum(geometry_changed(old[location(item)], item) for item in after["subwords"]),
         "resolved": [identifier(item) for item in changed if not old[location(item)]["complete"] and item["complete"]],
@@ -94,7 +92,7 @@ def main():
         panels = []
         for title, value in (("Before", previous), ("After", item)):
             kashidas = sum(bool(join.get("kashida", {}).get("commands")) for join in value["joins"])
-            state = "Complete" if value["complete"] else "Provisional — needs review" if value.get("provisional") else "Partial"
+            state = "Complete" if value["complete"] else "Partial"
             panels.append(f'<div><h3>{title} · {state}</h3>{svg(value)}'
                           f'<p>{len(value["bodies"])} bodies · {kashidas} kashida spans</p></div>')
         trace = escape("\n".join(item["trace"]))
@@ -123,7 +121,6 @@ pre{{white-space:pre-wrap;font:13px/1.6 monospace}}summary{{cursor:pointer;color
 </style><header><h1>Page {after["page"]} · segmentation review</h1>
 <p><strong>{headline}</strong> Complete subwords: {summary["beforeComplete"]} → {summary["afterComplete"]} of {summary["total"]}.
 Previously complete subwords with changed geometry: {len(summary["previousCompleteChanged"])}. Kashida tracker: {"enabled" if summary["trackingEnabled"] else "disabled"}.</p>
-<p>Provisional remainder partitions: {summary["afterProvisional"]}. These remain outside template-complete training labels until reviewed or replaced by a body template.</p>
 <p>Colors identify successive letter bodies. <span class="legend"></span> Gold identifies connecting ink; red lines show cuts.
 These are automatic template matches, ready for visual review.</p>
 <p><a href="page.svg">Whole page</a> · <a href="comparison.json">Comparison data</a> · <a href="after.json">Segmented corpus</a></p>

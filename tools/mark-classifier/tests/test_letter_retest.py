@@ -73,13 +73,14 @@ class LetterRetestTests(unittest.TestCase):
                 self.assertEqual(first.config.num_labels,2)
                 self.assertEqual([p.name for p in Path(tmp).iterdir()],['config.json'])
 
-    def test_provisional_labels_cannot_enter_automatic_training(self):
-        for marker in ({'provisional': True}, {'letters': [{'status': 'remainder'}]},
-                       {'regions': [{'labelSource': 'remainder'}]}):
+    def test_unmatched_letters_cannot_enter_automatic_training(self):
+        for marker in ({'letters': [{'status': 'no-match'}]},
+                       {'regions': [{'labelSource': 'unverified'}]}):
             for complete in (False, True):
-                self.assertEqual(weak_label_exclusion(dict(marker, complete=complete)), 'provisional-remainder')
+                self.assertEqual(weak_label_exclusion(dict(marker, complete=complete)), 'partial')
         self.assertEqual(weak_label_exclusion({'complete': False}), 'partial')
-        self.assertIsNone(weak_label_exclusion({'complete': True}))
+        self.assertIsNone(weak_label_exclusion({'complete': True, 'letters': [{'status': 'matched'}],
+                                               'regions': [{'labelSource': 'template'}]}))
 
     def test_reject_large_hole_in_targets(self):
         source=np.ones((20,20),bool);part=source.copy();part[:,8:12]=False

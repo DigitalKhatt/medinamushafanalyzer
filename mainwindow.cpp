@@ -1562,7 +1562,7 @@ void MainWindow::inspectSubword(const QPoint& pos) {
         const auto spans = std::count_if(result.kashidaPaths.begin(), result.kashidaPaths.end(),
                                          [](const QPainterPath& path) { return !path.isEmpty(); });
         return tr("%1 · %2 body regions · %3 kashida spans\n%4")
-            .arg(complete ? tr("Complete") : result.provisional() ? tr("Provisional — needs review") : tr("Partial"))
+            .arg(complete ? tr("Complete") : tr("Partial"))
             .arg(result.baseGlyphs.size()).arg(spans)
             .arg(result.templateTrace.join('\n'));
     };
@@ -2210,10 +2210,9 @@ void MainWindow::testAnalyze() {
 		pageResult.loadPage2(i, &font, scene);
 	}*/
 }
-static int drawLetterSegmentation(QGraphicsScene& scene, const QJsonObject& segmentation, int& provisionalCount) {
+static int drawLetterSegmentation(QGraphicsScene& scene, const QJsonObject& segmentation) {
     const QColor colors[]{QColor("#24618e"), QColor("#39734c"), QColor("#705194")};
     int incomplete = 0;
-    provisionalCount = 0;
     const auto coordinate = [](const QJsonValue& value) {
         const auto xy = value.toArray();
         return QPointF(xy.at(0).toDouble(), xy.at(1).toDouble());
@@ -2221,7 +2220,6 @@ static int drawLetterSegmentation(QGraphicsScene& scene, const QJsonObject& segm
     for (const auto& item : segmentation.value("subwords").toArray()) {
         const auto subword = item.toObject();
         const bool complete = subword.value("complete").toBool();
-        const bool provisional = subword.value("provisional").toBool();
         int index = 0;
         for (const auto& body : subword.value("bodies").toArray()) {
             auto* path = scene.addPath(letterSegmentationPath(body.toObject()), Qt::NoPen, colors[index++ % 3]);
@@ -2244,16 +2242,15 @@ static int drawLetterSegmentation(QGraphicsScene& scene, const QJsonObject& segm
             }
         }
         if (!complete) {
-            if (provisional) ++provisionalCount;
-            else ++incomplete;
+            ++incomplete;
             const auto bounds = subword.value("bounds").toArray();
             if (bounds.size() != 4) continue;
             const QRectF box(bounds.at(0).toDouble(), bounds.at(1).toDouble(),
                              bounds.at(2).toDouble(), bounds.at(3).toDouble());
-            QPen pen(QColor(provisional ? "#b57912" : "#bd3d37"), 0, Qt::DashLine);
+            QPen pen(QColor("#bd3d37"), 0, Qt::DashLine);
             auto* warning = scene.addRect(box.adjusted(-0.4, -0.4, 0.4, 0.4), pen);
             warning->setZValue(4);
-            warning->setToolTip(provisional ? QObject::tr("Provisional remainder — needs review") : QObject::tr("Partial segmentation"));
+            warning->setToolTip(QObject::tr("Partial segmentation"));
         }
     }
     return incomplete;
@@ -2354,10 +2351,9 @@ void MainWindow::loadPage(int pageNumber, bool forceSegmentation) {
         bool cacheHit = false;
         const auto segmentation = loadLetterSegmentation(pageResult, pageNumber, font, &cacheHit, forceSegmentation);
         if (showLetterSegmentationButton->isChecked()) {
-            int provisional = 0;
-            const int incomplete = drawLetterSegmentation(*scene, segmentation, provisional);
-            message = tr("Page %1 · %2 incomplete · %3 provisional subwords · %4")
-                .arg(pageNumber).arg(incomplete).arg(provisional)
+            const int incomplete = drawLetterSegmentation(*scene, segmentation);
+            message = tr("Page %1 · %2 incomplete · %3")
+                .arg(pageNumber).arg(incomplete)
                 .arg(cacheHit ? tr("cached segmentation") : tr("segmentation computed"));
         } else {
             message = tr("Page %1 · segmentation computed").arg(pageNumber);

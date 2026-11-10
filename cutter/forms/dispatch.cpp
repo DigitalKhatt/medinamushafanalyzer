@@ -463,7 +463,7 @@ declaredOpenHeadCuts(SearchContext &context, const QJsonObject &form, double min
 }
 
 bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
-                                   const SeenExitRetry *retry, bool recovering) {
+                                   const SeenExitRetry *retry, bool recovering, const Stretching *finalFold) {
     InspectFormScope inspection(form, context.transformedPath);
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto evidence = recognizedSharedShape(context, body);
@@ -511,7 +511,8 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
                 cutHorizontalPair(context, *evidence->horizontalPair, cuts.value("pair").toObject());
     else if (shape == "suspended-loop")
         found = evidence->head &&
-                cutLoopHead(context, *evidence->head, body.value("head").toObject(), cuts.value("head").toObject());
+                cutLoopHead(context, *evidence->head, body.value("head").toObject(),
+                            cuts.value("head").toObject(), finalFold);
     else if (shape == "enclosed-lips") {
         const auto proposals = cutEnclosedLips(context, evidence->enclosedLips, cuts.value("head").toObject(), true);
         found = !proposals.empty();
@@ -523,9 +524,15 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
         const double maxX = context.subword.joins.empty() ? context.bbox.right() + 1e-6
                                                           : context.subword.joins.rbegin()->bottomBaseLine.point.x();
         Stretching cut{};
+        std::array<PathExtrema, 3> tips;
         found = cutToothClusters(context, evidence->clusters, settings, context.bbox.left(),
                                  settings.value("terminalBowl").toBool() ? context.bbox.right() + 1e-6 : maxX,
-                                 final ? &cut : nullptr, final ? nullptr : &cut, nullptr, nullptr, retry);
+                                 final ? &cut : nullptr, final ? nullptr : &cut, finalFold,
+                                 finalFold ? &tips : nullptr, retry);
+        if (found && finalFold) {
+            const auto side = getJoinTime(cut, context.orientation);
+            found = std::all_of(tips.begin(), tips.end(), [&](const auto& tip) { return side.isStrictRight(tip.time); });
+        }
         if (found) {
             context.res = cut;
             context.res.topLeft = context.res.topRight = cut.topBaseLine;
@@ -609,7 +616,7 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
 // Turn an initial or final template's evidence into one boundary proposal.
 bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
                                     const QJsonObject& rule, bool terminal, bool recoverTeeth,
-                                    const SeenExitRetry* seenRetry) {
+                                    const SeenExitRetry* seenRetry, const Stretching* finalFold) {
     // These terminal searches use the fixed outline and their own settings.
     // Keep the proposal, including a miss. The join and ownership checks
     // below still run against the current placement.
@@ -632,7 +639,7 @@ bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
                                                  return declaredSharedBoundary(
                                                      context, rule, seenRetry, recoverTeeth);
                                              })
-                         : declaredSharedBoundary(context, rule, seenRetry, recoverTeeth);
+                         : declaredSharedBoundary(context, rule, seenRetry, recoverTeeth, finalFold);
     } else if (rule.contains("body"))
         found = declaredLamBoundary(context, config, rule);
     else

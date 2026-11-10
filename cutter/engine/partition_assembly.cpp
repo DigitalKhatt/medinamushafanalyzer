@@ -109,7 +109,7 @@ bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subwor
         if (candidate == 0) {
             // The first connecting span cannot wrap around the leading stroke.
             // Check the actual proposed span, after shared ligature boundaries
-            // have been reconciled, rather than rejecting provisional walks
+            // have been reconciled, rather than rejecting tentative walks
             // that a later intrinsic ligature template legitimately replaces.
             if (connectorContainsLeadingStroke(subword.extrema, right, left, subword.basePathOrientation)) {
                 subword.templateTrace.append("kashida · leading stroke before initial body rejected");

@@ -245,11 +245,6 @@ struct WordResultInfo {
 		QStringList templateTrace;
 		QStringList matchedTemplates;
 		QJsonArray letterDiagnostics;
-		bool provisional() const {
-			for (const auto& letter : letterDiagnostics)
-				if (letter.toObject().value("status") == "remainder") return true;
-			return false;
-		}
 		std::vector<std::pair<QLineF, QLineF>> kashidaCuts;
 		QVector<PathExtrema> extrema;
 		Joins joins;

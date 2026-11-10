@@ -5,7 +5,7 @@
 namespace {
 
 // Bump when a change to the segmenter or exported geometry invalidates old results.
-constexpr int CacheVersion = 152;
+constexpr int CacheVersion = 153;
 
 QJsonArray point(const QPointF& p) {
     return {p.x(), p.y()};
@@ -101,7 +101,6 @@ static QJsonObject segmentPage(const PageAnalysisResult& source, int pageNumber,
                 const auto& sub = results[index];
                 QJsonObject entry{{"line", lineIndex + 1}, {"word", wordIndex + 1},
                     {"subword", static_cast<int>(index + 1)}, {"text", sub.text}, {"complete", complete},
-                    {"provisional", sub.provisional()},
                     {"templates", QJsonArray::fromStringList(sub.matchedTemplates)},
                     {"trace", QJsonArray::fromStringList(sub.templateTrace)},
                     {"letters", sub.letterDiagnostics}};
@@ -118,11 +117,9 @@ static QJsonObject segmentPage(const PageAnalysisResult& source, int pageNumber,
                     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
                     for (size_t bodyIndex = 0; bodyIndex < sub.baseGlyphs.size(); ++bodyIndex) {
                         auto body = encodePath(inPage(sub.baseGlyphs[bodyIndex].path));
-                        if ((complete || sub.provisional()) && sub.baseGlyphs.size() == static_cast<size_t>(letters.size())) {
+                        if (complete && sub.baseGlyphs.size() == static_cast<size_t>(letters.size())) {
                             body.insert("letter", letters.mid(static_cast<int>(bodyIndex), 1));
-                            const auto diagnostic = sub.letterDiagnostics.at(static_cast<int>(bodyIndex)).toObject();
-                            body.insert("labelSource", diagnostic.value("status") == "remainder" ? "remainder" : "template");
-                            if (diagnostic.value("status") == "remainder") body.insert("reviewRequired", true);
+                            body.insert("labelSource", "template");
                         }
                         bodies.append(body);
                     }

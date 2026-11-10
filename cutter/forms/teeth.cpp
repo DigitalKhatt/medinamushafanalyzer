@@ -128,6 +128,7 @@ std::vector<ToothClusterBody> recognizeToothClusters(const InkOutline &outline, 
     auto context = outline.geometry(empty);
     const double rise = form.value("minToothRise").toDouble(.55);
     const double minPitch = form.value("minPitch").toDouble(1), maxPitch = form.value("maxPitch").toDouble(5);
+    const double minLastPitch = form.value("minLastPitch").toDouble(minPitch);
     const double maxLastPitch = form.value("maxLastPitch").toDouble(maxPitch);
     std::vector<ToothClusterBody> bodies;
     for (const auto advance : {&SearchContext::next, &SearchContext::prev}) {
@@ -174,7 +175,7 @@ std::vector<ToothClusterBody> recognizeToothClusters(const InkOutline &outline, 
             const double pitch2 = turns[2].point.x() - turns[4].point.x();
             const bool ordinary = pitch2 <= maxLastPitch;
             const bool wide = convex && pitch2 > maxLastPitch && pitch2 <= form.value("retryMaxLastPitch").toDouble();
-            if (pitch1 < minPitch || pitch1 > maxPitch || pitch2 < minPitch || (!ordinary && !wide) ||
+            if (pitch1 < minPitch || pitch1 > maxPitch || pitch2 < minLastPitch || (!ordinary && !wide) ||
                 turns[1].point.y() - turns[0].point.y() < rise || turns[3].point.y() - turns[2].point.y() < rise)
                 continue;
 

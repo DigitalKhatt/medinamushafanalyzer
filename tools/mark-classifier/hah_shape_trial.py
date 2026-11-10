@@ -140,7 +140,7 @@ def fit(folder):
     prototypes=[]
     for page in load_pages(folder,'train'):
         for word in page['words']:
-            if not word['complete'] or word['provisional']:continue
+            if not word['complete']:continue
             for target in word['targets']:
                 if target['status']!='matched':continue
                 index=target['letterIndex']-1

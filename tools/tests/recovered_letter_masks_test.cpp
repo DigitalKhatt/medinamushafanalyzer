@@ -268,14 +268,14 @@ int main(int argc, char** argv) {
         if (e.page == 415) expectHalfWalk(1, {250.382, 440.019}, {249.956, 439.969});
         if (e.page == 429) expectHalfWalk(1, {266.492, 146.112}, {266.155, 146.093});
         if (e.page == 69) {
-            require(sub.baseGlyphs.size() == 5 && sub.kashidaCuts.size() == 4 && !sub.provisional(),
+            require(sub.baseGlyphs.size() == 5 && sub.kashidaCuts.size() == 4,
                     id + " expected five complete letter bodies");
             const auto exit = sub.kashidaCuts.back().first;
             require(exit.length() > 0 && exit.length() < 1.5 && sub.kashidaCuts[2].second.length() < 1.5,
                     id + " expected short local cuts around the lam fork");
         }
         if (e.page == 435) {
-            require(sub.baseGlyphs.size() == 4 && sub.kashidaCuts.size() == 3 && !sub.provisional(),
+            require(sub.baseGlyphs.size() == 4 && sub.kashidaCuts.size() == 3,
                     id + " expected four complete letter bodies and three connectors");
             const auto exit = sub.kashidaCuts.back().first;
             require(exit.length() > 0 && exit.length() < 1.3 && sub.kashidaCuts[1].second.length() < 1.3 &&

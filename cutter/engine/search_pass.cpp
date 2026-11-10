@@ -74,6 +74,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
 	if (!preparePassOutline(context, outlineCache)) { subWord.correct = false; return false; }
 	subWord.basePathOrientation = context.orientation;
 
+    if (formInspection) {
         for (const auto *phase : {"initial", "medial", "final"}) {
             const auto text = QString(phase) == "initial" ? baseText.left(1)
                               : QString(phase) == "final" ? baseText.right(1)
@@ -89,6 +90,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 inspectSharedShape(*evidence);
             }
         }
+    }
 
     // Discover medial lām bodies before even the initial boundary is tried.
     // A failed preceding letter must not hide their evidence. Transcript
@@ -136,7 +138,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     QString retryRule;
     QMap<QString, Stretching> intrinsicFinalCuts;
     QMap<QString, Stretching> visibleFinalCuts;
-    const auto attempt = [&](const QJsonObject& rule, int index, bool record = true) {
+    const auto attempt = [&](const QJsonObject& rule, int index, bool record = true, const Stretching* finalFold = nullptr) {
         InspectFormScope inspection(rule, context.transformedPath);
         const auto savedIter = context.nextIter;
         context.form = rule;
@@ -144,7 +146,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         const int owner = rule.value("bodyBoundary") == "current" ? 0 : lastIndex;
         bodyAttempted[owner] = true;
         bool found = proposeTemplateBoundary(context, config, rule, owner == lastIndex, recoverTeeth,
-                                              seenRetryFor(owner, rule));
+                                              seenRetryFor(owner, rule), finalFold);
         QString rejectionReason;
         const bool bodyRejected = found && !matchesBoundaryBody(context, rule, context.res, owner == 0,
             config.value("_initialHeadLips").toObject(), &rejectionReason);
@@ -284,18 +286,51 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         bool ligature = false;
     };
     std::vector<std::optional<BodyBoundary>> nextBoundaries(lastIndex);
+    const auto tryInitialFold = [&](const QJsonObject& initial) {
+        const auto foldForm = initial.value("sharedFoldForm").toString();
+        for (const auto& item : finalRules) {
+            const auto final = item.toObject();
+            if (!foldForm.isEmpty() && final.value("id") != foldForm) continue;
+            if (final.value("pairedOnly").toBool() || !applies(final, 0)) continue;
+            if (!attempt(final, 0, false)) {
+                if (!final.value("tryNext").toBool()) return false;
+                continue;
+            }
+            auto seam = context.res;
+            if (!attempt(initial, 0, false, &seam)) return false;
+            bodyTemplateIds[0] = initial.value("id").toString();
+            bodyTemplateIds[1] = final.value("id").toString();
+            retryRule = bodyTemplateIds[0];
+            subWord.matchedTemplates << bodyTemplateIds[0] << bodyTemplateIds[1];
+            subWord.templateTrace << bodyTemplateIds[0] + " · shared cut at the final fold";
+            sharedEntries.append(0);
+            seam.kashidaOverrides = final.value("kashida").toObject();
+            seam.kashidaOverrides.insert("enabled", false);
+            seam.length = 0;
+            if (preserveReadingOrder) seam.readingOrder = 0;
+            subWord.joins.insert(seam);
+            return true;
+        }
+        return false;
+    };
     for (int index = 0; index < lastIndex; ++index) {
         bool found = false;
+        bool matchedFold = false;
         for (const auto& value : boundaryRules) {
             const auto rule = value.toObject();
             if (rule.value("pairedOnly").toBool() || !applies(rule, index)) continue;
-            if (rule.value("body").toObject().value("shape") == "upright-stem" && canDefer(index)) {
+            if (rule.contains("sharedFoldWithFinal")) {
+                if (lastIndex != 1 || hasFinalTatweel || !matchesBody(rule, index)) continue;
+                found = matchedFold = tryInitialFold(rule);
+            } else if (rule.value("body").toObject().value("shape") == "upright-stem" && canDefer(index)) {
                 deferredFinalJoin = true;
                 break;
+            } else {
+                found = attempt(rule, index);
             }
-            found = attempt(rule, index);
             if (found || (!enumerate && !rule.value("tryNext").toBool())) break;
         }
+        if (matchedFold) continue;
         if (!found) {
             if (canDefer(index)) deferredFinalJoin = true;
             break;
@@ -320,7 +355,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             const auto& pairingRules = boundaryRules;
             for (const auto& value : pairingRules) {
                 const auto rule = value.toObject();
-                if (rule.value("bodyBoundary").toString() != otherSide || !applies(rule, index)) continue;
+                if (rule.value("bodyBoundary").toString() != otherSide || rule.contains("sharedFoldWithFinal") ||
+                    !applies(rule, index)) continue;
                 if (attempt(rule, index, false)) {
                     bodyPairs.push_back({primary, context.res, rule.value("id").toString(), side == "next",
                                          rule.value("tightJoin").toBool() || primaryForm.value("tightJoin").toBool(),
@@ -1079,15 +1115,9 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         }
     }
 
-    // A known final yeh can supply the sole boundary of a two-letter ligature.
-    // The first body is an unreviewed remainder, not a successful form match.
-    const bool remainderCandidate = config.value("provisionalFallbacks").toObject()
-        .value("finalYehRemainder").toBool() && baseText.size() == 2 &&
-        QStringLiteral("يئى").contains(baseText.back()) && bodyTemplateIds[0].isEmpty() &&
-        !bodyTemplateIds[1].isEmpty() && subWord.joins.size() == 1;
     // No first connecting span is justified until the initial body has a
     // matched template. Keep that ink unresolved when only later bodies match.
-    if (!subWord.joins.empty() && (remainderCandidate || bodyTemplateIds[0].isEmpty())) {
+    if (!subWord.joins.empty() && bodyTemplateIds[0].isEmpty()) {
         auto shared = *subWord.joins.begin();
         shared.length = 0;
         shared.kashidaOverrides.insert("enabled", false);
@@ -1211,13 +1241,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             bodyTemplateIds[slot].clear();
         }
     }
-    const bool remainder = remainderCandidate && cut && subWord.baseGlyphs.size() == 2 &&
-        std::none_of(subWord.baseGlyphs.begin(), subWord.baseGlyphs.end(), [](const auto& body) {
-            return body.path.isEmpty() || body.path.boundingRect().isEmpty();
-        }) && std::none_of(subWord.kashidaPaths.begin(), subWord.kashidaPaths.end(), [](const auto& path) {
-            return !path.isEmpty();
-        });
-
     for (int letter = 0; letter <= lastIndex; ++letter) {
         const auto position = letter == 0 ? QStringLiteral("initial") :
             letter == lastIndex ? QStringLiteral("final") : QStringLiteral("medial");
@@ -1226,8 +1249,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             const auto rule = value.toObject();
             if (matchesBody(rule, letter)) candidates.append(rule.value("id"));
         }
-        const auto status = remainder && letter == 0 ? QStringLiteral("remainder") :
-            !bodyTemplateIds[letter].isEmpty() ? QStringLiteral("matched") :
+        const auto status = !bodyTemplateIds[letter].isEmpty() ? QStringLiteral("matched") :
             candidates.isEmpty() ? QStringLiteral("no-template") :
             bodyAttempted[letter] ? QStringLiteral("no-match") : QStringLiteral("blocked");
         QJsonObject diagnostic{{"letterIndex", letter + 1},
@@ -1238,13 +1260,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             diagnostic.insert("cutPolicy", "lam-fork-flanks");
             diagnostic.insert("boundaryKind", "lam-fork");
         }
-        if (status == "remainder") {
-            diagnostic.insert("inferredFrom", bodyTemplateIds[1]);
-            diagnostic.insert("reviewRequired", true);
-            diagnostic.insert("templateStatus", candidates.isEmpty() ? "no-template" : "no-match");
-            subWord.templateTrace.append(QString("initial %1 · provisional remainder after %2 · needs review; initial form still missing")
-                .arg(baseText.left(1), bodyTemplateIds[1]));
-        } else if (status != "matched") subWord.templateTrace.append(QString("%1 %2 · %3")
+        if (status != "matched") subWord.templateTrace.append(QString("%1 %2 · %3")
             .arg(position, baseText.mid(letter, 1), status));
         subWord.letterDiagnostics.append(diagnostic);
     }

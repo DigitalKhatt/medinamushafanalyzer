@@ -751,7 +751,7 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     if (shape == "tooth-cluster") {
         const auto cluster = body.value("cluster").toObject(), policy = cuts.value("cluster").toObject();
         for (auto it = cluster.begin(); it != cluster.end(); ++it)
-            if (!QStringList{"minToothRise", "minPitch", "maxPitch", "maxLastPitch", "retryMaxLastPitch",
+            if (!QStringList{"minToothRise", "minPitch", "maxPitch", "minLastPitch", "maxLastPitch", "retryMaxLastPitch",
                              "maxTipHeightSpreadRatio", "convexTips"}
                      .contains(it.key()))
                 return id + ": unknown tooth-cluster body setting " + it.key();
@@ -760,6 +760,13 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
                              "exitDrop", "retryBendOffset", "terminalBowl", "roundedEntry"}
                      .contains(it.key()))
                 return id + ": unknown tooth-cluster cut setting " + it.key();
+    }
+    if (shape == "suspended-loop") {
+        const auto head = cuts.value("head").toObject();
+        const auto depth = head.value("minFoldDepth");
+        if (!depth.isUndefined() && (!form.contains("sharedFoldWithFinal") || !depth.isDouble() ||
+            !(depth.toDouble() > 0 && depth.toDouble() <= head.value("maxNeckDistance").toDouble(4))))
+            return id + ": minFoldDepth needs a shared fold and a positive depth within the neck limit";
     }
     if (shape == "profile-neck") {
         if (phase == "medial")
@@ -1060,13 +1067,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
         return "strokeWidth must be a positive width in page units";
     for (const auto* obsolete : {"preferred", "fallback", "medialBodies"})
         if (config.contains(obsolete)) return QString("Obsolete template section: %1").arg(obsolete);
-    if (config.contains("provisionalFallbacks")) {
-        if (!config.value("provisionalFallbacks").isObject()) return "provisionalFallbacks must be an object";
-        const auto fallbacks = config.value("provisionalFallbacks").toObject();
-        for (auto setting = fallbacks.begin(); setting != fallbacks.end(); ++setting)
-            if (setting.key() != "finalYehRemainder" || !setting.value().isBool())
-                return "provisionalFallbacks supports only finalYehRemainder: true or false";
-    }
     if (config.contains("recoveryChecks")) {
         const auto checks = config.value("recoveryChecks").toObject();
         const auto bowl = checks.value("finalBowl").toObject();
@@ -1711,14 +1711,37 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 (method != "lam-alef" || !rule.value("sameDirectionCheck").isBool()))
                 return id + ": sameDirectionCheck requires lam-alef and must be true or false";
             const auto teeth = method == "seen-teeth" ? rule : rule.value("seenTeeth").toObject();
-            if (rule.contains("sharedFoldWithFinal") && (QString(phase) != "medial" ||
-                (teeth.isEmpty() && rule.value("contourBody").toObject().isEmpty()) ||
-                !rule.value("sharedFoldWithFinal").isString() || rule.value("sharedFoldWithFinal").toString().isEmpty()))
-                return id + ": sharedFoldWithFinal needs medial teeth or contour routes and the letters sharing the fold";
+            if (rule.contains("sharedFoldWithFinal")) {
+                const bool initialBody = QString(phase) == "initial" &&
+                    (method == "seen-teeth" || method == "initial-loop-head");
+                const bool medialBody = QString(phase) == "medial" &&
+                    (!teeth.isEmpty() || !rule.value("contourBody").toObject().isEmpty());
+                if ((!initialBody && !medialBody) || !rule.value("sharedFoldWithFinal").isString() ||
+                    rule.value("sharedFoldWithFinal").toString().isEmpty())
+                    return id + ": sharedFoldWithFinal needs a supported initial or medial body and final letters";
+            }
+            if (rule.contains("sharedFoldForm")) {
+                const auto name = rule.value("sharedFoldForm").toString();
+                const auto letters = rule.value("sharedFoldWithFinal").toString();
+                const auto finals = config.value("final").toArray();
+                const auto partner = std::find_if(finals.begin(), finals.end(), [&](const auto& value) {
+                    return value.toObject().value("id") == name;
+                });
+                if (QString(phase) != "initial" || name.isEmpty() || letters.isEmpty() || partner == finals.end())
+                    return id + ": sharedFoldForm needs a shared fold and a declared final template";
+                const auto selected = partner->toObject().value("current").toString();
+                if (!std::all_of(letters.begin(), letters.end(), [&](QChar ch) { return selected.contains(ch); }))
+                    return id + ": sharedFoldForm must select the declared final letters";
+            }
             const auto lastPitch = teeth.value("maxLastPitch");
             if (!lastPitch.isUndefined() && (!lastPitch.isDouble() || !std::isfinite(lastPitch.toDouble()) ||
                 lastPitch.toDouble() < teeth.value("minPitch").toDouble(1)))
                 return id + ": maxLastPitch must be at least minPitch";
+            const auto minLastPitch = teeth.value("minLastPitch");
+            if (!minLastPitch.isUndefined() && (!minLastPitch.isDouble() || !std::isfinite(minLastPitch.toDouble()) ||
+                minLastPitch.toDouble() < teeth.value("minPitch").toDouble(1) ||
+                minLastPitch.toDouble() > lastPitch.toDouble(teeth.value("maxPitch").toDouble(5))))
+                return id + ": minLastPitch must be between minPitch and maxLastPitch";
             const auto widerPitch = teeth.value("retryMaxLastPitch");
             if (!widerPitch.isUndefined() && (!widerPitch.isDouble() || !std::isfinite(widerPitch.toDouble()) ||
                 widerPitch.toDouble() <= lastPitch.toDouble(teeth.value("maxPitch").toDouble(5))))

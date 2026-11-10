@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
           std::abs(dhalMask.boundingRect().top() - laterInk.boundingRect().top()) < 1e-6,
           "Final dhal lost its ascender or left tail");
     // Sad's own last tooth stays with sad, while genuinely shared entries
-    // beside feh and hah may trim the preceding letter's provisional margin.
+    // beside feh and hah may trim the preceding letter's tentative margin.
     checkAssignedTeeth(24, 4, 3, 2, {{1, "sad-init", 30.563026, 20},
                                      {2, "beh-upright-medi", 33.450564, 18},
                                      {3, "beh-tooth-medi", 38.640274, 17}});

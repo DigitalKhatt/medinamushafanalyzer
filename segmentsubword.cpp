@@ -71,7 +71,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     const bool proposed = collectLegacyCutProposals(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested);
     auto plan = makeSubwordCutPlan(std::move(sub), requested);
     bool valid = proposed;
-    if (valid && pageIndex >= 0 && plan.partition.baseGlyphs.size() >= 2 && !plan.partition.provisional()) {
+    if (valid && pageIndex >= 0 && plan.partition.baseGlyphs.size() >= 2) {
         // A recovery can select a different original contour (e.g. a detached
         // arm). Recognize that source, never a generated letter mask.
         if (recognition.valid) {
@@ -93,7 +93,7 @@ bool PageAnalysisResult::collectLegacyCutProposals(int pageIndex, int lineIndex,
     auto& sub = word.wordResultInfo.subWords[subWordIndex];
     if (!segmentWithRecovery(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested)) {
         const auto letters = bodyLetters(sub.text);
-        if (sub.provisional() || !medialLamShortExit(requested).value("retryOnUnresolved").toBool() ||
+        if (!medialLamShortExit(requested).value("retryOnUnresolved").toBool() ||
             letters.size() < 3 || !QStringView(letters).mid(1, letters.size() - 2).contains(QChar(0x0644)))
             return false;
 
@@ -101,13 +101,13 @@ bool PageAnalysisResult::collectLegacyCutProposals(int pageIndex, int lineIndex,
         auto partial = sub;
         requested.insert("_disableLamShortExit", true);
         if (!segmentWithRecovery(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested) ||
-            sub.provisional() || !coversOriginalInk(word, sub)) {
+            !coversOriginalInk(word, sub)) {
             sub = std::move(partial);
             return false;
         }
         sub.templateTrace.append("Complete partition recovered with the original lam exit");
     }
-    if (pageIndex < 0 || sub.baseGlyphs.size() < 2 || sub.provisional()) return true;
+    if (pageIndex < 0 || sub.baseGlyphs.size() < 2) return true;
     const auto refine = [&] {
         refineLipCuts(lineIndex, wordIndex, subWordIndex, requested);
         refineBodyOwnership(lineIndex, wordIndex, subWordIndex, requested);
@@ -208,8 +208,7 @@ bool PageAnalysisResult::segmentWithRecovery(int pageIndex, int lineIndex, int w
     if (!requested.contains("retryUnresolvedForms"))
         return segmentConfigured(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested);
 
-    // Preserve an established cut or provisional remainder. Only an unresolved
-    // body enters the wider contour search.
+    // Preserve established cuts. An unresolved body enters the wider contour search.
     static thread_local QJsonObject lastRequested, usual, extended;
     if (lastRequested != requested) {
         lastRequested = requested;
@@ -268,7 +267,7 @@ bool PageAnalysisResult::segmentWithRecovery(int pageIndex, int lineIndex, int w
         // An accepted generic walk can cut through the folded bowl itself.
         // Keep an established result unless the independently found bowl
         // reaches beyond the final mask by a substantial part of the join.
-        if (sub.baseGlyphs.size() < 2 || sub.provisional()) return true;
+        if (sub.baseGlyphs.size() < 2) return true;
         const auto letters = bodyLetters(sub.text);
         auto finals = requested.value("final").toArray();
         for (qsizetype i = 0; i < finals.size(); ++i) {
@@ -309,10 +308,10 @@ bool PageAnalysisResult::segmentWithRecovery(int pageIndex, int lineIndex, int w
         }
         return true;
     }
-    if (!requested.value("retryUnresolvedForms").toBool() || sub.provisional() || bodyLetters(sub.text).size() < 2 || sub.paths.empty())
+    if (!requested.value("retryUnresolvedForms").toBool() || bodyLetters(sub.text).size() < 2 || sub.paths.empty())
         return false;
     auto original = sub;
-    if (run(extended) && !sub.provisional() &&
+    if (run(extended) &&
         plausibleRecoveredBodies(word, sub, extended.value("recoveryChecks").toObject()) &&
         coversOriginalInk(word, sub)) {
         sub.templateTrace.append(QStringLiteral("Unresolved form matched by contour recovery"));

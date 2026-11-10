@@ -87,8 +87,7 @@ static void checkFoldedSheen(const QJsonObject& config) {
                          "Missing diagnostic for conflicting tooth ownership");
             continue;
         }
-        check(complete &&
-              !sub.provisional() && sub.baseGlyphs.size() == 3 && sub.matchedTemplates.contains("seen-folded-medi"),
+        check(complete && sub.baseGlyphs.size() == 3 && sub.matchedTemplates.contains("seen-folded-medi"),
               "Folded sheen before yeh did not produce three matched letter bodies");
         check(sub.joins.size() == 2 && sub.kashidaPaths.size() == 2 &&
               !sub.kashidaPaths.front().isEmpty() && sub.kashidaPaths.back().isEmpty(),
@@ -131,6 +130,34 @@ static void checkFoldedSheen(const QJsonObject& config) {
                   !seenTipMeetsFold(context, *arch, false, fold) &&
                   !seenTipMeetsFold(context, *arch, true, *sub.joins.begin()), "Unrelated fold accepted");
         }
+    }
+
+    for (const auto& [page, line, wordNumber, subword] : {std::array{4, 8, 2, 1}, std::array{40, 1, 10, 2}}) {
+        QFile pageFile(QString("pages/page%1.dat").arg(page));
+        check(pageFile.open(QIODevice::ReadOnly), "Missing initial folded seen fixture");
+        PageAnalysisResult analysis;
+        QDataStream stream(&pageFile);
+        stream >> analysis.page;
+        analysis.resolveWordBoundaries(page, &font);
+        const auto& word = analysis.page.lines[line - 1].words[wordNumber - 1];
+        const auto& sub = word.wordResultInfo.subWords[subword - 1];
+        check(analysis.segmentSubword(page - 1, line - 1, wordNumber - 1, subword - 1, &font, true, &config) &&
+              sub.baseGlyphs.size() == 2 && sub.joins.size() == 1 &&
+              sub.matchedTemplates == QStringList{"seen-folded-init", "yeh-fina"},
+              "The folded initial body did not match at the final yeh cut");
+        check(sub.templateTrace == QStringList{"seen-folded-init · shared cut at the final fold"},
+              "The contextual match entered the ordinary boundary search");
+        const auto shape = word.bodyShape(sub);
+        WordResultInfo::SubWordInfo dummy;
+        auto context = geometry(shape.transform.map(shape.path).translated(shape.pos), dummy);
+        const auto yeh = namedLetterForm(config, "yeh-fina");
+        check(declaredSharedBoundary(context, yeh), "Final yeh must recognize its own fold");
+        const auto& cut = *sub.joins.begin();
+        check(sub.kashidaPaths.size() == 1 && sub.kashidaPaths.front().isEmpty() &&
+              cut.topBaseLine.point == context.res.topBaseLine.point &&
+              cut.bottomBaseLine.point == context.res.bottomBaseLine.point,
+              "The contextual match changed the original shared cut");
+        checkPartition(shape.path, sub);
     }
 }
 
