@@ -177,6 +177,8 @@ Final noon and beh bowls use saved contour routes, return branches or `bowl-neck
 
 Waw shares counter necks, shoulders and bridges. Its `profile-neck` body records eligible neck flanks and the head’s strip-intersection count; assembly chooses the available neck. The old initial/final counter dispatchers have been removed.
 
+Seen/sheen uses `tooth-cluster`: recognition records three tips, the intervening valleys and admissible spacing on the uncut contour. Boundary policies project entry and exit sections. Fold compatibility, neighboring limits and retry selection are applied afterward; they cannot change the cached cluster evidence.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright

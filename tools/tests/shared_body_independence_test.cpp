@@ -113,6 +113,8 @@ static QByteArray snapshot(const SharedShapeEvidence& e) {
         out << b.section.clockWise << b.section.length << bool(b.probe);
         if (b.probe) { point(b.probe->extremum); out << bool(b.probe->smooth); if (b.probe->smooth) point(*b.probe->smooth); }
     }
+    out << quint64(e.clusters.size());
+    for (const auto& c : e.clusters) { points(c.turns); out << c.advancePrevious << c.ordinary << c.wide << c.minimumX; }
     out << bool(e.bowlTurn); if (e.bowlTurn) { point(e.bowlTurn->tip); point(e.bowlTurn->turn); }
     out << quint64(e.outlines.size());
     for (const auto& shape : e.outlines) { out << shape.eye << quint64(shape.counters.size()); for (const auto& h : shape.counters) hole(h); }
@@ -141,7 +143,7 @@ int main(int argc, char** argv) {
         bad.insert("cuts", policy); invalid.insert(phase, QJsonArray{bad});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
     }
-    check(forms.size() >= 119 && shapes.size() >= 19, "Not all shared shapes exercised");
+    check(forms.size() >= 126 && shapes.size() >= 20, "Not all shared shapes exercised");
     struct Fixture { int page,line,word,sub; };
     const Fixture fixtures[] = {{3,2,9,1}, {6,15,4,1}, {600,2,5,1}, {230,11,3,1}};
     int checks = 0;

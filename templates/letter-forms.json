@@ -139,15 +139,27 @@
     {
       "id": "seen-init",
       "current": "سش",
-      "method": "seen-teeth",
-      "retryBendOffset": 0.5,
-      "retryMaxLastPitch": 6,
-      "minToothRise": 0.55,
-      "minPitch": 1,
-      "maxPitch": 5,
-      "maxTipHeightSpreadRatio": 1,
       "tryNext": true,
-      "retryOnPartial": true
+      "retryOnPartial": true,
+      "body": {
+        "shape": "tooth-cluster",
+        "cluster": {
+          "retryMaxLastPitch": 6,
+          "minToothRise": 0.55,
+          "minPitch": 1,
+          "maxPitch": 5,
+          "maxTipHeightSpreadRatio": 1
+        }
+      },
+      "cuts": {
+        "cluster": {
+          "retryBendOffset": 0.5
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "tooth-exit"
+        }
+      }
     },
     {
       "id": "ain-init",
@@ -1630,25 +1642,47 @@
       "current": "سش",
       "sharedFoldWithFinal": "يئى",
       "sharedEntry": true,
-      "seenTeeth": {
-        "maxLastPitch": 8,
-        "rightOffset": 0.5,
-        "entryCornerOptional": true,
-        "convexTips": true
+      "body": {
+        "shape": "tooth-cluster",
+        "cluster": {
+          "maxLastPitch": 8,
+          "convexTips": true
+        }
+      },
+      "cuts": {
+        "cluster": {
+          "rightOffset": 0.5,
+          "entryCornerOptional": true
+        },
+        "boundaries": {
+          "right": "tooth-entry",
+          "left": "tooth-exit"
+        }
       }
     },
     {
       "id": "seen-medi",
       "current": "سش",
-      "seenTeeth": {
-        "retryBendOffset": 0.5,
-        "retryMaxLastPitch": 6,
-        "minToothRise": 0.55,
-        "minPitch": 1,
-        "maxPitch": 5,
-        "maxTipHeightSpreadRatio": 1,
-        "rightOffset": 0.5,
-        "maxExitBendDistance": 2
+      "body": {
+        "shape": "tooth-cluster",
+        "cluster": {
+          "retryMaxLastPitch": 6,
+          "minToothRise": 0.55,
+          "minPitch": 1,
+          "maxPitch": 5,
+          "maxTipHeightSpreadRatio": 1
+        }
+      },
+      "cuts": {
+        "cluster": {
+          "retryBendOffset": 0.5,
+          "rightOffset": 0.5,
+          "maxExitBendDistance": 2
+        },
+        "boundaries": {
+          "right": "tooth-entry",
+          "left": "tooth-exit"
+        }
       }
     },
     {
@@ -2970,21 +3004,32 @@
     {
       "id": "seen-compact-medi",
       "current": "سش",
-      "seenTeeth": {
-        "minToothRise": 0.55,
-        "minPitch": 1,
-        "maxPitch": 5,
-        "retryMaxLastPitch": 6,
-        "maxTipHeightSpreadRatio": 1,
-        "maxExitBendDistance": 2,
-        "exitBendFirst": true,
-        "exitOffset": 0.45,
-        "convexTips": true,
-        "rightOffset": 0.5,
-        "entryCornerOptional": true
-      },
       "tightJoin": true,
-      "sharedEntry": true
+      "sharedEntry": true,
+      "body": {
+        "shape": "tooth-cluster",
+        "cluster": {
+          "minToothRise": 0.55,
+          "minPitch": 1,
+          "maxPitch": 5,
+          "retryMaxLastPitch": 6,
+          "maxTipHeightSpreadRatio": 1,
+          "convexTips": true
+        }
+      },
+      "cuts": {
+        "cluster": {
+          "maxExitBendDistance": 2,
+          "exitBendFirst": true,
+          "exitOffset": 0.45,
+          "rightOffset": 0.5,
+          "entryCornerOptional": true
+        },
+        "boundaries": {
+          "right": "tooth-entry",
+          "left": "tooth-exit"
+        }
+      }
     },
     {
       "id": "kaf-bent-neck-medi",
@@ -4440,51 +4485,83 @@
     },
     {
       "id": "seen-bowl-entry-fina",
-      "method": "seen-teeth",
-      "side": "right",
-      "minToothRise": 0.18,
-      "minPitch": 0.32,
-      "maxPitch": 8,
-      "maxTipHeightSpreadRatio": 2,
       "tryNext": true,
       "current": "سش",
-      "rightOffset": 0.35,
-      "entryCornerOptional": true,
       "tightJoin": true,
       "returningStroke": true,
-      "terminalBowl": true,
       "terminalAttachment": true,
-      "onFinalRetry": true
+      "onFinalRetry": true,
+      "body": {
+        "shape": "tooth-cluster",
+        "cluster": {
+          "minToothRise": 0.18,
+          "minPitch": 0.32,
+          "maxPitch": 8,
+          "maxTipHeightSpreadRatio": 2
+        }
+      },
+      "cuts": {
+        "cluster": {
+          "rightOffset": 0.35,
+          "entryCornerOptional": true,
+          "terminalBowl": true
+        },
+        "boundaries": {
+          "right": "tooth-entry",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "seen-rounded-entry-fina",
-      "method": "seen-teeth",
-      "side": "right",
-      "minToothRise": 0.18,
-      "minPitch": 0.32,
-      "maxPitch": 8,
-      "maxTipHeightSpreadRatio": 2,
       "tryNext": true,
       "current": "سش",
-      "rightOffset": 0.35,
-      "entryCornerOptional": true,
       "tightJoin": true,
       "returningStroke": true,
-      "terminalBowl": true,
       "terminalAttachment": true,
-      "roundedEntry": true,
-      "onFinalRetry": true
+      "onFinalRetry": true,
+      "body": {
+        "shape": "tooth-cluster",
+        "cluster": {
+          "minToothRise": 0.18,
+          "minPitch": 0.32,
+          "maxPitch": 8,
+          "maxTipHeightSpreadRatio": 2
+        }
+      },
+      "cuts": {
+        "cluster": {
+          "rightOffset": 0.35,
+          "entryCornerOptional": true,
+          "terminalBowl": true,
+          "roundedEntry": true
+        },
+        "boundaries": {
+          "right": "tooth-entry",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "seen-fina",
-      "method": "seen-teeth",
-      "side": "right",
-      "minToothRise": 0.55,
-      "minPitch": 1,
-      "maxPitch": 5,
-      "maxTipHeightSpreadRatio": 1,
       "tryNext": true,
-      "current": "سش"
+      "current": "سش",
+      "body": {
+        "shape": "tooth-cluster",
+        "cluster": {
+          "minToothRise": 0.55,
+          "minPitch": 1,
+          "maxPitch": 5,
+          "maxTipHeightSpreadRatio": 1
+        }
+      },
+      "cuts": {
+        "cluster": {},
+        "boundaries": {
+          "right": "tooth-entry",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "heh-counter-fina",

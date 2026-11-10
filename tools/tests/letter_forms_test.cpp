@@ -192,12 +192,12 @@ int main(int argc, char** argv) {
             auto forms = invalid.value(phase).toArray();
             for (int i = 0; i < forms.size(); ++i) {
                 auto form = forms[i].toObject();
-                if (form.value("method") != "seen-teeth" && !form.contains("seenTeeth")) continue;
-                auto settings = form.contains("seenTeeth") ? form.value("seenTeeth").toObject() : form;
+                if (form.value("body").toObject().value("shape") != "tooth-cluster") continue;
+                auto body = form.value("body").toObject();
+                auto settings = body.value("cluster").toObject();
                 settings.insert("maxTipHeightSpreadRatio", scenario == 17 ? QJsonValue(0) :
                     scenario == 18 ? QJsonValue("1") : QJsonValue(-1));
-                if (form.contains("seenTeeth")) form.insert("seenTeeth", settings);
-                else form = settings;
+                body.insert("cluster", settings); form.insert("body", body);
                 forms[i] = form;
             }
             invalid.insert(phase, forms);
@@ -207,10 +207,11 @@ int main(int argc, char** argv) {
             for (int i = 0; i < forms.size(); ++i) {
                 auto form = forms[i].toObject();
                 if (form.value("id") != "seen-medi") continue;
-                auto settings = form.value("seenTeeth").toObject();
+                auto cuts = form.value("cuts").toObject();
+                auto settings = cuts.value("cluster").toObject();
                 settings.insert("rightOffset", scenario == 20 ? QJsonValue(-.5) :
                     scenario == 21 ? QJsonValue("0.5") : QJsonValue(true));
-                form.insert("seenTeeth", settings);
+                cuts.insert("cluster", settings); form.insert("cuts", cuts);
                 forms[i] = form;
             }
             invalid.insert("medial", forms);
@@ -220,10 +221,11 @@ int main(int argc, char** argv) {
             for (int i = 0; i < forms.size(); ++i) {
                 auto form = forms[i].toObject();
                 if (form.value("id") != "seen-medi") continue;
-                auto settings = form.value("seenTeeth").toObject();
+                auto cuts = form.value("cuts").toObject();
+                auto settings = cuts.value("cluster").toObject();
                 settings.insert("maxExitBendDistance", scenario == 23 ? QJsonValue(0) :
                     scenario == 24 ? QJsonValue(-1) : QJsonValue("2"));
-                form.insert("seenTeeth", settings);
+                cuts.insert("cluster", settings); form.insert("cuts", cuts);
                 forms[i] = form;
             }
             invalid.insert("medial", forms);

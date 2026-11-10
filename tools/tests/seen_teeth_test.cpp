@@ -106,7 +106,7 @@ static void checkFoldedSheen(const QJsonObject& config) {
         auto context = geometry(ink, dummy);
         for (const auto& item : config.value("final").toArray())
             if (item.toObject().value("id") == "yeh-fina") context.form = item.toObject();
-        check(searchContourWalk(context), "Final yeh must recognize its own fold");
+        check(declaredSharedBoundary(context, context.form), "Final yeh must recognize its own fold");
         const auto& fold = *sub.joins.rbegin();
         check(fold.topBaseLine.time == context.res.topBaseLine.time &&
               fold.bottomBaseLine.time == context.res.bottomBaseLine.time, "The two letters do not share the yeh cut");
@@ -215,10 +215,11 @@ int main(int argc, char** argv) {
         auto medial = narrow.value("medial").toArray();
         for (int i = 0; i < medial.size(); ++i) {
             auto form = medial[i].toObject();
-            auto teeth = form.value("seenTeeth").toObject();
+            auto body = form.value("body").toObject();
+            auto teeth = body.value("cluster").toObject();
             if (!teeth.contains("retryMaxLastPitch")) continue;
             teeth.remove("retryMaxLastPitch");
-            form.insert("seenTeeth", teeth);
+            body.insert("cluster", teeth); form.insert("body", body);
             medial[i] = form;
         }
         narrow.insert("medial", medial);
@@ -294,7 +295,8 @@ int main(int argc, char** argv) {
         auto initial = noBend.value("initial").toArray();
         for (int i = 0; i < initial.size(); ++i) {
             auto rule = initial[i].toObject();
-            rule.remove("retryBendOffset");
+            auto cuts = rule.value("cuts").toObject(), cluster = cuts.value("cluster").toObject();
+            cluster.remove("retryBendOffset"); cuts.insert("cluster", cluster); rule.insert("cuts", cuts);
             initial[i] = rule;
         }
         noBend.insert("initial", initial);
@@ -345,7 +347,7 @@ int main(int argc, char** argv) {
     }
     QJsonObject settings;
     for (const auto& value : config.value("medial").toArray())
-        if (value.toObject().value("id") == "seen-medi") settings = value.toObject().value("seenTeeth").toObject();
+        if (value.toObject().value("id") == "seen-medi") settings = seenSettings(value.toObject());
     check(!settings.isEmpty(), "Missing seen-medi settings");
     QFile file("pages/page600.dat");
     check(file.open(QIODevice::ReadOnly), "Page 600 fixture is required");
