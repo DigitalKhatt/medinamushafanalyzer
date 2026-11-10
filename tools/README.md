@@ -63,8 +63,9 @@ Declared forms use `body` for recognition and `cuts` for cut placement.
 Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
 declares its stem/bowl measurements in `body.stem`, then uses
 `cuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
-lām `method` or `legacyLamRoutes` adapter. All lām forms, all six medial
-senna forms, all 19 meem forms and all ten feh/qaf forms and all seven ain/ghain forms use these declarations; other letters migrate independently.
+lām `method` or `legacyLamRoutes` adapter. All 176 geometric forms use these
+declarations. The two exposed-head recipes use `assembly` to combine existing body templates at a shared seam;
+they are recovery composition rules, not additional shape recognizers.
 
 In the native application, enable **Inspect cuts** and click a subword. Select
 a declared template, including an applicable alternative that did not
@@ -141,52 +142,41 @@ axis. `cuts.flankMode` selects `contour-normal`, `axis-projection` or
 Body evidence can be reused with another cut policy, including after a policy
 fails to produce a valid mask. No medial senna uses the old `tooth` field.
 
-Meem uses shared counter-neck, counter-shoulder, counter-bridge, counter-loop,
-counter-rim, counter-outline and contour-route shapes. Recognition receives only
-`InkOutline` and `body`: it records counters, corners, valleys and route anchors.
-`cuts` supplies normals, offsets, section widths and boundary policies. Assembly
-selects the occurrence and checks retained ink and neighboring boundaries. Its
-selection cannot skip a failed loop to borrow a later letter's loop. Run
-`shared_body_independence_test.cpp`, `medial_meem_test.cpp` and
-`final_meem_test.cpp` through `check_letter_forms.py` to check these contracts.
-
-Feh/qaf add `suspended-loop`, `crested-loop` and `bowl-turn` shapes. The first
-records a counter, side edge and any descending neck route; the second records
-the crest and both head edges; the third records the free bowl's first turn.
-Normal/probe settings live in `cuts`. Routes share the same saved-landmark
-projection used by lām and meem. `initial_heads_test.cpp`, `medial_heads_test.cpp`
-and `final_feh_test.cpp` check the reviewed head and bowl boundaries.
-
-Ain/ghain uses the same saved contour routes and counter loops. Its open medial head records the crest and both lips in `body.head`; `cuts.head` supplies projection depth and reach. Neighboring cuts select an occurrence only after recognition.
-
-Heh counter forms use `horizontal-counters` or `stacked-counters`, alongside the shared loop/neck/outline shapes. Body recognition records counter pairs and all eligible foot corners; projection chooses successful normal sections while preserving the outer step. `medial_heh_test.cpp` checks the reviewed corners, scale invariance and independence from neighboring cuts. Exposed-head and pen-lift composition remain assembly rules.
-
-The five initial beh-family forms also use `contour-route`: directional walks and body proportions belong in `body`, while the lower probe, normal and corner ownership belong in `cuts`. `tooth_ownership_test.cpp` and `beh_hah_ligature_test.cpp` cover the stacked joins and retained initial strokes.
-
-Final reh uses contour routes plus `tail-branch` and `rising-return`. Tail recognition records its fork, intrinsic width and return corners. Cut policy selects the contour walk or shared seam; retained-bowl checks run during projection and assembly. The unused generic reh join matcher has been removed.
-
-Final yeh shares the contour-route and return-seam machinery. `folded-return` records the bowl tip, both first-return corners and shoulder extent. Its cut policy limits the chord and preserves the shared ligature seam. `yeh_remainder_test.cpp` verifies that provisional two-letter remainders keep exactly the same masks and cuts.
-
-Five medial kaf contour forms use `paired-route`: the recognizer records a body anchor, secondary anchors, retained branches and both routes. `cuts.routes` applies the probes, offsets and orientation. The same intrinsic route evidence can be projected again with a shared ligature exit.
-
-Fifteen hah-family contour forms share the single and paired route recognizers. Their zero/one-counter constraints and retained lips/branches remain body requirements; shared folded-yeh or stacked attachments remain assembly policies. The hah ownership and final-hah tests also check preview edits through `cuts.route.penWidth`.
-
-Sad/tah loop forms reuse counter-loop, rim, outline, shoulder and route evidence. Counter loops record their entry routes and attached teeth before projection; cut policies then place the entry and exit boundaries. The independence test compares the saved route and tooth evidence after changing neighboring joins and cursor state.
-
-Final noon and beh bowls use saved contour routes, return branches or `bowl-neck`. Neck recognition records the opposing contour landmarks and the bowl turn; assembly filters candidates against the active cursor and previous boundary. The neck-flank calculations are shared with the remaining legacy callers.
-
-Waw shares counter necks, shoulders and bridges. Its `profile-neck` body records eligible neck flanks and the head’s strip-intersection count; assembly chooses the available neck. Kaf uses the same profile recognizer for the clear area beneath its neck and its zigzag edge. Edge projection is a cut policy. The old initial/final counter and kaf neck dispatchers have been removed.
-
-Seen/sheen uses `tooth-cluster`: recognition records three tips, the intervening valleys and admissible spacing on the uncut contour. Boundary policies project entry and exit sections. Fold compatibility, neighboring limits and retry selection are applied afterward; they cannot change the cached cluster evidence.
-
-A contour route can also declare independent `body.tail` evidence. `cuts.recoveryTail` chooses that tail policy during recovery, then tries the route if it cannot produce a cut. Dal uses this shared policy instead of a special branch in the legacy dispatcher.
-
-Enclosed hah heads use `enclosed-lips`: the counter, nose and attachment corners are recognized first. Normal sections and retained-counter checks then produce the initial exit or both medial boundaries. Returning open heads use `returning-lips` to record the notch, both lips and nose before projecting their two boundaries.
-
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright
 and low teeth are available in the initial pass. It does not alter body geometry.
+
+The shared recognizers receive only `InkOutline` and `body`. They record
+candidate geometry before any neighbor or cut-policy check. Assembly selects
+the occurrence, enforces contour order, checks retained ink and assigns shared
+seams or connectors. Top-level selectors, retry order and shared-attachment
+constraints govern assembly; they are not inputs to intrinsic recognition.
+Assembly cannot change cached evidence. The shared schema registry in
+`segmentsubword.cpp` lists the supported shape and boundary names.
+
+| Shape family | Recognized evidence | Cut policy |
+| --- | --- | --- |
+| Counter necks, loops, rims and heads | Counters, corners, shoulders, teeth | Normals, offsets and retained loops |
+| Single and paired contour routes | Directional landmarks and retained branches | Probes, walks and shared seams |
+| Stems, forks and returning bowls | Shaft, fork, free tail and turning points | Flank normals and return boundaries |
+| Tooth pairs and seen clusters | Tips, valleys, heights and spacing | Entry/exit projection and tight joins |
+| Hah mouths and layered heads | Lips, nose, throat and attachment corners | Normal cuts or counter probes |
+| Kaf blades and counter attachments | Elbows, parallel bands and inner/outer arcs | Margins and bridge ownership |
+| Separate ink components | Original components and their holes | Pen-lift, overhanging-head or arm assembly |
+
+`assembly.operation: "exposed-head"` names existing head variants in
+`bodyForms`; `entry` selects an established shared seam or a declared entry
+form. This recovery recipe recognizes the exposed suffix using those body
+forms and accepts it only when the complete reconstruction preserves the ink.
+It does not claim to recognize a new head shape independently in the original
+whole subword.
+
+Check fresh recognition, neighbor independence, cache reuse and policy edits:
+
+```sh
+python3 tools/tests/check_letter_forms.py shared_body_independence_test.cpp body_cuts_test.cpp
+```
 
 Catalog builds use AI/PDF reports. Rerun `build` with the same report to
 upgrade a native catalog created with the previous artwork schema.
@@ -306,5 +296,3 @@ The native checks use the Release binary and edition data. Pass a C++ test
 filename to `check_letter_forms.py` to run one case.
 The input-cache check uses the catalog to verify identical cold/warm masks,
 fresh cuts after a template edit, and recovery from a truncated cache file.
-
-Kaf blades and parallel returns use `inclined-blade` and `parallel-return`. The body stores the blade, elbow, fork or parallel ink bands; cut policies supply the margin used to project each boundary.
