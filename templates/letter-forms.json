@@ -5379,14 +5379,25 @@
     {
       "id": "kaf-fork-fina",
       "current": "ك",
-      "start": "left",
-      "method": "bowl-fork",
-      "walkWidths": 0.5,
-      "minRise": 3,
-      "bodyCounters": 0,
       "ownsLeftTip": true,
       "onIncomplete": true,
-      "tryNext": true
+      "tryNext": true,
+      "body": {
+        "shape": "forked-bowl",
+        "fork": {
+          "minRise": 3
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "fork": {
+          "walkWidths": 0.5
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "branch-normal"
+        }
+      }
     },
     {
       "id": "alef-tapered-arm-fina",

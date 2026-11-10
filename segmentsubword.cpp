@@ -745,7 +745,7 @@ static bool lamDescription(const QJsonObject& body) {
 
 static bool sharedShapeDescription(const QJsonObject& body) {
     static const QStringList shapes{"counter-neck", "counter-shoulder", "counter-bridge", "counter-loop", "counter-rim",
-        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips", "inclined-blade", "parallel-return", "stemmed-bowl"};
+        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips", "inclined-blade", "parallel-return", "stemmed-bowl", "forked-bowl"};
     return shapes.contains(body.value("shape").toString());
 }
 
@@ -816,6 +816,7 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
     const auto body = form.value("body").toObject();
     if (!sharedShapeDescription(body)) return form;
     const auto shape = body.value("shape");
+    if (shape == "forked-bowl") { form = withOverrides(form, shapeSettings(form, "fork")); form.insert("start", "left"); }
     if (shape == "stemmed-bowl") form = withOverrides(form, shapeSettings(form, "stem"));
     if (shape == "inclined-blade") form.insert("blade", shapeSettings(form, "blade"));
     if (shape == "parallel-return") form.insert("parallelReturn", shapeSettings(form, "bands"));
@@ -866,7 +867,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         (phase == "initial" && boundaries.value("right") != "free") ||
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
-    const QString section = shape == "stemmed-bowl" ? "stem" : shape == "inclined-blade" ? "blade" : shape == "parallel-return" ? "bands" : shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
+    const QString section = shape == "forked-bowl" ? "fork" : shape == "stemmed-bowl" ? "stem" : shape == "inclined-blade" ? "blade" : shape == "parallel-return" ? "bands" : shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
@@ -898,7 +899,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (!checkBody(checkBody, body)) return id + ": projection settings cannot change recognized body evidence";
     for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
         const auto mode = it.value().toString();
-        const QStringList modes = shape == "stemmed-bowl" ? QStringList{"free", "stem-turn"} : shape == "inclined-blade" ? QStringList{"corner-normal"} : shape == "parallel-return" ? QStringList{"band-section"} : shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
+        const QStringList modes = shape == "forked-bowl" ? QStringList{"free", "branch-normal"} : shape == "stemmed-bowl" ? QStringList{"free", "stem-turn"} : shape == "inclined-blade" ? QStringList{"corner-normal"} : shape == "parallel-return" ? QStringList{"band-section"} : shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
             shape == "bowl-neck" ? QStringList{"free", "bowl-neck"} : shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
             (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? QStringList{"free", "counter-neck", "counter-shoulder", "counter-bridge"} :
             shape == "contour-route" ? QStringList{"free", "contour-route"} :
@@ -915,6 +916,11 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (shape == "contour-route" && cuts.contains("recoveryTail") &&
         (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() || cuts.value("tail").toObject().isEmpty()))
         return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    if(shape=="forked-bowl") {
+        const auto dimensions=body.value("fork").toObject(),policy=cuts.value("fork").toObject();
+        if(phase!="final" || dimensions.size()!=1 || !(dimensions.value("minRise").toDouble()>0) || policy.size()!=1 ||
+            !(policy.value("walkWidths").toDouble()>0)) return id+": invalid bowl fork body or normal offset";
+    }
     if (shape == "stemmed-bowl") {
         if (phase != "final") return id + ": stemmed bowl requires a final body";
         const auto stem=body.value("stem").toObject(), policy=cuts.value("stem").toObject();
@@ -1007,6 +1013,7 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString& ph
     const auto shape = form.value("body").toObject().value("shape");
     form = sharedShapeProjectionForm(form);
     form.remove("body"); form.remove("cuts");
+    if (shape == "forked-bowl") form.insert("method", "bowl-fork");
     if (shape == "stemmed-bowl") form.insert("method", "stem-entry");
     if (shape == "enclosed-lips" && phase == "initial") form.insert("method", "enclosed-head");
     else if (shape == "tooth-cluster" && phase != "medial") form.insert("method", "seen-teeth");
@@ -9102,6 +9109,75 @@ cutParallelReturns(SearchContext &ctx, const std::vector<ParallelReturnBody> &bo
     return pairs;
 }
 
+struct BowlForkBody { PathExtrema tail, upper, lower; bool forward; double width; std::vector<PathExtrema> caps; };
+static std::vector<BowlForkBody> recognizeBowlForks(const InkOutline& outline) {
+    WordResultInfo::SubWordInfo empty;
+    auto ctx=outline.geometry(empty);
+    const auto& ink = ctx.transformedPath;
+    const auto tail = std::prev(ctx.xSorted.end());
+    std::vector<BowlForkBody> bodies;
+    for (auto p = ctx.timeSorted.begin(); p != ctx.timeSorted.end(); ++p) {
+        if (!p->isSharp || p->point.x() <= tail->point.x() + 1.5)
+            continue;
+        for (auto q = ctx.timeSorted.begin(); q != ctx.timeSorted.end(); ++q) {
+            const auto d = q->point - p->point;
+            if (!q->isSharp || d.y() < .15 || d.y() > 2 || std::abs(d.x()) > 1.6 * d.y() ||
+                !interiorChord(ink, *p, *q))
+                continue;
+            const double width = std::hypot(d.x(), d.y());
+            for (bool forward : {true, false}) {
+                auto next = (forward ? ctx.prev(q) : ctx.next(q));
+                const auto drift = next->point - q->point;
+                if (drift.x() <= 0 || drift.y() <= 0)
+                    continue;
+                BowlForkBody body{*tail,*p,*q,forward,width,{}};
+                for(const auto& peak:ctx.timeSorted)
+                    if(peak.point.y()<p->point.y()-3 && std::abs(peak.point.x()-q->point.x())<3*width) body.caps.push_back(peak);
+                bodies.push_back(std::move(body));
+            }
+        }
+    }
+    return bodies;
+}
+
+static bool cutBowlForks(SearchContext& ctx, const std::vector<BowlForkBody>& bodies,
+        const QJsonObject& form, Stretching& result) {
+    const auto& ink=ctx.transformedPath;
+    double best=std::numeric_limits<double>::max();
+    for(const auto& body:bodies) {
+        const auto *tail=&body.tail,*p=&body.upper,*q=&body.lower;
+        const bool forward=body.forward; const double width=body.width;
+                auto limit = *q;
+                limit.time += (forward ? 1 : -1) * int(baseContourCurves(ink).size());
+                PathExtrema entry{};
+                QPointF tangent;
+                if (!advanceOnContour(ink, *q, limit, forward, form.value("walkWidths").toDouble(.5) * width, entry,
+                                      tangent))
+                    continue;
+                for (auto cut : cornerSections(ctx, entry)) {
+                    orientSection(ctx, cut, tail->time, true);
+                    const auto side = getJoinTime(cut, ctx.orientation);
+                    if (!side.isStrictLeft(p->time) || !side.isStrictLeft(q->time))
+                        continue;
+                    const auto parts = cutRegions(ink, {}, {cut}, ctx.orientation, true);
+                    if (parts.size() != 2 || toSubpaths(parts[1].path).size() != 1)
+                        continue;
+                    auto box = parts[1].path.boundingRect();
+                    if (p->point.y() - box.top() < form.value("minRise").toDouble(3) ||
+                        box.right() > q->point.x() + 2.6 * width)
+                        continue;
+                    const bool cap=std::any_of(body.caps.begin(),body.caps.end(),[&](const auto& peak){return side.isStrictLeft(peak.time);});
+                    const double score =
+                        QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point).length() + .2 * width;
+                    if (cap && score < best) {
+                        best = score;
+                        result = cut;
+                    }
+                }
+    }
+    return std::isfinite(best) && best < std::numeric_limits<double>::max();
+}
+
 struct SharedShapeEvidence {
     QPainterPath source;
     std::vector<CounterHole> holes;
@@ -9123,6 +9199,7 @@ struct SharedShapeEvidence {
     std::vector<BladeBody> blades;
     std::vector<ParallelReturnBody> parallelReturns;
     std::vector<TerminalStemBody> terminalStems;
+    std::vector<BowlForkBody> bowlForks;
     std::vector<OpenHeadBody> openHeads;
     std::optional<HorizontalCounterPair> horizontalPair;
     std::vector<StackedCounterPair> stackedPairs;
@@ -9146,6 +9223,7 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop") result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn") result.bowlTurn = recognizeBowlTurn(outline);
+    else if(shape=="forked-bowl") result.bowlForks=recognizeBowlForks(outline);
     else if (shape == "stemmed-bowl") result.terminalStems = recognizeTerminalStemBodies(outline, body.value("stem").toObject());
     else if (shape == "inclined-blade") result.blades = recognizeBlades(outline, body.value("blade").toObject());
     else if (shape == "parallel-return") result.parallelReturns = recognizeParallelReturns(outline, body.value("bands").toObject());
@@ -9234,6 +9312,7 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
     for (const auto& blade:evidence.blades) { inspectLandmark("Blade tip",blade.tip); inspectLandmark("Elbow",blade.elbow); inspectLandmark("Fork",blade.fork); }
     for (const auto& band:evidence.parallelReturns) { inspectLandmark("Return edge",band.edge); inspectLandmark("Elbow",band.elbow); inspectLandmark("Blade tip",band.tip); }
     for (const auto& stem:evidence.terminalStems) { inspectLandmark("Stem crest",stem.crest); inspectLandmark("Stem foot",stem.limit); inspectLandmark("Bowl edge",stem.bowlEdge); }
+    for(const auto& fork:evidence.bowlForks) {inspectLandmark("Fork upper",fork.upper);inspectLandmark("Fork lower",fork.lower);for(const auto& cap:fork.caps)inspectLandmark("Bowl cap",cap);}
     if (evidence.bowlTurn) inspectLandmark("Bowl turn", evidence.bowlTurn->turn);
     for (const auto& head : evidence.openHeads) {
         inspectLandmark("Open crest", head.crest);
@@ -9293,6 +9372,8 @@ static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& fo
             found = cutTailBranches(context, *evidence->tail, shapeSettings(form, "tail"), context.res);
         if (!found) found = projectSavedRoute(context, evidence->route, body.value("route").toObject(), cuts.value("route").toObject());
     }
+    else if(shape=="forked-bowl")
+        found=cutBowlForks(context,evidence->bowlForks,shapeSettings(form,"fork"),context.res);
     else if (shape == "stemmed-bowl")
         found = cutTerminalStemBodies(context, evidence->terminalStems, cuts.value("stem").toObject(), cuts.value("stem").toObject());
     else if (shape == "tail-branch")
@@ -9368,61 +9449,6 @@ static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& fo
     if (found) inspectCandidate("Boundary proposal", context.res);
     else inspectReason("Cuts", "Recognized body features did not produce a section retaining this body.");
     return found;
-}
-
-static bool terminalFork(SearchContext& ctx, const QJsonObject& form, Stretching& result) {
-    const auto& ink = ctx.transformedPath;
-    const auto tail = std::prev(ctx.xSorted.end());
-    double best = std::numeric_limits<double>::max();
-    for (auto p = ctx.timeSorted.begin(); p != ctx.timeSorted.end(); ++p) {
-        if (!p->isSharp || p->point.x() <= tail->point.x() + 1.5)
-            continue;
-        for (auto q = ctx.timeSorted.begin(); q != ctx.timeSorted.end(); ++q) {
-            const auto d = q->point - p->point;
-            if (!q->isSharp || d.y() < .15 || d.y() > 2 || std::abs(d.x()) > 1.6 * d.y() ||
-                !interiorChord(ink, *p, *q))
-                continue;
-            const double width = std::hypot(d.x(), d.y());
-            for (bool forward : {true, false}) {
-                auto next = (forward ? ctx.prev(q) : ctx.next(q));
-                const auto drift = next->point - q->point;
-                if (drift.x() <= 0 || drift.y() <= 0)
-                    continue;
-                auto limit = *q;
-                limit.time += (forward ? 1 : -1) * int(baseContourCurves(ink).size());
-                PathExtrema entry{};
-                QPointF tangent;
-                if (!advanceOnContour(ink, *q, limit, forward, form.value("walkWidths").toDouble(.5) * width, entry,
-                                      tangent))
-                    continue;
-                for (auto cut : cornerSections(ctx, entry)) {
-                    orientSection(ctx, cut, tail->time, true);
-                    const auto side = getJoinTime(cut, ctx.orientation);
-                    if (!side.isStrictLeft(p->time) || !side.isStrictLeft(q->time))
-                        continue;
-                    const auto parts = cutRegions(ink, {}, {cut}, ctx.orientation, true);
-                    if (parts.size() != 2 || toSubpaths(parts[1].path).size() != 1)
-                        continue;
-                    auto box = parts[1].path.boundingRect();
-                    if (p->point.y() - box.top() < form.value("minRise").toDouble(3) ||
-                        box.right() > q->point.x() + 2.6 * width)
-                        continue;
-                    bool cap = false;
-                    for (const auto& peak : ctx.timeSorted)
-                        if (side.isStrictLeft(peak.time) && peak.point.y() < p->point.y() - 3 &&
-                            std::abs(peak.point.x() - q->point.x()) < 3 * width)
-                            cap = true;
-                    const double score =
-                        QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point).length() + .2 * width;
-                    if (cap && score < best) {
-                        best = score;
-                        result = cut;
-                    }
-                }
-            }
-        }
-    }
-    return std::isfinite(best) && best < std::numeric_limits<double>::max();
 }
 
 struct ToothSearchPlan {
@@ -12604,9 +12630,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         else if (method == "walk") found = searchContourWalk(context);
         else if (method == "folded-arm")
             found = intrinsicTerminal(false, [&] { return foldedArmRoot(context, rule, context.res); });
-        else if (method == "bowl-fork")
-            found = rule.value("stemFoot").toBool() ? terminalStemFork(context, rule, context.res)
-                                                    : terminalFork(context, rule, context.res);
         else if (method == "tail-entry") found = terminalTailEntry(context,rule.value("tailEntry").toObject(),context.res);
         else if (method == "alef-stem") {
             const bool shaftTurn = recoverTeeth && rule.value("shaftTurn").toBool();
