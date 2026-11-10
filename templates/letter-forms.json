@@ -849,13 +849,33 @@
     {
       "id": "hah-init",
       "current": "جحخ",
-      "method": "hah",
-      "minExtrema": 8,
-      "ascenderProbeX": 6,
-      "counterProbeX": 0.6,
-      "ascenderCrossings": 4,
-      "counterCrossings": 2,
-      "tryNext": true
+      "tryNext": true,
+      "body": {
+        "shape": "layered-head",
+        "neck": {
+          "lookback": 4,
+          "previousOffset": 1,
+          "minX": 0,
+          "maxX": 1,
+          "minY": 0.8,
+          "maxY": 1.5
+        },
+        "head": {
+          "minExtrema": 8,
+          "ascenderProbeX": 6,
+          "ascenderCrossings": 4
+        }
+      },
+      "cuts": {
+        "head": {
+          "counterProbeX": 0.6,
+          "counterCrossings": 2
+        },
+        "boundaries": {
+          "left": "head-probe",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "hah-counter-init",
