@@ -745,7 +745,7 @@ static bool lamDescription(const QJsonObject& body) {
 
 static bool sharedShapeDescription(const QJsonObject& body) {
     static const QStringList shapes{"counter-neck", "counter-shoulder", "counter-bridge", "counter-loop", "counter-rim",
-        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips"};
+        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips", "inclined-blade", "parallel-return"};
     return shapes.contains(body.value("shape").toString());
 }
 
@@ -816,6 +816,8 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
     const auto body = form.value("body").toObject();
     if (!sharedShapeDescription(body)) return form;
     const auto shape = body.value("shape");
+    if (shape == "inclined-blade") form.insert("blade", shapeSettings(form, "blade"));
+    if (shape == "parallel-return") form.insert("parallelReturn", shapeSettings(form, "bands"));
     if (shape == "returning-lips") form.insert("mouth", shapeSettings(form, "mouth"));
     if (shape == "enclosed-lips") { auto head = shapeSettings(form, "head"); head.remove("freeEntry"); form.insert(body.value("head").toObject().value("freeEntry").toBool() ? "head" : "enclosedHead", head); }
     if (shape == "tooth-cluster") {
@@ -863,7 +865,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         (phase == "initial" && boundaries.value("right") != "free") ||
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
-    const QString section = shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
+    const QString section = shape == "inclined-blade" ? "blade" : shape == "parallel-return" ? "bands" : shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
@@ -895,7 +897,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (!checkBody(checkBody, body)) return id + ": projection settings cannot change recognized body evidence";
     for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
         const auto mode = it.value().toString();
-        const QStringList modes = shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
+        const QStringList modes = shape == "inclined-blade" ? QStringList{"corner-normal"} : shape == "parallel-return" ? QStringList{"band-section"} : shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
             shape == "bowl-neck" ? QStringList{"free", "bowl-neck"} : shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
             (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? QStringList{"free", "counter-neck", "counter-shoulder", "counter-bridge"} :
             shape == "contour-route" ? QStringList{"free", "contour-route"} :
@@ -912,6 +914,15 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (shape == "contour-route" && cuts.contains("recoveryTail") &&
         (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() || cuts.value("tail").toObject().isEmpty()))
         return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    if (shape == "inclined-blade" || shape == "parallel-return") {
+        if (phase != "medial") return id + ": a folded blade needs two medial boundaries";
+        const auto dimensions = body.value(section).toObject(), policy = cuts.value(section).toObject();
+        const QStringList keys = shape == "inclined-blade" ? QStringList{"minReach", "minRise"} : QStringList{"minRun"};
+        for (auto it=dimensions.begin(); it!=dimensions.end(); ++it)
+            if (!keys.contains(it.key()) || !it.value().isDouble() || !(it.value().toDouble()>0)) return id + ": invalid blade measurement";
+        for (auto it=policy.begin(); it!=policy.end(); ++it)
+            if (it.key()!="margin" || !it.value().isDouble() || !(it.value().toDouble()>0)) return id + ": invalid blade cut margin";
+    }
     if (shape == "returning-lips") {
         if (phase != "medial") return id + ": returning-lips requires a medial body";
         const auto mouth = body.value("mouth").toObject(), policy = cuts.value("mouth").toObject();
@@ -7970,8 +7981,15 @@ static std::vector<std::pair<Stretching, Stretching>> cutOpenMouths(SearchContex
 }
 // The bent medial kaf has an ascending blade and a diagonal return. On the
 // return the incoming stroke forks to the right before its lower turn.
-static std::vector<std::pair<Stretching, Stretching>> bladeSections(SearchContext& ctx, const QJsonObject& form) {
-    std::vector<std::pair<Stretching, Stretching>> pairs;
+struct BladeBody {
+    PathExtrema elbow, tip, turn, fork;
+    bool forward;
+    double width;
+};
+static std::vector<BladeBody> recognizeBlades(const InkOutline &outline, const QJsonObject &form) {
+    WordResultInfo::SubWordInfo empty;
+    auto ctx = outline.geometry(empty);
+    std::vector<BladeBody> bodies;
     for (auto elbow = ctx.timeSorted.begin(); elbow != ctx.timeSorted.end(); ++elbow) {
         if (ctx.prev(elbow)->point.x() < elbow->point.x() - .035 ||
             ctx.next(elbow)->point.x() < elbow->point.x() - .035)
@@ -8019,34 +8037,45 @@ static std::vector<std::pair<Stretching, Stretching>> bladeSections(SearchContex
                 const double width = local.referenceWidth;
                 if (width <= .08 || width > 3.5)
                     continue;
-                auto rightPoint = *fork;
-                auto limit = rightPoint;
-                limit.time += forward ? int(baseContourCurves(ctx.transformedPath).size())
-                                      : -int(baseContourCurves(ctx.transformedPath).size());
-                QPointF tangent;
-                const double offset = form.value("margin").toDouble(.5);
-                if (offset > 0 && !advanceOnContour(ctx.transformedPath, *fork, limit, forward, width * offset,
-                                                    rightPoint, tangent))
+                bodies.push_back({*elbow, *tip, *turn, *fork, forward, width});
+            }
+        }
+    }
+    return bodies;
+}
+
+static std::vector<std::pair<Stretching, Stretching>>
+cutBlades(SearchContext &ctx, const std::vector<BladeBody> &bodies, const QJsonObject &form) {
+    std::vector<std::pair<Stretching, Stretching>> pairs;
+    for (const auto &body : bodies) {
+        const auto *elbow = &body.elbow, *tip = &body.tip, *turn = &body.turn, *fork = &body.fork;
+        const bool forward = body.forward;
+        const double width = body.width;
+        auto rightPoint = *fork;
+        auto limit = rightPoint;
+        limit.time += forward ? int(baseContourCurves(ctx.transformedPath).size())
+                              : -int(baseContourCurves(ctx.transformedPath).size());
+        QPointF tangent;
+        const double offset = form.value("margin").toDouble(.5);
+        if (offset > 0 &&
+            !advanceOnContour(ctx.transformedPath, *fork, limit, forward, width * offset, rightPoint, tangent))
+            continue;
+        for (auto right : cornerSections(ctx, rightPoint)) {
+            orientSection(ctx, right, tip->time, true);
+            const auto entry = getJoinTime(right, ctx.orientation);
+            if (!entry.isStrictLeft(elbow->time) || !entry.isStrictLeft(turn->time) ||
+                QLineF(right.topBaseLine.point, right.bottomBaseLine.point).length() > 2.3 * width)
+                continue;
+            for (auto left : cornerSections(ctx, *turn)) {
+                orientSection(ctx, left, tip->time, false);
+                const auto exit = getJoinTime(left, ctx.orientation);
+                if (!exit.isStrictRight(elbow->time) || !entry.isStrictLeft(left.topBaseLine.time) ||
+                    !entry.isStrictLeft(left.bottomBaseLine.time) ||
+                    QLineF(left.topBaseLine.point, left.bottomBaseLine.point).length() > 2.8 * width)
                     continue;
-                for (auto right : cornerSections(ctx, rightPoint)) {
-                    orientSection(ctx, right, tip->time, true);
-                    const auto entry = getJoinTime(right, ctx.orientation);
-                    if (!entry.isStrictLeft(elbow->time) || !entry.isStrictLeft(turn->time) ||
-                        QLineF(right.topBaseLine.point, right.bottomBaseLine.point).length() > 2.3 * width)
-                        continue;
-                    for (auto left : cornerSections(ctx, *turn)) {
-                        orientSection(ctx, left, tip->time, false);
-                        const auto exit = getJoinTime(left, ctx.orientation);
-                        if (!exit.isStrictRight(elbow->time) || !entry.isStrictLeft(left.topBaseLine.time) ||
-                            !entry.isStrictLeft(left.bottomBaseLine.time) ||
-                            QLineF(left.topBaseLine.point, left.bottomBaseLine.point).length() > 2.8 * width)
-                            continue;
-                        const auto parts =
-                            cutRegions(ctx.transformedPath, {}, {right, left}, ctx.orientation, true);
-                        if (parts.size() == 3 && toSubpaths(parts[1].path).size() == 1)
-                            pairs.emplace_back(right, left);
-                    }
-                }
+                const auto parts = cutRegions(ctx.transformedPath, {}, {right, left}, ctx.orientation, true);
+                if (parts.size() == 3 && toSubpaths(parts[1].path).size() == 1)
+                    pairs.emplace_back(right, left);
             }
         }
     }
@@ -8944,6 +8973,129 @@ static std::vector<CounterOutlineBody> recognizeCounterOutlines(const InkOutline
     return result;
 }
 
+struct ParallelReturnBody {
+    PathExtrema elbow, edge, tip;
+    std::pair<QLineF, QLineF> first, second;
+    double stroke, slope;
+    std::vector<PathExtrema> corners;
+};
+static std::vector<ParallelReturnBody> recognizeParallelReturns(const InkOutline &outline,
+                                                                const QJsonObject &settings) {
+    WordResultInfo::SubWordInfo empty;
+    auto ctx = outline.geometry(empty);
+    using Band = QLineF;
+    const auto &ink = ctx.transformedPath;
+    auto bandsAt = [&](double x) {
+        const auto hits = FindInterections(ink, QLineF(x, ctx.bbox.top() - 1, x, ctx.bbox.bottom() + 1), true);
+        std::vector<Band> bands;
+        for (size_t i = 1; i < hits.size(); ++i) {
+            const Band b(hits[i - 1].point, hits[i].point);
+            if (!hits[i - 1].pathIndex && !hits[i].pathIndex && b.length() >= .18 && b.length() <= 2.8 &&
+                ink.contains(b.center()))
+                bands.push_back(b);
+        }
+        return bands;
+    };
+    std::vector<ParallelReturnBody> bodies;
+    for (auto elbow = ctx.timeSorted.begin(); elbow != ctx.timeSorted.end(); ++elbow) {
+        if (ctx.prev(elbow)->point.x() < elbow->point.x() - .02 || ctx.next(elbow)->point.x() < elbow->point.x() - .02)
+            continue;
+        for (auto across : {&SearchContext::prev, &SearchContext::next}) {
+            const auto up = across == &SearchContext::next ? &SearchContext::prev : &SearchContext::next;
+            auto edge = elbow, tip = elbow;
+            for (size_t i = 0; i < ctx.timeSorted.size(); ++i) {
+                const auto next = (ctx.*across)(edge);
+                if (next->point.x() < edge->point.x() - .04 || std::abs(next->point.y() - elbow->point.y()) > 2.8)
+                    break;
+                edge = next;
+            }
+            const auto run = edge->point.x() - elbow->point.x();
+            if (run < settings.value("minRun").toDouble(4))
+                continue;
+            for (size_t i = 0; i < ctx.timeSorted.size(); ++i) {
+                const auto next = (ctx.*up)(tip);
+                if (next->point.x() < tip->point.x() - .16 || next->point.y() > tip->point.y() + .12)
+                    break;
+                tip = next;
+            }
+            if (tip->point.x() - elbow->point.x() < 2 || elbow->point.y() - tip->point.y() < 1.8)
+                continue;
+            auto parallelBands = [&](double x) -> std::optional<std::pair<Band, Band>> {
+                auto bands = bandsAt(x);
+                for (size_t i = 1; i < bands.size(); ++i) {
+                    const Band a = bands[i - 1], b = bands[i];
+                    if (std::abs(a.center().y() - elbow->point.y()) > 2.6 || b.center().y() <= a.center().y() ||
+                        b.center().y() - a.center().y() > 3.4 * std::max(a.length(), b.length()) ||
+                        std::max(a.length(), b.length()) > 2.3 * std::min(a.length(), b.length()))
+                        continue;
+                    return std::pair(a, b);
+                }
+                return {};
+            };
+            const auto a = parallelBands(elbow->point.x() + .32 * run), b = parallelBands(elbow->point.x() + .72 * run);
+            if (!a || !b || std::abs(a->second.center().y() - b->second.center().y()) > 2.6)
+                continue;
+            const double stroke = (a->second.length() + b->second.length()) / 2;
+            const double slope = (b->second.center().y() - a->second.center().y()) / (.4 * run);
+            auto baseline = [&](double x) { return a->second.center().y() + slope * (x - a->second.center().x()); };
+            ParallelReturnBody body{*elbow, *edge, *tip, *a, *b, stroke, slope, {}};
+            for (const auto &corner : ctx.timeSorted)
+                if (corner.isSharp && std::abs(corner.point.x() - edge->point.x()) <= 1.7 * stroke &&
+                    std::abs(corner.point.y() - baseline(edge->point.x())) <= 2.1 * stroke)
+                    body.corners.push_back(corner);
+            bodies.push_back(std::move(body));
+        }
+    }
+    return bodies;
+}
+
+static std::vector<std::pair<Stretching, Stretching>>
+cutParallelReturns(SearchContext &ctx, const std::vector<ParallelReturnBody> &bodies, const QJsonObject &settings) {
+    const auto &ink = ctx.transformedPath;
+    std::vector<std::pair<Stretching, Stretching>> pairs;
+    for (const auto &body : bodies) {
+        const auto *elbow = &body.elbow, *edge = &body.edge, *tip = &body.tip;
+        const auto *a = &body.first, *b = &body.second;
+        const double stroke = body.stroke, slope = body.slope;
+        const auto baseline = [&](double x) { return a->second.center().y() + slope * (x - a->second.center().x()); };
+        const double leftX = elbow->point.x() - settings.value("margin").toDouble(.5) * stroke;
+        Stretching left{};
+        if (!medialChordAt(ctx, leftX, baseline(leftX), 2.8 * stroke, left))
+            continue;
+        orientSection(ctx, left, tip->time, false);
+        std::vector<Stretching> rights;
+        // The tight fold can lean over its incoming stroke. Its lower
+        // inward corner gives a more precise reference than the cap's projection.
+        for (const auto &cornerValue : body.corners) {
+            const auto *corner = &cornerValue;
+            const double x = corner->point.x() + settings.value("margin").toDouble(.5) * stroke;
+            Stretching cut{};
+            if (medialChordAt(ctx, x, corner->point.y() + .5 * stroke, 1.8 * stroke, cut))
+                rights.push_back(cut);
+        }
+        const double x = edge->point.x() + .5 * stroke;
+        Stretching projected{};
+        if (medialChordAt(ctx, x, baseline(x) + .5 * stroke, 2.8 * stroke, projected))
+            rights.push_back(projected);
+        for (auto right : rights) {
+            orientSection(ctx, right, tip->time, true);
+            const auto side = getJoinTime(right, ctx.orientation);
+            if (!side.isStrictLeft(left.topBaseLine.time) || !side.isStrictLeft(left.bottomBaseLine.time))
+                continue;
+            const auto parts = cutRegions(ink, {}, {right, left}, ctx.orientation, true);
+            if (parts.size() != 3 || toSubpaths(parts[1].path).size() != 1)
+                continue;
+            const auto &body = parts[1].path;
+            if (!body.contains(a->first.center()) || !body.contains(a->second.center()) ||
+                !body.contains(b->first.center()) || !body.contains(b->second.center()) ||
+                body.boundingRect().height() > elbow->point.y() - tip->point.y() + 6 * stroke)
+                continue;
+            pairs.emplace_back(right, left);
+        }
+    }
+    return pairs;
+}
+
 struct SharedShapeEvidence {
     QPainterPath source;
     std::vector<CounterHole> holes;
@@ -8962,6 +9114,8 @@ struct SharedShapeEvidence {
     std::vector<ToothClusterBody> clusters;
     std::vector<EnclosedLipsBody> enclosedLips;
     std::vector<OpenMouthBody> mouths;
+    std::vector<BladeBody> blades;
+    std::vector<ParallelReturnBody> parallelReturns;
     std::vector<OpenHeadBody> openHeads;
     std::optional<HorizontalCounterPair> horizontalPair;
     std::vector<StackedCounterPair> stackedPairs;
@@ -8985,6 +9139,8 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop") result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn") result.bowlTurn = recognizeBowlTurn(outline);
+    else if (shape == "inclined-blade") result.blades = recognizeBlades(outline, body.value("blade").toObject());
+    else if (shape == "parallel-return") result.parallelReturns = recognizeParallelReturns(outline, body.value("bands").toObject());
     else if (shape == "returning-lips") result.mouths = recognizeOpenMouths(outline, body.value("mouth").toObject());
     else if (shape == "enclosed-lips") result.enclosedLips = recognizeEnclosedLips(outline, body.value("head").toObject());
     else if (shape == "tooth-cluster") result.clusters = recognizeToothClusters(outline, body.value("cluster").toObject());
@@ -9067,6 +9223,8 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
         inspectLandmark("Mouth notch", mouth.lips.notch); inspectLandmark("Upper lip", mouth.lips.upper);
         inspectLandmark("Lower lip", mouth.lips.lower); inspectLandmark("Nose", mouth.nose);
     }
+    for (const auto& blade:evidence.blades) { inspectLandmark("Blade tip",blade.tip); inspectLandmark("Elbow",blade.elbow); inspectLandmark("Fork",blade.fork); }
+    for (const auto& band:evidence.parallelReturns) { inspectLandmark("Return edge",band.edge); inspectLandmark("Elbow",band.elbow); inspectLandmark("Blade tip",band.tip); }
     if (evidence.bowlTurn) inspectLandmark("Bowl turn", evidence.bowlTurn->turn);
     for (const auto& head : evidence.openHeads) {
         inspectLandmark("Open crest", head.crest);
@@ -9256,105 +9414,6 @@ static bool terminalFork(SearchContext& ctx, const QJsonObject& form, Stretching
     return std::isfinite(best) && best < std::numeric_limits<double>::max();
 }
 
-static std::vector<std::pair<Stretching, Stretching>> parallelKafSections(SearchContext& ctx,
-                                                                          const QJsonObject& settings) {
-    using Band = QLineF;
-    const auto& ink = ctx.transformedPath;
-    auto bandsAt = [&](double x) {
-        const auto hits = FindInterections(ink, QLineF(x, ctx.bbox.top() - 1, x, ctx.bbox.bottom() + 1), true);
-        std::vector<Band> bands;
-        for (size_t i = 1; i < hits.size(); ++i) {
-            const Band b(hits[i - 1].point, hits[i].point);
-            if (!hits[i - 1].pathIndex && !hits[i].pathIndex && b.length() >= .18 && b.length() <= 2.8 &&
-                ink.contains(b.center()))
-                bands.push_back(b);
-        }
-        return bands;
-    };
-    std::vector<std::pair<Stretching, Stretching>> pairs;
-    for (auto elbow = ctx.timeSorted.begin(); elbow != ctx.timeSorted.end(); ++elbow) {
-        if (ctx.prev(elbow)->point.x() < elbow->point.x() - .02 ||
-            ctx.next(elbow)->point.x() < elbow->point.x() - .02)
-            continue;
-        for (auto across : {&SearchContext::prev, &SearchContext::next}) {
-            const auto up = across == &SearchContext::next ? &SearchContext::prev : &SearchContext::next;
-            auto edge = elbow, tip = elbow;
-            for (size_t i = 0; i < ctx.timeSorted.size(); ++i) {
-                const auto next = (ctx.*across)(edge);
-                if (next->point.x() < edge->point.x() - .04 || std::abs(next->point.y() - elbow->point.y()) > 2.8)
-                    break;
-                edge = next;
-            }
-            const auto run = edge->point.x() - elbow->point.x();
-            if (run < settings.value("minRun").toDouble(4))
-                continue;
-            for (size_t i = 0; i < ctx.timeSorted.size(); ++i) {
-                const auto next = (ctx.*up)(tip);
-                if (next->point.x() < tip->point.x() - .16 || next->point.y() > tip->point.y() + .12)
-                    break;
-                tip = next;
-            }
-            if (tip->point.x() - elbow->point.x() < 2 || elbow->point.y() - tip->point.y() < 1.8)
-                continue;
-            auto parallelBands = [&](double x) -> std::optional<std::pair<Band, Band>> {
-                auto bands = bandsAt(x);
-                for (size_t i = 1; i < bands.size(); ++i) {
-                    const Band a = bands[i - 1], b = bands[i];
-                    if (std::abs(a.center().y() - elbow->point.y()) > 2.6 || b.center().y() <= a.center().y() ||
-                        b.center().y() - a.center().y() > 3.4 * std::max(a.length(), b.length()) ||
-                        std::max(a.length(), b.length()) > 2.3 * std::min(a.length(), b.length()))
-                        continue;
-                    return std::pair(a, b);
-                }
-                return {};
-            };
-            const auto a = parallelBands(elbow->point.x() + .32 * run),
-                       b = parallelBands(elbow->point.x() + .72 * run);
-            if (!a || !b || std::abs(a->second.center().y() - b->second.center().y()) > 2.6)
-                continue;
-            const double stroke = (a->second.length() + b->second.length()) / 2;
-            const double slope = (b->second.center().y() - a->second.center().y()) / (.4 * run);
-            auto baseline = [&](double x) { return a->second.center().y() + slope * (x - a->second.center().x()); };
-            const double leftX = elbow->point.x() - settings.value("margin").toDouble(.5) * stroke;
-            Stretching left{};
-            if (!medialChordAt(ctx, leftX, baseline(leftX), 2.8 * stroke, left))
-                continue;
-            orientSection(ctx, left, tip->time, false);
-            std::vector<Stretching> rights;
-            // The tight fold can lean over its incoming stroke. Its lower
-            // inward corner gives a more precise reference than the cap's projection.
-            for (auto corner = ctx.timeSorted.begin(); corner != ctx.timeSorted.end(); ++corner) {
-                if (!corner->isSharp || std::abs(corner->point.x() - edge->point.x()) > 1.7 * stroke ||
-                    std::abs(corner->point.y() - baseline(edge->point.x())) > 2.1 * stroke)
-                    continue;
-                const double x = corner->point.x() + settings.value("margin").toDouble(.5) * stroke;
-                Stretching cut{};
-                if (medialChordAt(ctx, x, corner->point.y() + .5 * stroke, 1.8 * stroke, cut))
-                    rights.push_back(cut);
-            }
-            const double x = edge->point.x() + .5 * stroke;
-            Stretching projected{};
-            if (medialChordAt(ctx, x, baseline(x) + .5 * stroke, 2.8 * stroke, projected))
-                rights.push_back(projected);
-            for (auto right : rights) {
-                orientSection(ctx, right, tip->time, true);
-                const auto side = getJoinTime(right, ctx.orientation);
-                if (!side.isStrictLeft(left.topBaseLine.time) || !side.isStrictLeft(left.bottomBaseLine.time))
-                    continue;
-                const auto parts = cutRegions(ink, {}, {right, left}, ctx.orientation, true);
-                if (parts.size() != 3 || toSubpaths(parts[1].path).size() != 1)
-                    continue;
-                const auto& body = parts[1].path;
-                if (!body.contains(a->first.center()) || !body.contains(a->second.center()) ||
-                    !body.contains(b->first.center()) || !body.contains(b->second.center()) ||
-                    body.boundingRect().height() > elbow->point.y() - tip->point.y() + 6 * stroke)
-                    continue;
-                pairs.emplace_back(right, left);
-            }
-        }
-    }
-    return pairs;
-}
 struct ToothSearchPlan {
     bool enumerate = false;
     int stage = 1;
@@ -12647,7 +12706,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             (final.isEmpty() || (letter + 1 == lastIndex && final.contains(baseText.back())));
     };
     const auto supportsOpenBoundary = [&](const QJsonObject& form) {
-        return form.value("body").toObject().value("shape") == "returning-lips" || form.value("body").toObject().value("shape") == "enclosed-lips" || form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") || form.contains("counterLigature") || form.contains("mouth") || form.contains("blade") || !pairedRouteSettings(form).isEmpty() ||
+        return form.value("body").toObject().value("shape") == "inclined-blade" || form.value("body").toObject().value("shape") == "parallel-return" || form.value("body").toObject().value("shape") == "returning-lips" || form.value("body").toObject().value("shape") == "enclosed-lips" || form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") || form.contains("counterLigature") || form.contains("mouth") || form.contains("blade") || !pairedRouteSettings(form).isEmpty() ||
             (formDescription(config, form, "body").value("shape") == "forked-stem" ||
              formDescription(config, form, "body").value("shape") == "turning-shaft") ||
             !pairedCounterSettings(form).isEmpty() ||
@@ -13023,13 +13082,13 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     form.contains("blade") || form.contains("mouth")) {
                     const auto generate = [&]() {
                         if (form.contains("parallelReturn"))
-                            return parallelKafSections(context, form.value("parallelReturn").toObject());
+                            return cutParallelReturns(context, recognizedSharedShape(context, form.value("body").toObject())->parallelReturns, form.value("cuts").toObject().value("bands").toObject());
                         if (form.contains("enclosedHead"))
                             return cutEnclosedLips(context, recognizedSharedShape(context, form.value("body").toObject())->enclosedLips, form.value("cuts").toObject().value("head").toObject(), false);
                         if (form.contains("shaft"))
                             return shaftSections(context, form.value("shaft").toObject());
                         if (form.contains("blade"))
-                            return bladeSections(context, form.value("blade").toObject());
+                            return cutBlades(context, recognizedSharedShape(context, form.value("body").toObject())->blades, form.value("cuts").toObject().value("blade").toObject());
                         return cutOpenMouths(context, recognizedSharedShape(context, form.value("body").toObject())->mouths, shapeSettings(form, "mouth"));
                     };
                     const auto id = form.value("id").toString();

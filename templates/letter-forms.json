@@ -3210,15 +3210,26 @@
     {
       "id": "kaf-descending-blade-medi",
       "current": "ك",
-      "bodyCounters": 0,
       "tightJoin": true,
-      "blade": {
-        "minReach": 3.5,
-        "minRise": 3,
-        "margin": 0.5
-      },
       "onIncomplete": true,
-      "reclaimEntry": true
+      "reclaimEntry": true,
+      "body": {
+        "shape": "inclined-blade",
+        "blade": {
+          "minReach": 3.5,
+          "minRise": 3
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "blade": {
+          "margin": 0.5
+        },
+        "boundaries": {
+          "left": "corner-normal",
+          "right": "corner-normal"
+        }
+      }
     },
     {
       "id": "lam-detached-arm-medi",
@@ -3349,14 +3360,25 @@
     {
       "id": "kaf-parallel-fold-medi",
       "current": "ك",
-      "bodyCounters": 0,
       "onIncomplete": true,
-      "parallelReturn": {
-        "minRun": 4,
-        "margin": 0.5
-      },
       "reclaimEntry": true,
-      "tightJoin": true
+      "tightJoin": true,
+      "body": {
+        "shape": "parallel-return",
+        "bands": {
+          "minRun": 4
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "bands": {
+          "margin": 0.5
+        },
+        "boundaries": {
+          "left": "band-section",
+          "right": "band-section"
+        }
+      }
     },
     {
       "id": "hah-overhanging-entry-medi",

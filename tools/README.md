@@ -306,3 +306,5 @@ The native checks use the Release binary and edition data. Pass a C++ test
 filename to `check_letter_forms.py` to run one case.
 The input-cache check uses the catalog to verify identical cold/warm masks,
 fresh cuts after a template edit, and recovery from a truncated cache file.
+
+Kaf blades and parallel returns use `inclined-blade` and `parallel-return`. The body stores the blade, elbow, fork or parallel ink bands; cut policies supply the margin used to project each boundary.
