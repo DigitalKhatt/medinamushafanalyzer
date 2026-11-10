@@ -213,8 +213,9 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                  rule.value("sharedBoundaryWith").toString().contains(baseText[lastIndex - 1])));
     };
     const auto sharesCornerJunction = [&](const QString& id, const Stretching& exit, const Stretching& entry) {
-        if (!entry.topBaseLine.isSharp || !entry.bottomBaseLine.isSharp ||
-            preparedRules.constraints.value(id).value("cuts").toObject()
+        const auto form = preparedRules.constraints.value(id);
+        if (!form.value("tightJoin").toBool() || !entry.topBaseLine.isSharp || !entry.bottomBaseLine.isSharp ||
+            form.value("cuts").toObject()
                 .value("boundaries").toObject().value("right") != "corner-junction" ||
             cutPrecedes(exit, entry, context.orientation)) return false;
         const double topGap = QLineF(exit.topBaseLine.point, entry.topBaseLine.point).length();

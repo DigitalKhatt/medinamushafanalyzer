@@ -3959,7 +3959,8 @@
         "junction": {
           "minCornerAngle": 35,
           "maxTurnDistance": 0.85,
-          "maxWidth": 1.65
+          "maxWidth": 1.65,
+          "roundedTurnSample": 0.25
         }
       },
       "cuts": {
@@ -4228,69 +4229,49 @@
       }
     },
     {
-      "id": "waw-corner-bridge-fina",
-      "current": "وؤ",
-      "tryNext": true,
-      "terminalAttachment": true,
-      "tightJoin": true,
-      "returningStroke": true,
-      "onFinalRetry": true,
-      "body": {
-        "shape": "counter-bridge",
-        "counters": 1
-      },
-      "cuts": {
-        "boundaries": {
-          "left": "free",
-          "right": "counter-bridge"
-        },
-        "bridge": {
-          "maxWidth": 3
-        }
-      }
-    },
-    {
       "id": "waw-fina",
       "current": "وؤ",
       "tryNext": true,
       "ownsLeftTip": true,
+      "start": "left",
       "body": {
-        "shape": "profile-neck",
-        "neck": {
-          "lookback": 4,
-          "previousOffset": 1,
-          "minX": 0,
-          "maxX": 1,
-          "minY": 0.8,
-          "maxY": 1.5,
-          "bottomCheck": false,
-          "neighbors": [
-            {
-              "to": "bottomLeft",
-              "maxX": 0,
-              "minY": 0,
-              "from": "bottom"
-            },
-            {
-              "to": "bottomRight",
-              "minX": 0,
-              "maxY": 0,
-              "from": "bottom"
-            }
-          ]
-        },
-        "profile": {
-          "strip": {
-            "radius": 0.2,
-            "count": 2
+        "inherit": "qaf-fina",
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "placement": "top-right",
+            "maxDistance": 2
           }
-        },
-        "counters": 1
+        }
       },
       "cuts": {
         "boundaries": {
           "left": "free",
-          "right": "neck-section"
+          "right": "corner-junction"
+        },
+        "counter": {
+          "entryCorner": {
+            "normalCut": true,
+            "required": true
+          }
+        }
+      },
+      "finalRetry": {
+        "terminalAttachment": true,
+        "tightJoin": true,
+        "returningStroke": true,
+        "body": {
+          "shape": "counter-bridge",
+          "counters": 1
+        },
+        "cuts": {
+          "boundaries": {
+            "left": "free",
+            "right": "counter-bridge"
+          },
+          "bridge": {
+            "maxWidth": 3
+          }
         }
       }
     },
@@ -4731,60 +4712,6 @@
         "boundaries": {
           "left": "free",
           "right": "branch-normal"
-        }
-      }
-    },
-    {
-      "id": "waw-neck-fina",
-      "current": "وؤ",
-      "tryNext": true,
-      "ownsLeftTip": true,
-      "start": "left",
-      "body": {
-        "shape": "counter-neck",
-        "counter": {
-          "entryCorner": {
-            "placement": "top-right",
-            "maxDistance": 2
-          }
-        },
-        "counters": 1
-      },
-      "cuts": {
-        "boundaries": {
-          "left": "free",
-          "right": "counter-neck"
-        },
-        "counter": {
-          "entryCorner": {
-            "normalCut": true,
-            "required": true
-          }
-        }
-      }
-    },
-    {
-      "id": "waw-shoulder-fina",
-      "current": "وؤ",
-      "tryNext": true,
-      "onIncomplete": true,
-      "ownsLeftTip": true,
-      "start": "left",
-      "body": {
-        "shape": "counter-shoulder",
-        "shoulder": {
-          "radius": 2.5,
-          "maxCapRise": 2
-        },
-        "counters": 1
-      },
-      "cuts": {
-        "boundaries": {
-          "left": "free",
-          "right": "counter-shoulder"
-        },
-        "shoulder": {
-          "maxWidth": 2.4
         }
       }
     },

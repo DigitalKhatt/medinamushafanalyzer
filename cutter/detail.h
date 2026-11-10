@@ -112,7 +112,8 @@ struct InspectFormScope {
         inspectingForm = formInspection && id == formInspection->formId;
         if (inspectingForm) formInspection->attempted = true;
     }
-    explicit InspectFormScope(const QJsonObject& form) : InspectFormScope(form.value("id").toString()) {}
+    explicit InspectFormScope(const QJsonObject& form)
+        : InspectFormScope(form.value("_finalRetryFor").toString(form.value("id").toString())) {}
     InspectFormScope(const QJsonObject& form, const QPainterPath& ink) : InspectFormScope(form) {
         if (inspectingForm) {
             inspectionCoordinates = ink == formInspection->ink;
@@ -432,6 +433,8 @@ QJsonObject counterOutlineSettings(const QJsonObject &form);
 QJsonObject descendingStemDescription(const QJsonObject& config, const QJsonObject& form);
 
 QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form);
+
+QJsonArray finalRetryCandidates(const QJsonArray& forms, QHash<QString, QString>& parents);
 
 const PreparedPassRules& preparePassRules(const QJsonObject& config, bool recoverTeeth,
                                                 OutlineSearchCache& cache);

@@ -495,7 +495,12 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
                 if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= 0)
                     return id + ": junction needs a positive corner angle, turn distance and width";
             }
-            if (junction.size() != 3 || junction.value("minCornerAngle").toDouble() >= 180)
+            const auto sample = junction.value("roundedTurnSample");
+            if (!sample.isUndefined() && (!sample.isDouble() || !std::isfinite(sample.toDouble()) ||
+                sample.toDouble() <= 0 || sample.toDouble() > junction.value("maxTurnDistance").toDouble()))
+                return id + ": roundedTurnSample must be positive and at most maxTurnDistance";
+            if (junction.size() != 3 + junction.contains("roundedTurnSample") ||
+                junction.value("minCornerAngle").toDouble() >= 180)
                 return id + ": invalid bowl junction settings";
         }
     }
@@ -878,6 +883,31 @@ QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form) {
     return form;
 }
 
+QJsonArray finalRetryCandidates(const QJsonArray& forms, QHash<QString, QString>& parents) {
+    QJsonArray candidates;
+    parents.clear();
+    for (const auto& value : forms) {
+        auto form = value.toObject();
+        if (!form.contains("finalRetry")) {
+            candidates.append(value);
+            continue;
+        }
+        auto retry = form.take("finalRetry").toObject();
+        const auto parent = form.value("id").toString();
+        const auto key = parent + "#final-retry";
+        // Keep separate search keys for the two sets of body evidence.
+        retry.insert("id", key);
+        retry.insert("_finalRetryFor", parent);
+        retry.insert("current", form.value("current"));
+        retry.insert("onFinalRetry", true);
+        retry.insert("tryNext", true);
+        candidates.append(retry);
+        candidates.append(form);
+        parents.insert(key, parent);
+    }
+    return candidates;
+}
+
 const PreparedPassRules& preparePassRules(const QJsonObject& config, bool recoverTeeth,
                                                 OutlineSearchCache& cache) {
     for (const auto& rules : cache.rules)
@@ -1097,9 +1127,26 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
     auto problem = invalidKashidaSettings(config.value("kashidaDefaults"), defaults, "kashidaDefaults");
     if (!problem.isEmpty()) return problem;
     const auto effective = withOverrides(defaults, config.value("kashidaDefaults").toObject());
+    for (const auto* phase : {"initial", "medial", "final"}) {
+        for (const auto& value : config.value(phase).toArray()) {
+            const auto form = value.toObject();
+            if (!form.contains("finalRetry")) continue;
+            const auto retry = form.value("finalRetry").toObject();
+            const auto id = form.value("id").toString();
+            if (QString(phase) != "final" || form.value("onFinalRetry").toBool() ||
+                !retry.value("body").isObject() || !retry.value("cuts").isObject())
+                return id + ": finalRetry needs a final template and a body and cuts declaration";
+            for (auto setting = retry.begin(); setting != retry.end(); ++setting)
+                if (!QStringList{"body", "cuts", "terminalAttachment", "tightJoin", "returningStroke"}.contains(setting.key()))
+                    return id + ": unknown finalRetry setting " + setting.key();
+        }
+    }
+    QHash<QString, QString> retryParents;
+    const auto finals = finalRetryCandidates(config.value("final").toArray(), retryParents);
     QSet<QString> ids;
     for (const auto* phase : {"initial", "medial", "final"}) {
-        for (const auto& entry : config.value(phase).toArray()) {
+        const auto forms = QString(phase) == "final" ? finals : config.value(phase).toArray();
+        for (const auto& entry : forms) {
             if (!entry.isObject()) return QString(phase) + ": every template must be an object";
             auto rule = entry.toObject();
             if (!rule.contains("body") && !rule.contains("assembly"))

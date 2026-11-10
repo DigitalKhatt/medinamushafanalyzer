@@ -402,6 +402,12 @@ bool cutProfileNeck(SearchContext &context, const std::vector<NeckBody> &candida
     return false;
 }
 
+static double inwardTurnAngle(const QPointF& before, const QPointF& after, Orientation orientation) {
+    const double cross = before.x() * after.y() - before.y() * after.x();
+    const double inward = orientation == Orientation::CounterClockwise ? cross : -cross;
+    return std::atan2(inward, QPointF::dotProduct(before, after)) * 180 / std::acos(-1.);
+}
+
 static double inwardCornerAngle(const std::vector<QBezier>& curves, const PathExtrema& point,
                                 Orientation orientation) {
     if (std::abs(point.time - std::round(point.time)) > 1e-6)
@@ -418,9 +424,7 @@ static double inwardCornerAngle(const std::vector<QBezier>& curves, const PathEx
         b = control - point.point;
         if (!b.isNull()) break;
     }
-    const double cross = a.x() * b.y() - a.y() * b.x();
-    const double inward = orientation == Orientation::CounterClockwise ? cross : -cross;
-    return std::atan2(inward, QPointF::dotProduct(a, b)) * 180 / std::acos(-1.);
+    return inwardTurnAngle(a, b, orientation);
 }
 
 std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline, const QJsonObject &junction) {
@@ -450,40 +454,70 @@ std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline, const Q
     const auto hole = std::ranges::min_element(holes, {}, [](const auto& h) { return h.box.center().x(); })->box;
     const auto curves = baseContourCurves(outline.ink);
     if (curves.empty()) return result;
-    const auto isInward = [&](const PathExtrema& p) {
+    const double minAngle = junction.value("minCornerAngle").toDouble();
+    const double reach = junction.value("maxTurnDistance").toDouble() * hole.height();
+    const double sample = junction.value("roundedTurnSample").toDouble() * hole.height();
+    const auto isCorner = [&](const PathExtrema& p) {
         return p.point.x() >= hole.center().x() &&
-            inwardCornerAngle(curves, p, outline.orientation) >= junction.value("minCornerAngle").toDouble();
+            inwardCornerAngle(curves, p, outline.orientation) >= minAngle;
+    };
+    const auto isRoundedTurn = [&](const PathExtrema& point) {
+        if (point.point.x() < hole.center().x() || point.point.x() > hole.right() + reach) return false;
+        // Compare the tangents on either side of the bend. Arc length keeps
+        // short Bézier handles from determining the direction of a whole flank.
+        auto limit = point;
+        limit.time -= curves.size();
+        PathExtrema at;
+        QPointF before, after;
+        if (!advanceOnContour(outline.ink, point, limit, false, sample, at, before)) return false;
+        limit.time = point.time + curves.size();
+        return advanceOnContour(outline.ink, point, limit, true, sample, at, after) &&
+            inwardTurnAngle(before, after, outline.orientation) >= minAngle;
     };
 
-    // The outer bowl may reach a smooth extremum just before the corner.
-    // Follow that same flank a short distance past the turn.
-    const double reach = junction.value("maxTurnDistance").toDouble() * hole.height();
-    double distance = 0;
-    while (current->point.y() < hole.center().y() || !isInward(*current)) {
-        const auto next = (geometry.*step)(current);
-        distance += QLineF(current->point, next->point).length();
-        if (next == start || distance > reach) return result;
-        current = next;
-    }
-    auto lower = *current;
-    lower.isSharp = true;
-    double shortest = junction.value("maxWidth").toDouble() * hole.height();
-    for (const auto& upper : outline.time) {
-        const auto span = lower.point - upper.point;
-        const double width = std::hypot(span.x(), span.y());
-        if (span.y() <= 0 || std::abs(span.x()) > span.y() || width >= shortest ||
-            upper.point.y() > hole.bottom() + .25 * hole.height() || !isInward(upper))
-            continue;
-        Stretching cut{};
-        cut.topBaseLine = upper;
-        cut.bottomBaseLine = lower;
-        if (!getJoinTime(cut, outline.orientation).isStrictLeft(result.tip.time) ||
-            !interiorChord(outline.ink, upper, lower)) continue;
-        shortest = width;
-        auto corner = upper;
-        corner.isSharp = true;
-        result.junction = std::pair{corner, lower};
-    }
+    const auto matchUpper = [&](PathExtrema lower, bool lowerCorner, bool allowRounded) {
+        decltype(result.junction) pair;
+        lower.isSharp = lowerCorner;
+        double shortest = junction.value("maxWidth").toDouble() * hole.height();
+        for (auto upper : outline.time) {
+            const auto span = lower.point - upper.point;
+            const double width = std::hypot(span.x(), span.y());
+            if (span.y() <= 0 || std::abs(span.x()) > span.y() || width >= shortest ||
+                upper.point.y() > hole.bottom() + .25 * hole.height())
+                continue;
+            upper.isSharp = isCorner(upper);
+            // At least one flank must give a sharp landmark.
+            if (!upper.isSharp && !(allowRounded && lowerCorner && isRoundedTurn(upper))) continue;
+            Stretching cut{};
+            cut.topBaseLine = upper;
+            cut.bottomBaseLine = lower;
+            if (!getJoinTime(cut, outline.orientation).isStrictLeft(result.tip.time) ||
+                !interiorChord(outline.ink, upper, lower)) continue;
+            shortest = width;
+            pair = std::pair{upper, lower};
+        }
+        return pair;
+    };
+    const auto findJunction = [&](bool allowRounded) {
+        auto lower = current;
+        double distance = 0;
+        // Follow the bowl's lower flank a short distance beyond its turn.
+        while (lower != start && distance <= reach) {
+            if (lower->point.y() >= hole.center().y()) {
+                const bool corner = isCorner(*lower);
+                if (corner || (allowRounded && isRoundedTurn(*lower))) {
+                    const auto pair = matchUpper(*lower, corner, allowRounded);
+                    if (pair || !allowRounded) return pair;
+                }
+            }
+            const auto next = (geometry.*step)(lower);
+            distance += QLineF(lower->point, next->point).length();
+            lower = next;
+        }
+        return decltype(result.junction){};
+    };
+    result.junction = findJunction(false);
+    if (!result.junction && sample > 0) result.junction = findJunction(true);
     return result;
 }
 
@@ -493,8 +527,8 @@ bool cutBowlTurn(SearchContext &context, const BowlTurnBody &body, const QJsonOb
         res.topBaseLine = body.junction->first;
         res.bottomBaseLine = body.junction->second;
         res.fixedRightBoundary = true;
-        inspectLandmark("Upper junction", res.topBaseLine);
-        inspectLandmark("Lower junction", res.bottomBaseLine);
+        inspectLandmark(res.topBaseLine.isSharp ? "Upper junction" : "Rounded upper turn", res.topBaseLine);
+        inspectLandmark(res.bottomBaseLine.isSharp ? "Lower junction" : "Rounded lower turn", res.bottomBaseLine);
     } else {
         const auto policy = cuts.value("probe").toObject();
         const auto p = body.turn.point;

@@ -547,15 +547,14 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
         found = evidence->bowlTurn && cutBowlTurn(context, *evidence->bowlTurn, cuts);
     else if (shape == "counter-neck") {
         const auto settings = shapeSettings(form, "counter");
-        if (cuts.value("boundaries").toObject().value("right") == "free")
+        const auto boundary = cuts.value("boundaries").toObject().value("right");
+        if (boundary == "free")
             found = evidence->initialNeck && cutInitialCounterBody(context, *evidence->initialNeck, settings);
+        else if (boundary == "corner-junction" && evidence->bowlTurn && evidence->bowlTurn->junction)
+            found = cutBowlTurn(context, *evidence->bowlTurn, cuts);
         else
             found = evidence->terminalCounter &&
                     cutFinalCounterBody(context, evidence->terminalCounter->box, evidence->terminalNeck, settings);
-        if (found && cuts.value("boundaries").toObject().value("right") == "corner-junction" &&
-            evidence->bowlTurn && evidence->bowlTurn->junction &&
-            context.res.topBaseLine.time == evidence->bowlTurn->junction->first.time)
-            cutBowlTurn(context, *evidence->bowlTurn, cuts);
     } else if (shape == "counter-shoulder")
         found = evidence->terminalContour && cutLoopShoulder(context, evidence->terminalContour->box,
                                                              evidence->shoulders, shapeSettings(form, "shoulder"),

@@ -274,8 +274,13 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
     const bool risingTail = terminal == "reh-rising-tail-fina" && initial == "ain-round-init";
     const bool clippedReh = !risingTail && (terminal == "reh-rising-tail-fina" || terminal == "reh-fina" ||
         terminal == "reh-shouldered-fina" || terminal == "reh-hook-fina");
-    const bool clippedKaf = initial == "kaf-hook-init" && terminal == "waw-corner-bridge-fina" &&
-        last == 1 && world(sub.kashidaPaths.front()).boundingRect().width() > 5;
+    const bool clippedKaf = [&] {
+        if (initial != "kaf-hook-init" || last != 1 || world(sub.kashidaPaths.front()).boundingRect().width() <= 5)
+            return false;
+        const auto form = namedLetterForm(config, terminal);
+        return form.value("terminalAttachment").toBool() &&
+            formDescription(config, form, "body").value("shape") == "counter-bridge";
+    }();
     const bool connectedNoon = letters[last] == QChar(0x0646) && !sub.kashidaPaths.back().isEmpty();
     const bool liftedAlef = terminal == "alef-return-fina" && letters[last - 1] == QChar(0x0644) &&
         tail.width() < 1.5 && sub.kashidaPaths.back().isEmpty();

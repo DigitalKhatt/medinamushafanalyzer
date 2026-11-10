@@ -2,6 +2,49 @@
 
 using namespace MedinaCutter;
 
+static void reportFinalRetry(WordResultInfo::SubWordInfo& sub, const QHash<QString, QString>& parents) {
+    if (parents.isEmpty()) return;
+    bool matchedRetry = false;
+    for (auto& id : sub.matchedTemplates) {
+        if (!parents.contains(id)) continue;
+        id = parents.value(id);
+        matchedRetry = true;
+    }
+    if (matchedRetry) sub.matchedTemplates.removeDuplicates();
+    for (auto& trace : sub.templateTrace)
+        for (auto parent = parents.cbegin(); parent != parents.cend(); ++parent)
+            trace.replace(parent.key(), parent.value() + " (final retry)");
+    for (qsizetype i = 0; i < sub.letterDiagnostics.size(); ++i) {
+        auto slot = sub.letterDiagnostics.at(i).toObject();
+        bool changed = false;
+        const auto selected = slot.value("template").toString();
+        if (parents.contains(selected)) {
+            slot.insert("template", parents.value(selected));
+            slot.insert("cutPolicy", "final-retry");
+            changed = true;
+        }
+        const auto inferred = slot.value("inferredFrom").toString();
+        if (parents.contains(inferred)) {
+            slot.insert("inferredFrom", parents.value(inferred));
+            changed = true;
+        }
+        const auto candidates = slot.value("candidates").toArray();
+        if (std::any_of(candidates.begin(), candidates.end(), [&](const auto& value) {
+                return parents.contains(value.toString());
+            })) {
+            QJsonArray labels;
+            for (const auto& value : candidates) {
+                const auto id = value.toString();
+                const auto label = parents.value(id, id);
+                if (!labels.contains(label)) labels.append(label);
+            }
+            slot.insert("candidates", labels);
+            changed = true;
+        }
+        if (changed) sub.letterDiagnostics[i] = slot;
+    }
+}
+
 bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
                                         bool refresh, const QJsonObject* draft) {
     CutGeometryMemoScope geometryMemo;
@@ -10,7 +53,16 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     auto& sub = word.wordResultInfo.subWords[subWordIndex];
     if (!refresh && !sub.baseGlyphs.empty())
         return sub.correct;
-    auto requested = draft ? *draft : letterForms();
+    const auto& sourceConfig = draft ? *draft : letterForms();
+    static thread_local QJsonObject previousConfig, compiledConfig;
+    static thread_local QHash<QString, QString> compiledRetryParents;
+    if (previousConfig != sourceConfig) {
+        previousConfig = compiledConfig = sourceConfig;
+        const auto finals = finalRetryCandidates(sourceConfig.value("final").toArray(), compiledRetryParents);
+        if (!compiledRetryParents.isEmpty()) compiledConfig.insert("final", finals);
+    }
+    auto requested = compiledConfig;
+    const auto retryParents = compiledRetryParents;
     auto recognition = recognizeSubwordBodies(word, sub, requested);
 
     // The shared collector combines declared lām candidates with the existing
@@ -30,6 +82,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         valid = resolveSubwordCutPlan(word, recognition, plan, requested);
     }
     sub = std::move(plan.partition);
+    reportFinalRetry(sub, retryParents);
     return valid;
 }
 

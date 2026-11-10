@@ -28,6 +28,7 @@ int main(int argc,char** argv) {
         int p, l, w, s;
         const char* form;
         int upperCorner = -1, lowerCorner = -1;
+        bool finalKashida = false;
     };
     const Case cases[]={{1,2,1,1,"seen-compact-medi"},{1,8,2,3,"beh-tooth-medi"},
         {4,12,4,1,"beh-tooth-medi"},{3,6,2,1,"seen-medi"},
@@ -35,7 +36,10 @@ int main(int argc,char** argv) {
         {5,15,6,1,"yeh-return-fina"},{19,4,2,2,"kaf-bent-neck-medi"},
         {11,6,2,2,"reh-hook-fina"},{5,15,2,1,"ain-fina"},
         {251,11,4,2,"qaf-fina",9,21},{4,5,1,3,"qaf-fina",2,14},
-        {19,4,4,1,"qaf-fina",4,15},{70,3,1,2,"qaf-fina",13,24}};
+        {19,4,4,1,"qaf-fina",4,15},{70,3,1,2,"qaf-fina",13,24},
+        {3,12,2,3,"waw-fina",-1,-1,true},{10,11,7,2,"waw-fina",6,13},{13,3,3,1,"waw-fina",6,12},
+        {71,2,10,1,"waw-fina",4,11},{103,14,8,3,"waw-fina",6,13,true},
+        {162,2,2,3,"waw-fina",4,10,true}};
     for (const auto at:cases) {
         PageAnalysisResult a; QDataStream stream(read(QString("pages/page%1.dat").arg(at.p))); stream>>a.page;
         a.resolveWordBoundaries(at.p,&font);
@@ -59,7 +63,13 @@ int main(int argc,char** argv) {
                 const QPointF p(x,y); int owners=0;for (const auto& m:masks) owners+=m.contains(p);
                 check(owners==int(ink.contains(p)) || (owners<=1 && band.contains(p)),"Lost or duplicated ink");
             }
-        if (at.p==3) check(!sub.kashidaPaths.front().isEmpty(),"Seen absorbed the incoming connector");
+        if (at.p==3 && at.l==6) check(!sub.kashidaPaths.front().isEmpty(),"Seen absorbed the incoming connector");
+        if (at.finalKashida) check(!sub.kashidaPaths.back().isEmpty(),"Waw join lost its connector");
+        if (at.p==71) {
+            const auto final = sub.letterDiagnostics.last().toObject();
+            check(final.value("template")=="waw-fina" && final.value("cutPolicy")=="final-retry" &&
+                  sub.kashidaPaths.back().isEmpty(),"Waw recovery changed the shared cut or exposed a second template");
+        }
         if (at.p==4 && at.l==12) {
             WordResultInfo::SubWordInfo dummy;auto c=geometry(ink,dummy);
             const auto tip=std::find_if(c.timeSorted.begin(),c.timeSorted.end(),[](const auto& p){return p.time==17;});
