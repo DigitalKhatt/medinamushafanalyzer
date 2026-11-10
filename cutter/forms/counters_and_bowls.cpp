@@ -427,6 +427,18 @@ static double inwardCornerAngle(const std::vector<QBezier>& curves, const PathEx
     return inwardTurnAngle(a, b, orientation);
 }
 
+static double roundedInwardAngle(const QPainterPath& ink, const PathExtrema& point,
+                                 int curveCount, double distance, Orientation orientation) {
+    auto limit = point;
+    limit.time -= curveCount;
+    PathExtrema sample;
+    QPointF before, after;
+    if (!advanceOnContour(ink, point, limit, false, distance, sample, before)) return 0;
+    limit.time = point.time + curveCount;
+    if (!advanceOnContour(ink, point, limit, true, distance, sample, after)) return 0;
+    return inwardTurnAngle(before, after, orientation);
+}
+
 std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline, const QJsonObject &junction) {
     WordResultInfo::SubWordInfo empty;
     auto geometry = outline.geometry(empty);
@@ -465,14 +477,7 @@ std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline, const Q
         if (point.point.x() < hole.center().x() || point.point.x() > hole.right() + reach) return false;
         // Compare the tangents on either side of the bend. Arc length keeps
         // short Bézier handles from determining the direction of a whole flank.
-        auto limit = point;
-        limit.time -= curves.size();
-        PathExtrema at;
-        QPointF before, after;
-        if (!advanceOnContour(outline.ink, point, limit, false, sample, at, before)) return false;
-        limit.time = point.time + curves.size();
-        return advanceOnContour(outline.ink, point, limit, true, sample, at, after) &&
-            inwardTurnAngle(before, after, outline.orientation) >= minAngle;
+        return roundedInwardAngle(outline.ink, point, curves.size(), sample, outline.orientation) >= minAngle;
     };
 
     const auto matchUpper = [&](PathExtrema lower, bool lowerCorner, bool allowRounded) {
@@ -519,6 +524,195 @@ std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline, const Q
     result.junction = findJunction(false);
     if (!result.junction && sample > 0) result.junction = findJunction(true);
     return result;
+}
+
+std::optional<OpenBowlBody> recognizeOpenBowl(const InkOutline& outline, const QJsonObject& body) {
+    WordResultInfo::SubWordInfo empty;
+    auto context = outline.geometry(empty);
+    const auto curves = baseContourCurves(outline.ink);
+    if (curves.empty() || context.xSorted.empty()) return {};
+    const double angle = body.value("minCornerAngle").toDouble();
+    // The search inventory merges nearby extrema. A short segment can
+    // still end at a genuine corner on the outer edge of the bowl.
+    for (size_t i = 0; i < curves.size(); ++i) {
+        const PathExtrema corner{0, double(i), curves[i].pt1(), false, false, true};
+        if (inwardCornerAngle(curves, corner, outline.orientation) >= angle)
+            context.timeSorted.insert(corner);
+    }
+    const auto& tip = *context.xSorted.rbegin();
+    const auto origin = context.timeSorted.find(tip);
+    if (origin == context.timeSorted.end()) return {};
+
+    // Walk the outside of the bowl from its free end. That end may curl
+    // upward first. The floor is the first low turn beyond the free lip.
+    const bool forward = outline.orientation == Orientation::CounterClockwise;
+    const auto step = [&](auto point) { return forward ? context.prev(point) : context.next(point); };
+    auto floor = step(origin);
+    for (; floor != origin; floor = step(floor)) {
+        const auto before = forward ? context.next(floor) : context.prev(floor);
+        if (floor->isY && floor->point.y() > tip.point.y() &&
+            floor->point.y() >= before->point.y() && floor->point.y() > step(floor)->point.y()) break;
+    }
+    if (floor == origin) return {};
+    const auto span = floor->point - tip.point;
+    Stretching foot{};
+    if (!medialChordAt(context, floor->point.x(), floor->point.y(), 1., foot, true) &&
+        !medialChordAt(context, floor->point.x() + .02 * span.x(), floor->point.y(), 1., foot, true)) return {};
+    const double stroke = QLineF(foot.topBaseLine.point, foot.bottomBaseLine.point).length();
+    if (stroke <= 1e-5 || span.x() < stroke || span.y() < .5 * stroke) return {};
+
+    // The same outside edge rises to the inward turn into the connector.
+    // Stop before it folds back or drops into the preceding letter.
+    const double sample = body.value("roundedTurnSample").toDouble(.25) * stroke;
+    double rightmost = floor->point.x(), highest = floor->point.y();
+    std::optional<OpenBowlBody> bowl;
+    for (auto point = step(floor); point != origin; point = step(point)) {
+        const auto p = point->point;
+        if (p.x() < rightmost - .6 * stroke || p.y() > highest + .2 * stroke ||
+            (bowl && QLineF(bowl->shoulder.point, p).length() > stroke)) break;
+        rightmost = std::max(rightmost, p.x());
+        highest = std::min(highest, p.y());
+        if (p.x() - floor->point.x() < 1.25 * stroke || floor->point.y() - p.y() < stroke) continue;
+        const bool sharp = inwardCornerAngle(curves, *point, outline.orientation) >= angle;
+        if (!sharp && (bowl ||
+            roundedInwardAngle(outline.ink, *point, curves.size(), sample, outline.orientation) < angle)) continue;
+        auto limit = *point;
+        limit.time += forward ? double(curves.size()) : -double(curves.size());
+        PathExtrema after;
+        QPointF tangent;
+        if (!advanceOnContour(outline.ink, *point, limit, forward, sample, after, tangent)) continue;
+        const auto exit = after.point - p;
+        if (exit.x() <= std::abs(exit.y())) continue;
+        bowl = OpenBowlBody{tip, *floor, *point, stroke, sample, forward, {}, {}};
+        if (sharp) break;
+    }
+    if (!bowl) return {};
+
+    // Follow the other side of the open bowl. Its inner floor rises
+    // into the crest, then descends into the join's upper edge.
+    const auto other = [&](auto point) { return forward ? context.next(point) : context.prev(point); };
+    const double shoulderX = bowl->shoulder.point.x();
+    bool passedInnerFloor = false;
+    for (auto point = other(origin); point != origin; point = other(point)) {
+        const auto p = point->point;
+        if (p.x() > shoulderX + stroke) break;
+        const double before = step(point)->point.y(), after = other(point)->point.y();
+        const bool valley = p.y() >= before && p.y() > after;
+        if (!passedInnerFloor) {
+            passedInnerFloor = valley && p.x() > tip.point.x() + stroke && p.y() > floor->point.y() - 2 * stroke;
+        } else if (!bowl->crest) {
+            if (p.x() >= shoulderX - 2 * stroke && p.y() <= bowl->shoulder.point.y() - .5 * stroke &&
+                p.y() <= before && p.y() < after)
+                bowl->crest = *point;
+        } else if (valley) {
+            bowl->exit = *point;
+            break;
+        }
+    }
+    return bowl;
+}
+
+bool retainsOpenBowl(const SearchContext& context, const OpenBowlBody& body, const Stretching& cut) {
+    const auto side = getJoinTime(cut, context.orientation);
+    return side.isStrictLeft(body.tip.time) && side.isStrictLeft(body.floor.time) &&
+        side.isLeft(body.shoulder.time) && (!body.crest || side.isStrictLeft(body.crest->time));
+}
+
+bool cutOpenBowl(SearchContext& context, const OpenBowlBody& body, const QJsonObject& cuts) {
+    auto& cut = context.res;
+    const auto valid = [&] {
+        orientSection(context, cut, body.tip.time, true);
+        return cut.referenceWidth >= .5 * body.stroke &&
+            cut.referenceWidth <= cuts.value("maxWidth").toDouble() * body.stroke && retainsOpenBowl(context, body, cut);
+    };
+    if (!contourNormalCut(context, body.shoulder, body.forward, false, cut, true, body.tangentSample) || !valid()) {
+        if (!body.exit || !interiorChord(context.transformedPath, *body.exit, body.shoulder)) return false;
+        cut.topBaseLine = *body.exit;
+        cut.bottomBaseLine = body.shoulder;
+        cut.referenceWidth = QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point).length();
+        if (!valid()) return false;
+    }
+    cut.fixedRightBoundary = true;
+    cut.length = 0;
+    context.nextIter = context.xSorted.find(body.tip);
+    return true;
+}
+
+bool refineContourJunction(SearchContext& context, const QJsonObject& policy) {
+    const auto& ink = context.transformedPath;
+    auto seed = context.res;
+    if (seed.topBaseLine.pathIndex != 0 || seed.bottomBaseLine.pathIndex != 0) return false;
+    if (seed.topBaseLine.point.y() > seed.bottomBaseLine.point.y())
+        std::swap(seed.topBaseLine, seed.bottomBaseLine);
+    const double stroke = QLineF(seed.topBaseLine.point, seed.bottomBaseLine.point).length();
+    const auto curves = baseContourCurves(ink);
+    if (stroke <= 1e-5 || curves.empty()) return false;
+    const double reach = policy.value("maxTurnDistance").toDouble() * stroke;
+    const double sample = policy.value("roundedTurnSample").toDouble() * stroke;
+    const double minAngle = policy.value("minCornerAngle").toDouble();
+    const double maxWidth = policy.value("maxWidth").toDouble() * stroke;
+    const auto onFlank = [&](const PathExtrema& anchor, PathExtrema target) {
+        if (std::abs(target.time - anchor.time) < 1e-8) return true;
+        // Two outlines can be close in space at a folded bowl. Follow the
+        // source contour to make sure this point belongs to the same flank.
+        for (bool forward : {true, false}) {
+            auto limit = target;
+            if (forward != (limit.time > anchor.time))
+                limit.time += forward ? double(curves.size()) : -double(curves.size());
+            PathExtrema at;
+            QPointF tangent;
+            if (!advanceOnContour(ink, anchor, limit, forward, reach + 1e-6, at, tangent)) return true;
+        }
+        return false;
+    };
+    const auto landmarks = [&](const PathExtrema& anchor) {
+        std::vector<PathExtrema> points;
+        for (auto point : context.timeSorted) {
+            if (QLineF(anchor.point, point.point).length() > reach) continue;
+            point.isSharp = inwardCornerAngle(curves, point, context.orientation) >= minAngle;
+            if (!point.isSharp && !(sample > 0 &&
+                roundedInwardAngle(ink, point, curves.size(), sample, context.orientation) >= minAngle)) continue;
+            if (onFlank(anchor, point)) points.push_back(point);
+        }
+        return points;
+    };
+    const auto& tip = *context.xSorted.rbegin();
+    auto oriented = seed;
+    orientSection(context, oriented, tip.time, true);
+    const auto originalSide = getJoinTime(oriented, context.orientation);
+    const PathExtrema* floor = &tip;
+    for (const auto& point : context.timeSorted)
+        if (originalSide.isLeft(point.time) && point.point.y() > floor->point.y()) floor = &point;
+
+    auto bestScore = std::pair{2, std::numeric_limits<double>::infinity()};
+    auto best = seed;
+    const auto upper = landmarks(seed.topBaseLine), lower = landmarks(seed.bottomBaseLine);
+    for (const auto& top : upper) {
+        for (const auto& bottom : lower) {
+            if (!top.isSharp && !bottom.isSharp) continue;
+            const auto span = bottom.point - top.point;
+            const double width = std::hypot(span.x(), span.y());
+            if (span.y() <= 0 || std::abs(span.x()) > span.y() || width < .5 * stroke || width > maxWidth) continue;
+            const auto score = std::pair{int(!top.isSharp) + int(!bottom.isSharp),
+                QLineF(seed.topBaseLine.point, top.point).length() +
+                QLineF(seed.bottomBaseLine.point, bottom.point).length()};
+            if (score >= bestScore || !interiorChord(ink, top, bottom)) continue;
+            auto cut = seed;
+            cut.topBaseLine = top;
+            cut.bottomBaseLine = bottom;
+            orientSection(context, cut, tip.time, true);
+            cut.fixedRightBoundary = true;
+            cut.length = 0;
+            const auto side = getJoinTime(cut, context.orientation);
+            if (!side.isStrictLeft(tip.time) || !side.isLeft(floor->time)) continue;
+            bestScore = score;
+            best = cut;
+        }
+    }
+    if (bestScore.first == 2 || (best.topBaseLine.point == oriented.topBaseLine.point &&
+        best.bottomBaseLine.point == oriented.bottomBaseLine.point)) return false;
+    context.res = best;
+    return true;
 }
 
 bool cutBowlTurn(SearchContext &context, const BowlTurnBody &body, const QJsonObject &cuts) {

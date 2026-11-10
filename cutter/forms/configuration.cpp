@@ -199,12 +199,10 @@ QJsonObject resolvedBodyForm(const QJsonObject& config, QJsonObject form) {
     if (form.contains("body")) {
         const auto body = formDescription(config, form, "body");
         auto cuts = formDescription(config, form, "cuts");
-        if (body.value("shape") == "tail-branch") {
-            auto tail = cuts.value("tail").toObject();
-            if (tail.value("strokeSource") == "global") {
-                tail.insert("strokeWidth", config.value("strokeWidth"));
-                cuts.insert("tail", tail);
-            }
+        auto tail = cuts.value("tail").toObject();
+        if (tail.value("strokeSource") == "global") {
+            tail.insert("strokeWidth", config.value("strokeWidth"));
+            cuts.insert("tail", tail);
         }
         form.insert("body", body);
         form.insert("cuts", cuts);
@@ -243,6 +241,7 @@ const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
         {"crested-loop", {"head", {"free", "head-neck"}}},
         {"open-head", {"head", {"free", "head-neck"}}},
         {"bowl-turn", {"probe", {"free", "turn-probe", "corner-junction"}}},
+        {"open-bowl", {"bowl", {"free", "corner-junction"}}},
         {"horizontal-counters", {"pair", {"free", "pair-neck"}}},
         {"stacked-counters", {"pair", {"free", "pair-neck"}}},
         {"tail-branch", {"tail", {"free", "branch-normal"}}},
@@ -440,11 +439,29 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
         form = withOverrides(form, form.value("cuts").toObject().value("probe").toObject());
         form.insert("start", body.value("origin"));
     }
+    if (shape == "open-bowl")
+        form.insert("start", "left");
     if (body.contains("features"))
         form.insert("bodyFeatures", body.value("features"));
     if (body.contains("counters"))
         form.insert("bodyCounters", body.value("counters"));
     return form;
+}
+
+static QString invalidBowlJunction(const QJsonObject& junction) {
+    for (const auto* key : {"minCornerAngle", "maxTurnDistance", "maxWidth"}) {
+        const auto value = junction.value(key);
+        if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= 0)
+            return "junction needs a positive corner angle, turn distance and width";
+    }
+    const auto sample = junction.value("roundedTurnSample");
+    if (!sample.isUndefined() && (!sample.isDouble() || !std::isfinite(sample.toDouble()) ||
+        sample.toDouble() <= 0 || sample.toDouble() > junction.value("maxTurnDistance").toDouble()))
+        return "roundedTurnSample must be positive and at most maxTurnDistance";
+    if (junction.size() != 3 + junction.contains("roundedTurnSample") ||
+        junction.value("minCornerAngle").toDouble() >= 180)
+        return "invalid bowl junction settings";
+    return {};
 }
 
 static QString validateSharedShape(const QJsonObject &form, const QString &phase) {
@@ -478,6 +495,13 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         bodyKeys.removeAll("probe");
         bodyKeys << "neck";
     }
+    if (phase == "final" && (shape == "contour-route" || shape == "bowl-neck" || shape == "open-bowl")) {
+        cutKeys << "junction";
+        if (cuts.contains("junction")) {
+            const auto error = invalidBowlJunction(cuts.value("junction").toObject());
+            if (!error.isEmpty()) return id + ": " + error;
+        }
+    }
     if (shape == "profile-neck") {
         bodyKeys = QStringList{"shape", "counters", "features", "neck", "profile"};
         cutKeys = QStringList{"boundaries", "probe", "attachment"};
@@ -488,21 +512,19 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         bodyKeys << "origin" << "junction";
         if (body.value("origin") != "left")
             return id + ": bowl-turn starts at the free left end";
-        const auto junction = body.value("junction").toObject();
         if (body.contains("junction") || boundaries.value("right") == "corner-junction") {
-            for (const auto* key : {"minCornerAngle", "maxTurnDistance", "maxWidth"}) {
-                const auto value = junction.value(key);
-                if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= 0)
-                    return id + ": junction needs a positive corner angle, turn distance and width";
-            }
-            const auto sample = junction.value("roundedTurnSample");
-            if (!sample.isUndefined() && (!sample.isDouble() || !std::isfinite(sample.toDouble()) ||
-                sample.toDouble() <= 0 || sample.toDouble() > junction.value("maxTurnDistance").toDouble()))
-                return id + ": roundedTurnSample must be positive and at most maxTurnDistance";
-            if (junction.size() != 3 + junction.contains("roundedTurnSample") ||
-                junction.value("minCornerAngle").toDouble() >= 180)
-                return id + ": invalid bowl junction settings";
+            const auto error = invalidBowlJunction(body.value("junction").toObject());
+            if (!error.isEmpty()) return id + ": " + error;
         }
+    }
+    if (shape == "open-bowl") {
+        const auto geometry = body.value("bowl").toObject(), policy = cuts.value("bowl").toObject();
+        const auto angle = geometry.value("minCornerAngle").toDouble(), width = policy.value("maxWidth").toDouble();
+        const auto sample = geometry.value("roundedTurnSample");
+        if (phase != "final" || geometry.size() != 1 + !sample.isUndefined() || policy.size() != 1 ||
+            !(angle > 0 && angle < 180) || !(width > 0) || !std::isfinite(width) ||
+            (!sample.isUndefined() && !(sample.toDouble() > 0 && sample.toDouble() <= .5)))
+            return id + ": open bowl needs a final position, a corner angle and a positive maximum cut width";
     }
     if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
         bodyKeys << "shoulder";
@@ -584,7 +606,7 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         const auto problem = invalidWalkSettings(withOverrides(route, policy), id + ".entryRecoveryRoute");
         if (!problem.isEmpty()) return problem;
     }
-    if (shape == "tail-branch") {
+    if (shape == "tail-branch" || (shape == "contour-route" && cuts.value("recoveryTail").toBool())) {
         const auto tail = cuts.value("tail").toObject();
         const auto strokeSource = tail.value("strokeSource");
         const auto strokeWidth = tail.value("strokeWidth");
@@ -839,7 +861,7 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString &ph
         form.insert("method", "initial-loop-head");
     else if (shape == "bowl-turn")
         form.insert("method", "qaf");
-    else if (shape == "bowl-neck")
+    else if (shape == "bowl-neck" || shape == "open-bowl")
         form.insert("method", "noon");
     else if (shape == "profile-neck")
         form.insert("method", phase == "initial" ? "kaf" : "waw");
@@ -899,7 +921,8 @@ QJsonArray finalRetryCandidates(const QJsonArray& forms, QHash<QString, QString>
         retry.insert("id", key);
         retry.insert("_finalRetryFor", parent);
         retry.insert("current", form.value("current"));
-        retry.insert("onFinalRetry", true);
+        retry.insert(form.value("onIncomplete").toBool() ? "onIncomplete" : "onFinalRetry", true);
+        if (form.value("onUnresolved").toBool()) retry.insert("onUnresolved", true);
         retry.insert("tryNext", true);
         candidates.append(retry);
         candidates.append(form);
@@ -1137,7 +1160,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 !retry.value("body").isObject() || !retry.value("cuts").isObject())
                 return id + ": finalRetry needs a final template and a body and cuts declaration";
             for (auto setting = retry.begin(); setting != retry.end(); ++setting)
-                if (!QStringList{"body", "cuts", "terminalAttachment", "tightJoin", "returningStroke"}.contains(setting.key()))
+                if (!QStringList{"body", "cuts", "terminalAttachment", "tightJoin", "returningStroke",
+                                 "ownsLeftTip"}.contains(setting.key()))
                     return id + ": unknown finalRetry setting " + setting.key();
         }
     }

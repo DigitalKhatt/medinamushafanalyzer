@@ -39,7 +39,10 @@ int main(int argc,char** argv) {
         {19,4,4,1,"qaf-fina",4,15},{70,3,1,2,"qaf-fina",13,24},
         {3,12,2,3,"waw-fina",-1,-1,true},{10,11,7,2,"waw-fina",6,13},{13,3,3,1,"waw-fina",6,12},
         {71,2,10,1,"waw-fina",4,11},{103,14,8,3,"waw-fina",6,13,true},
-        {162,2,2,3,"waw-fina",4,10,true}};
+        {162,2,2,3,"waw-fina",4,10,true},{3,1,2,3,"noon-fina",2,12,true},
+        {22,6,1,1,"noon-fina",-1,17,true},{272,11,9,2,"noon-fina",-1,26,true},
+        {70,9,6,2,"noon-fina",-1,18,true},{559,1,1,3,"noon-fina",-1,13,true},
+        {559,3,1,3,"noon-fina",-1,21,true}};
     for (const auto at:cases) {
         PageAnalysisResult a; QDataStream stream(read(QString("pages/page%1.dat").arg(at.p))); stream>>a.page;
         a.resolveWordBoundaries(at.p,&font);
@@ -64,7 +67,10 @@ int main(int argc,char** argv) {
                 check(owners==int(ink.contains(p)) || (owners<=1 && band.contains(p)),"Lost or duplicated ink");
             }
         if (at.p==3 && at.l==6) check(!sub.kashidaPaths.front().isEmpty(),"Seen absorbed the incoming connector");
-        if (at.finalKashida) check(!sub.kashidaPaths.back().isEmpty(),"Waw join lost its connector");
+        if (at.finalKashida) check(!sub.kashidaPaths.back().isEmpty(),"Final join lost its connector");
+        if (at.p==3 && at.l==1)
+            check(sub.letterDiagnostics.last().toObject().value("junctionPolicy")=="inward-corners",
+                  "The open bowl cut did not use its contour junction");
         if (at.p==71) {
             const auto final = sub.letterDiagnostics.last().toObject();
             check(final.value("template")=="waw-fina" && final.value("cutPolicy")=="final-retry" &&
@@ -86,7 +92,7 @@ int main(int argc,char** argv) {
             check(!sub.kashidaPaths.front().isEmpty(),"Contour-ordered kaf entry was silently dropped");
             check(std::abs(masks[1].boundingRect().top()-box.top())<1e-5,"Kaf lost its rising arm");
         }
-        if (at.upperCorner >= 0) {
+        if (at.upperCorner >= 0 || at.lowerCorner >= 0) {
             WordResultInfo::SubWordInfo dummy;
             const auto c = geometry(ink, dummy);
             const auto findCorner = [&](int time) {
@@ -94,12 +100,11 @@ int main(int argc,char** argv) {
                     [&](const auto& point) { return point.time == time; });
             };
             const auto top = findCorner(at.upperCorner), bottom = findCorner(at.lowerCorner);
-            check(top != c.timeSorted.end() && bottom != c.timeSorted.end(), "Missing source junction corners");
             const auto& join = *sub.joins.rbegin();
             const QLineF seam = sub.kashidaPaths.back().isEmpty() ?
                 QLineF(join.topBaseLine.point, join.bottomBaseLine.point) : sub.kashidaCuts.back().second;
-            check(QLineF(seam.p1(), top->point).length() < 1e-6 &&
-                  QLineF(seam.p2(), bottom->point).length() < 1e-6,
+            check((at.upperCorner < 0 || (top != c.timeSorted.end() && QLineF(seam.p1(), top->point).length() < 1e-6)) &&
+                  (at.lowerCorner < 0 || (bottom != c.timeSorted.end() && QLineF(seam.p2(), bottom->point).length() < 1e-6)),
                   "Final bowl cut missed a source corner");
         }
         const auto bodies=sub.baseGlyphs; const auto connectors=sub.kashidaPaths;

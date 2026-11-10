@@ -88,7 +88,8 @@ std::vector<QBezier> baseContourCurves(const QPainterPath &path) {
 // Project from a known contour landmark using the tangent on the matched
 // step's side. The landmark stays fixed, including at sharp corners.
 bool contourNormalCut(const SearchContext& context, const PathExtrema& anchor,
-                             bool increasingTime, bool atStepEnd, Stretching& cut, bool aboveOnly) {
+                      bool increasingTime, bool atStepEnd, Stretching& cut, bool aboveOnly,
+                      double tangentSample) {
     const auto curves = baseContourCurves(context.transformedPath);
     if (curves.empty() || anchor.pathIndex != 0) return false;
     const int count = static_cast<int>(curves.size());
@@ -101,6 +102,15 @@ bool contourNormalCut(const SearchContext& context, const PathExtrema& anchor,
     const double u = 1 - t;
     auto tangent = u * u * (curve.pt2() - curve.pt1()) +
         2 * u * t * (curve.pt3() - curve.pt2()) + t * t * (curve.pt4() - curve.pt3());
+    if (tangentSample > 0) {
+        auto limit = anchor;
+        const bool forward = increasingTime != atStepEnd;
+        limit.time += forward ? count : -count;
+        PathExtrema sampled;
+        QPointF direction;
+        if (advanceOnContour(context.transformedPath, anchor, limit, forward, tangentSample, sampled, direction))
+            tangent = sampled.point - anchor.point;
+    }
     if (std::hypot(tangent.x(), tangent.y()) < 1e-9)
         tangent = curve.pointAt(std::min(1.0, t + 1e-4)) - curve.pointAt(std::max(0.0, t - 1e-4));
     const double length = std::hypot(tangent.x(), tangent.y());

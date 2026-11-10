@@ -36,9 +36,8 @@ int main(int argc, char** argv) {
     for (const auto& value : config.value("medial").toArray())
         if (value.toObject().value("id") == "hah-stacked-medi") hahRule = value.toObject();
     for (const auto& value : config.value("final").toArray())
-        if (value.toObject().value("id") == "noon-corner-fina") noonRule = value.toObject();
+        if (value.toObject().value("id") == "noon-fina") noonRule = value.toObject();
     check(hahRule.value("sharedEntry").toBool(), "Stacked hah must have a shared ligature entry");
-    check(shapeSettings(noonRule, "route").value("strokeOffsetX").toDouble() == .5, "Noon offset must be half a stroke width");
     struct StackedWord {
         int page, line, word;
         double cornerTime, oppositeTime;
@@ -145,39 +144,28 @@ int main(int argc, char** argv) {
               "The ligature retained a kashida or stale displayed boundary");
 
         if (location[0] != 13) continue;
-        check(sub.matchedTemplates.contains("noon-corner-fina"), "Noon corner form was not used");
+        check(sub.matchedTemplates.contains("noon-fina"), "Final noon form was not used");
         auto noonContext = geometry(source, dummy);
-        noonContext.form = noonRule;
-        { auto cuts = noonContext.form.value("cuts").toObject(), route = cuts.value("route").toObject(); route.insert("normalCut", false); cuts.insert("route", route); noonContext.form.insert("cuts", cuts); }
-        check(declaredSharedBoundary(noonContext, noonContext.form), "Noon corner projection was not found");
-        const auto unshifted = noonContext.res;
-        check(unshifted.bottomBaseLine.time == 18, "Noon did not find its own corner 18");
-        noonContext.form = noonRule;
-        { auto cuts = noonContext.form.value("cuts").toObject(), route = cuts.value("route").toObject(); route.insert("strokeOffsetX", 0); cuts.insert("route", route); noonContext.form.insert("cuts", cuts); }
-        noonContext.res = {};
-        check(declaredSharedBoundary(noonContext, noonContext.form), "The noon neck has no measurable normal width");
-        const double width = QLineF(noonContext.res.topBaseLine.point, noonContext.res.bottomBaseLine.point).length();
-        noonContext.form = noonRule;
-        noonContext.res = {};
-        check(declaredSharedBoundary(noonContext, noonContext.form), "Shifted noon cut was not found");
-        const auto shifted = noonContext.res;
-        const double dx = QLineF(shifted.topBaseLine.point, shifted.bottomBaseLine.point).center().x() -
-            unshifted.bottomBaseLine.point.x();
-        // Rotating the shifted chord can move its midpoint slightly relative
-        // to the vertical probe, because the two contour sides are curved.
-        check(dx > .45 * width && dx < .55 * width &&
-              shifted.topBaseLine.point.x() > unshifted.bottomBaseLine.point.x() &&
-              shifted.bottomBaseLine.point.x() > unshifted.bottomBaseLine.point.x(),
-              "Noon boundary is not half a local stroke to the right of its corner");
+        auto body = noonRule.value("body").toObject();
+        auto settings = body.value("bowl").toObject();
+        const auto bowl = recognizeOpenBowl(inkOutline(noonContext), settings);
+        check(bowl && bowl->shoulder.time == 18, "Noon did not find its own shoulder at corner 18");
         const auto& last = *sub.joins.rbegin();
-        check(QLineF(last.topLeft.point, shifted.topBaseLine.point).length() < 1e-4 &&
-              QLineF(last.bottomLeft.point, shifted.bottomBaseLine.point).length() < 1e-4,
-              "The dispatcher replaced the independent noon cut");
+        check(QLineF(last.bottomLeft.point, bowl->shoulder.point).length() < 1e-4,
+              "Noon cut was displaced from the bowl shoulder");
+        check(declaredSharedBoundary(noonContext, noonRule), "The bowl shoulder did not produce a cut");
+        const auto noonCut = noonContext.res;
+        settings.insert("minCornerAngle", 179.9);
+        body.insert("bowl", settings);
+        auto withoutShoulder = noonRule;
+        withoutShoulder.insert("body", body);
+        check(!declaredSharedBoundary(noonContext, withoutShoulder) &&
+              !matchesBoundaryBody(noonContext, withoutShoulder, noonCut, false),
+              "Noon accepted a cut without recognizing a bowl shoulder");
         const auto noon = shape.transform.map(sub.baseGlyphs.back().path).boundingRect();
         const auto ink = shape.transform.map(shape.path).boundingRect();
         check(std::abs(noon.left() - ink.left()) < 1e-6 && std::abs(noon.bottom() - ink.bottom()) < 1e-6,
               "Noon lost part of its bowl");
-        qInfo() << "Noon corner shift:" << dx << "page units; local normal stroke:" << width;
     }
-    qInfo("Beh-hah ligature passed: shared cuts at corners 24/20/21, no intervening kashida, independent geometry, scale/translation invariance, half-stroke noon offset and full bowl ownership.");
+    qInfo("Beh-hah ligature passed: shared cuts at corners 24/20/21, no intervening kashida, independent geometry, scale/translation invariance and required noon shoulder ownership.");
 }

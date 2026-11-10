@@ -80,6 +80,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
                 recognition = recognizeSubwordBodies(word, plan.partition, requested);
         }
         valid = resolveSubwordCutPlan(word, recognition, plan, requested);
+        if (valid) applyTerminalJunction(word, plan.partition, requested);
     }
     sub = std::move(plan.partition);
     reportFinalRetry(sub, retryParents);

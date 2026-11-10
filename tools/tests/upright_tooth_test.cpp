@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
     analysis.segmentSubword(599, 14, 6, 0, nullptr, true);
     const auto& second = analysis.page.lines[14].words[6].wordResultInfo.subWords[0];
     check(second.matchedTemplates.contains("beh-upright-medi") && second.matchedTemplates.contains("seen-medi") &&
-          second.matchedTemplates.contains("lam-medi") && second.matchedTemplates.contains("noon-corner-fina") &&
+          second.matchedTemplates.contains("lam-medi") && second.matchedTemplates.contains("noon-fina") &&
           second.correct && second.baseGlyphs.size() == 5,
           "Upright-before-seen control did not retain its tooth and complete after the spacer");
     qInfo("Upright tooth passed: schema, own tip/bend and 45-degree turn normal, unchanged left cut, ordinary-tooth rejection, neighbor independence, scale/translation, all three sheen teeth retained, two seen/sheen contexts, ink conservation and determinism.");

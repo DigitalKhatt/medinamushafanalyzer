@@ -84,6 +84,12 @@ bool matchesBoundaryBody(SearchContext& context, const QJsonObject& rule,
                                            shape == "counter-shoulder" || shape == "counter-bridge");
     const bool protectOpening = initial && !initialLips.isEmpty();
     const bool protectTail = !initial && rule.value("ownsLeftTip").toBool();
+    if (!initial && shape == "open-bowl") {
+        const auto evidence = recognizedSharedShape(context, rule.value("body").toObject());
+        if (!evidence->openBowl) return reject("bowl shoulder not found");
+        if (!retainsOpenBowl(context, *evidence->openBowl, boundary))
+            return reject("cut separates the bowl shoulder, crest or floor");
+    }
     if (!initial && shape == "tail-branch" && !retainsTailShoulder(context, rule, boundary))
         return reject("cut separates the bowl shoulder");
     if (features.isEmpty() && !finalCounter && !protectOpening && !protectTail) return true;
@@ -146,7 +152,9 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
     SharedShapeEvidence result;
     result.source = outline.ink;
     const auto shape = body.value("shape");
-    if (shape == "contour-route") {
+    if (shape == "open-bowl")
+        result.openBowl = recognizeOpenBowl(outline, body.value("bowl").toObject());
+    else if (shape == "contour-route") {
         WordResultInfo::SubWordInfo empty;
         auto geometry = outline.geometry(empty);
         const auto route = recognizeContourRoute(geometry, body.value("route").toObject());
@@ -381,6 +389,13 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
     }
     if (evidence.bowlTurn)
         inspectLandmark("Bowl turn", evidence.bowlTurn->turn);
+    if (evidence.openBowl) {
+        inspectLandmark("Bowl free end", evidence.openBowl->tip);
+        inspectLandmark("Bowl floor", evidence.openBowl->floor);
+        inspectLandmark("Bowl shoulder", evidence.openBowl->shoulder);
+        if (evidence.openBowl->crest)
+            inspectLandmark("Bowl crest", *evidence.openBowl->crest);
+    }
     for (const auto &head : evidence.openHeads) {
         inspectLandmark("Open crest", head.crest);
         inspectLandmark("Right lip", head.rightEdge);
@@ -459,7 +474,15 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
                                       cuts.value("route").toObject());
     } else if (shape == "tapered-arm")
         found = cutTaperedArms(evidence->taperedArms, cuts.value("arm").toObject(), context.res);
-    else if (shape == "upright-stem") {
+    else if (shape == "open-bowl") {
+        if (!evidence->openBowl) {
+            inspectReason("Body", "No shoulder found on the outer bowl contour.");
+        } else {
+            inspectLandmark("Bowl shoulder", evidence->openBowl->shoulder);
+            found = cutOpenBowl(context, *evidence->openBowl, cuts.value("bowl").toObject());
+            if (!found) inspectReason("Cut", "No valid cut through the bowl shoulder.");
+        }
+    } else if (shape == "upright-stem") {
         const auto policy = cuts.value("stem").toObject();
         if (recovering && cuts.value("recoveryShaft").toBool() && evidence->descendingShaft)
             found = cutDescendingShaft(context, *evidence->descendingShaft, policy, context.res);

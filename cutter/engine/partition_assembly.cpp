@@ -137,6 +137,77 @@ bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subwor
     return true;
 }
 
+// A terminal contour may supply a sharper seam after its attachment is known.
+// Commit it only if the same bodies and connector topology can be assembled.
+void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+    const auto last = sub.joins.size();
+    if (!last || sub.baseGlyphs.size() != last + 1 || sub.kashidaPaths.size() != last ||
+        sub.kashidaCuts.size() != last || sub.letterDiagnostics.size() != int(last + 1)) return;
+    auto diagnostic = sub.letterDiagnostics.last().toObject();
+    const auto id = diagnostic.value("template").toString();
+    const auto& forms = bodyCutProgram(config).forms;
+    const auto selected = forms.constFind(id);
+    if (selected == forms.cend()) return;
+    const auto policy = selected->cuts.value("junction").toObject();
+    if (policy.isEmpty()) return;
+
+    auto join = *sub.joins.rbegin();
+    if (join.counterEntry.pathIndex > 0) return;
+    const auto shape = word.bodyShape(sub);
+    SearchContext context{.transformedPath = shape.transform.map(shape.path).translated(shape.pos), .subword = sub};
+    if (!readTerminalOutline(context)) return;
+    const auto form = namedLetterForm(config, id);
+    InspectFormScope inspection(form, context.transformedPath);
+    context.res = join;
+    const bool connector = !sub.kashidaPaths.back().isEmpty();
+    if (connector) {
+        const auto& [sending, receiving] = sub.kashidaCuts.back();
+        const std::vector<std::vector<QBezier>> outer{baseContourCurves(context.transformedPath)};
+        const auto useEndpoint = [&](PathExtrema& point, QPointF actual) {
+            if (point.point == actual && point.pathIndex == 0) return true;
+            point.point = actual;
+            return sourceLandmark(point, outer);
+        };
+        context.res.topBaseLine = join.topLeft;
+        context.res.bottomBaseLine = join.bottomLeft;
+        if (!useEndpoint(join.topBaseLine, sending.p1()) || !useEndpoint(join.bottomBaseLine, sending.p2()) ||
+            !useEndpoint(context.res.topBaseLine, receiving.p1()) ||
+            !useEndpoint(context.res.bottomBaseLine, receiving.p2())) return;
+    }
+    if (!refineContourJunction(context, policy) ||
+        !matchesBoundaryBody(context, bodyConstraintForm(config, form), context.res, false)) return;
+    if (connector) {
+        if (!cutPrecedes(join, context.res, context.orientation)) return;
+        join.topLeft = context.res.topBaseLine;
+        join.bottomLeft = context.res.bottomBaseLine;
+    } else {
+        join.topBaseLine = join.topLeft = context.res.topBaseLine;
+        join.bottomBaseLine = join.bottomLeft = context.res.bottomBaseLine;
+    }
+    join.topRight = join.topBaseLine;
+    join.bottomRight = join.bottomBaseLine;
+    join.fixedRightBoundary = true;
+    join.fixedLeftBoundary = connector;
+    join.length = 0;
+    join.kashidaOverrides.insert("enabled", connector);
+    auto trial = sub;
+    trial.joins.erase(std::prev(trial.joins.end()));
+    trial.joins.insert(join);
+    if (!assembleBodyPartition(word, trial, config) || trial.baseGlyphs.size() != sub.baseGlyphs.size() ||
+        trial.kashidaPaths.size() != last || trial.kashidaPaths.back().isEmpty() == connector) return;
+    for (size_t i = 0; i < last - size_t(!connector); ++i)
+        if (trial.baseGlyphs[i].path != sub.baseGlyphs[i].path) return;
+    for (size_t i = 0; i + 1 < last; ++i)
+        if (trial.kashidaPaths[i] != sub.kashidaPaths[i] || trial.kashidaCuts[i] != sub.kashidaCuts[i]) return;
+    if (connector && trial.kashidaCuts.back().first != sub.kashidaCuts.back().first) return;
+    if (!coversOriginalInk(word, trial)) return;
+    diagnostic.insert("junctionPolicy", "inward-corners");
+    trial.letterDiagnostics[trial.letterDiagnostics.size() - 1] = diagnostic;
+    trial.templateTrace.append(id + " · terminal cut at contour junction");
+    inspectCandidate("Terminal contour junction", context.res);
+    sub = std::move(trial);
+}
+
 } // namespace MedinaCutter
 
 bool PageAnalysisResult::cutSubword(int lineIndex, int wordIndex, int subWordIndex, const QJsonObject& config) {

@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
     check(noon.segmentSubword(396, 11, 4, 1, nullptr, true), "Lam route blocked an independently matched final noon");
     const auto& noonWord = noon.page.lines[11].words[4];
     const auto& noonSub = noonWord.wordResultInfo.subWords[1];
-    check(noonSub.matchedTemplates.contains("noon-corner-fina") && noonSub.baseGlyphs.size() == 6,
+    check(noonSub.matchedTemplates.contains("noon-fina") && noonSub.baseGlyphs.size() == 6,
         "A partial lam route suppressed a compatible final boundary");
     partition(noonWord.paths[noonSub.paths.front()].path, noonSub);
     qInfo("Medial meem corners, hanging ligatures, independence and ink conservation passed");

@@ -4034,197 +4034,31 @@
       }
     },
     {
-      "id": "noon-raised-entry-fina",
-      "current": "ن",
-      "ownsLeftTip": true,
-      "tryNext": true,
-      "tightJoin": true,
-      "returningStroke": true,
-      "retainBodyFeatures": true,
-      "body": {
-        "shape": "contour-route",
-        "route": {
-          "start": "left",
-          "traversal": "down",
-          "top": [
-            {
-              "direction": "up",
-              "maxY": -1
-            },
-            {
-              "direction": "down",
-              "minY": 1,
-              "minX": 1
-            },
-            {
-              "direction": "up",
-              "maxY": -1.3,
-              "minX": 1
-            },
-            {
-              "direction": "up",
-              "maxY": -1,
-              "maxX": 0
-            },
-            {
-              "direction": "up",
-              "maxY": -0.5,
-              "minX": 0,
-              "end": {
-                "yExtremum": true
-              }
-            },
-            {
-              "direction": "down",
-              "minX": 0.2,
-              "minY": 0.6,
-              "maxX": 1.5,
-              "maxY": 3,
-              "end": {
-                "sharp": true
-              }
-            },
-            {
-              "direction": "right",
-              "minX": 2.4,
-              "minY": 0,
-              "maxY": 0.85,
-              "start": {
-                "sharp": true
-              },
-              "immediate": true
-            }
-          ],
-          "topUseStepEnd": false
-        },
-        "features": {
-          "maxWidthToHeight": 1.6,
-          "maxUpperPeaks": 2
-        },
-        "counters": 0
-      },
-      "cuts": {
-        "route": {
-          "bottomProbe": "corner",
-          "oppositeCorner": {
-            "minX": -0.25,
-            "maxX": 0.9,
-            "minY": 0.7,
-            "maxY": 2.5,
-            "maxDistance": 2.7
-          }
-        },
-        "boundaries": {
-          "right": "contour-route",
-          "left": "free"
-        }
-      }
-    },
-    {
-      "id": "noon-flared-bowl-fina",
-      "current": "ن",
-      "retainEntryCrest": true,
-      "ownsLeftTip": true,
-      "tryNext": true,
-      "tightJoin": true,
-      "returningStroke": true,
-      "retainBodyFeatures": true,
-      "body": {
-        "shape": "contour-route",
-        "route": {
-          "start": "left",
-          "traversal": "down",
-          "top": [
-            "down",
-            {
-              "direction": "up",
-              "minX": 1,
-              "end": {
-                "sharp": true,
-                "yExtremum": true
-              }
-            }
-          ],
-          "topUseStepEnd": true,
-          "topTraversal": "forward"
-        },
-        "features": {
-          "maxWidthToHeight": 1.6,
-          "maxUpperPeaks": 2
-        },
-        "counters": 0
-      },
-      "cuts": {
-        "route": {
-          "bottomProbe": "normal"
-        },
-        "boundaries": {
-          "right": "contour-route",
-          "left": "free"
-        }
-      }
-    },
-    {
-      "id": "noon-corner-fina",
-      "current": "ن",
-      "retainEntryCrest": true,
-      "tryNext": true,
-      "retryOnPartial": true,
-      "ownsLeftTip": true,
-      "body": {
-        "shape": "contour-route",
-        "route": {
-          "start": "left",
-          "traversal": "down",
-          "topTraversal": "forward",
-          "top": [
-            "down",
-            {
-              "direction": "up",
-              "end": {
-                "sharp": true
-              }
-            }
-          ],
-          "topUseStepEnd": true
-        }
-      },
-      "cuts": {
-        "route": {
-          "bottomProbe": "up",
-          "normalCut": true,
-          "strokeOffsetX": 0.5
-        },
-        "boundaries": {
-          "right": "contour-route",
-          "left": "free"
-        }
-      }
-    },
-    {
       "id": "noon-fina",
       "current": "ن",
+      "ownsLeftTip": true,
       "tryNext": true,
+      "retainBodyFeatures": true,
       "body": {
-        "shape": "bowl-neck",
-        "neck": {
-          "lookback": 4,
-          "previousOffset": 1,
-          "minX": 0,
-          "maxX": 1,
-          "minY": 0.8,
-          "maxY": 1.5,
-          "lookahead": 14
+        "shape": "open-bowl",
+        "bowl": {
+          "minCornerAngle": 35,
+          "roundedTurnSample": 0.25
         }
       },
       "cuts": {
-        "probe": {
-          "offsetX": 1.2,
-          "minCrossings": 2
-        },
         "boundaries": {
           "left": "free",
-          "right": "bowl-neck"
+          "right": "corner-junction"
+        },
+        "bowl": {
+          "maxWidth": 1.65
+        },
+        "junction": {
+          "minCornerAngle": 35,
+          "maxTurnDistance": 0.3,
+          "maxWidth": 1.65,
+          "roundedTurnSample": 0.25
         }
       }
     },
@@ -4605,11 +4439,24 @@
       "tightJoin": true,
       "returningStroke": true,
       "body": {
-        "inherit": "noon-returning-bowl-fina",
+        "shape": "tail-branch",
+        "tail": {
+          "minRise": 0.35,
+          "minRun": 0.4,
+          "maxRun": 75,
+          "flankSampleWidths": 0.25
+        },
         "maxShoulderBacktrackWidths": 0.4
       },
       "cuts": {
-        "inherit": "noon-returning-bowl-fina"
+        "tail": {
+          "strokeSource": "global",
+          "walkWidths": 0.5
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "branch-normal"
+        }
       }
     },
     {
@@ -4798,39 +4645,6 @@
         },
         "boundaries": {
           "right": "counter-shoulder",
-          "left": "free"
-        }
-      }
-    },
-    {
-      "id": "noon-arm-fina",
-      "current": "نبتث",
-      "ownsLeftTip": true,
-      "body": {
-        "shape": "contour-route",
-        "route": {
-          "start": "left",
-          "topTraversal": "forward",
-          "top": [
-            "up",
-            "down",
-            "up",
-            {
-              "direction": "down",
-              "end": {
-                "yExtremum": true
-              }
-            }
-          ],
-          "topUseStepEnd": true
-        }
-      },
-      "cuts": {
-        "route": {
-          "bottomProbe": "normal"
-        },
-        "boundaries": {
-          "right": "contour-route",
           "left": "free"
         }
       }
@@ -5378,35 +5192,6 @@
       }
     },
     {
-      "id": "noon-returning-bowl-fina",
-      "current": "ن",
-      "ownsLeftTip": true,
-      "tryNext": true,
-      "tightJoin": true,
-      "returningStroke": true,
-      "onIncomplete": true,
-      "onUnresolved": true,
-      "body": {
-        "shape": "tail-branch",
-        "tail": {
-          "minRise": 0.35,
-          "minRun": 0.4,
-          "maxRun": 75,
-          "flankSampleWidths": 0.25
-        }
-      },
-      "cuts": {
-        "tail": {
-          "strokeSource": "global",
-          "walkWidths": 0.5
-        },
-        "boundaries": {
-          "left": "free",
-          "right": "branch-normal"
-        }
-      }
-    },
-    {
       "id": "yeh-folded-lip-fina",
       "current": "يئى",
       "tryNext": true,
@@ -5439,120 +5224,6 @@
       "cuts": {
         "route": {
           "bottomProbe": "normal"
-        },
-        "boundaries": {
-          "right": "contour-route",
-          "left": "free"
-        }
-      }
-    },
-    {
-      "id": "noon-normal-corner-fina",
-      "current": "ن",
-      "tryNext": true,
-      "onIncomplete": true,
-      "ownsLeftTip": true,
-      "tightJoin": true,
-      "returningStroke": true,
-      "onUnresolved": true,
-      "body": {
-        "shape": "contour-route",
-        "route": {
-          "start": "left",
-          "traversal": "down",
-          "topTraversal": "forward",
-          "top": [
-            "down",
-            {
-              "direction": "up",
-              "minX": 1,
-              "end": {
-                "sharp": true
-              }
-            }
-          ],
-          "topUseStepEnd": true
-        },
-        "counters": 0
-      },
-      "cuts": {
-        "route": {
-          "bottomProbe": "normal"
-        },
-        "boundaries": {
-          "right": "contour-route",
-          "left": "free"
-        }
-      }
-    },
-    {
-      "id": "noon-rising-corner-fina",
-      "current": "ن",
-      "tryNext": true,
-      "onIncomplete": true,
-      "ownsLeftTip": true,
-      "tightJoin": true,
-      "returningStroke": true,
-      "onUnresolved": true,
-      "body": {
-        "shape": "contour-route",
-        "route": {
-          "start": "left",
-          "traversal": "down",
-          "topTraversal": "forward",
-          "top": [
-            "down",
-            {
-              "direction": "up",
-              "minX": 1,
-              "end": {
-                "sharp": true
-              }
-            }
-          ],
-          "topUseStepEnd": true
-        },
-        "counters": 0
-      },
-      "cuts": {
-        "route": {
-          "bottomProbe": "up"
-        },
-        "boundaries": {
-          "right": "contour-route",
-          "left": "free"
-        }
-      }
-    },
-    {
-      "id": "noon-rising-root-fina",
-      "current": "ن",
-      "tryNext": true,
-      "onIncomplete": true,
-      "ownsLeftTip": true,
-      "tightJoin": true,
-      "returningStroke": true,
-      "onUnresolved": true,
-      "body": {
-        "shape": "contour-route",
-        "route": {
-          "start": "left",
-          "traversal": "down",
-          "topTraversal": "forward",
-          "top": [
-            "down",
-            {
-              "direction": "up",
-              "minX": 1
-            },
-            "right"
-          ]
-        },
-        "counters": 0
-      },
-      "cuts": {
-        "route": {
-          "bottomProbe": "up"
         },
         "boundaries": {
           "right": "contour-route",

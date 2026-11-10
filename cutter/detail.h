@@ -497,6 +497,19 @@ std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline, const Q
 
 bool cutBowlTurn(SearchContext &context, const BowlTurnBody &body, const QJsonObject &cuts);
 
+struct OpenBowlBody {
+    PathExtrema tip, floor, shoulder;
+    double stroke, tangentSample;
+    bool forward;
+    std::optional<PathExtrema> crest, exit;
+};
+
+std::optional<OpenBowlBody> recognizeOpenBowl(const InkOutline& outline, const QJsonObject& body);
+bool retainsOpenBowl(const SearchContext& context, const OpenBowlBody& body, const Stretching& cut);
+bool cutOpenBowl(SearchContext& context, const OpenBowlBody& body, const QJsonObject& cuts);
+
+bool refineContourJunction(SearchContext& context, const QJsonObject& policy);
+
 struct LayeredHeadBody {
     std::vector<NeckBody> necks;
     std::vector<QRectF> envelopes;
@@ -511,7 +524,8 @@ bool strokeNormalCut(const SearchContext &context, Stretching &cut, double offse
 std::vector<QBezier> baseContourCurves(const QPainterPath &path);
 
 bool contourNormalCut(const SearchContext& context, const PathExtrema& anchor,
-                             bool increasingTime, bool atStepEnd, Stretching& cut, bool aboveOnly = false);
+                      bool increasingTime, bool atStepEnd, Stretching& cut, bool aboveOnly = false,
+                      double tangentSample = 0);
 
 bool advanceOnContour(const QPainterPath& path, const PathExtrema& start,
                              const PathExtrema& end, bool increasingTime,
@@ -1039,6 +1053,8 @@ bool connectorContainsLeadingStroke(const QVector<PathExtrema>& extrema,
 bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subword,
                                   const QJsonObject& config);
 
+void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
+
 // Start halfway down the visible terminal shaft. Its cap can have the same
 // tangent as the turn at its foot, but only the foot retains this shaft.
 struct ShaftFlank {
@@ -1446,6 +1462,7 @@ struct SharedShapeEvidence {
     std::optional<LoopHeadBody> head;
     std::vector<CrestedLoopBody> crestedHeads;
     std::optional<BowlTurnBody> bowlTurn;
+    std::optional<OpenBowlBody> openBowl;
     std::vector<NeckBody> bowlNecks;
     std::vector<ToothClusterBody> clusters;
     std::vector<EnclosedLipsBody> enclosedLips;
