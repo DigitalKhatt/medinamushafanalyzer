@@ -835,6 +835,9 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
     const auto curves = baseContourCurves(outline.ink);
     if (curves.empty())
         return result;
+    const int count = static_cast<int>(curves.size());
+    const double minStepAngle = settings.value("minStepAngle").toDouble();
+    const bool sampleValley = settings.value("sampleValley").toBool();
     for (auto at = geometry.timeSorted.begin(); at != geometry.timeSorted.end(); ++at) {
         const auto p = at->point;
         const double distance =
@@ -861,11 +864,34 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
             if (p.x() <= counter.right() || p.y() <= geometry.prev(at)->point.y() ||
                 p.y() <= geometry.next(at)->point.y())
                 continue;
-        } else if (result.upper ? (p.x() < counter.center().x() || p.y() > result.upperLimit)
-                                : (p.x() <= counter.right() || p.y() < counter.center().y() ||
-                                   p.y() >= geometry.prev(at)->point.y() || p.y() >= geometry.next(at)->point.y()))
-            continue;
-        const int count = static_cast<int>(curves.size());
+        } else if (result.upper) {
+            if (p.x() < counter.center().x() || p.y() > result.upperLimit) continue;
+        } else {
+            if (p.x() <= counter.right() || p.y() < counter.center().y()) continue;
+            if (p.y() >= geometry.prev(at)->point.y() || p.y() >= geometry.next(at)->point.y()) {
+                const bool step = minStepAngle > 0 && inwardCornerAngle(curves, *at, outline.orientation) >= minStepAngle;
+                if (!step && !sampleValley) continue;
+                // Measure both flanks near the corner. Distant extrema can hide a valley or a short step.
+                const bool forward = outline.orientation == Orientation::CounterClockwise;
+                const double sample = .25 * counter.height();
+                auto limit = *at;
+                limit.time += forward ? -count : count;
+                PathExtrema rim, join;
+                QPointF tangent;
+                if (!advanceOnContour(outline.ink, *at, limit, !forward, sample, rim, tangent)) continue;
+                limit.time = at->time + (forward ? count : -count);
+                if (!advanceOnContour(outline.ink, *at, limit, forward, sample, join, tangent)) continue;
+                const auto drop = rim.point - p;
+                const auto run = join.point - p;
+                const bool valley = sampleValley && drop.x() < 0 && drop.y() > 1e-8 && run.x() > 0 && run.y() > 1e-8;
+                const bool flatStep = step && drop.y() > std::abs(drop.x()) && run.x() > std::abs(run.y());
+                if (!valley && !flatStep) continue;
+                body.tangent = run;
+                body.sampled = true;
+                result.corners.push_back(std::move(body));
+                continue;
+            }
+        }
         if (std::abs(at->time - std::round(at->time)) <= 1e-6) {
             const int index = static_cast<int>(std::lround(at->time)) % count;
             const auto& previous = curves[(index + count - 1) % count];
@@ -895,10 +921,11 @@ static bool cutCounterCorners(SearchContext &context, const CounterCornerEvidenc
     const auto &ink = context.transformedPath;
     const auto &counter = evidence.counter;
     const double reach = std::hypot(context.bbox.width(), context.bbox.height()) + 1;
-    double nearest = evidence.maxDistance;
+    auto best = std::pair{true, evidence.maxDistance};
     bool found = false;
     for (const auto &body : evidence.corners) {
-        if (body.distance >= nearest)
+        const auto score = std::pair{body.sampled, body.distance};
+        if (score >= best)
             continue;
         const auto &corner = body.anchor;
         const auto p = corner.point;
@@ -925,7 +952,7 @@ static bool cutCounterCorners(SearchContext &context, const CounterCornerEvidenc
             }
             if (paired) {
                 cut = *paired;
-                nearest = body.distance;
+                best = score;
                 found = true;
             }
             continue;
@@ -949,7 +976,7 @@ static bool cutCounterCorners(SearchContext &context, const CounterCornerEvidenc
             continue;
         cut.topBaseLine = evidence.top ? corner : *top;
         cut.bottomBaseLine = evidence.top ? *top : corner;
-        nearest = body.distance;
+        best = score;
         found = true;
     }
     return found;
@@ -1028,38 +1055,55 @@ std::optional<InitialCounterBody> recognizeInitialCounterBody(const InkOutline &
 
 bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &body, const QJsonObject &settings) {
     const auto &ink = context.transformedPath;
-    const auto *counter = &body.counter;
+    const auto &counter = body.counter;
+    const double radius = settings.value("maxNeckDistance").toDouble(1.5) * counter.height();
+    const auto retainsCounter = [&](const Stretching &cut) {
+        const auto pieces = cutRegions(ink, {}, {cut}, context.orientation, true);
+        if (pieces.size() != 2) return false;
+        const auto bounds = pieces[0].path.boundingRect();
+        return bounds.contains(counter) && bounds.left() >= counter.left() - radius;
+    };
     std::optional<Stretching> best;
-    double nearest = settings.value("maxNeckDistance").toDouble(1.5) * counter->height();
-    for (const auto &landmark : body.valleys) {
-        const auto *corner = &landmark;
-        const auto p = corner->point;
-        const double distance = QLineF(p, counter->bottomLeft()).length();
+    double nearest = radius;
+    for (const auto &corner : body.valleys) {
+        const auto p = corner.point;
+        const double distance = QLineF(p, counter.bottomLeft()).length();
         if (distance >= nearest)
             continue;
         const auto hits = FindInterections(ink, QLineF(p, QPointF(p.x(), context.bbox.top() - 1)), true);
         for (const auto& top : hits) {
-            if (top.point.y() >= p.y() || !interiorChord(ink, top, *corner)) continue;
+            if (top.point.y() >= p.y() || !interiorChord(ink, top, corner)) continue;
             Stretching cut{};
             cut.topBaseLine = top;
-            cut.bottomBaseLine = *corner;
+            cut.bottomBaseLine = corner;
             best = cut;
             nearest = distance;
             break;
         }
     }
+    if (!best && settings.value("normalValley").toBool()) {
+        // Use the tangent leaving the loop toward the join, keeping the lower valley fixed.
+        const bool forward = context.orientation == Orientation::ClockWise;
+        for (const auto &valley : body.valleys) {
+            const double distance = QLineF(valley.point, counter.bottomLeft()).length();
+            if (distance >= nearest) continue;
+            Stretching cut{};
+            if (!contourNormalCut(context, valley, forward, false, cut, true) ||
+                cut.bottomBaseLine.point.x() > counter.left()) continue;
+            std::swap(cut.topBaseLine, cut.bottomBaseLine);
+            if (!retainsCounter(cut)) continue;
+            best = cut;
+            nearest = distance;
+        }
+    }
     if (!best && settings.value("normalNeck").toBool()) {
-        double closest = settings.value("maxNeckDistance").toDouble(1.5) * counter->height();
+        double closest = radius;
         for (const auto &corner : body.normalAnchors) {
-            const double distance = QLineF(corner.point, counter->bottomLeft()).length();
+            const double distance = QLineF(corner.point, counter.bottomLeft()).length();
             if (distance >= closest) continue;
             for (bool previous : {false, true}) {
                 Stretching cut{};
-                if (!contourNormalCut(context, corner, previous, false, cut)) continue;
-                const auto pieces = cutRegions(ink, {}, {cut}, context.orientation, true);
-                if (pieces.size() != 2 || !pieces[0].path.boundingRect().contains(*counter) ||
-                    pieces[0].path.boundingRect().left() < counter->left() -
-                        settings.value("maxNeckDistance").toDouble(1.5) * counter->height()) continue;
+                if (!contourNormalCut(context, corner, previous, false, cut) || !retainsCounter(cut)) continue;
                 best = cut; closest = distance;
             }
         }
@@ -1211,6 +1255,7 @@ static SearchContext reflectedCounterContext(const InkOutline &outline, WordResu
     const QTransform reflection(-1, 0, 0, 1, 0, 0);
     SearchContext result{.transformedPath = reflection.map(outline.ink), .subword = empty};
     result.bbox = reflection.mapRect(outline.bounds);
+    result.orientation = outline.orientation == Orientation::ClockWise ? Orientation::CounterClockwise : Orientation::ClockWise;
     for (auto p : outline.time) {
         p.point = reflection.map(p.point);
         result.timeSorted.insert(p);
@@ -1289,7 +1334,12 @@ static LoopBodyEvidence recognizeLoopBody(const InkOutline &outline, const QJson
             if (route)
                 result.entryRoutes.push_back({*crest, gap, route});
         }
-    result.entry = recognizeCounterCorners(outline, hole, settings.value("entryCorner").toObject());
+    auto entryCorner = settings.value("entryCorner").toObject();
+    result.entry = recognizeCounterCorners(outline, hole, entryCorner);
+    if (entryCorner.value("tryLowerCorner").toBool()) {
+        entryCorner.remove("placement");
+        result.lowerEntry = recognizeCounterCorners(outline, hole, entryCorner);
+    }
     auto reflected = reflectedCounterContext(outline, empty);
     result.exit = recognizeCounterCorners(inkOutline(reflected), QTransform(-1, 0, 0, 1, 0, 0).mapRect(hole),
                                           settings.value("exitCorner").toObject());
@@ -1353,9 +1403,11 @@ cutLoopBody(SearchContext &context, const LoopBodyEvidence &body, const QJsonObj
         context.nextIter = originalNext;
         if (!anchoredRight) return {};
     } else if (needEntry) {
-        anchoredRight = cutCounterCorners(context, body.entry, settings.value("entryCorner").toObject(),
-                                          settings.value("normalCut").toBool(), right);
-        if (!anchoredRight && settings.value("entryCorner").toObject().value("required").toBool()) return {};
+        const auto entryCorner = settings.value("entryCorner").toObject();
+        const bool normalCut = settings.value("normalCut").toBool();
+        anchoredRight = cutCounterCorners(context, body.entry, entryCorner, normalCut, right) ||
+            (body.lowerEntry && cutCounterCorners(context, *body.lowerEntry, entryCorner, normalCut, right));
+        if (!anchoredRight && entryCorner.value("required").toBool()) return {};
     }
     const double entryMinY = settings.value("entryBelowCounter").toBool() ? hole.bottom() :
         -std::numeric_limits<double>::infinity();

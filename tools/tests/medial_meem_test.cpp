@@ -62,13 +62,14 @@ int main(int argc, char** argv) {
     auto config = PageAnalysisResult::letterForms();
     check(PageAnalysisResult::prepareLetterForms(config).isEmpty(), "Medial meem configuration rejected");
     check(!config.value("kashidaDefaults").toObject().value("trackingEnabled").toBool(), "Tracker enabled");
-    QJsonObject ordinary, hanging;
+    QJsonObject ordinary, hanging, upperNeck;
     for (const auto& value : config.value("medial").toArray()) {
         const auto form = resolvedBodyForm(config, value.toObject());
         if (form.value("id") == "meem-medi") ordinary = form;
         if (form.value("id") == "meem-hanging-medi") hanging = form;
+        if (form.value("id") == "meem-upper-neck-medi") upperNeck = form;
     }
-    check(!ordinary.isEmpty() && !hanging.isEmpty(), "Missing intrinsic meem forms");
+    check(!ordinary.isEmpty() && !hanging.isEmpty() && !upperNeck.isEmpty(), "Missing intrinsic meem forms");
     for (const auto& bad : QJsonArray{QJsonObject{{"maxDistance", 0}}, QJsonObject{{"required", "yes"}},
             QJsonObject{{"normalCut", 1}}, QJsonObject{{"placement", "sideways"}},
             QJsonObject{{"placement", "right-corner-pair"}}, QJsonObject{{"maxCounterY", .5}},
@@ -81,7 +82,12 @@ int main(int argc, char** argv) {
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Invalid exit corner accepted");
     }
 
-    struct Fixture { int page, line, word, subword, letter, counter; bool suspended; double rightCorner, leftCorner; };
+    struct Fixture {
+        int page, line, word, subword, letter, counter;
+        bool suspended;
+        double rightCorner, leftCorner;
+        bool steppedEntry = false;
+    };
     const Fixture fixtures[] = {
         {1, 2, 3, 3, 1, 1, true, 24, 20},
         {3, 2, 9, 1, 1, 2, false, 21, 19},
@@ -91,6 +97,7 @@ int main(int argc, char** argv) {
         {6, 15, 4, 1, 2, 2, true, 24, 22},
         {7, 7, 1, 1, 1, 1, false, 11, 8},
         {8, 8, 7, 1, 2, 2, true, 32, 29},
+        {182, 4, 3, 2, 2, 1, false, 44, 41, true},
         {230, 11, 3, 1, 2, 1, true, 16, 13}
     };
     for (const auto& f : fixtures) {
@@ -105,7 +112,7 @@ int main(int argc, char** argv) {
         auto ink = pagePath(shape.path); ink.setFillRule(Qt::WindingFill);
         WordResultInfo::SubWordInfo dummy; auto context = geometry(ink, dummy);
         const auto hole = context.subPaths[f.counter].boundingRect();
-        const auto form = f.suspended ? hanging : ordinary;
+        const auto& form = f.steppedEntry ? upperNeck : f.suspended ? hanging : ordinary;
         const auto settings = loopSettings(form);
         const auto locate = [&](SearchContext& c, const QRectF& box) {
             return medialLoopBoundaries(c, settings, box.center().x() - .01 * box.height(),

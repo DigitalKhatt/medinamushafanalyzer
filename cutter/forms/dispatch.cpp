@@ -434,6 +434,9 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
             for (const auto &tooth : *loop.teeth)
                 inspectLandmark("Attached tooth", tooth.tip);
         corner(loop.entry);
+        if (loop.lowerEntry)
+            for (const auto &entry : loop.lowerEntry->corners)
+                inspectLandmark("Lower entry corner", entry.anchor);
         for (const auto &p : loop.exit.corners) {
             auto anchor = p.anchor;
             anchor.point.setX(-anchor.point.x());

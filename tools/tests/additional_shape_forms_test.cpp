@@ -128,6 +128,38 @@ int main(int argc,char** argv) {
                   c.res.bottomBaseLine.point==expected.bottomBaseLine.point,"Route depends on neighboring geometry");
         }
     }
+    struct MeemJoin {
+        int page, line, word, corner;
+        bool shared;
+        int subword = 1;
+        const char* form = "meem-lower-flank-init";
+    };
+    for (const auto& at : {MeemJoin{285,11,1,30,false,1,"meem-init"}, MeemJoin{377,8,7,15,false,1,"meem-init"},
+                          MeemJoin{415,8,3,16,false},
+                          MeemJoin{82,3,2,48,true}, MeemJoin{406,2,4,28,true}, MeemJoin{442,5,11,28,true},
+                          MeemJoin{350,4,7,8,false,1,"meem-init"}, MeemJoin{402,2,5,10,false,3,"meem-init"}}) {
+        PageAnalysisResult sample;
+        QDataStream stream(read(QString("pages/page%1.dat").arg(at.page)));
+        stream >> sample.page;
+        sample.resolveWordBoundaries(at.page, &font);
+        check(sample.segmentSubword(at.page-1, at.line-1, at.word-1, at.subword-1, &font, true),
+              "Initial meem fixture remains partial");
+        const auto& word = sample.page.lines[at.line-1].words[at.word-1];
+        const auto& sub = word.wordResultInfo.subWords.at(at.subword-1);
+        check(sub.letterDiagnostics.first().toObject().value("template") == at.form &&
+              toSubpaths(sub.baseGlyphs.front().path).size() == 2 && coversOriginalInk(word, sub),
+              "Initial meem lost its counter or original ink");
+        check(sub.kashidaPaths.front().isEmpty() == at.shared, "Wrong meem attachment topology");
+        const auto shape = word.bodyShape(sub);
+        const auto curves = baseContourCurves(shape.transform.map(shape.path).translated(shape.pos));
+        const auto& join = *sub.joins.begin();
+        const auto cut = at.shared ? QLineF(join.topBaseLine.point, join.bottomBaseLine.point) :
+            sub.kashidaCuts.front().first;
+        check(QLineF(cut.p2(), curves.at(at.corner).pt1()).length() < 1e-5,
+              "Initial meem missed the rim or the stacked arm junction");
+        if (at.shared)
+            check(std::abs(cut.dy()) < 1e-5, "Stacked meem arm did not share a horizontal cut with hah");
+    }
     auto invalid=config;auto finals=invalid["final"].toArray();auto f=finals.last().toObject();
     f.insert("sharedBoundary","yes");finals[finals.size()-1]=f;invalid.insert("final",finals);
     check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(),"Malformed shared boundary accepted");

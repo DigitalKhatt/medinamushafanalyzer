@@ -25,7 +25,7 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         out << c.counter << c.maxDistance << c.upperLimit << c.upper << c.top << c.paired << quint64(c.corners.size());
         for (const auto &p : c.corners) {
             point(p.anchor);
-            out << p.tangent << p.distance;
+            out << p.tangent << p.distance << p.sampled;
             points(p.oppositeCorners);
         }
     };
@@ -62,6 +62,9 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         out << loop.hole << loop.bandY << loop.valid;
         corner(loop.entry);
         corner(loop.exit);
+        out << bool(loop.lowerEntry);
+        if (loop.lowerEntry)
+            corner(*loop.lowerEntry);
         out << quint64(loop.entryRoutes.size());
         for (const auto &entry : loop.entryRoutes) {
             point(entry.crest);
@@ -339,6 +342,18 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         point(e.bowlTurn->tip);
         point(e.bowlTurn->turn);
     }
+    out << bool(e.openBowl);
+    if (e.openBowl) {
+        point(e.openBowl->tip);
+        point(e.openBowl->floor);
+        point(e.openBowl->shoulder);
+        out << e.openBowl->stroke << e.openBowl->tangentSample << e.openBowl->forward;
+        for (const auto* landmark : {&e.openBowl->crest, &e.openBowl->exit}) {
+            out << bool(*landmark);
+            if (*landmark)
+                point(**landmark);
+        }
+    }
     out << quint64(e.outlines.size());
     for (const auto &shape : e.outlines) {
         out << shape.eye << quint64(shape.counters.size());
@@ -399,12 +414,14 @@ int main(int argc, char **argv) {
         }
     const auto& schemas = sharedShapeSchemas();
     for (auto schema = schemas.cbegin(); schema != schemas.cend(); ++schema)
-        if (!shapes.contains(schema.key()))
+        // The former noon body is still supported for saved template drafts.
+        if (schema.key() != "bowl-neck" && !shapes.contains(schema.key()))
             qFatal("No configured template exercises shared shape %s", qPrintable(schema.key()));
     struct Fixture {
         int page, line, word, sub;
     };
-    const Fixture fixtures[] = {{3, 2, 9, 1}, {6, 15, 4, 1}, {600, 2, 5, 1}, {230, 11, 3, 1}, {6, 9, 8, 2}};
+    const Fixture fixtures[] = {{3, 2, 9, 1}, {6, 15, 4, 1}, {600, 2, 5, 1}, {230, 11, 3, 1}, {6, 9, 8, 2},
+        {3, 13, 3, 1}, {182, 4, 3, 2}, {2, 6, 7, 1}};
     int checks = 0;
     for (const auto &f : fixtures) {
         QFile file(QString("pages/page%1.dat").arg(f.page));

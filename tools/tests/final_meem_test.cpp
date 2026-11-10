@@ -106,5 +106,27 @@ int main(int argc, char** argv) {
             check(result.letterDiagnostics.last().toObject().value("template") == "meem-shoulder-fina",
                   "Assembly did not retain the final body's own shoulder");
     }
+    const auto counterForm = resolvedLetterForm(config, "meem-counter-fina");
+    QFile steps("pages/page2.dat");
+    check(steps.open(QIODevice::ReadOnly), "Final meem step fixtures missing");
+    PageAnalysisResult stepped;
+    QDataStream stepInput(&steps);
+    stepInput >> stepped.page;
+    for (const auto& [line, word, corner] : {std::array{6, 7, 33}, std::array{8, 1, 26}}) {
+        const auto& item = stepped.page.lines[line-1].words[word-1];
+        const auto& result = item.wordResultInfo.subWords.front();
+        const auto shape = item.bodyShape(result);
+        auto uncut = geometry(shape.transform.map(shape.path).translated(shape.pos), dummy, counterForm);
+        check(declaredSharedBoundary(uncut, counterForm) && uncut.res.bottomBaseLine.time == corner,
+              "Final meem missed the inward corner above its stepped rim");
+        const auto cut = uncut.res;
+        check(stepped.segmentSubword(1, line-1, word-1, 0, nullptr, true) &&
+              result.baseGlyphs.size() == 2 && result.kashidaPaths.size() == 1 && !result.kashidaPaths.front().isEmpty(),
+              "Final meem step lost a letter or its incoming connector");
+        const auto receiving = result.kashidaCuts.front().second;
+        check(QLineF(receiving.p1(), cut.topBaseLine.point).length() < 1e-5 &&
+              QLineF(receiving.p2(), cut.bottomBaseLine.point).length() < 1e-5,
+              "The assembled cut clipped the stepped rim");
+    }
     qInfo("Final meem passed: own valley/corner 4.7975/16, retained loop/counter/tail, no lam ascender, independence from neighboring landmarks, scale/translation invariance, four bodies/three spans and deterministic masks.");
 }

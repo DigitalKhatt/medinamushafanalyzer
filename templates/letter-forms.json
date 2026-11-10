@@ -122,6 +122,7 @@
       },
       "cuts": {
         "counter": {
+          "normalValley": true,
           "normalNeck": true
         },
         "boundaries": {
@@ -1163,29 +1164,6 @@
       }
     },
     {
-      "id": "meem-sloping-neck-init",
-      "current": "م",
-      "tryNext": true,
-      "onIncomplete": true,
-      "onUnresolved": true,
-      "body": {
-        "shape": "counter-neck",
-        "counter": {
-          "maxNeckDistance": 3,
-          "maxOuterDistance": 2
-        }
-      },
-      "cuts": {
-        "counter": {
-          "normalNeck": true
-        },
-        "boundaries": {
-          "left": "counter-neck",
-          "right": "free"
-        }
-      }
-    },
-    {
       "id": "meem-lower-flank-init",
       "current": "م",
       "tryNext": true,
@@ -1195,7 +1173,8 @@
         "shape": "counter-loop",
         "loop": {
           "exitCorner": {
-            "maxDistance": 2.1
+            "maxDistance": 2.1,
+            "sampleValley": true
           }
         },
         "counters": 1
@@ -2367,7 +2346,7 @@
       "id": "hah-stacked-medi",
       "current": "جحخ",
       "upperAttachment": {
-        "letters": "بتثنيىئ",
+        "letters": "بتثنيىئم",
         "headFlank": {
           "minX": 3,
           "minY": 0,
@@ -3449,7 +3428,8 @@
         "loop": {
           "entryCorner": {
             "placement": "upper",
-            "maxDistance": 2.4
+            "maxDistance": 2.4,
+            "tryLowerCorner": true
           },
           "exitCorner": {
             "maxDistance": 2.2
@@ -3460,7 +3440,8 @@
       "cuts": {
         "loop": {
           "entryCorner": {
-            "normalCut": true
+            "normalCut": true,
+            "required": true
           },
           "sideOffset": 0.4,
           "baselineOffset": 0.2,
@@ -4259,7 +4240,8 @@
         "shape": "counter-neck",
         "counter": {
           "entryCorner": {
-            "maxDistance": 1.5
+            "maxDistance": 1.5,
+            "minStepAngle": 45
           }
         }
       },

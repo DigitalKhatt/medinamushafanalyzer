@@ -705,6 +705,7 @@ struct CounterCornerBody {
     QPointF tangent;
     double distance;
     std::vector<PathExtrema> oppositeCorners;
+    bool sampled = false;
 };
 
 struct CounterCornerEvidence {
@@ -805,6 +806,7 @@ struct LoopBodyEvidence {
     double bandY = -1;
     bool valid = false;
     CounterCornerEvidence entry, exit;
+    std::optional<CounterCornerEvidence> lowerEntry;
     std::vector<LoopEntryRoute> entryRoutes;
     std::shared_ptr<const LoopTeeth> teeth;
 };

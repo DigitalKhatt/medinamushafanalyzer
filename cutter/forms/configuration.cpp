@@ -526,10 +526,19 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
             (!sample.isUndefined() && !(sample.toDouble() > 0 && sample.toDouble() <= .5)))
             return id + ": open bowl needs a final position, a corner angle and a positive maximum cut width";
     }
+    if (shape == "counter-loop") {
+        const auto entry = body.value("loop").toObject().value("entryCorner").toObject();
+        const auto fallback = entry.value("tryLowerCorner");
+        if (!fallback.isUndefined() && (!fallback.isBool() || entry.value("placement") != "upper"))
+            return id + ": entryCorner.tryLowerCorner must be a boolean on an upper entry corner";
+    }
     if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
         bodyKeys << "shoulder";
         cutKeys << "shoulder" << "bridge";
     }
+    const auto normalValley = cuts.value("counter").toObject().value("normalValley");
+    if (!normalValley.isUndefined() && (shape != "counter-neck" || phase != "initial" || !normalValley.isBool()))
+        return id + ": normalValley must be a boolean on an initial counter-neck cut";
     for (auto it = body.begin(); it != body.end(); ++it)
         if (!bodyKeys.contains(it.key()))
             return id + ": unknown body setting " + it.key();
@@ -561,7 +570,7 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         if (form.contains(old))
             return id + ": declared geometry belongs in body / cuts, not " + old;
     const QStringList projectionKeys{
-        "normalNeck", "normalCut",     "offset",           "baselineOffset", "sideOffset",   "entryBelowCounter",
+        "normalNeck", "normalValley",  "normalCut",        "offset",         "baselineOffset", "sideOffset", "entryBelowCounter",
         "required",   "strokeOffsetX", "bottomProbe",      "oppositeCorner", "normalOffset", "normalOffsetTolerance",
         "penWidth",   "strokeSource",  "walkNormalOffset", "anchorSide",     "visibleFrom",  "maxProjectionInset"};
     const auto checkBody = [&](auto &&self, const QJsonObject &value, bool anchor = false) -> bool {
@@ -1351,6 +1360,13 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 if (!distance.isUndefined() && (!distance.isDouble() ||
                     !std::isfinite(distance.toDouble()) || distance.toDouble() <= 0))
                     return id + ": " + side + ".maxDistance must be positive, in counter heights";
+                const auto stepAngle = corner.value("minStepAngle");
+                if (!stepAngle.isUndefined() && (!placement.isUndefined() || !stepAngle.isDouble() ||
+                    !(stepAngle.toDouble() > 0 && stepAngle.toDouble() < 180)))
+                    return id + ": " + side + ".minStepAngle needs a lower corner and an angle between 0 and 180";
+                const auto sampleValley = corner.value("sampleValley");
+                if (!sampleValley.isUndefined() && (!placement.isUndefined() || !sampleValley.isBool()))
+                    return id + ": " + side + ".sampleValley needs a boolean and a lower corner";
                 const auto counterY = corner.value("maxCounterY");
                 if (!counterY.isUndefined() && (placement != "upper" || !counterY.isDouble() ||
                     !std::isfinite(counterY.toDouble()) || counterY.toDouble() < 0 || counterY.toDouble() > .5))
