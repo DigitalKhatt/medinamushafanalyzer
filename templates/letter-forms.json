@@ -648,49 +648,73 @@
     {
       "id": "kaf-descending-hook-init",
       "current": "ك",
-      "method": "walk",
-      "start": "top",
-      "traversal": "down",
-      "top": [
-        "left",
-        {
-          "direction": "right",
-          "minY": 2.1,
-          "minX": 2,
-          "accumulate": true
-        }
-      ],
-      "bottomProbe": "normal",
-      "topUseStepEnd": true,
-      "bodyCounters": 0,
       "tryNext": true,
-      "topTraversal": "forward",
       "retryOnPartial": true,
       "onIncomplete": true,
-      "returningStroke": true
+      "returningStroke": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "top",
+          "traversal": "down",
+          "top": [
+            "left",
+            {
+              "direction": "right",
+              "minY": 2.1,
+              "minX": 2,
+              "accumulate": true
+            }
+          ],
+          "topUseStepEnd": true,
+          "topTraversal": "forward"
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "normal"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
+      }
     },
     {
       "id": "kaf-hook-init",
       "current": "ك",
-      "method": "walk",
-      "start": "top",
-      "traversal": "down",
-      "top": [
-        "left",
-        {
-          "direction": "right",
-          "minY": 0.7,
-          "minX": 1.2
-        }
-      ],
-      "bottomProbe": "normal",
-      "topUseStepEnd": true,
-      "bodyCounters": 0,
       "tryNext": true,
-      "topTraversal": "forward",
       "retryOnPartial": true,
       "onIncomplete": true,
-      "returningStroke": true
+      "returningStroke": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "top",
+          "traversal": "down",
+          "top": [
+            "left",
+            {
+              "direction": "right",
+              "minY": 0.7,
+              "minX": 1.2
+            }
+          ],
+          "topUseStepEnd": true,
+          "topTraversal": "forward"
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "normal"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
+        }
+      }
     },
     {
       "id": "kaf-init",
@@ -790,23 +814,35 @@
     {
       "id": "kaf-flat-init",
       "current": "ك",
-      "method": "walk",
       "onPartial": true,
-      "top": [
-        "left",
-        {
-          "direction": "right",
-          "minY": 0,
-          "start": {
-            "xMinimum": true
-          }
+      "tryNext": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "top": [
+            "left",
+            {
+              "direction": "right",
+              "minY": 0,
+              "start": {
+                "xMinimum": true
+              }
+            }
+          ]
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "below",
+          "normalCut": true,
+          "strokeOffsetX": -0.5
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
         }
-      ],
-      "bottomProbe": "below",
-      "normalCut": true,
-      "strokeOffsetX": -0.5,
-      "bodyCounters": 0,
-      "tryNext": true
+      }
     },
     {
       "id": "ain-neck-init",
@@ -846,19 +882,31 @@
     {
       "id": "kaf-elbow-init",
       "current": "ك",
-      "method": "walk",
-      "bodyCounters": 0,
-      "start": "top",
-      "traversal": "down",
-      "topTraversal": "forward",
-      "top": [
-        "left",
-        {
-          "direction": "right",
-          "minY": 0
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "top",
+          "traversal": "down",
+          "topTraversal": "forward",
+          "top": [
+            "left",
+            {
+              "direction": "right",
+              "minY": 0
+            }
+          ]
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "below"
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "contour-route"
         }
-      ],
-      "bottomProbe": "below"
+      }
     },
     {
       "id": "sad-init",
@@ -4687,18 +4735,27 @@
     {
       "id": "kaf-return-fina",
       "current": "ك",
-      "method": "tail-entry",
-      "start": "left",
-      "tailEntry": {
-        "walkWidths": 0.5,
-        "minRise": 3,
-        "maxRun": 75,
-        "minRun": 0.75
-      },
-      "bodyCounters": 0,
       "ownsLeftTip": true,
       "tryNext": true,
-      "onIncomplete": true
+      "onIncomplete": true,
+      "body": {
+        "shape": "tail-branch",
+        "tail": {
+          "minRise": 3,
+          "maxRun": 75,
+          "minRun": 0.75
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "tail": {
+          "walkWidths": 0.5
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "branch-normal"
+        }
+      }
     },
     {
       "id": "waw-neck-fina",
