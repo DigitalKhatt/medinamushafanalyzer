@@ -5335,24 +5335,36 @@
     {
       "id": "alef-return-fina",
       "current": "اآأإٱ",
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "top": [
-        "up",
-        "down",
-        "up"
-      ],
-      "bottomProbe": "normal",
-      "bodyCounters": 0,
-      "bodyFeatures": {
-        "minHeight": 3,
-        "maxWidthToHeight": 1.2
-      },
       "tightJoin": true,
       "tryNext": true,
       "sharedBoundary": true,
-      "sharedBoundaryWith": "لك"
+      "sharedBoundaryWith": "لك",
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "top": [
+            "up",
+            "down",
+            "up"
+          ]
+        },
+        "features": {
+          "minHeight": 3,
+          "maxWidthToHeight": 1.2
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "normal"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "alef-detached-fina",
