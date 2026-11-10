@@ -3466,71 +3466,105 @@
       "id": "reh-shouldered-fina",
       "current": "رز",
       "ownsLeftTip": true,
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "topTraversal": "forward",
-      "top": [
-        "down",
-        {
-          "direction": "up",
-          "minX": 2,
-          "maxY": -1.5,
-          "accumulate": true,
-          "end": {
-            "sharp": true,
-            "yExtremum": true
-          }
-        },
-        {
-          "direction": "right",
-          "minX": 2.4,
-          "minY": -0.25,
-          "maxY": 0.85,
-          "immediate": true
-        }
-      ],
-      "topUseStepEnd": false,
-      "bottomProbe": "up",
       "tryNext": true,
       "onUnresolved": true,
-      "retainBodyFeatures": true
+      "retainBodyFeatures": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "topTraversal": "forward",
+          "top": [
+            "down",
+            {
+              "direction": "up",
+              "minX": 2,
+              "maxY": -1.5,
+              "accumulate": true,
+              "end": {
+                "sharp": true,
+                "yExtremum": true
+              }
+            },
+            {
+              "direction": "right",
+              "minX": 2.4,
+              "minY": -0.25,
+              "maxY": 0.85,
+              "immediate": true
+            }
+          ],
+          "topUseStepEnd": false
+        }
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "up"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "reh-rising-tail-fina",
       "current": "رز",
-      "method": "rising-tail",
-      "tail": {
-        "minRun": 4,
-        "minRise": 2,
-        "maxChord": 1.5
-      },
       "sharedBoundary": true,
       "tightJoin": true,
       "onUnresolved": true,
-      "tryNext": true
+      "tryNext": true,
+      "body": {
+        "shape": "rising-return",
+        "return": {
+          "minRun": 4,
+          "minRise": 2
+        }
+      },
+      "cuts": {
+        "return": {
+          "maxChord": 1.5
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "return-seam"
+        }
+      }
     },
     {
       "id": "reh-fina",
       "current": "رز",
       "ownsLeftTip": true,
       "retainEntryCrest": true,
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "topTraversal": "forward",
-      "top": [
-        "down",
-        {
-          "direction": "up",
-          "minX": 0,
-          "maxY": -1,
-          "accumulate": true
+      "tryNext": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "topTraversal": "forward",
+          "top": [
+            "down",
+            {
+              "direction": "up",
+              "minX": 0,
+              "maxY": -1,
+              "accumulate": true
+            }
+          ],
+          "topUseStepEnd": true
         }
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "up",
-      "tryNext": true
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "up"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "feh-fina",
@@ -4264,23 +4298,35 @@
     {
       "id": "reh-hook-fina",
       "current": "رز",
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "topTraversal": "forward",
-      "top": [
-        "down",
-        {
-          "direction": "up",
-          "minX": 0,
-          "maxY": -1,
-          "accumulate": true
+      "tryNext": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "topTraversal": "forward",
+          "top": [
+            "down",
+            {
+              "direction": "up",
+              "minX": 0,
+              "maxY": -1,
+              "accumulate": true
+            }
+          ],
+          "topUseStepEnd": true
         }
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "normal",
-      "anchorSide": "bottom",
-      "tryNext": true
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "normal",
+          "anchorSide": "bottom"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "yeh-return-fina",
@@ -4654,43 +4700,64 @@
       "id": "reh-returning-bowl-fina",
       "onHeadConflict": true,
       "current": "رز",
-      "method": "tail-entry",
-      "start": "left",
       "ownsLeftTip": true,
-      "tailEntry": {
-        "minRise": 0.35,
-        "minRun": 0.4,
-        "maxRun": 75,
-        "walkWidths": 0.5
-      },
       "tryNext": true,
       "tightJoin": true,
       "returningStroke": true,
       "onIncomplete": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "tail-branch",
+        "tail": {
+          "minRise": 0.35,
+          "minRun": 0.4,
+          "maxRun": 75
+        }
+      },
+      "cuts": {
+        "tail": {
+          "walkWidths": 0.5
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "branch-normal"
+        }
+      }
     },
     {
       "id": "reh-swept-arm-fina",
       "current": "رز",
-      "method": "walk",
-      "start": "left",
-      "topTraversal": "forward",
-      "top": [
-        "up",
-        "down",
-        "up",
-        {
-          "direction": "down",
-          "end": {
-            "yExtremum": true
-          }
-        }
-      ],
-      "topUseStepEnd": true,
-      "bottomProbe": "normal",
       "onIncomplete": true,
       "tryNext": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "topTraversal": "forward",
+          "top": [
+            "up",
+            "down",
+            "up",
+            {
+              "direction": "down",
+              "end": {
+                "yExtremum": true
+              }
+            }
+          ],
+          "topUseStepEnd": true
+        }
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "normal"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "noon-returning-bowl-fina",
@@ -4743,24 +4810,36 @@
       "current": "رز",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "topTraversal": "forward",
-      "top": [
-        "down",
-        {
-          "direction": "up",
-          "minX": 1
-        },
-        "right"
-      ],
-      "bottomProbe": "up",
       "ownsLeftTip": true,
       "tightJoin": true,
       "returningStroke": true,
-      "bodyCounters": 0,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "topTraversal": "forward",
+          "top": [
+            "down",
+            {
+              "direction": "up",
+              "minX": 1
+            },
+            "right"
+          ]
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "route": {
+          "bottomProbe": "up"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "noon-normal-corner-fina",

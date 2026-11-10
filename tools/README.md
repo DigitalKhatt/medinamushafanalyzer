@@ -163,6 +163,8 @@ Heh counter forms use `horizontal-counters` or `stacked-counters`, alongside the
 
 The five initial beh-family forms also use `contour-route`: directional walks and body proportions belong in `body`, while the lower probe, normal and corner ownership belong in `cuts`. `tooth_ownership_test.cpp` and `beh_hah_ligature_test.cpp` cover the stacked joins and retained initial strokes.
 
+Final reh uses contour routes plus `tail-branch` and `rising-return`. Tail recognition records its fork, intrinsic width and return corners. Cut policy selects the contour walk or shared seam; retained-bowl checks run during projection and assembly. The unused generic reh join matcher has been removed.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright

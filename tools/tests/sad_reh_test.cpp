@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
         }
     for (const auto& value : config.value("final").toArray())
         if (value.toObject().value("id") == "reh-fina") reh = value.toObject();
-    check(!loop.isEmpty() && reh.value("method") == "walk", "Missing reusable body definitions");
+    check(!loop.isEmpty() && reh.value("body").toObject().value("shape") == "contour-route", "Missing reusable body definitions");
     QFile file("pages/page3.dat");
     check(file.open(QIODevice::ReadOnly), "Page 3 is required");
     PageAnalysisResult analysis;
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     check(pieces.size() == 3 && pieces[1].path.contains(QLineF(tip->point, bend->point).center()),
           "Tooth was excluded from the sad body");
     context.form = reh;
-    check(searchContourWalk(context), "Reh return route failed");
+    check(declaredSharedBoundary(context, reh), "Reh return route failed");
     const auto rehCut = context.res;
     check(rehCut.bottomBaseLine.time == 17 &&
           std::abs(rehCut.topBaseLine.point.x() - rehCut.bottomBaseLine.point.x()) < 1e-8,
@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
     check(independent && same(right, independent->first) && same(left, independent->second),
           "Neighboring text or joins changed the loop/tooth body");
     context.form = reh;
-    check(searchContourWalk(context) && same(rehCut, context.res), "Reh depends on a neighboring cut");
+    check(declaredSharedBoundary(context, reh) && same(rehCut, context.res), "Reh depends on a neighboring cut");
     for (double scale : {0.7, 1.6}) {
         QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(source), dummy);
@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
         check(proposed && same(right, proposed->first, mapping) && same(left, proposed->second, mapping),
               "Loop/tooth composition is not scale/translation invariant");
         scaled.form = reh;
-        check(searchContourWalk(scaled) && same(rehCut, scaled.res, mapping),
+        check(declaredSharedBoundary(scaled, reh) && same(rehCut, scaled.res, mapping),
               "Reh return route is not scale/translation invariant");
     }
     auto withoutCounter = geometry(context.subPaths.front(), dummy);
