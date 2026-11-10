@@ -863,40 +863,64 @@
     {
       "id": "sad-init",
       "current": "صض",
-      "method": "initial-loop-body",
-      "loopBoundaries": {
-        "minAspect": 1.5,
-        "entryWalk": {
-          "topTraversal": "forward",
-          "top": [
-            "right",
-            {
-              "direction": "left",
-              "minY": 0,
-              "end": {
-                "sharp": true,
-                "xExtremum": true
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.5,
+          "entryWalk": {
+            "topTraversal": "forward",
+            "top": [
+              "right",
+              {
+                "direction": "left",
+                "minY": 0,
+                "end": {
+                  "sharp": true,
+                  "xExtremum": true
+                }
               }
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down"
+            ],
+            "topUseStepEnd": true
+          },
+          "exitTooth": {
+            "maxGap": 1.5
+          }
+        }
+      },
+      "cuts": {
+        "loop": {
+          "entryWalk": {
+            "bottomProbe": "down"
+          },
+          "exitTooth": {
+            "leftOffset": 0.45
+          }
         },
-        "exitTooth": {
-          "maxGap": 1.5,
-          "leftOffset": 0.45
+        "boundaries": {
+          "right": "free",
+          "left": "loop-exit"
         }
       }
     },
     {
       "id": "tah-init",
       "current": "طظ",
-      "method": "initial-loop-body",
-      "loopBoundaries": {
-        "minAspect": 1.5,
-        "sideOffset": 0.5,
-        "baselineOffset": 0.2,
-        "normalCut": true
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.5
+        }
+      },
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.5,
+          "baselineOffset": 0.2,
+          "normalCut": true
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "loop-exit"
+        }
       }
     },
     {
@@ -1137,68 +1161,102 @@
       "current": "صض",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "initial-loop-body",
-      "bodyCounters": 1,
-      "loopBoundaries": {
-        "minAspect": 1.15,
-        "entryWalk": {
-          "topTraversal": "forward",
-          "top": [
-            "right",
-            {
-              "direction": "left",
-              "minY": 0,
-              "end": {
-                "sharp": true,
-                "xExtremum": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.15,
+          "entryWalk": {
+            "topTraversal": "forward",
+            "top": [
+              "right",
+              {
+                "direction": "left",
+                "minY": 0,
+                "end": {
+                  "sharp": true,
+                  "xExtremum": true
+                }
               }
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down"
+            ],
+            "topUseStepEnd": true
+          },
+          "exitTooth": {
+            "maxGap": 2.3
+          }
         },
-        "exitTooth": {
-          "maxGap": 2.3,
-          "leftOffset": 0.45
-        }
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "loop": {
+          "entryWalk": {
+            "bottomProbe": "down"
+          },
+          "exitTooth": {
+            "leftOffset": 0.45
+          }
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "loop-exit"
+        }
+      }
     },
     {
       "id": "tah-loop-corner-init",
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "initial-loop-body",
-      "bodyCounters": 1,
-      "loopBoundaries": {
-        "minAspect": 1.15,
-        "sideOffset": 0.35,
-        "baselineOffset": 0.2,
-        "normalCut": true,
-        "entryCorner": {
-          "maxDistance": 2
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.15,
+          "entryCorner": {
+            "maxDistance": 2
+          },
+          "exitCorner": {
+            "maxDistance": 2
+          }
         },
-        "exitCorner": {
-          "maxDistance": 2
-        }
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.35,
+          "baselineOffset": 0.2,
+          "normalCut": true
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "loop-exit"
+        }
+      }
     },
     {
       "id": "tah-low-rim-init",
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "initial-loop-body",
-      "bodyCounters": 1,
-      "loopBoundaries": {
-        "minAspect": 1.15,
-        "sideOffset": 0.35,
-        "baselineOffset": 0.2,
-        "normalCut": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.15
+        },
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.35,
+          "baselineOffset": 0.2,
+          "normalCut": true
+        },
+        "boundaries": {
+          "right": "free",
+          "left": "loop-exit"
+        }
+      }
     },
     {
       "id": "heh-stacked-bridge-init",
@@ -1459,27 +1517,42 @@
     {
       "id": "sad-medi",
       "current": "صض",
-      "loopBoundaries": {
-        "minAspect": 1.5,
-        "entryWalk": {
-          "topTraversal": "forward",
-          "top": [
-            "right",
-            {
-              "direction": "left",
-              "minY": 0,
-              "end": {
-                "sharp": true,
-                "xExtremum": true
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.5,
+          "entryWalk": {
+            "topTraversal": "forward",
+            "top": [
+              "right",
+              {
+                "direction": "left",
+                "minY": 0,
+                "end": {
+                  "sharp": true,
+                  "xExtremum": true
+                }
               }
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down"
+            ],
+            "topUseStepEnd": true
+          },
+          "exitTooth": {
+            "maxGap": 1.5
+          }
+        }
+      },
+      "cuts": {
+        "loop": {
+          "entryWalk": {
+            "bottomProbe": "down"
+          },
+          "exitTooth": {
+            "leftOffset": 0.45
+          }
         },
-        "exitTooth": {
-          "maxGap": 1.5,
-          "leftOffset": 0.45
+        "boundaries": {
+          "right": "loop-entry",
+          "left": "loop-exit"
         }
       }
     },
@@ -1851,24 +1924,37 @@
     {
       "id": "tah-loop-medi",
       "current": "طظ",
-      "loopBoundaries": {
-        "minAspect": 1.5,
-        "sideOffset": 0.5,
-        "baselineOffset": 0.2,
-        "entryWalk": {
-          "topTraversal": "forward",
-          "top": [
-            "right",
-            {
-              "direction": "left",
-              "minY": 0,
-              "end": {
-                "sharp": true
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.5,
+          "entryWalk": {
+            "topTraversal": "forward",
+            "top": [
+              "right",
+              {
+                "direction": "left",
+                "minY": 0,
+                "end": {
+                  "sharp": true
+                }
               }
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down"
+            ],
+            "topUseStepEnd": true
+          }
+        }
+      },
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.5,
+          "baselineOffset": 0.2,
+          "entryWalk": {
+            "bottomProbe": "down"
+          }
+        },
+        "boundaries": {
+          "right": "loop-entry",
+          "left": "loop-exit"
         }
       }
     },
@@ -3170,85 +3256,135 @@
       "current": "صض",
       "tryNext": true,
       "onIncomplete": true,
-      "bodyCounters": 1,
-      "loopBoundaries": {
-        "minAspect": 1.15,
-        "entryWalk": {
-          "topTraversal": "forward",
-          "top": [
-            "right",
-            {
-              "direction": "left",
-              "minY": 0,
-              "end": {
-                "sharp": true,
-                "xExtremum": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.15,
+          "entryWalk": {
+            "topTraversal": "forward",
+            "top": [
+              "right",
+              {
+                "direction": "left",
+                "minY": 0,
+                "end": {
+                  "sharp": true,
+                  "xExtremum": true
+                }
               }
-            }
-          ],
-          "topUseStepEnd": true,
-          "bottomProbe": "down"
+            ],
+            "topUseStepEnd": true
+          },
+          "exitTooth": {
+            "maxGap": 2.3
+          }
         },
-        "exitTooth": {
-          "maxGap": 2.3,
-          "leftOffset": 0.45
-        }
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "loop": {
+          "entryWalk": {
+            "bottomProbe": "down"
+          },
+          "exitTooth": {
+            "leftOffset": 0.45
+          }
+        },
+        "boundaries": {
+          "right": "loop-entry",
+          "left": "loop-exit"
+        }
+      }
     },
     {
       "id": "sad-corner-tooth-medi",
       "current": "صض",
       "tryNext": true,
       "onIncomplete": true,
-      "bodyCounters": 1,
-      "loopBoundaries": {
-        "minAspect": 1.15,
-        "sideOffset": 0.35,
-        "normalCut": true,
-        "entryCorner": {
-          "maxDistance": 2
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.15,
+          "entryCorner": {
+            "maxDistance": 2
+          },
+          "exitTooth": {
+            "maxGap": 2.3
+          }
         },
-        "exitTooth": {
-          "maxGap": 2.3,
-          "leftOffset": 0.45
-        }
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.35,
+          "normalCut": true,
+          "exitTooth": {
+            "leftOffset": 0.45
+          }
+        },
+        "boundaries": {
+          "right": "loop-entry",
+          "left": "loop-exit"
+        }
+      }
     },
     {
       "id": "tah-loop-corner-medi",
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
-      "bodyCounters": 1,
-      "loopBoundaries": {
-        "minAspect": 1.15,
-        "sideOffset": 0.35,
-        "baselineOffset": 0.2,
-        "normalCut": true,
-        "entryCorner": {
-          "maxDistance": 2
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.15,
+          "entryCorner": {
+            "maxDistance": 2
+          },
+          "exitCorner": {
+            "maxDistance": 2
+          }
         },
-        "exitCorner": {
-          "maxDistance": 2
-        }
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.35,
+          "baselineOffset": 0.2,
+          "normalCut": true
+        },
+        "boundaries": {
+          "right": "loop-entry",
+          "left": "loop-exit"
+        }
+      }
     },
     {
       "id": "tah-low-rim-medi",
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
-      "bodyCounters": 1,
-      "loopBoundaries": {
-        "minAspect": 1.15,
-        "sideOffset": 0.35,
-        "baselineOffset": 0.2,
-        "normalCut": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.15
+        },
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.35,
+          "baselineOffset": 0.2,
+          "normalCut": true
+        },
+        "boundaries": {
+          "right": "loop-entry",
+          "left": "loop-exit"
+        }
+      }
     },
     {
       "id": "meem-upper-neck-medi",
@@ -3291,24 +3427,37 @@
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
-      "bodyCounters": 1,
       "sharedEntry": true,
       "tightJoin": true,
-      "loopBoundaries": {
-        "entryCorner": {
-          "placement": "upper",
-          "maxDistance": 2.4,
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "entryCorner": {
+            "placement": "upper",
+            "maxDistance": 2.4
+          },
+          "exitCorner": {
+            "maxDistance": 2.2
+          },
+          "minAspect": 1.1
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "loop": {
+          "entryCorner": {
+            "normalCut": true
+          },
+          "sideOffset": 0.4,
+          "baselineOffset": 0.2,
           "normalCut": true
         },
-        "exitCorner": {
-          "maxDistance": 2.2
-        },
-        "sideOffset": 0.4,
-        "baselineOffset": 0.2,
-        "normalCut": true,
-        "minAspect": 1.1
-      },
-      "onUnresolved": true
+        "boundaries": {
+          "right": "loop-entry",
+          "left": "loop-exit"
+        }
+      }
     },
     {
       "id": "feh-upper-neck-medi",
@@ -3412,8 +3561,17 @@
     {
       "id": "tah-rising-rim-medi",
       "current": "طظ",
-      "loopBoundaries": {
-        "rimAnchors": {
+      "onIncomplete": true,
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-rim",
+        "rim": {
+          "rimMargin": 1.9,
+          "shaftRise": 1.65
+        }
+      },
+      "cuts": {
+        "rim": {
           "entry": [
             1.1,
             0.7
@@ -3422,13 +3580,13 @@
             -0.25,
             1
           ],
-          "rimMargin": 1.9,
-          "radius": 1.6,
-          "shaftRise": 1.65
+          "radius": 1.6
+        },
+        "boundaries": {
+          "right": "loop-entry",
+          "left": "loop-exit"
         }
-      },
-      "onIncomplete": true,
-      "onUnresolved": true
+      }
     },
     {
       "id": "seen-lifted-exit-medi",
@@ -3667,57 +3825,68 @@
       "id": "tah-upright-rim-medi",
       "current": "طظ",
       "onUnresolved": true,
-      "bodyOutline": {
+      "body": {
+        "shape": "counter-outline",
         "counters": 1,
-        "aspect": [
-          1.4,
-          4.5
-        ],
-        "rim": {
-          "left": [
-            0.25,
-            1.85
+        "outline": {
+          "aspect": [
+            1.4,
+            4.5
           ],
-          "top": [
-            2,
-            5
-          ],
-          "right": [
-            0.3,
-            1.6
-          ],
-          "bottom": [
-            0.2,
-            0.9
-          ]
+          "rim": {
+            "left": [
+              0.25,
+              1.85
+            ],
+            "top": [
+              2,
+              5
+            ],
+            "right": [
+              0.3,
+              1.6
+            ],
+            "bottom": [
+              0.2,
+              0.9
+            ]
+          }
+        }
+      },
+      "cuts": {
+        "outline": {
+          "entry": {
+            "x": [
+              0.95,
+              1.8
+            ],
+            "y": [
+              0.3,
+              1.25
+            ],
+            "width": [
+              0.22,
+              1.0
+            ]
+          },
+          "exit": {
+            "x": [
+              -0.8,
+              0.15
+            ],
+            "y": [
+              0.3,
+              1.65
+            ],
+            "width": [
+              0.22,
+              1.0
+            ]
+          }
         },
-        "entry": {
-          "x": [
-            0.95,
-            1.8
-          ],
-          "y": [
-            0.3,
-            1.25
-          ],
-          "width": [
-            0.22,
-            1.0
-          ]
-        },
-        "exit": {
-          "x": [
-            -0.8,
-            0.15
-          ],
-          "y": [
-            0.3,
-            1.65
-          ],
-          "width": [
-            0.22,
-            1.0
-          ]
+        "boundaries": {
+          "left": "outline-exit",
+          "right": "outline-entry"
         }
       }
     }
@@ -4922,36 +5091,60 @@
       "current": "صض",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "maxDistance": 2.1,
-          "normalCut": true
-        },
-        "offset": 0.4,
-        "baselineOffset": 0.2
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "maxDistance": 2.1
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "normalCut": true
+          },
+          "offset": 0.4,
+          "baselineOffset": 0.2
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "counter-neck"
+        }
+      }
     },
     {
       "id": "tah-diagonal-fina",
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "maxDistance": 2.1,
-          "normalCut": true
-        },
-        "offset": 0.4,
-        "baselineOffset": 0.2
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "maxDistance": 2.1
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "normalCut": true
+          },
+          "offset": 0.4,
+          "baselineOffset": 0.2
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "counter-neck"
+        }
+      }
     },
     {
       "id": "meem-diagonal-fina",
@@ -5329,52 +5522,80 @@
       "current": "صض",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "placement": "upper",
-          "required": true,
-          "maxDistance": 2.6,
-          "normalCut": true
-        },
-        "offset": 0.3,
-        "baselineOffset": 0.25
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
       "returningStroke": true,
-      "shoulder": {
-        "maxCapRise": 2.7,
-        "maxWidth": 3.2,
-        "radius": 2.9
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-shoulder",
+        "counter": {
+          "entryCorner": {
+            "placement": "upper",
+            "maxDistance": 2.6
+          }
+        },
+        "shoulder": {
+          "maxCapRise": 2.7,
+          "radius": 2.9
+        },
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "required": true,
+            "normalCut": true
+          },
+          "offset": 0.3,
+          "baselineOffset": 0.25
+        },
+        "shoulder": {
+          "maxWidth": 3.2
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "counter-shoulder"
+        }
+      }
     },
     {
       "id": "tah-returning-shoulder-fina",
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "placement": "upper",
-          "required": true,
-          "maxDistance": 2.6,
-          "normalCut": true
-        },
-        "offset": 0.3,
-        "baselineOffset": 0.25
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
       "returningStroke": true,
-      "shoulder": {
-        "maxCapRise": 2.7,
-        "maxWidth": 3.2,
-        "radius": 2.9
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-shoulder",
+        "counter": {
+          "entryCorner": {
+            "placement": "upper",
+            "maxDistance": 2.6
+          }
+        },
+        "shoulder": {
+          "maxCapRise": 2.7,
+          "radius": 2.9
+        },
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "required": true,
+            "normalCut": true
+          },
+          "offset": 0.3,
+          "baselineOffset": 0.25
+        },
+        "shoulder": {
+          "maxWidth": 3.2
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "counter-shoulder"
+        }
+      }
     },
     {
       "id": "meem-short-neck-fina",
@@ -5459,43 +5680,54 @@
       "id": "sad-deep-bowl-fina",
       "current": "صض",
       "onUnresolved": true,
-      "bodyOutline": {
+      "body": {
+        "shape": "counter-outline",
         "counters": 1,
-        "aspect": [
-          1.6,
-          2.6
-        ],
-        "rim": {
-          "left": [
-            2.8,
-            4.6
+        "outline": {
+          "aspect": [
+            1.6,
+            2.6
           ],
-          "top": [
-            0.25,
-            0.8
-          ],
-          "right": [
-            0.35,
-            1.7
-          ],
-          "bottom": [
-            1.85,
-            3.05
-          ]
+          "rim": {
+            "left": [
+              2.8,
+              4.6
+            ],
+            "top": [
+              0.25,
+              0.8
+            ],
+            "right": [
+              0.35,
+              1.7
+            ],
+            "bottom": [
+              1.85,
+              3.05
+            ]
+          }
+        }
+      },
+      "cuts": {
+        "outline": {
+          "entry": {
+            "x": [
+              1.05,
+              1.9
+            ],
+            "y": [
+              0.5,
+              1.4
+            ],
+            "width": [
+              0.18,
+              0.85
+            ]
+          }
         },
-        "entry": {
-          "x": [
-            1.05,
-            1.9
-          ],
-          "y": [
-            0.5,
-            1.4
-          ],
-          "width": [
-            0.18,
-            0.85
-          ]
+        "boundaries": {
+          "left": "free",
+          "right": "outline-entry"
         }
       }
     }

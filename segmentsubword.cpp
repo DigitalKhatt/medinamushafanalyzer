@@ -465,7 +465,7 @@ static void FindInterections(const QBezier& b, const QLineF& line, int pathIndex
 		if (probeBounds && (point.x() < probeBounds->left || point.x() > probeBounds->right ||
                             point.y() < probeBounds->top || point.y() > probeBounds->bottom)) continue;
 
-		PathExtrema intersect;
+		PathExtrema intersect{};
 
 		intersect.pathIndex = pathIndex;
 		intersect.time = curveIndex + t;
@@ -495,7 +495,7 @@ static std::vector<PathExtrema> FindInterections(const QPainterPath& path, const
 			QLineF currentLine{ path.elementAt(i - 1), e };
 			QPointF intersetion;
 			if (currentLine.intersects(line, &intersetion) == QLineF::BoundedIntersection) {
-				PathExtrema intersect;
+				PathExtrema intersect{};
 				intersect.pathIndex = pathIndex;
 				QLineF newLine{ path.elementAt(i - 1), intersetion };
 				intersect.time = curveIndex + (newLine.length() / currentLine.length());
@@ -4990,7 +4990,6 @@ struct ToothBody {
     }
 };
 
-static std::vector<ToothBody> loopExitToothBoundaries(SearchContext& context, const QJsonObject& settings);
 
 // A loop's tooth can have a descending spur on the underside. A normal
 // through the tooth root may land on the wrong side of that spur. Use the
@@ -5036,12 +5035,20 @@ static Stretching loopToothExit(const SearchContext& context, const ToothBody& t
     return result;
 }
 
+struct ToothBodyEvidence;
+using LoopTeeth = std::vector<ToothBodyEvidence>;
+static std::shared_ptr<const LoopTeeth> recognizeLoopTeeth(const InkOutline& outline, const QJsonObject& body);
+static std::vector<ToothBody> cutLoopTeeth(SearchContext& context, const std::shared_ptr<const LoopTeeth>& bodies,
+                                        const QJsonObject& policy);
+struct LoopEntryRoute { PathExtrema crest; double gap; std::optional<SavedContourRoute> route; };
 struct LoopBodyEvidence {
     CounterHole anchor;
     QRectF hole;
     double bandY = -1;
     bool valid = false;
     CounterCornerEvidence entry, exit;
+    std::vector<LoopEntryRoute> entryRoutes;
+    std::shared_ptr<const LoopTeeth> teeth;
 };
 
 static SearchContext reflectedCounterContext(const InkOutline& outline, WordResultInfo::SubWordInfo& empty) {
@@ -5056,8 +5063,9 @@ static SearchContext reflectedCounterContext(const InkOutline& outline, WordResu
 }
 
 static LoopBodyEvidence recognizeLoopBody(const InkOutline& outline, const QJsonObject& settings,
-                                          const CounterHole& anchor) {
+                                          const CounterHole& anchor, const std::shared_ptr<const LoopTeeth>& teeth) {
     LoopBodyEvidence result{anchor};
+    result.teeth = teeth;
     WordResultInfo::SubWordInfo empty;
     auto context = outline.geometry(empty);
     const auto& ink = context.transformedPath;
@@ -5107,6 +5115,15 @@ static LoopBodyEvidence recognizeLoopBody(const InkOutline& outline, const QJson
     }
 
     result.hole = hole; result.bandY = bandY; result.valid = true;
+    const auto entryWalk = settings.value("entryWalk").toObject();
+    if (!entryWalk.isEmpty()) for (auto crest = context.timeSorted.begin(); crest != context.timeSorted.end(); ++crest) {
+        const auto p = crest->point;
+        const double gap = hole.top() - p.y();
+        if (p.x() < hole.left() || p.x() > hole.right() || gap < 0 || gap >= hole.height() * 2 ||
+            p.y() >= context.prev(crest)->point.y() || p.y() >= context.next(crest)->point.y()) continue;
+        const auto route = recognizeSavedRoute(context, entryWalk, &*crest);
+        if (route) result.entryRoutes.push_back({*crest, gap, route});
+    }
     result.entry = recognizeCounterCorners(outline, hole, settings.value("entryCorner").toObject());
     auto reflected = reflectedCounterContext(outline, empty);
     result.exit = recognizeCounterCorners(inkOutline(reflected), QTransform(-1,0,0,1,0,0).mapRect(hole),
@@ -5116,7 +5133,9 @@ static LoopBodyEvidence recognizeLoopBody(const InkOutline& outline, const QJson
 
 static std::vector<LoopBodyEvidence> recognizeLoopBodies(const InkOutline& outline, const QJsonObject& body) {
     std::vector<LoopBodyEvidence> result;
-    for (const auto& hole : recognizeCounterHoles(outline)) result.push_back(recognizeLoopBody(outline, body, hole));
+    const auto tooth = body.value("exitTooth").toObject();
+    const auto teeth = tooth.isEmpty() ? nullptr : recognizeLoopTeeth(outline, tooth);
+    for (const auto& hole : recognizeCounterHoles(outline)) result.push_back(recognizeLoopBody(outline, body, hole, teeth));
     return result;
 }
 
@@ -5151,17 +5170,12 @@ static std::optional<std::pair<Stretching, Stretching>> cutLoopBody(
         const auto originalNext = context.nextIter;
         context.form = entryWalk;
         double nearest = hole.height() * 2;
-        // The counter supplies this body's crest; neither neighboring cut
-        // supplies a landmark or a measurement scale for the route.
-        for (auto crest = context.timeSorted.begin(); crest != context.timeSorted.end(); ++crest) {
-            const auto p = crest->point;
-            const double gap = hole.top() - p.y();
-            if (p.x() < hole.left() || p.x() > hole.right() || gap < 0 || gap >= nearest ||
-                p.y() >= context.prev(crest)->point.y() || p.y() >= context.next(crest)->point.y()) continue;
+        for (const auto& entry : body.entryRoutes) {
+            if (entry.gap >= nearest) continue;
             context.res = {};
-            if (!searchContourWalk(context, &*crest)) continue;
+            if (!projectSavedRoute(context, entry.route, entryWalk, {})) continue;
             right = context.res;
-            nearest = gap;
+            nearest = entry.gap;
             anchoredRight = true;
         }
         context.form = originalForm;
@@ -5181,7 +5195,7 @@ static std::optional<std::pair<Stretching, Stretching>> cutLoopBody(
     if (!exitTooth.isEmpty()) {
         bool found = false;
         double nearest = exitTooth.value("maxGap").toDouble(1.5) * hole.height();
-        for (const auto& tooth : loopExitToothBoundaries(context, exitTooth)) {
+        for (const auto& tooth : cutLoopTeeth(context, body.teeth, exitTooth)) {
             const double gap = hole.left() - std::max(tooth.tip.point.x(), tooth.bend.point.x());
             if (gap < 0 || gap >= nearest || tooth.tip.point.y() >= hole.bottom() ||
                 (needEntry && !Stretching::cmpbyx{}(right, tooth.left))) continue;
@@ -6022,10 +6036,15 @@ static std::vector<ToothBody> cutToothBodies(SearchContext& context,
     return results;
 }
 
-// Loop bodies still describe an exit tooth in their existing loop policy.
-// This adapter is not used by any medial senna declaration.
-static std::vector<ToothBody> loopExitToothBoundaries(SearchContext& context, const QJsonObject& settings) {
-    return cutToothBodies(context, recognizeToothBodies(context, settings), settings, false);
+// A compound loop shares the same intrinsic tooth recognizer as a senna.
+static std::shared_ptr<const LoopTeeth> recognizeLoopTeeth(const InkOutline& outline, const QJsonObject& body) {
+    WordResultInfo::SubWordInfo empty;
+    auto geometry = outline.geometry(empty);
+    return std::make_shared<const LoopTeeth>(recognizeToothBodies(geometry, body));
+}
+static std::vector<ToothBody> cutLoopTeeth(SearchContext& context, const std::shared_ptr<const LoopTeeth>& bodies,
+                                        const QJsonObject& policy) {
+    return bodies ? cutToothBodies(context, *bodies, policy, false) : std::vector<ToothBody>{};
 }
 
 static std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJsonObject& form) {
@@ -8927,6 +8946,11 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
     }
     corner(evidence.terminalNeck);
     for (const auto& loop : evidence.loops) {
+        for (const auto& entry : loop.entryRoutes) {
+            inspectLandmark("Loop crest", entry.crest);
+            if (entry.route) inspectLandmark("Loop entry anchor", entry.route->anchor);
+        }
+        if (loop.teeth) for (const auto& tooth : *loop.teeth) inspectLandmark("Attached tooth", tooth.tip);
         corner(loop.entry);
         for (const auto& p : loop.exit.corners) {
             auto anchor = p.anchor; anchor.point.setX(-anchor.point.x()); inspectLandmark("Exit corner", anchor);

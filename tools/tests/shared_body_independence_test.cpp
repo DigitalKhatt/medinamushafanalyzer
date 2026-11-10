@@ -28,6 +28,32 @@ static QByteArray snapshot(const SharedShapeEvidence& e) {
     out << quint64(e.loops.size());
     for (const auto& loop : e.loops) {
         hole(loop.anchor); out << loop.hole << loop.bandY << loop.valid; corner(loop.entry); corner(loop.exit);
+        out << quint64(loop.entryRoutes.size());
+        for (const auto& entry : loop.entryRoutes) {
+            point(entry.crest); out << entry.gap << bool(entry.route);
+            if (entry.route) {
+                point(entry.route->start); point(entry.route->origin); point(entry.route->anchor);
+                point(entry.route->topBefore); point(entry.route->topEnd);
+                out << entry.route->forwardPrevious << entry.route->topPrevious << entry.route->endpointTolerance;
+            }
+        }
+        out << bool(loop.teeth);
+        if (loop.teeth) for (const auto& tooth : *loop.teeth) {
+            point(tooth.tip); points(tooth.forwardFlank); points(tooth.reverseFlank);
+            out << tooth.reverseIsRight << tooth.entryStroke << tooth.requiredEntry << tooth.minEntryRise << bool(tooth.baselineSection);
+            const auto section = [&](const Stretching& v) {
+                point(v.topBaseLine); point(v.bottomBaseLine); point(v.topLeft); point(v.topRight); point(v.bottomLeft); point(v.bottomRight);
+                out << v.clockWise << v.referenceWidth << v.length;
+            };
+            if (tooth.baselineSection) section(*tooth.baselineSection);
+            out << quint64(tooth.pairs.size());
+            for (const auto& pair : tooth.pairs) {
+                point(pair.bend); section(pair.localSection);
+                for (const auto* scale : {&pair.localScale, &pair.entryScale}) {
+                    out << bool(*scale); if (*scale) { out << (*scale)->stroke; points((*scale)->flankSamples); }
+                }
+            }
+        }
     }
     out << quint64(e.rims.size());
     for (const auto& rim : e.rims) { hole(rim.counter); points(rim.anchors); }
@@ -108,7 +134,7 @@ int main(int argc, char** argv) {
         bad.insert("cuts", policy); invalid.insert(phase, QJsonArray{bad});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
     }
-    check(forms.size() >= 81 && shapes.size() >= 17, "Not all shared shapes exercised");
+    check(forms.size() >= 100 && shapes.size() >= 17, "Not all shared shapes exercised");
     struct Fixture { int page,line,word,sub; };
     const Fixture fixtures[] = {{3,2,9,1}, {6,15,4,1}, {600,2,5,1}, {230,11,3,1}};
     int checks = 0;
@@ -129,8 +155,9 @@ int main(int argc, char** argv) {
             context.baseText = QStringLiteral("unrelated"); context.joinDefaults = {{"enabled", false}};
             context.form = {{"bottomProbe", "invalid"}, {"minRise", 1e9}};
             context.res.topBaseLine.point = {-1e6, 1e6}; empty.joins.insert(context.res);
-            check(snapshot(recognizeSharedShape(inkOutline(context), body)) == expected,
-                  "Neighbor/cursor/width state changed intrinsic evidence");
+            if (snapshot(recognizeSharedShape(inkOutline(context), body)) != expected)
+                qFatal("%s on page%d: neighbor/cursor/width state changed intrinsic evidence",
+                    qPrintable(form.value("id").toString()), f.page);
             auto edited = form;
             auto policy = form.value("cuts").toObject(); policy.insert("counter", QJsonObject{{"offset", 1000}});
             edited.insert("cuts", policy);

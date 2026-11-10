@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     for (const auto& value : config.value("medial").toArray())
         if (value.toObject().value("id") == "sad-medi") {
             check(value.toObject().value("current") == QStringLiteral("صض"), "Sad form must also select dad");
-            loop = value.toObject().value("loopBoundaries").toObject();
+            loop = loopSettings(value.toObject());
         }
     for (const auto& value : config.value("final").toArray())
         if (value.toObject().value("id") == "reh-fina") reh = value.toObject();

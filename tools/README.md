@@ -171,6 +171,8 @@ Five medial kaf contour forms use `paired-route`: the recognizer records a body 
 
 Fifteen hah-family contour forms share the single and paired route recognizers. Their zero/one-counter constraints and retained lips/branches remain body requirements; shared folded-yeh or stacked attachments remain assembly policies. The hah ownership and final-hah tests also check preview edits through `cuts.route.penWidth`.
 
+Sad/tah loop forms reuse counter-loop, rim, outline, shoulder and route evidence. Counter loops record their entry routes and attached teeth before projection; cut policies then place the entry and exit boundaries. The independence test compares the saved route and tooth evidence after changing neighboring joins and cursor state.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright
