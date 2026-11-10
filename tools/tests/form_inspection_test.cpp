@@ -26,6 +26,7 @@ int main(int argc, char** argv) {
     const auto config = PageAnalysisResult::letterForms();
     struct Fixture { int page, line, word, sub; const char* id; };
     const Fixture fixtures[] = {
+        {3,2,2,2,"meem-init"}, {3,2,9,1,"meem-medi"}, {3,1,8,1,"meem-counter-fina"},
         {3,1,5,1,"lam-medi"}, {3,1,8,1,"lam-init"}, {588,5,10,1,"lam-medi"},
         {3,2,4,1,"beh-tooth-medi"}, {600,8,10,1,"beh-upright-medi"},
         {57,14,2,2,"beh-low-medi"}, {33,14,4,1,"beh-bent-medi"},

@@ -27,8 +27,8 @@ int main(int argc, char** argv) {
     const auto config = PageAnalysisResult::letterForms();
     QJsonObject form;
     for (const auto& value : config.value("final").toArray())
-        if (value.toObject().value("id") == "meem-loop-tail-fina") form = value.toObject();
-    check(form.value("method") == "walk", "Final meem should reuse the contour walk");
+        if (value.toObject().value("id") == "meem-loop-tail-fina") form = resolvedBodyForm(config, value.toObject());
+    check(form.value("body").toObject().value("shape") == "contour-route" && !form.contains("method"), "Final meem should declare its route independently of the cuts");
     QFile file("pages/page600.dat");
     check(file.open(QIODevice::ReadOnly), "Page 600 fixture is required");
     PageAnalysisResult analysis;
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     source.translate(shape.pos);
     WordResultInfo::SubWordInfo dummy;
     auto context = geometry(source, dummy, form);
-    check(searchContourWalk(context), "Meem loop and tail route did not match");
+    check(declaredSharedBoundary(context, form), "Meem loop and tail route did not match");
     const auto cut = context.res;
     check(std::abs(cut.topBaseLine.time - 4.797530577555296) < 1e-5 && cut.bottomBaseLine.time == 16,
           "Meem boundary moved from its reviewed valley and corner");
@@ -64,11 +64,11 @@ int main(int argc, char** argv) {
     dummy.joins.insert(unrelated);
     context.baseText = QStringLiteral("اختبار");
     context.pairedStrokeWidth = 1000;
-    check(searchContourWalk(context) && same(context.res), "Meem cut depends on preceding text or landmarks");
+    check(declaredSharedBoundary(context, form) && same(context.res), "Meem cut depends on preceding text or landmarks");
     for (double scale : {0.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(source), dummy, form);
-        check(searchContourWalk(scaled) && same(scaled.res, mapping), "Meem cut changed under scale or translation");
+        check(declaredSharedBoundary(scaled, form) && same(scaled.res, mapping), "Meem cut changed under scale or translation");
     }
     check(analysis.segmentSubword(599, 1, 4, 0, nullptr, true), "Yeh-ain-lam-meem remains partial");
     check(sub.baseGlyphs.size() == 4 && sub.joins.size() == 3 &&
@@ -91,5 +91,18 @@ int main(int argc, char** argv) {
     missingForm.insert("final", remaining);
     check(!analysis.segmentSubword(599, 1, 4, 0, nullptr, true, &missingForm),
           "Missing meem form was concealed by the number of body regions");
+    // The projection of a folded rim must stop at uninterrupted ink. Also
+    // exercise the assembler's independent final-shoulder proposal beside lām.
+    for (const auto& loc : std::vector<std::array<int, 4>>{{435,3,9,1}, {184,14,10,1}}) {
+        QFile fixture(QString("pages/page%1.dat").arg(loc[0]));
+        check(fixture.open(QIODevice::ReadOnly), "Folded-rim fixture missing");
+        PageAnalysisResult a; QDataStream input(&fixture); input >> a.page;
+        check(a.segmentSubword(loc[0]-1, loc[1]-1, loc[2]-1, loc[3]-1, nullptr, true),
+              "Folded rim lost its visible cut or terminal shoulder");
+        const auto& result = a.page.lines[loc[1]-1].words[loc[2]-1].wordResultInfo.subWords[loc[3]-1];
+        if (loc[0] == 184)
+            check(result.letterDiagnostics.last().toObject().value("template") == "meem-shoulder-fina",
+                  "Assembly did not retain the final body's own shoulder");
+    }
     qInfo("Final meem passed: own valley/corner 4.7975/16, retained loop/counter/tail, no lam ascender, independence from neighboring landmarks, scale/translation invariance, four bodies/three spans and deterministic masks.");
 }

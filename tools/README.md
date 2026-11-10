@@ -63,11 +63,11 @@ Declared forms use `body` for recognition and `cuts` for cut placement.
 Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
 declares its stem/bowl measurements in `body.stem`, then uses
 `cuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
-lām `method` or `legacyLamRoutes` adapter. All lām forms and all six medial
-senna forms use these declarations; other letters can migrate independently.
+lām `method` or `legacyLamRoutes` adapter. All lām forms, all six medial
+senna forms and all 19 meem forms use these declarations; other letters migrate independently.
 
 In the native application, enable **Inspect cuts** and click a subword. Select
-a lām or medial senna template, including an applicable alternative that did not
+a declared template, including an applicable alternative that did not
 match. **Body** shows the landmarks found in uncut ink and edits that form's
 `body` JSON. **Cut policy** edits `cuts` and shows proposed boundaries or the
 final assembled cuts. Hover over landmarks for contour-point numbers; scroll
@@ -140,6 +140,15 @@ axis. `cuts.flankMode` selects `contour-normal`, `axis-projection` or
 `contour-search`. `flankOffset` and `maxSectionWidth` use local stroke widths.
 Body evidence can be reused with another cut policy, including after a policy
 fails to produce a valid mask. No medial senna uses the old `tooth` field.
+
+Meem uses shared counter-neck, counter-shoulder, counter-bridge, counter-loop,
+counter-rim, counter-outline and contour-route shapes. Recognition receives only
+`InkOutline` and `body`: it records counters, corners, valleys and route anchors.
+`cuts` supplies normals, offsets, section widths and boundary policies. Assembly
+selects the occurrence and checks retained ink and neighboring boundaries. Its
+selection cannot skip a failed loop to borrow a later letter's loop. Run
+`shared_body_independence_test.cpp`, `medial_meem_test.cpp` and
+`final_meem_test.cpp` through `check_letter_forms.py` to check these contracts.
 
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
@@ -221,7 +230,7 @@ builds the masks. The planner has no hardcoded lām template-name dispatch.
 
 Lām recognition bypasses the legacy method dispatcher through
 `declaredLamBoundary` and `recognizeMedialLamBodies`. The medial recognizer's
-`LamOutline` input has no neighboring-join state; `assembleMedialLamCuts`
+`InkOutline` input has no neighboring-join state; `assembleMedialLamCuts`
 projects its saved evidence and applies the neighbor checks. Generic contour
 primitives are shared: `recognizeContourRoute` finds landmarks, while
 `projectContourRoute` applies a cut policy. Non-lām forms still use the

@@ -75,16 +75,26 @@
     {
       "id": "meem-init",
       "current": "م",
-      "method": "initial-counter",
-      "counter": {
-        "maxNeckDistance": 1.5,
-        "maxOuterDistance": 1,
-        "normalNeck": true
-      },
       "tryNext": true,
       "retryOnPartial": true,
-      "bodyFeatures": {
-        "maxWidthToHeight": 2
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "maxNeckDistance": 1.5,
+          "maxOuterDistance": 1
+        },
+        "features": {
+          "maxWidthToHeight": 2
+        }
+      },
+      "cuts": {
+        "counter": {
+          "normalNeck": true
+        },
+        "boundaries": {
+          "left": "counter-neck",
+          "right": "free"
+        }
       }
     },
     {
@@ -916,29 +926,49 @@
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "initial-counter",
-      "counter": {
-        "maxNeckDistance": 3,
-        "maxOuterDistance": 2,
-        "normalNeck": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "maxNeckDistance": 3,
+          "maxOuterDistance": 2
+        }
       },
-      "onUnresolved": true
+      "cuts": {
+        "counter": {
+          "normalNeck": true
+        },
+        "boundaries": {
+          "left": "counter-neck",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "meem-lower-flank-init",
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "initial-loop-body",
-      "loopBoundaries": {
-        "exitCorner": {
-          "maxDistance": 2.1
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "exitCorner": {
+            "maxDistance": 2.1
+          }
         },
-        "sideOffset": 0.3,
-        "normalCut": true
+        "counters": 1
       },
-      "bodyCounters": 1,
-      "onUnresolved": true
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.3,
+          "normalCut": true
+        },
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "free"
+        }
+      }
     },
     {
       "id": "sad-wide-tooth-init",
@@ -1159,37 +1189,63 @@
     {
       "id": "meem-hanging-medi",
       "current": "م",
-      "bodyCounters": 1,
       "sharedEntry": true,
-      "loopBoundaries": {
-        "normalCut": true,
-        "maxBodyHeight": 4,
-        "entryCorner": {
-          "placement": "upper",
-          "maxCounterY": 0.5,
-          "maxDistance": 1.5,
-          "required": true
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "maxBodyHeight": 4,
+          "entryCorner": {
+            "placement": "upper",
+            "maxCounterY": 0.5,
+            "maxDistance": 1.5
+          },
+          "exitCorner": {
+            "maxDistance": 1.5
+          }
         },
-        "exitCorner": {
-          "maxDistance": 1.5,
-          "required": true
+        "counters": 1
+      },
+      "cuts": {
+        "loop": {
+          "normalCut": true,
+          "entryCorner": {
+            "required": true
+          },
+          "exitCorner": {
+            "required": true
+          }
+        },
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
         }
       }
     },
     {
       "id": "meem-medi",
       "current": "م",
-      "bodyCounters": 1,
       "tightJoin": true,
-      "loopBoundaries": {
-        "sideOffset": 0.5,
-        "baselineOffset": 0.3,
-        "normalCut": true,
-        "entryCorner": {
-          "maxDistance": 1.5
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "entryCorner": {
+            "maxDistance": 1.5
+          },
+          "exitCorner": {
+            "maxDistance": 1.5
+          }
         },
-        "exitCorner": {
-          "maxDistance": 1.5
+        "counters": 1
+      },
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.5,
+          "baselineOffset": 0.3,
+          "normalCut": true
+        },
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
         }
       }
     },
@@ -2583,21 +2639,32 @@
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
-      "loopBoundaries": {
-        "sideOffset": 0.35,
-        "normalCut": true,
-        "baselineOffset": 0.15,
-        "entryCorner": {
-          "placement": "top-right",
-          "maxDistance": 2
-        },
-        "exitCorner": {
-          "maxDistance": 2
-        }
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "entryCorner": {
+            "placement": "top-right",
+            "maxDistance": 2
+          },
+          "exitCorner": {
+            "maxDistance": 2
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "loop": {
+          "sideOffset": 0.35,
+          "normalCut": true,
+          "baselineOffset": 0.15
+        },
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
+        }
+      }
     },
     {
       "id": "sad-wide-tooth-medi",
@@ -2689,23 +2756,36 @@
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
-      "bodyCounters": 1,
       "sharedEntry": true,
       "tightJoin": true,
-      "loopBoundaries": {
-        "entryCorner": {
-          "placement": "upper",
-          "maxDistance": 2.4,
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "entryCorner": {
+            "placement": "upper",
+            "maxDistance": 2.4
+          },
+          "exitCorner": {
+            "maxDistance": 2.2
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "loop": {
+          "entryCorner": {
+            "normalCut": true
+          },
+          "sideOffset": 0.4,
+          "baselineOffset": 0.2,
           "normalCut": true
         },
-        "exitCorner": {
-          "maxDistance": 2.2
-        },
-        "sideOffset": 0.4,
-        "baselineOffset": 0.2,
-        "normalCut": true
-      },
-      "onUnresolved": true
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
+        }
+      }
     },
     {
       "id": "tah-upper-neck-medi",
@@ -2779,9 +2859,17 @@
       "onIncomplete": true,
       "tightJoin": true,
       "tryNext": true,
-      "bodyCounters": 1,
-      "loopBoundaries": {
-        "rimAnchors": {
+      "sharedEntry": true,
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-rim",
+        "rim": {
+          "rimMargin": 1.7
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "rim": {
           "entry": [
             0.86,
             -0.35
@@ -2790,12 +2878,13 @@
             -0.35,
             1.1
           ],
-          "radius": 1.4,
-          "rimMargin": 1.7
+          "radius": 1.4
+        },
+        "boundaries": {
+          "left": "loop-exit",
+          "right": "loop-entry"
         }
-      },
-      "sharedEntry": true,
-      "onUnresolved": true
+      }
     },
     {
       "id": "tah-rising-rim-medi",
@@ -2904,57 +2993,68 @@
       "id": "meem-sloping-rim-medi",
       "current": "م",
       "onUnresolved": true,
-      "bodyOutline": {
+      "body": {
+        "shape": "counter-outline",
         "counters": 1,
-        "aspect": [
-          1.2,
-          2.2
-        ],
-        "rim": {
-          "left": [
-            0.25,
-            0.9
+        "outline": {
+          "aspect": [
+            1.2,
+            2.2
           ],
-          "top": [
-            0.28,
-            0.95
-          ],
-          "right": [
-            0.2,
-            0.85
-          ],
-          "bottom": [
-            0.45,
-            1.2
-          ]
+          "rim": {
+            "left": [
+              0.25,
+              0.9
+            ],
+            "top": [
+              0.28,
+              0.95
+            ],
+            "right": [
+              0.2,
+              0.85
+            ],
+            "bottom": [
+              0.45,
+              1.2
+            ]
+          }
+        }
+      },
+      "cuts": {
+        "outline": {
+          "entry": {
+            "x": [
+              0.85,
+              1.5
+            ],
+            "y": [
+              -0.4,
+              0.35
+            ],
+            "width": [
+              0.42,
+              1.1
+            ]
+          },
+          "exit": {
+            "x": [
+              -0.6,
+              0.1
+            ],
+            "y": [
+              0.5,
+              1.2
+            ],
+            "width": [
+              0.2,
+              0.85
+            ]
+          }
         },
-        "entry": {
-          "x": [
-            0.85,
-            1.5
-          ],
-          "y": [
-            -0.4,
-            0.35
-          ],
-          "width": [
-            0.42,
-            1.1
-          ]
-        },
-        "exit": {
-          "x": [
-            -0.6,
-            0.1
-          ],
-          "y": [
-            0.5,
-            1.2
-          ],
-          "width": [
-            0.2,
-            0.85
-          ]
+        "boundaries": {
+          "left": "outline-exit",
+          "right": "outline-entry"
         }
       }
     },
@@ -3479,17 +3579,29 @@
     },
     {
       "id": "meem-counter-fina",
-      "method": "final-counter",
-      "counter": {
-        "offset": 0.5,
-        "baselineOffset": 0.3,
-        "entryCorner": {
-          "maxDistance": 1.5,
-          "normalCut": true
+      "tryNext": true,
+      "current": "م",
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "maxDistance": 1.5
+          }
         }
       },
-      "tryNext": true,
-      "current": "م"
+      "cuts": {
+        "counter": {
+          "offset": 0.5,
+          "baselineOffset": 0.3,
+          "entryCorner": {
+            "normalCut": true
+          }
+        },
+        "boundaries": {
+          "right": "counter-neck",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "alef-open-fina",
@@ -3729,54 +3841,89 @@
     {
       "id": "meem-upper-neck-fina",
       "current": "م",
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "placement": "upper",
-          "maxDistance": 2,
-          "normalCut": true,
-          "required": true
+      "tryNext": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "placement": "upper",
+            "maxDistance": 2
+          }
         }
       },
-      "tryNext": true
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "normalCut": true,
+            "required": true
+          }
+        },
+        "boundaries": {
+          "right": "counter-neck",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "meem-loop-tail-fina",
-      "visibleFrom": "bottom",
       "current": "م",
-      "method": "walk",
-      "start": "left",
-      "traversal": "down",
-      "top": [
-        "up",
-        "down",
-        "up"
-      ],
-      "bottom": [
-        "up",
-        "down",
-        "left",
-        "right"
-      ],
       "tryNext": true,
-      "ownsLeftTip": true
+      "ownsLeftTip": true,
+      "body": {
+        "shape": "contour-route",
+        "route": {
+          "start": "left",
+          "traversal": "down",
+          "top": [
+            "up",
+            "down",
+            "up"
+          ],
+          "bottom": [
+            "up",
+            "down",
+            "left",
+            "right"
+          ]
+        }
+      },
+      "cuts": {
+        "route": {
+          "visibleFrom": "bottom"
+        },
+        "boundaries": {
+          "right": "contour-route",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "meem-shoulder-fina",
       "current": "م",
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "maxDistance": 2
+      "tryNext": true,
+      "onIncomplete": true,
+      "body": {
+        "shape": "counter-shoulder",
+        "counter": {
+          "entryCorner": {
+            "maxDistance": 2
+          }
+        },
+        "shoulder": {
+          "radius": 2.5,
+          "maxCapRise": 2
         }
       },
-      "shoulder": {
-        "radius": 2.5,
-        "maxWidth": 2.4,
-        "maxCapRise": 2
-      },
-      "tryNext": true,
-      "onIncomplete": true
+      "cuts": {
+        "counter": {},
+        "shoulder": {
+          "maxWidth": 2.4
+        },
+        "boundaries": {
+          "right": "counter-shoulder",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "noon-arm-fina",
@@ -4098,36 +4245,60 @@
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "maxDistance": 2.1,
-          "normalCut": true
-        },
-        "offset": 0.4,
-        "baselineOffset": 0.2
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "maxDistance": 2.1
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "normalCut": true
+          },
+          "offset": 0.4,
+          "baselineOffset": 0.2
+        },
+        "boundaries": {
+          "right": "counter-neck",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "meem-upper-bridge-fina",
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "placement": "upper",
-          "maxDistance": 2.2,
-          "normalCut": true,
-          "required": true
-        }
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "placement": "upper",
+            "maxDistance": 2.2
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "normalCut": true,
+            "required": true
+          }
+        },
+        "boundaries": {
+          "right": "counter-neck",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "reh-returning-bowl-fina",
@@ -4324,50 +4495,76 @@
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "placement": "upper",
-          "required": true,
-          "maxDistance": 2.6,
-          "normalCut": true
-        },
-        "offset": 0.3,
-        "baselineOffset": 0.25
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
       "returningStroke": true,
-      "shoulder": {
-        "maxCapRise": 2.7,
-        "maxWidth": 3.2,
-        "radius": 2.9
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-shoulder",
+        "counter": {
+          "entryCorner": {
+            "placement": "upper",
+            "maxDistance": 2.6
+          }
+        },
+        "shoulder": {
+          "maxCapRise": 2.7,
+          "radius": 2.9
+        },
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "required": true,
+            "normalCut": true
+          },
+          "offset": 0.3,
+          "baselineOffset": 0.25
+        },
+        "shoulder": {
+          "maxWidth": 3.2
+        },
+        "boundaries": {
+          "right": "counter-shoulder",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "meem-returning-bridge-fina",
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
-      "method": "final-counter",
-      "counter": {
-        "entryCorner": {
-          "placement": "upper",
-          "required": true,
-          "maxDistance": 2.6,
-          "normalCut": true
-        },
-        "offset": 0.3,
-        "baselineOffset": 0.25
-      },
-      "bodyCounters": 1,
       "tightJoin": true,
       "returningStroke": true,
-      "bridge": {
-        "maxWidth": 3.0
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-bridge",
+        "counter": {
+          "entryCorner": {
+            "placement": "upper",
+            "maxDistance": 2.6
+          }
+        },
+        "counters": 1
       },
-      "onUnresolved": true
+      "cuts": {
+        "counter": {
+          "entryCorner": {
+            "required": true,
+            "normalCut": true
+          },
+          "offset": 0.3,
+          "baselineOffset": 0.25
+        },
+        "bridge": {
+          "maxWidth": 3.0
+        },
+        "boundaries": {
+          "right": "counter-bridge",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "sad-returning-shoulder-fina",
@@ -4427,56 +4624,76 @@
       "onIncomplete": true,
       "tightJoin": true,
       "tryNext": true,
-      "bodyCounters": 1,
-      "method": "final-counter",
-      "counter": {
-        "maxOuterDistance": 2,
-        "maxNeckDistance": 2
-      },
       "returningStroke": true,
-      "onUnresolved": true
+      "onUnresolved": true,
+      "body": {
+        "shape": "counter-neck",
+        "counter": {
+          "maxOuterDistance": 2,
+          "maxNeckDistance": 2
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "counter": {},
+        "boundaries": {
+          "right": "counter-neck",
+          "left": "free"
+        }
+      }
     },
     {
       "id": "meem-tailed-rim-fina",
       "current": "م",
       "onUnresolved": true,
-      "bodyOutline": {
+      "body": {
+        "shape": "counter-outline",
         "counters": 1,
-        "aspect": [
-          0.65,
-          3.3
-        ],
-        "rim": {
-          "left": [
-            1.35,
-            5.8
+        "outline": {
+          "aspect": [
+            0.65,
+            3.3
           ],
-          "top": [
-            0.25,
-            1.5
-          ],
-          "right": [
-            0,
-            1.35
-          ],
-          "bottom": [
-            1.5,
-            6
-          ]
+          "rim": {
+            "left": [
+              1.35,
+              5.8
+            ],
+            "top": [
+              0.25,
+              1.5
+            ],
+            "right": [
+              0,
+              1.35
+            ],
+            "bottom": [
+              1.5,
+              6
+            ]
+          }
+        }
+      },
+      "cuts": {
+        "outline": {
+          "entry": {
+            "x": [
+              0.55,
+              1.8
+            ],
+            "y": [
+              -0.6,
+              0.85
+            ],
+            "width": [
+              0.5,
+              3.4
+            ]
+          }
         },
-        "entry": {
-          "x": [
-            0.55,
-            1.8
-          ],
-          "y": [
-            -0.6,
-            0.85
-          ],
-          "width": [
-            0.5,
-            3.4
-          ]
+        "boundaries": {
+          "left": "free",
+          "right": "outline-entry"
         }
       }
     },

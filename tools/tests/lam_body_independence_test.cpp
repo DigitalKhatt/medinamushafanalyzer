@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
         context.nextIter = context.xSorted.begin();
         const auto form = resolvedBodyForm(config, namedLetterForm(config, f.form));
         const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
-        const auto evidence = recognizeMedialLamBodies(lamOutline(context), body);
+        const auto evidence = recognizeMedialLamBodies(inkOutline(context), body);
         check(!evidence.stems.empty() || !evidence.turningShafts.empty(), "No body evidence without joins");
         const auto original = snapshot(evidence);
 
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
         context.baseText = QStringLiteral("unrelated");
         context.res.topBaseLine.point = {-10000, 10000};
         empty.joins.insert(context.res);
-        check(snapshot(recognizeMedialLamBodies(lamOutline(context), body)) == original,
+        check(snapshot(recognizeMedialLamBodies(inkOutline(context), body)) == original,
               "Neighbor joins, widths or assembly state changed body recognition");
 
         OutlineSearchCache cache;
