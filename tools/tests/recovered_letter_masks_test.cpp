@@ -40,6 +40,10 @@ int main(int argc, char** argv) {
     PageAnalysisResult::initQuranText();
 
     const Example examples[] = {
+        // A successful generic walk must not give the stacked head to lām.
+        {134, 10, 4, 2, {{1, {241.775, 319.946}}, {2, {244.212, 329.320}}}},
+        {219, 12, 4, 2, {{1, {211.213, 373.192}}, {2, {214.400, 383.316}}}},
+        {344, 8, 10, 1, {{1, {137.902, 269.137}}, {2, {139.777, 276.824}}}},
         // Small upward turns near the tip of reh belong to its bowl. Its entry is at the shoulder.
         {180, 7, 5, 2, {{4, {183.28, 252.25}}}, ConnectorWitness{3, {184.53, 252.50}, 3.022}},
         {334, 15, 7, 2, {{2, {113.27, 464.74}}}, ConnectorWitness{1, {114.52, 465.24}, 8.074}},
@@ -315,7 +319,7 @@ int main(int argc, char** argv) {
             const auto& [start, end] = sub.kashidaCuts.front();
             require(std::abs(start.center().x() - end.center().x() - 14.175) < .01, id + " genuine kashida shortened");
         }
-        if (e.page == 20)
+        if (e.page == 20 || e.page == 134 || (e.page == 219 && e.line == 12) || e.page == 344)
             require(sub.letterDiagnostics.first().toObject().value("template") == "lam-hah-stacked-init" &&
                     !sub.kashidaPaths.empty() && sub.kashidaPaths.front().isEmpty(), id + " expected stacked lam");
         if (e.page == 131) {
@@ -357,7 +361,7 @@ int main(int argc, char** argv) {
             require(sub.joins.size() == 1 && sub.joins.begin()->cutSegments().size() == 3,
                     id + " expected the bent upper bridge and straight lower bridge");
         }
-        if (e.page == 203 || e.page == 219) {
+        if (e.page == 203 || (e.page == 219 && e.line == 6)) {
             require(sub.letterDiagnostics[2].toObject().value("template") == "hah-overhanging-entry-medi",
                     id + " expected a joined attachment and head");
         }

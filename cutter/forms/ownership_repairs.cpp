@@ -257,6 +257,12 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
     const auto world = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
     const auto first = world(sub.baseGlyphs.front().path).boundingRect();
     const auto tail = world(sub.baseGlyphs.back().path).boundingRect();
+    const auto stackedLam = letters.front() == QChar(0x0644) ? namedLetterForm(config, "lam-hah-stacked-init") : QJsonObject{};
+    const bool stackedPair = hasFollowingLetter(letters, 0, stackedLam.value("ligatureWith").toString());
+    const auto shaftFeatures = stackedPair ? formDescription(config, stackedLam, "body").value("features").toObject()
+                                          : QJsonObject{};
+    const double shaftAspect = shaftFeatures.value("maxWidthToHeight").toDouble();
+    const bool overwideLam = shaftAspect > 0 && first.width() > shaftAspect * first.height();
     const bool clippedLam = initial == "lam-normal-init" && templateId(1) == "hah-stacked-medi" && first.height() < 3.2;
     const bool clippedSeen = initial == "seen-init" && first.width() < 1.5 && first.height() < 2;
     const bool clippedHah = initial == "hah-open-init" && first.width() < 1 && first.height() < 1;
@@ -273,7 +279,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
     const bool connectedNoon = letters[last] == QChar(0x0646) && !sub.kashidaPaths.back().isEmpty();
     const bool liftedAlef = terminal == "alef-return-fina" && letters[last - 1] == QChar(0x0644) &&
         tail.width() < 1.5 && sub.kashidaPaths.back().isEmpty();
-    if (!clippedLam && !clippedSeen && !clippedHah && !clippedTooth && !lostShaft && !lostFold &&
+    if (!overwideLam && !clippedLam && !clippedSeen && !clippedHah && !clippedTooth && !lostShaft && !lostFold &&
         !risingTail && !clippedReh && !clippedKaf && !liftedAlef && !connectedNoon)
         return;
 
@@ -346,6 +352,52 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         sub.templateTrace.append(message);
         return true;
     };
+
+    // The generic contour route can reach around the head under a stacked
+    // shaft. Require actual ink just inside the projecting lip to change owner.
+    if (overwideLam && declaredLamBoundary(outline, config, stackedLam)) {
+        const auto oldShaft = world(sub.baseGlyphs.front().path);
+        const auto lip = outline.xSorted.begin()->point;
+        const auto stem = descendingStemDescription(config, stackedLam);
+        const double pen = stem.value("penWidth").toDouble(.5);
+        const auto shaftRestored = [&] {
+            const auto repaired = world(sub.baseGlyphs.front().path).boundingRect();
+            if (repaired.width() > shaftAspect * repaired.height() || repaired.width() >= first.width()) return false;
+            const auto head = world(sub.baseGlyphs[1].path);
+            for (double depth : {.5, 1.0}) {
+                const double x = lip.x() - depth * pen;
+                auto crossings = FindInterections(outline.transformedPath,
+                    QLineF(x, outline.bbox.top() - 1, x, outline.bbox.bottom() + 1), true);
+                std::sort(crossings.begin(), crossings.end(), [](const auto& a, const auto& b) {
+                    return a.point.y() < b.point.y();
+                });
+                std::optional<QPointF> witness;
+                double nearest = pen;
+                for (size_t i = 1; i < crossings.size(); ++i) {
+                    const double top = crossings[i - 1].point.y(), bottom = crossings[i].point.y();
+                    if (bottom - top < .01) continue;
+                    const QPointF center(x, (top + bottom) / 2);
+                    const double distance = std::max({top - lip.y(), lip.y() - bottom, 0.0});
+                    if (distance < nearest && outline.transformedPath.contains(center)) {
+                        witness = center;
+                        nearest = distance;
+                    }
+                }
+                if (!witness || !oldShaft.contains(*witness) || !head.contains(*witness)) return false;
+            }
+            return true;
+        };
+        const auto id = stackedLam.value("id").toString();
+        if (replace(0, outline.res, {}, id + " · stacked head restored to its own body", shaftRestored)) {
+            auto diagnostic = sub.letterDiagnostics.first().toObject();
+            diagnostic.insert("template", id);
+            auto candidates = diagnostic.value("candidates").toArray();
+            if (!candidates.contains(id)) candidates.append(id);
+            diagnostic.insert("candidates", candidates);
+            sub.letterDiagnostics[0] = diagnostic;
+            if (!sub.matchedTemplates.contains(id)) sub.matchedTemplates.append(id);
+        }
+    }
 
     if (clippedLam || clippedSeen || clippedHah || clippedTooth) {
         const auto current = *sub.joins.begin();
