@@ -487,11 +487,12 @@ bool cutProfileNeck(SearchContext &context, const std::vector<NeckBody> &candida
 // deferred to cut policy, so changing probe width cannot move this landmark.
 struct BowlTurnBody {
     PathExtrema tip, turn;
+    std::optional<std::pair<PathExtrema, PathExtrema>> junction;
 };
 
-std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline);
+std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline, const QJsonObject &junction);
 
-bool cutBowlTurn(SearchContext &context, const BowlTurnBody &body, const QJsonObject &policy);
+bool cutBowlTurn(SearchContext &context, const BowlTurnBody &body, const QJsonObject &cuts);
 
 struct LayeredHeadBody {
     std::vector<NeckBody> necks;

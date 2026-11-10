@@ -166,7 +166,7 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
     else if (shape == "crested-loop")
         result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn")
-        result.bowlTurn = recognizeBowlTurn(outline);
+        result.bowlTurn = recognizeBowlTurn(outline, body.value("junction").toObject());
     else if (shape == "separate-components")
         result.components = recognizeSourceComponents(outline.ink);
     else if (shape == "component-arm")
@@ -233,6 +233,8 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
         if (result.terminalCounter)
             result.terminalNeck =
                 recognizeCounterCorners(outline, result.terminalCounter->box, spec.value("entryCorner").toObject());
+        if (body.contains("junction"))
+            result.bowlTurn = recognizeBowlTurn(outline, body.value("junction").toObject());
     } else if (shape == "counter-shoulder") {
         for (size_t i = 1; i < outline.contours.size(); ++i) {
             CounterHole hole{i, outline.contours[i].boundingRect()};
@@ -542,7 +544,7 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
     } else if (shape == "bowl-neck")
         found = cutBowlNecks(context, evidence->bowlNecks, cuts.value("probe").toObject());
     else if (shape == "bowl-turn")
-        found = evidence->bowlTurn && cutBowlTurn(context, *evidence->bowlTurn, cuts.value("probe").toObject());
+        found = evidence->bowlTurn && cutBowlTurn(context, *evidence->bowlTurn, cuts);
     else if (shape == "counter-neck") {
         const auto settings = shapeSettings(form, "counter");
         if (cuts.value("boundaries").toObject().value("right") == "free")
@@ -550,6 +552,10 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
         else
             found = evidence->terminalCounter &&
                     cutFinalCounterBody(context, evidence->terminalCounter->box, evidence->terminalNeck, settings);
+        if (found && cuts.value("boundaries").toObject().value("right") == "corner-junction" &&
+            evidence->bowlTurn && evidence->bowlTurn->junction &&
+            context.res.topBaseLine.time == evidence->bowlTurn->junction->first.time)
+            cutBowlTurn(context, *evidence->bowlTurn, cuts);
     } else if (shape == "counter-shoulder")
         found = evidence->terminalContour && cutLoopShoulder(context, evidence->terminalContour->box,
                                                              evidence->shoulders, shapeSettings(form, "shoulder"),

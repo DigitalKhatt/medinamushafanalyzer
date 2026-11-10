@@ -212,6 +212,20 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 (!rule.contains("sharedBoundaryWith") ||
                  rule.value("sharedBoundaryWith").toString().contains(baseText[lastIndex - 1])));
     };
+    const auto sharesCornerJunction = [&](const QString& id, const Stretching& exit, const Stretching& entry) {
+        if (!entry.topBaseLine.isSharp || !entry.bottomBaseLine.isSharp ||
+            preparedRules.constraints.value(id).value("cuts").toObject()
+                .value("boundaries").toObject().value("right") != "corner-junction" ||
+            cutPrecedes(exit, entry, context.orientation)) return false;
+        const double topGap = QLineF(exit.topBaseLine.point, entry.topBaseLine.point).length();
+        const double bottomGap = QLineF(exit.bottomBaseLine.point, entry.bottomBaseLine.point).length();
+        const double width = QLineF(exit.topBaseLine.point, exit.bottomBaseLine.point).length();
+        const double tolerance = config.value("kashidaDefaults").toObject()
+            .value("sharedCutTolerance").toDouble(.25) * width;
+        // One flank locates the same junction. The other can lie farther along
+        // the bowl when the preceding body uses a projected exit.
+        return std::min(topGap, bottomGap) <= tolerance && std::max(topGap, bottomGap) <= width;
+    };
     struct BodyPair {
         Stretching primary;
         Stretching other;
@@ -345,7 +359,9 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 incomingRegion.isStrictLeft(left.bottomBaseLine.time);
             const bool closeInterleaved = !ordered && QLineF(chord(right).center(), chord(left).center()).length() <=
                 std::min(chord(right).length(), chord(left).length());
-            if ((pair.ligature || (pair.tightJoin &&
+            const bool atJunction = index + 1 == cuts.size() &&
+                sharesCornerJunction(pair.primaryIsNext ? bodyTemplateIds[lastIndex] : pair.templateId, right, left);
+            if ((pair.ligature || atJunction || (pair.tightJoin &&
                 ((gap <= 0 && -gap <= chord(right).length()) || closeInterleaved))) &&
                 (index == 0 || before(cuts[index - 1], left)) &&
                 (index + 1 == cuts.size() || before(left, cuts[index + 1])) &&
@@ -367,7 +383,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     subWord.matchedTemplates.append(pair.templateId);
                     bodyTemplateIds[pair.primaryIsNext ? 0 : lastIndex] = pair.templateId;
                     subWord.templateTrace.append(pair.templateId + (pair.ligature
-                        ? " · shared ligature cut" : " · shared cut for tight join"));
+                            ? " · shared ligature cut" : atJunction
+                            ? " · shared cut at contour corners" : " · shared cut for tight join"));
                     continue;
                 }
             }
@@ -752,7 +769,29 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                         // Reuse the boundary already matched for this letter. Re-running
                         // its search here starts after that join and can fail to find it.
                         const auto& saved = nextBoundaries[letter];
-                        if (saved && before(left, saved->cut)) {
+                        if (saved && sharesCornerJunction(saved->templateId, left, saved->cut) &&
+                            cutPrecedes(right, saved->cut, context.orientation)) {
+                            const auto& seam = saved->cut;
+                            const auto side = getJoinTime(seam, context.orientation);
+                            const auto bodies = cutRegions(context.transformedPath, {}, {right, seam},
+                                                           context.orientation, true);
+                            auto sharedTrial = trial;
+                            sharedTrial[letter + (sharedJoins ? 0 : 1)] = seam;
+                            if (bodies.size() == 3 &&
+                                (!form.contains("bodyCounters") || int(toSubpaths(bodies[1].path).size()) - 1 ==
+                                                                     form.value("bodyCounters").toInt()) &&
+                                (!medial.tooth || medial.tooth->retainedBy(bodies[1].path)) &&
+                                (teeth.isEmpty() || std::all_of(seenTips.begin(), seenTips.end(),
+                                    [&](const auto& tip) { return side.isStrictRight(tip.time); })) &&
+                                validCuts(sharedTrial)) {
+                                trial = std::move(sharedTrial);
+                                left = seam;
+                                finalBoundary = seam;
+                                finalTemplate = saved->templateId;
+                                sharedExit = *saved;
+                            }
+                        }
+                        if (!finalBoundary && saved && before(left, saved->cut)) {
                             trial.push_back(saved->cut);
                             if (validCuts(trial)) {
                                 finalBoundary = saved->cut;

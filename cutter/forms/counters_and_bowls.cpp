@@ -402,7 +402,28 @@ bool cutProfileNeck(SearchContext &context, const std::vector<NeckBody> &candida
     return false;
 }
 
-std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline) {
+static double inwardCornerAngle(const std::vector<QBezier>& curves, const PathExtrema& point,
+                                Orientation orientation) {
+    if (std::abs(point.time - std::round(point.time)) > 1e-6)
+        return 0;
+    const size_t index = size_t(std::lround(point.time)) % curves.size();
+    const auto& incoming = curves[(index + curves.size() - 1) % curves.size()];
+    const auto& outgoing = curves[index];
+    QPointF a, b;
+    for (const auto& control : {incoming.pt3(), incoming.pt2(), incoming.pt1()}) {
+        a = point.point - control;
+        if (!a.isNull()) break;
+    }
+    for (const auto& control : {outgoing.pt2(), outgoing.pt3(), outgoing.pt4()}) {
+        b = control - point.point;
+        if (!b.isNull()) break;
+    }
+    const double cross = a.x() * b.y() - a.y() * b.x();
+    const double inward = orientation == Orientation::CounterClockwise ? cross : -cross;
+    return std::atan2(inward, QPointF::dotProduct(a, b)) * 180 / std::acos(-1.);
+}
+
+std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline, const QJsonObject &junction) {
     WordResultInfo::SubWordInfo empty;
     auto geometry = outline.geometry(empty);
     if (geometry.xSorted.empty())
@@ -414,22 +435,76 @@ std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline) {
         geometry.prev(current)->point.y() < current->point.y() ? &SearchContext::next : &SearchContext::prev;
     do {
         const auto next = (geometry.*step)(current);
-        if (next->point.y() < current->point.y() && (current == start || next->point.y() < start->point.y()))
-            return BowlTurnBody{*first, *next};
+        if (next->point.y() < current->point.y() && (current == start || next->point.y() < start->point.y())) {
+            current = next;
+            break;
+        }
         current = next;
     } while (current != start);
-    return {};
+    if (current == start) return {};
+
+    BowlTurnBody result{*first, *current, {}};
+    if (junction.isEmpty()) return result;
+    const auto holes = recognizeCounterHoles(outline);
+    if (holes.empty()) return result;
+    const auto hole = std::ranges::min_element(holes, {}, [](const auto& h) { return h.box.center().x(); })->box;
+    const auto curves = baseContourCurves(outline.ink);
+    if (curves.empty()) return result;
+    const auto isInward = [&](const PathExtrema& p) {
+        return p.point.x() >= hole.center().x() &&
+            inwardCornerAngle(curves, p, outline.orientation) >= junction.value("minCornerAngle").toDouble();
+    };
+
+    // The outer bowl may reach a smooth extremum just before the corner.
+    // Follow that same flank a short distance past the turn.
+    const double reach = junction.value("maxTurnDistance").toDouble() * hole.height();
+    double distance = 0;
+    while (current->point.y() < hole.center().y() || !isInward(*current)) {
+        const auto next = (geometry.*step)(current);
+        distance += QLineF(current->point, next->point).length();
+        if (next == start || distance > reach) return result;
+        current = next;
+    }
+    auto lower = *current;
+    lower.isSharp = true;
+    double shortest = junction.value("maxWidth").toDouble() * hole.height();
+    for (const auto& upper : outline.time) {
+        const auto span = lower.point - upper.point;
+        const double width = std::hypot(span.x(), span.y());
+        if (span.y() <= 0 || std::abs(span.x()) > span.y() || width >= shortest ||
+            upper.point.y() > hole.bottom() + .25 * hole.height() || !isInward(upper))
+            continue;
+        Stretching cut{};
+        cut.topBaseLine = upper;
+        cut.bottomBaseLine = lower;
+        if (!getJoinTime(cut, outline.orientation).isStrictLeft(result.tip.time) ||
+            !interiorChord(outline.ink, upper, lower)) continue;
+        shortest = width;
+        auto corner = upper;
+        corner.isSharp = true;
+        result.junction = std::pair{corner, lower};
+    }
+    return result;
 }
 
-bool cutBowlTurn(SearchContext &context, const BowlTurnBody &body, const QJsonObject &policy) {
-    const auto p = body.turn.point;
-    const double x = p.x() + policy.value("probeX").toDouble(.2), radius = policy.value("probeRadius").toDouble(2);
-    const auto hits = FindInterections(context.transformedPath, QLineF(x, p.y() - radius, x, p.y() + radius));
-    if (hits.size() < std::max(2., policy.value("minCrossings").toDouble(2)))
-        return false;
+bool cutBowlTurn(SearchContext &context, const BowlTurnBody &body, const QJsonObject &cuts) {
     auto &res = context.res;
-    res.bottomBaseLine = hits.end()[-1];
-    res.topBaseLine = hits.end()[-2];
+    if (cuts.value("boundaries").toObject().value("right") == "corner-junction" && body.junction) {
+        res.topBaseLine = body.junction->first;
+        res.bottomBaseLine = body.junction->second;
+        res.fixedRightBoundary = true;
+        inspectLandmark("Upper junction", res.topBaseLine);
+        inspectLandmark("Lower junction", res.bottomBaseLine);
+    } else {
+        const auto policy = cuts.value("probe").toObject();
+        const auto p = body.turn.point;
+        const double x = p.x() + policy.value("probeX").toDouble(.2), radius = policy.value("probeRadius").toDouble(2);
+        const auto hits = FindInterections(context.transformedPath, QLineF(x, p.y() - radius, x, p.y() + radius));
+        if (hits.size() < std::max(2., policy.value("minCrossings").toDouble(2)))
+            return false;
+        res.bottomBaseLine = hits.end()[-1];
+        res.topBaseLine = hits.end()[-2];
+    }
     res.bottomLeft = res.bottomRight = res.bottomBaseLine;
     res.topLeft = res.topRight = res.topBaseLine;
     res.length = 0;

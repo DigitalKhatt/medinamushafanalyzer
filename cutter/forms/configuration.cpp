@@ -232,7 +232,7 @@ bool lamDescription(const QJsonObject &body) {
 
 const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
     static const QHash<QString, SharedShapeSchema> schemas{
-        {"counter-neck", {"counter", {"free", "counter-neck", "counter-shoulder", "counter-bridge"}}},
+        {"counter-neck", {"counter", {"free", "counter-neck", "counter-shoulder", "counter-bridge", "corner-junction"}}},
         {"counter-shoulder", {"counter", {"free", "counter-neck", "counter-shoulder", "counter-bridge"}}},
         {"counter-bridge", {"counter", {"free", "counter-neck", "counter-shoulder", "counter-bridge"}}},
         {"counter-loop", {"loop", {"free", "loop-entry", "loop-exit"}}},
@@ -242,7 +242,7 @@ const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
         {"suspended-loop", {"head", {"free", "head-neck"}}},
         {"crested-loop", {"head", {"free", "head-neck"}}},
         {"open-head", {"head", {"free", "head-neck"}}},
-        {"bowl-turn", {"probe", {"free", "turn-probe"}}},
+        {"bowl-turn", {"probe", {"free", "turn-probe", "corner-junction"}}},
         {"horizontal-counters", {"pair", {"free", "pair-neck"}}},
         {"stacked-counters", {"pair", {"free", "pair-neck"}}},
         {"tail-branch", {"tail", {"free", "branch-normal"}}},
@@ -482,11 +482,22 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         bodyKeys = QStringList{"shape", "counters", "features", "neck", "profile"};
         cutKeys = QStringList{"boundaries", "probe", "attachment"};
     }
-    if (shape == "bowl-turn") {
+    if (shape == "bowl-turn")
         bodyKeys.removeAll("probe");
-        bodyKeys << "origin";
+    if (shape == "bowl-turn" || (shape == "counter-neck" && boundaries.value("right") == "corner-junction")) {
+        bodyKeys << "origin" << "junction";
         if (body.value("origin") != "left")
             return id + ": bowl-turn starts at the free left end";
+        const auto junction = body.value("junction").toObject();
+        if (body.contains("junction") || boundaries.value("right") == "corner-junction") {
+            for (const auto* key : {"minCornerAngle", "maxTurnDistance", "maxWidth"}) {
+                const auto value = junction.value(key);
+                if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= 0)
+                    return id + ": junction needs a positive corner angle, turn distance and width";
+            }
+            if (junction.size() != 3 || junction.value("minCornerAngle").toDouble() >= 180)
+                return id + ": invalid bowl junction settings";
+        }
     }
     if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
         bodyKeys << "shoulder";

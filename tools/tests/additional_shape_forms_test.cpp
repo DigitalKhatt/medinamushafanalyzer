@@ -24,12 +24,18 @@ int main(int argc,char** argv) {
     check(!config["kashidaDefaults"].toObject()["trackingEnabled"].toBool(),"Tracker must be disabled");
     AFont font; QDataStream fs(read("input/font.dat")); fs>>font;
     PageAnalysisResult::initQuranText();
-    struct Case {int p,l,w,s; const char* form;};
+    struct Case {
+        int p, l, w, s;
+        const char* form;
+        int upperCorner = -1, lowerCorner = -1;
+    };
     const Case cases[]={{1,2,1,1,"seen-compact-medi"},{1,8,2,3,"beh-tooth-medi"},
         {4,12,4,1,"beh-tooth-medi"},{3,6,2,1,"seen-medi"},
         {5,14,3,1,"feh-descending-init"},{4,11,6,1,"alef-return-fina"},
         {5,15,6,1,"yeh-return-fina"},{19,4,2,2,"kaf-bent-neck-medi"},
-        {11,6,2,2,"reh-hook-fina"},{5,15,2,1,"ain-fina"}};
+        {11,6,2,2,"reh-hook-fina"},{5,15,2,1,"ain-fina"},
+        {251,11,4,2,"qaf-fina",9,21},{4,5,1,3,"qaf-fina",2,14},
+        {19,4,4,1,"qaf-top-bridge-fina",4,15},{70,3,1,2,"qaf-fina",13,24}};
     for (const auto at:cases) {
         PageAnalysisResult a; QDataStream stream(read(QString("pages/page%1.dat").arg(at.p))); stream>>a.page;
         a.resolveWordBoundaries(at.p,&font);
@@ -70,6 +76,22 @@ int main(int argc,char** argv) {
             check(!sub.kashidaPaths.front().isEmpty(),"Contour-ordered kaf entry was silently dropped");
             check(std::abs(masks[1].boundingRect().top()-box.top())<1e-5,"Kaf lost its rising arm");
         }
+        if (at.upperCorner >= 0) {
+            WordResultInfo::SubWordInfo dummy;
+            const auto c = geometry(ink, dummy);
+            const auto findCorner = [&](int time) {
+                return std::find_if(c.timeSorted.begin(), c.timeSorted.end(),
+                    [&](const auto& point) { return point.time == time; });
+            };
+            const auto top = findCorner(at.upperCorner), bottom = findCorner(at.lowerCorner);
+            check(top != c.timeSorted.end() && bottom != c.timeSorted.end(), "Missing source junction corners");
+            const auto& join = *sub.joins.rbegin();
+            const QLineF seam = sub.kashidaPaths.back().isEmpty() ?
+                QLineF(join.topBaseLine.point, join.bottomBaseLine.point) : sub.kashidaCuts.back().second;
+            check(QLineF(seam.p1(), top->point).length() < 1e-6 &&
+                  QLineF(seam.p2(), bottom->point).length() < 1e-6,
+                  "Final bowl cut missed a source corner");
+        }
         const auto bodies=sub.baseGlyphs; const auto connectors=sub.kashidaPaths;
         check(a.segmentSubword(at.p-1,at.l-1,at.w-1,at.s-1,&font,true) &&
               sub.kashidaPaths==connectors,"Nondeterministic connectors");
@@ -94,5 +116,5 @@ int main(int argc,char** argv) {
     auto invalid=config;auto finals=invalid["final"].toArray();auto f=finals.last().toObject();
     f.insert("sharedBoundary","yes");finals[finals.size()-1]=f;invalid.insert("final",finals);
     check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(),"Malformed shared boundary accepted");
-    qInfo("Eight shape families passed: intrinsic cuts, complete bodies, deterministic masks, conserved ink and no false ligature connectors.");
+    qInfo("Native shape forms passed: intrinsic cuts, complete bodies, deterministic masks, conserved ink and no false ligature connectors.");
 }

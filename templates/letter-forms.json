@@ -3954,7 +3954,12 @@
       "body": {
         "shape": "bowl-turn",
         "origin": "left",
-        "counters": 1
+        "counters": 1,
+        "junction": {
+          "minCornerAngle": 35,
+          "maxTurnDistance": 0.85,
+          "maxWidth": 1.65
+        }
       },
       "cuts": {
         "probe": {
@@ -3963,7 +3968,7 @@
           "minCrossings": 2
         },
         "boundaries": {
-          "right": "turn-probe",
+          "right": "corner-junction",
           "left": "free"
         }
       }
@@ -5268,14 +5273,14 @@
       "tightJoin": true,
       "onUnresolved": true,
       "body": {
+        "inherit": "qaf-fina",
         "shape": "counter-neck",
         "counter": {
           "entryCorner": {
             "placement": "top-right",
             "maxDistance": 2.1
           }
-        },
-        "counters": 1
+        }
       },
       "cuts": {
         "counter": {
@@ -5284,7 +5289,7 @@
           }
         },
         "boundaries": {
-          "right": "counter-neck",
+          "right": "corner-junction",
           "left": "free"
         }
       }
