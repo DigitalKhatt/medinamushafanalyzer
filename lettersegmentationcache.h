@@ -6,6 +6,10 @@
 class PageAnalysisResult;
 struct AFont;
 
+// Last outer subword search on this thread; populated only with MEDINA_PROFILE.
+// Diagnostic counters never affect the segmentation or catalog cache revision.
+QJsonObject letterSearchProfile();
+
 // Build native cuts for export directly, without writing an intermediate GUI cache.
 QJsonObject generateLetterSegmentation(const PageAnalysisResult& source, int pageNumber, AFont& font,
                                        const QJsonObject* requestedSubwords = nullptr);

@@ -4705,7 +4705,8 @@
           ]
         },
         "tail": {
-          "minRise": 2
+          "minRise": 2,
+          "flankSampleWidths": 0.25
         }
       },
       "cuts": {
@@ -5130,7 +5131,8 @@
         "tail": {
           "minRise": 3,
           "maxRun": 75,
-          "minRun": 0.75
+          "minRun": 0.75,
+          "flankSampleWidths": 0.25
         },
         "counters": 0
       },
@@ -5840,7 +5842,8 @@
         "tail": {
           "minRise": 0.35,
           "minRun": 0.4,
-          "maxRun": 75
+          "maxRun": 75,
+          "flankSampleWidths": 0.25
         }
       },
       "cuts": {
@@ -5902,7 +5905,8 @@
         "tail": {
           "minRise": 0.35,
           "minRun": 0.4,
-          "maxRun": 75
+          "maxRun": 75,
+          "flankSampleWidths": 0.25
         }
       },
       "cuts": {

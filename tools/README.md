@@ -55,6 +55,20 @@ letters remain unchanged. Native runs cache resolved AI source geometry in
 transcript and upstream source changes invalidate this cache automatically.
 Set `MEDINA_DISABLE_INPUT_CACHE=1` to verify a fresh parse, or delete the cache.
 
+Letter recovery preserves template priority while reusing contour landmarks,
+prepared rules, exact candidate partitions and cut-line checks. Geometry,
+configuration and retry-mode changes invalidate the relevant entries. Geometry
+memoization is bounded and released after each subword, including its recursive
+trials. Check invalidation with
+`python3 tools/tests/check_letter_forms.py recovery_cache_test.cpp`.
+
+Lām assembly reuses candidates only for identical placement inputs; medial teeth
+reuse their intrinsic body/cut inventory across placement retries. Edited rules
+and geometry invalidate it. The corpus check's **Candidate search by template**
+table and `pages/pageNNN.profile.json` show generated/reused lists and local
+partition checks. Run `python3 tools/tests/check_letter_forms.py candidate_search_test.cpp`
+to compare reuse with fresh searches after geometry, policy and placement edits.
+
 Run `python3 tools/mushafcatalog/catalog.py validate-medial-lam-height` to check
 every medial lām body against 5 page units. The JSON report lists short bodies
 and unmeasured letters by ID. Either result makes the check fail.
@@ -154,6 +168,14 @@ seams or connectors. Top-level selectors, retry order and shared-attachment
 constraints govern assembly; they are not inputs to intrinsic recognition.
 Assembly cannot change cached evidence. The shared schema registry in
 `segmentsubword.cpp` lists the supported shape and boundary names.
+
+For a returning bowl, `body.tail.flankSampleWidths` measures each shoulder
+flank over a local stroke-scaled arc (default `0.25`), accepting sharp or rounded
+shoulders and ignoring tiny intervening extrema. `cuts.tail.walkWidths`
+separately places the cut from that shoulder.
+Assembly preserves the recognized shoulder when reconciling shared boundaries;
+a neighboring tooth cannot take it from the final bowl.
+Check this with `python3 tools/tests/check_letter_forms.py tail_shoulder_test.cpp`.
 
 | Shape family | Recognized evidence | Cut policy |
 | --- | --- | --- |

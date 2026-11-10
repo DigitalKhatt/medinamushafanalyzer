@@ -97,7 +97,7 @@ static QJsonObject segmentPage(const PageAnalysisResult& source, int pageNumber,
                 if (profiling) profile.append(QJsonObject{
                     {"id",QString("page%1:l%2-w%3-s%4").arg(pageNumber,3,10,QChar('0'))
                         .arg(lineIndex+1).arg(wordIndex+1).arg(index+1)},
-                    {"milliseconds",timer.nsecsElapsed()/1e6}});
+                    {"milliseconds",timer.nsecsElapsed()/1e6}, {"search",letterSearchProfile()}});
                 const auto& sub = results[index];
                 QJsonObject entry{{"line", lineIndex + 1}, {"word", wordIndex + 1},
                     {"subword", static_cast<int>(index + 1)}, {"text", sub.text}, {"complete", complete},

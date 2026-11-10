@@ -31,6 +31,8 @@ static QByteArray snapshot(const LamMedialBodyEvidence& evidence) {
         for (const auto& r : stem.entryRoutes) route(r);
         out << quint64(stem.exitRoutes.size());
         for (const auto& alternatives : stem.exitRoutes) for (const auto& r : alternatives) route(r);
+        out << quint64(stem.forks.size());
+        for (const auto index : stem.forks) out << quint64(index);
     }
     out << quint64(evidence.turningShafts.size());
     for (const auto& shaft : evidence.turningShafts) {

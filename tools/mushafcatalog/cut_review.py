@@ -86,17 +86,30 @@ def render_report(folder, report):
         cards.append(f'<article data-id="{sid}"><h2>{sid} · <bdi dir="rtl">{escape(change["text"])}</bdi></h2>'
                      '<div class="pair">'+''.join(panels)+'</div></article>')
     summary = {k:v for k,v in report.items() if k!='changes'}
+    search = report.get('candidateSearch', {})
+    forms = search.get('forms', {})
+    candidates = ''
+    if forms:
+        rows = ''.join('<tr><td>'+escape(form)+'</td>'+''.join(
+            f'<td>{counts.get(key,0):,}</td>' for key in ('requests','builds','reused','cutPairs','partitionChecks'))+'</tr>'
+            for form,counts in sorted(forms.items(),key=lambda item:item[1].get('requests',0),reverse=True))
+        candidates = ('<details><summary>Candidate search by template</summary><p>Requests include recovery retries. '
+            'Built lists contain the same ordered candidates as a fresh search; reused lists skip repeated generation. '
+            'Partition checks are local geometry calls, not distinct complete subword segmentations.</p>'
+            '<table><thead><tr><th>Template</th><th>Requests</th><th>Built</th><th>Reused</th>'
+            '<th>Generated cut pairs</th><th>Partition checks</th></tr></thead><tbody>'+rows+'</tbody></table></details>')
     html = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cutter changes</title><style>body{font:15px system-ui;margin:24px;background:#f3f5f7;color:#20323e}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px}article{background:white;padding:14px;border:1px solid #d2dae0;border-radius:8px}
 h2{font-size:16px}h3{font-size:13px;margin:4px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}svg{width:100%;height:190px}
-pre{white-space:pre-wrap}input{padding:10px;width:300px}@media(max-width:500px){.grid{grid-template-columns:1fr}}</style>
+pre{white-space:pre-wrap}input{padding:10px;width:300px}table{border-collapse:collapse}th,td{text-align:left;padding:6px 12px;border-bottom:1px solid #d2dae0}@media(max-width:500px){.grid{grid-template-columns:1fr}}</style>
 <h1>Cutter changes</h1><p>__SUMMARY__</p><p>Teal: changed letter bodies · gray: unchanged letters · gold: kashidas · pink: cut endpoints. Click an image to enlarge.</p>
 <input placeholder="Filter by subword ID" oninput="document.querySelectorAll('article').forEach(e=>e.hidden=!e.dataset.id.includes(this.value))">
-<details><summary>Verification and timing</summary><pre>__JSON__</pre></details><main class="grid">__CARDS__</main></html>'''
+__CANDIDATES__<details><summary>Verification and timing</summary><pre>__JSON__</pre></details><main class="grid">__CARDS__</main></html>'''
     (folder/'index.html').write_text(html.replace('__SUMMARY__',escape(
         f"{report['pages']} pages · {report['subwords']:,} multi-letter subwords · {len(cards)} changed · {len(report['issues'])} structural issues"))
         .replace('__JSON__',escape(json.dumps(summary,ensure_ascii=False,indent=2)))
+        .replace('__CANDIDATES__',candidates)
         .replace('__CARDS__',''.join(cards)))
 
 
@@ -119,6 +132,7 @@ def review(database, destination, pages, workers, templates):
             if pid in chosen:
                 targets[pid].add(sid)
     counts, stages, python = Counter(), Counter(), Counter()
+    candidate_totals, candidate_forms = Counter(), defaultdict(Counter)
     changes, issues, slowest = [], [], []
     revisions, cache_hits = set(), 0
     cut_started = time.perf_counter()
@@ -134,6 +148,11 @@ def review(database, destination, pages, workers, templates):
             stages.update(timing['timingMs']); python.update(timing['pythonSeconds'])
             cache_hits += timing.get('inputCacheHit',False)
             slowest.extend(timing['subwords'])
+            for subword in timing['subwords']:
+                search = subword.get('search', {})
+                candidate_totals.update({k:v for k,v in search.items() if k!='forms'})
+                for form, statistics in search.get('forms', {}).items():
+                    candidate_forms[form].update(statistics)
             if n%25==0 or n==len(chosen):
                 print(f'{n}/{len(chosen)} pages; {time.perf_counter()-cut_started:.1f}s',flush=True)
                 log.flush()
@@ -147,6 +166,7 @@ def review(database, destination, pages, workers, templates):
                   changes=changes, issues=issues, inputCacheHits=cache_hits,
                   cutSeconds=cut_seconds, elapsedSeconds=time.perf_counter()-started,
                   stageSeconds={k:v/1000 for k,v in stages.items()}, pythonSeconds=python,
+                  candidateSearch=dict(candidate_totals,forms=dict(candidate_forms)),
                   timingMeaning='cutSeconds and elapsedSeconds are wall time; stageSeconds and pythonSeconds accumulate across workers.',
                   slowestSubwords=sorted(slowest,key=lambda s:s['milliseconds'],reverse=True)[:20],
                   binarySha256=sha(binary.read_bytes()), templatesSha256=sha((folder/'letter-forms.json').read_bytes()),

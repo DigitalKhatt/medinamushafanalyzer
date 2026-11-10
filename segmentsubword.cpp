@@ -13,6 +13,94 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <QCache>
+
+struct CandidateSearchStats {
+    qint64 requests = 0, builds = 0, bodies = 0, cutPairs = 0, partitions = 0;
+    qint64 placementChecks = 0, placementRejected = 0;
+};
+static thread_local QJsonObject completedSearchProfile;
+
+// Pure geometry shared by all placement/scale retries of one subword. Keys
+// retain exact coordinates; failed candidates are cached as well as successes.
+// Bound memory and release it when the outer segmentation call finishes.
+struct CutGeometryMemo {
+    std::vector<QPainterPath> outlines;
+    QCache<QByteArray, std::vector<GlyphInfo>> partitions{16 * 1024 * 1024};
+    QCache<QByteArray, bool> inkSegments{65536};
+    size_t partitionHits = 0, partitionMisses = 0, segmentHits = 0, segmentMisses = 0;
+    bool profiling = qEnvironmentVariableIsSet("MEDINA_PROFILE");
+    QMap<QString, CandidateSearchStats> forms;
+    CandidateSearchStats* activeForm = nullptr;
+
+    int outlineId(const QPainterPath& ink) {
+        for (size_t i = outlines.size(); i > 0; --i)
+            if (outlines[i - 1].fillRule() == ink.fillRule() && outlines[i - 1] == ink) return int(i - 1);
+        if (outlines.size() == 64) return -1;
+        outlines.push_back(ink);
+        return int(outlines.size() - 1);
+    }
+};
+
+static thread_local CutGeometryMemo* cutGeometryMemo = nullptr;
+
+struct CutGeometryMemoScope {
+    std::unique_ptr<CutGeometryMemo> owned;
+    CutGeometryMemoScope() {
+        if (!cutGeometryMemo) {
+            owned = std::make_unique<CutGeometryMemo>();
+            cutGeometryMemo = owned.get();
+        }
+    }
+    ~CutGeometryMemoScope() {
+        if (!owned) return;
+        completedSearchProfile = {};
+        if (owned->profiling) {
+            QJsonObject forms;
+            for (auto it = owned->forms.cbegin(); it != owned->forms.cend(); ++it) {
+                const auto& s = it.value();
+                forms.insert(it.key(), QJsonObject{{"requests", s.requests}, {"builds", s.builds},
+                    {"reused", s.requests - s.builds}, {"bodyCandidates", s.bodies},
+                    {"cutPairs", s.cutPairs}, {"partitionChecks", s.partitions},
+                    {"placementChecks", s.placementChecks}, {"placementRejected", s.placementRejected}});
+            }
+            completedSearchProfile = {{"forms", forms},
+                {"partitionRequests", qint64(owned->partitionHits + owned->partitionMisses)},
+                {"partitionComputations", qint64(owned->partitionMisses)}};
+        }
+        cutGeometryMemo = nullptr;
+    }
+};
+
+QJsonObject letterSearchProfile() { return completedSearchProfile; }
+
+struct CandidateSearchScope {
+    CandidateSearchStats* stats = nullptr;
+    CandidateSearchStats* previous = nullptr;
+    explicit CandidateSearchScope(const QJsonObject& form) {
+        if (!cutGeometryMemo || !cutGeometryMemo->profiling) return;
+        stats = &cutGeometryMemo->forms[form.value("id").toString()];
+        previous = cutGeometryMemo->activeForm;
+        cutGeometryMemo->activeForm = stats;
+        ++stats->requests;
+    }
+    ~CandidateSearchScope() { if (stats) cutGeometryMemo->activeForm = previous; }
+};
+
+template<class T> static void appendGeometryKey(QByteArray& key, const T& value) {
+    key.append(reinterpret_cast<const char*>(&value), sizeof(value));
+}
+
+static void appendGeometryPoint(QByteArray& key, const QPointF& point) {
+    appendGeometryKey(key, point.x());
+    appendGeometryKey(key, point.y());
+}
+
+static void appendGeometryAnchor(QByteArray& key, const PathExtrema& point) {
+    appendGeometryKey(key, point.pathIndex);
+    appendGeometryKey(key, point.time);
+    appendGeometryPoint(key, point.point);
+}
 
 namespace {
 thread_local LetterFormInspection* formInspection = nullptr;
@@ -118,9 +206,21 @@ struct LamBodyEvidence {
 
 struct LamMedialBodyEvidence;
 struct SharedShapeEvidence;
+struct PreparedPassOutline;
+struct ToothCandidateMemo;
+struct LamCandidateMemo;
+
+struct PreparedPassRules {
+    QJsonObject config;
+    bool recoverTeeth;
+    QJsonArray boundaries, finals, alefTurns;
+    QMap<QString, QJsonObject> constraints;
+};
 
 // Shared by retries on a single, fixed outline in page coordinates.
 struct OutlineSearchCache {
+    std::shared_ptr<const PreparedPassOutline> outline;
+    std::vector<std::unique_ptr<PreparedPassRules>> rules;
     std::map<std::pair<double, double>, StrokeNormalSample> normalsByCenter;
     std::map<std::pair<QString, bool>, std::optional<Stretching>> terminalCuts;
     std::map<std::pair<QString, double>, std::vector<std::pair<Stretching, Stretching>>> contourBodies;
@@ -128,6 +228,8 @@ struct OutlineSearchCache {
     std::map<int, QLineF> misplacedHeads;
     std::map<std::pair<QByteArray, int>, std::shared_ptr<const LamMedialBodyEvidence>> medialLamBodies;
     std::map<std::pair<QByteArray, int>, std::shared_ptr<const SharedShapeEvidence>> sharedBodies;
+    std::shared_ptr<ToothCandidateMemo> toothCandidates;
+    std::shared_ptr<LamCandidateMemo> lamCandidates;
 };
 
 struct SearchContext {
@@ -224,6 +326,58 @@ struct InkOutline {
 static InkOutline inkOutline(const SearchContext &context) {
     return {context.transformedPath, context.xSorted, context.ySorted, context.timeSorted,
             context.subPaths, context.bbox, context.orientation};
+}
+
+struct PreparedPassOutline {
+    QPainterPath ink;
+    std::vector<QPainterPath> contours;
+    QVector<PathExtrema> extrema;
+    xsortedtype x;
+    ysortedtype y;
+    timesortedtype time;
+    Orientation orientation;
+};
+
+// Placement retries change joins and cursors, never the source landmarks.
+// Cache the complete inventory, including the corner-preserving deduplication.
+static bool preparePassOutline(SearchContext& context, OutlineSearchCache& cache) {
+    if (!cache.outline || cache.outline->ink != context.transformedPath) {
+        auto prepared = std::make_shared<PreparedPassOutline>();
+        prepared->ink = context.transformedPath;
+        QVector<PathExtrema> raw;
+        ShapeItem::getExtrema(prepared->ink, prepared->contours, raw);
+        for (const auto& point : raw) {
+            auto existing = std::find_if(prepared->extrema.begin(), prepared->extrema.end(), [&](const auto& other) {
+                const double dx = std::abs(other.point.x() - point.point.x());
+                const double dy = std::abs(other.point.y() - point.point.y());
+                return other.pathIndex == point.pathIndex && dx < .01 && dy < .01 &&
+                    (other.isSharp == point.isSharp || (dx < 1e-5 && dy < 1e-5));
+            });
+            if (existing == prepared->extrema.end()) prepared->extrema.append(point);
+            else if (point.isSharp && !existing->isSharp) *existing = point;
+        }
+        for (const auto& point : prepared->extrema) if (point.pathIndex == 0) {
+            prepared->time.insert(point);
+            prepared->x.insert(point);
+            prepared->y.insert(point);
+        }
+        if (prepared->time.size() < 3) return false;
+        context.subPaths = prepared->contours;
+        context.timeSorted = prepared->time;
+        context.xSorted = prepared->x;
+        context.ySorted = prepared->y;
+        context.setOrientation();
+        prepared->orientation = context.orientation;
+        cache.outline = std::move(prepared);
+    } else {
+        context.subPaths = cache.outline->contours;
+        context.timeSorted = cache.outline->time;
+        context.xSorted = cache.outline->x;
+        context.ySorted = cache.outline->y;
+        context.orientation = cache.outline->orientation;
+    }
+    context.subword.extrema = cache.outline->extrema;
+    return true;
 }
 
 struct JoinTime {
@@ -1071,6 +1225,10 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() ||
          cuts.value("tail").toObject().isEmpty()))
         return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    const auto flankSample = body.value("tail").toObject().value("flankSampleWidths");
+    if (!flankSample.isUndefined() && (!flankSample.isDouble() || !std::isfinite(flankSample.toDouble()) ||
+        flankSample.toDouble() <= 0 || flankSample.toDouble() > 1))
+        return id + ": tail.flankSampleWidths must be greater than zero and at most one";
     if (shape == "separate-components") {
         const auto parts = body.value("parts").toObject(), policy = cuts.value("parts").toObject();
         if (phase != "medial" || parts.value("count") != 2)
@@ -1348,6 +1506,39 @@ static QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject for
     const auto stem = body.value("stem").toObject();
     if (stem.contains("headLip")) form.insert("_bodyPenWidth", stem.value("penWidth"));
     return form;
+}
+
+static const PreparedPassRules& preparePassRules(const QJsonObject& config, bool recoverTeeth,
+                                                OutlineSearchCache& cache) {
+    for (const auto& rules : cache.rules)
+        if (rules->config == config && rules->recoverTeeth == recoverTeeth) return *rules;
+    auto prepared = std::make_unique<PreparedPassRules>();
+    prepared->config = config;
+    prepared->recoverTeeth = recoverTeeth;
+    for (const auto* position : {"initial", "medial", "final"}) {
+        for (const auto& value : config.value(position).toArray()) {
+            auto rule = bodyConstraintForm(config, value.toObject());
+            prepared->constraints.insert(rule.value("id").toString(), rule);
+            if (QString(position) == "medial" || rule.contains("detachedArm")) continue;
+            if (rule.value("retryWithVariants").toBool()) rule.insert("tryNext", true);
+            if (!recoverTeeth && rule.value("onPartial").toBool()) continue;
+            if (QString(position) == "initial") {
+                rule.insert("first", true);
+                rule.insert("bodyBoundary", "current");
+            } else {
+                rule.insert("next", rule.take("current"));
+                rule.insert("last", true);
+                rule.insert("bodyBoundary", "next");
+                prepared->finals.append(rule);
+                if (rule.value("body").toObject().value("shape") == "upright-stem")
+                    prepared->alefTurns.append(rule);
+            }
+            prepared->boundaries.append(rule);
+        }
+    }
+    const auto& result = *prepared;
+    cache.rules.push_back(std::move(prepared));
+    return result;
 }
 
 static QJsonObject bodyCutPolicy(const QJsonObject& description, const QString& letters, int slot) {
@@ -3539,9 +3730,9 @@ static QVector<QPainterPath> toSubpaths(const QPainterPath& path)
 		subpaths << current;
 	return subpaths;
 }
-static std::vector<GlyphInfo> cutRegions(const QPainterPath& path, const QString& text,
+static std::vector<GlyphInfo> computeCutRegions(const QPainterPath& path, const QString& text,
                                          const std::vector<Stretching>& cuts, Orientation orientation,
-                                         bool expanded = false) {
+                                         bool expanded) {
     std::vector<GlyphInfo> regions;
     if (cuts.empty()) return {{text, path}};
     // Both contour sides must agree on reading order. Testing only whether
@@ -3899,8 +4090,48 @@ static std::vector<GlyphInfo> cutRegions(const QPainterPath& path, const QString
 
 
 
-static bool interiorInkSegment(const QPainterPath& ink, const QPointF& top, const QPointF& bottom,
-                               double topTolerance = 0) {
+static std::vector<GlyphInfo> cutRegions(const QPainterPath& path, const QString& text,
+                                       const std::vector<Stretching>& cuts, Orientation orientation,
+                                       bool expanded = false) {
+    if (cutGeometryMemo && cutGeometryMemo->activeForm) ++cutGeometryMemo->activeForm->partitions;
+    if (!cutGeometryMemo || cuts.empty()) return computeCutRegions(path, text, cuts, orientation, expanded);
+    const int source = cutGeometryMemo->outlineId(path);
+    if (source < 0) return computeCutRegions(path, text, cuts, orientation, expanded);
+    QByteArray key;
+    key.reserve(int(16 + cuts.size() * 80));
+    appendGeometryKey(key, source);
+    appendGeometryKey(key, orientation);
+    appendGeometryKey(key, expanded);
+    for (const auto& cut : cuts) {
+        // These are all the fields consumed by computeCutRegions and its
+        // reading-order/shared-fork checks. Pen width and template identity
+        // cannot change a partition at these same contour endpoints.
+        appendGeometryAnchor(key, cut.topBaseLine);
+        appendGeometryAnchor(key, cut.bottomBaseLine);
+        appendGeometryKey(key, cut.counterEntry.pathIndex);
+        if (cut.counterEntry.pathIndex > 0) {
+            appendGeometryAnchor(key, cut.counterEntry);
+            appendGeometryAnchor(key, cut.counterExit);
+            appendGeometryPoint(key, cut.counterBendWeights);
+        }
+    }
+    if (const auto* saved = cutGeometryMemo->partitions.object(key)) {
+        ++cutGeometryMemo->partitionHits;
+        auto result = *saved;
+        for (auto& glyph : result) glyph.text = text;
+        return result;
+    }
+    ++cutGeometryMemo->partitionMisses;
+    auto result = computeCutRegions(path, text, cuts, orientation, expanded);
+    size_t cost = 128 + key.size() + result.size() * sizeof(GlyphInfo);
+    for (const auto& glyph : result) cost += size_t(glyph.path.elementCount()) * sizeof(QPainterPath::Element);
+    if (cost <= size_t(cutGeometryMemo->partitions.maxCost()))
+        cutGeometryMemo->partitions.insert(key, new std::vector<GlyphInfo>(result), int(cost));
+    return result;
+}
+
+static bool computeInteriorInkSegment(const QPainterPath& ink, const QPointF& top, const QPointF& bottom,
+                                     double topTolerance) {
     const QLineF chord(top, bottom);
     if (chord.length() < 1e-6) return false;
     for (double t : {0.1, 0.25, 0.5, 0.75, 0.9}) {
@@ -3912,6 +4143,27 @@ static bool interiorInkSegment(const QPainterPath& ink, const QPointF& top, cons
             QLineF(bottom, crossing.point).length() > 1e-5) return false;
     }
     return true;
+}
+
+static bool interiorInkSegment(const QPainterPath& ink, const QPointF& top, const QPointF& bottom,
+                               double topTolerance = 0) {
+    if (!cutGeometryMemo) return computeInteriorInkSegment(ink, top, bottom, topTolerance);
+    const int source = cutGeometryMemo->outlineId(ink);
+    if (source < 0) return computeInteriorInkSegment(ink, top, bottom, topTolerance);
+    QByteArray key;
+    key.reserve(48);
+    appendGeometryKey(key, source);
+    appendGeometryPoint(key, top);
+    appendGeometryPoint(key, bottom);
+    appendGeometryKey(key, topTolerance);
+    if (const auto* saved = cutGeometryMemo->inkSegments.object(key)) {
+        ++cutGeometryMemo->segmentHits;
+        return *saved;
+    }
+    ++cutGeometryMemo->segmentMisses;
+    const bool result = computeInteriorInkSegment(ink, top, bottom, topTolerance);
+    cutGeometryMemo->inkSegments.insert(key, new bool(result));
+    return result;
 }
 
 static bool interiorChord(const QPainterPath& ink, const PathExtrema& top, const PathExtrema& bottom,
@@ -4178,6 +4430,7 @@ static bool strokeNormalCut(const SearchContext& context, Stretching& cut, doubl
 // Validate the body made by the cut, not just the route that reached it.
 // Reuse this check when a shared ligature boundary replaces an earlier cut.
 static bool containsHeadLips(const QPainterPath& body, const QJsonObject& lips, QLineF* evidence = nullptr);
+static bool retainsTailShoulder(SearchContext& context, const QJsonObject& rule, const Stretching& boundary);
 
 static bool matchesBoundaryBody(SearchContext& context, const QJsonObject& rule,
                                 const Stretching& boundary, bool initial, const QJsonObject& initialLips = {},
@@ -4192,6 +4445,8 @@ static bool matchesBoundaryBody(SearchContext& context, const QJsonObject& rule,
                                            shape == "counter-shoulder" || shape == "counter-bridge");
     const bool protectOpening = initial && !initialLips.isEmpty();
     const bool protectTail = !initial && rule.value("ownsLeftTip").toBool();
+    if (!initial && shape == "tail-branch" && !retainsTailShoulder(context, rule, boundary))
+        return reject("cut separates the bowl shoulder");
     if (features.isEmpty() && !finalCounter && !protectOpening && !protectTail) return true;
     const auto pieces = cutRegions(context.transformedPath, {}, {boundary}, context.orientation, true);
     if (pieces.size() != 2) return false;
@@ -5695,7 +5950,7 @@ static std::vector<BentToothBodyEvidence> recognizeToothBends(
                 if (curved.size() != 19) continue;
             }
             ToothFlankGeometry geometry(context, *tip, *bend, count);
-            std::array<Stretching, 2> sections;
+            std::array<Stretching, 2> sections{};
             double stroke = 0;
             if (rounded) {
                 const auto above = [&](const PathExtrema& p, double length) {
@@ -5735,7 +5990,7 @@ static std::vector<ToothBody> cutToothBends(SearchContext& context,
         const auto& bend = evidence.bend;
         const double stroke = evidence.stroke;
         ToothFlankGeometry geometry(context, tip, bend, count);
-        std::array<Stretching, 2> cuts;
+        std::array<Stretching, 2> cuts{};
         if (projected) {
             if (hooked) {
                 // On a curled flank the underside normal can point back
@@ -5920,8 +6175,15 @@ static std::vector<ToothBodyEvidence> recognizeToothBodies(
         }
         return true;
     };
-    for (auto peak = context.timeSorted.begin(); peak != context.timeSorted.end(); ++peak) {
-        if (duplicate(peak) || !minimum(peak)) continue;
+    // Classify the outer tips and inner bends once. Their flank topology is
+    // intrinsic to the outline, so each tip need not reclassify every point.
+    std::vector<timesortedtype::const_iterator> tips, innerBends;
+    for (auto at = context.timeSorted.begin(); at != context.timeSorted.end(); ++at) {
+        if (duplicate(at)) continue;
+        if (minimum(at)) tips.push_back(at);
+        if (innerMinimum(at)) innerBends.push_back(at);
+    }
+    for (const auto peak : tips) {
         const auto tip = peak->point;
         const auto flank = [&](auto advance) {
             std::vector<PathExtrema> points{*peak};
@@ -5975,8 +6237,8 @@ static std::vector<ToothBodyEvidence> recognizeToothBodies(
             return false;
         };
         std::vector<PathExtrema> bends;
-        for (auto inner = context.timeSorted.begin(); inner != context.timeSorted.end(); ++inner)
-            if (!duplicate(inner) && innerMinimum(inner) && inner->point.y() > tip.y() && interiorChord(ink, *peak, *inner))
+        for (const auto inner : innerBends)
+            if (inner->point.y() > tip.y() && interiorChord(ink, *peak, *inner))
                 bends.push_back(*inner);
         std::sort(bends.begin(), bends.end(), [&](const auto& x, const auto& y) {
             return QLineF(tip, x.point).length() < QLineF(tip, y.point).length();
@@ -6287,7 +6549,7 @@ static std::vector<ToothBody> cutLoopTeeth(SearchContext &context, const std::sh
     return bodies ? cutToothBodies(context, *bodies, policy, false) : std::vector<ToothBody>{};
 }
 
-static std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJsonObject& form) {
+static std::vector<ToothBody> computeToothBoundaries(SearchContext& context, const QJsonObject& form) {
     InspectFormScope inspection(form, context.transformedPath);
     const auto body = form.value("body").toObject();
     const auto cuts = form.value("cuts").toObject();
@@ -6295,6 +6557,8 @@ static std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, co
     bool recognized = false;
     if (bentToothDescription(body)) {
         const auto evidence = recognizeBentToothBodies(context, body);
+        if (cutGeometryMemo && cutGeometryMemo->activeForm)
+            cutGeometryMemo->activeForm->bodies += evidence.bodies.size();
         recognized = !evidence.bodies.empty();
         if (inspectingForm) for (const auto& item : evidence.bodies) {
             inspectLandmark("Tooth tip", item.tip);
@@ -6305,6 +6569,8 @@ static std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, co
         result = cutBentToothBodies(context, evidence, cuts);
     } else {
         const auto evidence = recognizeToothBodies(context, body);
+        if (cutGeometryMemo && cutGeometryMemo->activeForm)
+            cutGeometryMemo->activeForm->bodies += evidence.size();
         recognized = !evidence.empty();
         if (inspectingForm) for (const auto& item : evidence) {
             inspectLandmark("Tooth tip", item.tip);
@@ -6320,6 +6586,34 @@ static std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, co
     if (inspectingForm) for (const auto& item : result) inspectCandidate(QString("Tip %1 / bend %2").arg(item.tip.time, 0, 'f', 2)
         .arg(item.bend.time, 0, 'f', 2), item.left, item.right);
     return result;
+}
+
+struct ToothCandidateMemo {
+    QPainterPath source;
+    Orientation orientation;
+    struct Entry { QJsonObject form; std::vector<ToothBody> candidates; };
+    QMap<QString, Entry> forms;
+};
+
+// Tip/bend associations and the cut policies depend only on the uncut outline.
+// Placement retries get a copy: baseline extensions must not mutate this inventory.
+static std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJsonObject& form) {
+    CandidateSearchScope measured(form);
+    ToothCandidateMemo* memo = nullptr;
+    if (context.outlineCache && !formInspection) {
+        auto& saved = context.outlineCache->toothCandidates;
+        if (!saved || saved->source != context.transformedPath ||
+            saved->source.fillRule() != context.transformedPath.fillRule() || saved->orientation != context.orientation)
+            saved = std::make_shared<ToothCandidateMemo>(context.transformedPath, context.orientation);
+        memo = saved.get();
+        const auto hit = memo->forms.constFind(form.value("id").toString());
+        if (hit != memo->forms.cend() && hit->form == form) return hit->candidates;
+    }
+    if (measured.stats) ++measured.stats->builds;
+    auto candidates = computeToothBoundaries(context, form);
+    if (measured.stats) measured.stats->cutPairs += candidates.size();
+    if (memo) memo->forms.insert(form.value("id").toString(), {form, candidates});
+    return candidates;
 }
 
 // The stacked counters identify the medial heh itself. Locate the inward
@@ -7164,7 +7458,8 @@ static bool cutDescendingShaft(SearchContext &context, const DescendingShaftBody
 }
 
 // Follow the underside of the terminal tail to the fork where the incoming
-// stroke branches off. Walk one pen width down that branch and take its normal.
+// stroke branches off. Measure the flanks over a local stroke-scaled arc,
+// independently of the number of extrema used to describe that arc.
 struct TailBranch {
     PathExtrema corner;
     bool forward;
@@ -7187,14 +7482,27 @@ static TailBody recognizeTailBranches(const InkOutline &outline, const QJsonObje
             const auto next = (context.*advance)(corner);
             const auto step = next->point - corner->point;
             if (step.x() < -.01) break;
-            const auto prev = advance == &SearchContext::prev ? context.next(corner) : context.prev(corner);
-            if (corner->isSharp && i > 1 && corner->point.y() < prev->point.y() && step.y() > 0 && step.x() > 0) {
+            if ((corner->isSharp || corner->isX || corner->isY) && i > 1) {
                 const bool forward = advance == &SearchContext::prev;
                 Stretching first{};
                 if (contourNormalCut(context, *corner, forward, false, first, true)) {
                     const double width = first.referenceWidth;
+                    // A microscopic reverse bend can insert a smooth extremum
+                    // immediately after the shoulder. Keep the shoulder
+                    // as the anchor; judge each flank after a meaningful walk.
+                    const double distance = settings.value("flankSampleWidths").toDouble(.25) * width;
+                    const auto sample = [&](bool direction, PathExtrema& point) {
+                        auto limit = *corner;
+                        limit.time += (direction ? 1 : -1) * body.curveCount;
+                        QPointF tangent;
+                        return advanceOnContour(ink, *corner, limit, direction, distance, point, tangent);
+                    };
+                    PathExtrema incoming{}, outgoing{};
                     const double run = corner->point.x() - tail->point.x();
-                    if (run >= settings.value("minRun").toDouble(2) * width && run <= settings.value("maxRun").toDouble(12) * width) {
+                    if (sample(!forward, incoming) && sample(forward, outgoing) &&
+                        incoming.point.y() > corner->point.y() && outgoing.point.y() > corner->point.y() &&
+                        outgoing.point.x() > corner->point.x() &&
+                        run >= settings.value("minRun").toDouble(2) * width && run <= settings.value("maxRun").toDouble(12) * width) {
                         body.branches.push_back({*corner, forward, width});
                     }
                 }
@@ -7205,7 +7513,7 @@ static TailBody recognizeTailBranches(const InkOutline &outline, const QJsonObje
     return body;
 }
 static bool cutTailBranches(SearchContext &context, const TailBody &body, const QJsonObject &settings,
-                            Stretching &result) {
+                            Stretching &result, PathExtrema* shoulder = nullptr) {
     const auto &ink = context.transformedPath;
     const auto *tail = &body.tip;
     const auto count = body.curveCount;
@@ -7242,6 +7550,7 @@ static bool cutTailBranches(SearchContext &context, const TailBody &body, const 
                 corner->point.y() - pieces[1].path.boundingRect().top() >=
                     settings.value("minRise").toDouble(2) * width) {
                 result = cut;
+                if (shoulder) *shoulder = branch.corner;
                 return true;
             }
         }
@@ -8789,6 +9098,7 @@ struct LamStemBody {
     std::array<std::optional<PathExtrema>, 2> descendingFlanks;
     std::array<std::optional<SavedContourRoute>, 2> entryRoutes;
     std::vector<std::array<std::optional<SavedContourRoute>, 2>> exitRoutes;
+    std::vector<size_t> forks;
 };
 
 struct LamMedialBodyEvidence {
@@ -8812,6 +9122,15 @@ static LamMedialBodyEvidence recognizeMedialLamBodies(const InkOutline &outline,
     const auto routes = body.value("exitRoutes").toArray();
     for (const auto& crest : result.features.crests) {
         LamStemBody stem{crest, {}, {}, {}};
+        // Pair this shaft only with intrinsic forks below its crest. Later
+        // placement still applies the exact existing stroke-scaled distances.
+        // This removes impossible pairs without narrowing any accepted range.
+        for (size_t i = 0; i < result.features.forks.size(); ++i) {
+            const auto& fork = result.features.forks[i];
+            if (!fork.isConcave(geometry.orientation) || (!fork.fork && !fork.folded())) continue;
+            if (body.value("minRise").toDouble() > 0 && fork.tip.point.y() <= crest.point.y()) continue;
+            stem.forks.push_back(i);
+        }
         const auto at = geometry.timeSorted.find(crest);
         int flank = 0;
         for (const auto advance : {&SearchContext::next, &SearchContext::prev}) {
@@ -8881,7 +9200,7 @@ struct MedialCandidate {
 // Assembly owns all neighbor compatibility, contextual scale, priority and
 // shared-attachment checks. Its input inventory is already recognized and
 // remains unchanged when incoming/outgoing joins or cut policies change.
-static std::vector<MedialCandidate> assembleMedialLamCuts(SearchContext& context,
+static std::vector<MedialCandidate> computeMedialLamCuts(SearchContext& context,
         const QJsonObject& config, const QJsonObject& form, const LamMedialBodyEvidence& evidence,
         const Stretching& incoming,
         const QPointF& entry, const QPointF& exit, double stroke, bool open, bool recoverTeeth,
@@ -8927,21 +9246,34 @@ static std::vector<MedialCandidate> assembleMedialLamCuts(SearchContext& context
                 lamBody.value("minRise").toDouble() * stroke &&
             (sharedExit || getJoinTime(incoming, context.orientation).isStrictLeft(crest.time));
         if (!fits) inspectReason("Assembly", "Recognized stem is outside this slot's position, height or contour-order limits.");
+        if (cutGeometryMemo && cutGeometryMemo->activeForm) {
+            ++cutGeometryMemo->activeForm->placementChecks;
+            cutGeometryMemo->activeForm->placementRejected += !fits;
+        }
         return fits;
     };
     double firstStemX = -std::numeric_limits<double>::infinity();
-    for (const auto& stem : evidence.stems)
-        if (fitsSlot(stem)) firstStemX = std::max(firstStemX, stem.crest.point.x());
+    std::vector<const LamStemBody*> eligible;
+    for (const auto& stem : evidence.stems) {
+        if (!fitsSlot(stem)) continue;
+        firstStemX = std::max(firstStemX, stem.crest.point.x());
+        eligible.push_back(&stem);
+    }
+    // Apply the existing occurrence constraints once, before multiplying the
+    // surviving stems by route, flank and fork alternatives. Keep their order.
+    if (!sharedExit) std::erase_if(eligible, [&](const auto* stem) {
+        return stem->crest.point.x() < firstStemX - 1e-6;
+    });
     std::vector<MedialCandidate> forkCandidates;
     const double forkOffset = lam.value("forkOffset").toDouble();
     if (allowFork && forkOffset > 0 && !sharedExit && incoming.counterEntry.pathIndex <= 0) {
         const auto entrySide = getJoinTime(incoming, context.orientation);
         const auto& recognizedBodies = bodyEvidence.forks;
-        for (const auto& stem : evidence.stems) {
+        for (const auto* selected : eligible) {
+            const auto& stem = *selected;
             const auto* crest = &stem.crest;
-            if (!fitsSlot(stem) || crest->point.x() < firstStemX - 1e-6) continue;
-            for (const auto& body : recognizedBodies) {
-                if (!body.isConcave(context.orientation) || (!body.fork && !body.folded())) continue;
+            for (const auto index : stem.forks) {
+                const auto& body = recognizedBodies[index];
                 const auto* tip = &body.tip;
                 if (tip->point.y() - crest->point.y() < lamBody.value("minRise").toDouble() * stroke ||
                     std::abs(tip->point.x() - crest->point.x()) > 3 * stroke ||
@@ -8975,11 +9307,11 @@ static std::vector<MedialCandidate> assembleMedialLamCuts(SearchContext& context
         const auto routePolicy = routeCuts[routeIndex].toObject();
         const size_t routeStart = candidates.size();
 
-        for (const auto& stem : evidence.stems) {
+        for (const auto* selected : eligible) {
+            const auto& stem = *selected;
             const auto* crest = &stem.crest;
             // Reading-order selection belongs to assembly. Recognition keeps
             // the following stem available for its own later letter slot.
-            if (!fitsSlot(stem) || (!sharedExit && crest->point.x() < firstStemX - 1e-6)) continue;
             std::vector<Stretching> rightOptions;
             if (incoming.counterEntry.pathIndex > 0) rightOptions.push_back(incoming);
             for (int flank = 0; flank < 2; ++flank) {
@@ -9163,6 +9495,81 @@ static std::vector<MedialCandidate> assembleMedialLamCuts(SearchContext& context
     context.res = originalResult;
     context.nextIter = originalNext;
     return candidates;
+}
+
+// A cached assembly is specific to its complete geometry, policies and adjacent
+// boundary. It does not promote a template or skip any distinct placement.
+struct LamCandidateMemo {
+    QPainterPath source;
+    Orientation orientation;
+    std::vector<QJsonObject> objects;
+    QCache<QByteArray, std::vector<MedialCandidate>> candidates{4 * 1024 * 1024};
+    int objectId(const QJsonObject& object) {
+        for (size_t i = 0; i < objects.size(); ++i)
+            if (objects[i] == object) return int(i);
+        objects.push_back(object);
+        return int(objects.size() - 1);
+    }
+};
+
+static void appendCandidateBoundary(QByteArray& key, const Stretching& cut) {
+    for (const auto* p : {&cut.topBaseLine, &cut.bottomBaseLine, &cut.topLeft, &cut.topRight,
+                          &cut.bottomLeft, &cut.bottomRight, &cut.counterEntry, &cut.counterExit}) {
+        appendGeometryAnchor(key, *p);
+        appendGeometryKey(key, p->isX); appendGeometryKey(key, p->isY); appendGeometryKey(key, p->isSharp);
+    }
+    appendGeometryKey(key, cut.length);
+    appendGeometryKey(key, cut.clockWise);
+    appendGeometryKey(key, cut.fixedRightBoundary);
+    appendGeometryKey(key, cut.fixedLeftBoundary);
+    appendGeometryKey(key, cut.topEndpointTolerance);
+    appendGeometryKey(key, cut.referenceWidth);
+    appendGeometryKey(key, cut.readingOrder);
+    appendGeometryPoint(key, cut.counterBendWeights);
+    const auto settings = QJsonDocument(cut.kashidaOverrides).toJson(QJsonDocument::Compact);
+    appendGeometryKey(key, settings.size());
+    key.append(settings);
+}
+
+static std::vector<MedialCandidate> assembleMedialLamCuts(SearchContext& context,
+        const QJsonObject& config, const QJsonObject& form, const LamMedialBodyEvidence& evidence,
+        const Stretching& incoming, const QPointF& entry, const QPointF& exit, double stroke,
+        bool open, bool recoverTeeth, bool allowFork, const std::optional<Stretching>& sharedExit) {
+    CandidateSearchScope measured(form);
+    LamCandidateMemo* memo = nullptr;
+    QByteArray key;
+    if (context.outlineCache && !formInspection) {
+        auto& saved = context.outlineCache->lamCandidates;
+        if (!saved || saved->source != context.transformedPath ||
+            saved->source.fillRule() != context.transformedPath.fillRule() || saved->orientation != context.orientation) {
+            saved = std::make_shared<LamCandidateMemo>();
+            saved->source = context.transformedPath;
+            saved->orientation = context.orientation;
+        }
+        memo = saved.get();
+        appendGeometryKey(key, memo->objectId(config));
+        appendGeometryKey(key, memo->objectId(form));
+        appendCandidateBoundary(key, incoming);
+        appendGeometryPoint(key, entry); appendGeometryPoint(key, exit);
+        appendGeometryKey(key, stroke); appendGeometryKey(key, context.pairedStrokeWidth);
+        appendGeometryKey(key, open); appendGeometryKey(key, recoverTeeth); appendGeometryKey(key, allowFork);
+        appendGeometryKey(key, bool(sharedExit));
+        if (sharedExit) appendCandidateBoundary(key, *sharedExit);
+        if (const auto* hit = memo->candidates.object(key)) return *hit;
+    }
+    if (measured.stats) {
+        ++measured.stats->builds;
+        measured.stats->bodies += evidence.stems.size() + evidence.turningShafts.size();
+    }
+    auto result = computeMedialLamCuts(context, config, form, evidence, incoming, entry, exit, stroke,
+                                     open, recoverTeeth, allowFork, sharedExit);
+    if (measured.stats) measured.stats->cutPairs += result.size();
+    if (memo) {
+        const size_t cost = 128 + key.size() + sizeof(MedialCandidate) * result.size();
+        if (cost <= size_t(memo->candidates.maxCost()))
+            memo->candidates.insert(key, new std::vector<MedialCandidate>(result), int(cost));
+    }
+    return result;
 }
 
 // At a tight loop-to-stroke junction, both edges of the bridge can end at
@@ -9896,6 +10303,18 @@ static std::shared_ptr<const SharedShapeEvidence> recognizedSharedShape(SearchCo
     if (!evidence || evidence->source != context.transformedPath)
         evidence = generate();
     return evidence;
+}
+
+static bool retainsTailShoulder(SearchContext& context, const QJsonObject& rule, const Stretching& boundary) {
+    const auto evidence = recognizedSharedShape(context, rule.value("body").toObject());
+    Stretching intrinsic{};
+    PathExtrema shoulder{};
+    if (!evidence->tail || !cutTailBranches(context, *evidence->tail, shapeSettings(rule, "tail"), intrinsic, &shoulder))
+        return false;
+    // Reconciled cuts may share the attachment, but the bowl's own shoulder
+    // cannot become a neighboring tooth. Test contour ownership, not distance
+    // to another letter's proposed boundary.
+    return getJoinTime(boundary, context.orientation).isLeft(shoulder.time);
 }
 
 static void inspectSharedShape(const SharedShapeEvidence &evidence) {
@@ -12615,6 +13034,7 @@ static bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition
 
 bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
                                         bool refresh, const QJsonObject* draft) {
+    CutGeometryMemoScope geometryMemo;
     resolveCompoundBody(pageIndex, lineIndex, wordIndex);
     auto& word = page.lines[lineIndex].words[wordIndex];
     auto& sub = word.wordResultInfo.subWords[subWordIndex];
@@ -13256,31 +13676,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
 
 	context.bbox = context.transformedPath.boundingRect();
 
-	ShapeItem::getExtrema(context.transformedPath, subPaths, subWord.extrema);
-
-	int basePathIndex = 0;
-
-    // Near-coincident extrema must not erase a true Bezier corner.
-    const auto oldExtrema = subWord.extrema;
-    subWord.extrema.clear();
-    for (const auto& point : oldExtrema) {
-        auto existing = std::find_if(subWord.extrema.begin(), subWord.extrema.end(), [&](const auto& other) {
-            const double dx = std::abs(other.point.x() - point.point.x());
-            const double dy = std::abs(other.point.y() - point.point.y());
-            return other.pathIndex == point.pathIndex && dx < .01 && dy < .01 &&
-                (other.isSharp == point.isSharp || (dx < 1e-5 && dy < 1e-5));
-        });
-        if (existing == subWord.extrema.end()) subWord.extrema.append(point);
-        else if (point.isSharp && !existing->isSharp) *existing = point;
-    }
-    for (const auto& point : subWord.extrema) if (point.pathIndex == basePathIndex) {
-        context.timeSorted.insert(point);
-        context.xSorted.insert(point);
-        context.ySorted.insert(point);
-    }
-
-	if (context.timeSorted.size() < 3) { subWord.correct = false; return false; }
-	context.setOrientation();
+	if (!preparePassOutline(context, outlineCache)) { subWord.correct = false; return false; }
 	subWord.basePathOrientation = context.orientation;
 
         for (const auto *phase : {"initial", "medial", "final"}) {
@@ -13322,31 +13718,10 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
 
 	int lastIndex = baseText.length() - 1;
 
-    // Position owns the letter selector and the side of its body boundary.
-    // These derived flags are internal to the geometric searches, not template ordering.
-    QJsonArray boundaryRules, finalRules;
-    for (const auto* position : {"initial", "final"}) {
-        for (const auto& value : config.value(position).toArray()) {
-            auto rule = bodyConstraintForm(config, value.toObject());
-            if (rule.contains("detachedArm")) continue;
-            if (rule.value("retryWithVariants").toBool()) rule.insert("tryNext",true);
-            if (!recoverTeeth && rule.value("onPartial").toBool()) continue;
-            if (QString(position) == "initial") {
-                rule.insert("first", true);
-                rule.insert("bodyBoundary", "current");
-            } else {
-                rule.insert("next", rule.take("current"));
-                rule.insert("last", true);
-                rule.insert("bodyBoundary", "next");
-                finalRules.append(rule);
-            }
-            boundaryRules.append(rule);
-        }
-    }
-    QJsonArray alefTurnRules;
-    for (const auto& value : finalRules)
-        if (value.toObject().value("body").toObject().value("shape") == "upright-stem")
-            alefTurnRules.append(value);
+    const auto& preparedRules = preparePassRules(config, recoverTeeth, outlineCache);
+    const auto& boundaryRules = preparedRules.boundaries;
+    const auto& finalRules = preparedRules.finals;
+    const auto& alefTurnRules = preparedRules.alefTurns;
     QVector<QString> bodyTemplateIds(baseText.size());
     QVector<int> sharedEntries;
     QMap<int, ToothBody> ownedTeeth;
@@ -13455,7 +13830,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     };
     const auto preservesBody = [&](const QString& templateId, const Stretching& boundary, bool initial) {
         for (const auto& value : config.value(initial ? "initial" : "final").toArray()) {
-            const auto rule = bodyConstraintForm(config, value.toObject());
+            const auto rule = preparedRules.constraints.value(value.toObject().value("id").toString());
             if (rule.value("id") != templateId) continue;
             if (!matchesBoundaryBody(context, rule, boundary, initial, config.value("_initialHeadLips").toObject()))
                 return false;
@@ -13840,7 +14215,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 attempts.insert(attempts.end(), partialAttempts.begin(), partialAttempts.end());
             }
             for (const auto& medial : attempts) {
-                const auto form = bodyConstraintForm(config, medial.form);
+                const auto form = preparedRules.constraints.value(medial.form.value("id").toString());
                 const bool composeSeenTail = plan && seenRetry && seenRetry->slot == letter;
                 if (composeSeenTail && !seenRetry->supports(form.value("seenTeeth").toObject())) continue;
                 std::vector<MedialCandidate> candidates;
