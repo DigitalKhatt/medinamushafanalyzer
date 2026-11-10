@@ -35,7 +35,7 @@ int main(int argc,char** argv) {
         {5,15,6,1,"yeh-return-fina"},{19,4,2,2,"kaf-bent-neck-medi"},
         {11,6,2,2,"reh-hook-fina"},{5,15,2,1,"ain-fina"},
         {251,11,4,2,"qaf-fina",9,21},{4,5,1,3,"qaf-fina",2,14},
-        {19,4,4,1,"qaf-top-bridge-fina",4,15},{70,3,1,2,"qaf-fina",13,24}};
+        {19,4,4,1,"qaf-fina",4,15},{70,3,1,2,"qaf-fina",13,24}};
     for (const auto at:cases) {
         PageAnalysisResult a; QDataStream stream(read(QString("pages/page%1.dat").arg(at.p))); stream>>a.page;
         a.resolveWordBoundaries(at.p,&font);

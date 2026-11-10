@@ -3951,6 +3951,7 @@
       "id": "qaf-fina",
       "current": "ق",
       "ownsLeftTip": true,
+      "tightJoin": true,
       "body": {
         "shape": "bowl-turn",
         "origin": "left",
@@ -5262,35 +5263,6 @@
         },
         "shoulder": {
           "maxWidth": 2.4
-        }
-      }
-    },
-    {
-      "id": "qaf-top-bridge-fina",
-      "current": "ق",
-      "tryNext": true,
-      "onIncomplete": true,
-      "tightJoin": true,
-      "onUnresolved": true,
-      "body": {
-        "inherit": "qaf-fina",
-        "shape": "counter-neck",
-        "counter": {
-          "entryCorner": {
-            "placement": "top-right",
-            "maxDistance": 2.1
-          }
-        }
-      },
-      "cuts": {
-        "counter": {
-          "entryCorner": {
-            "required": true
-          }
-        },
-        "boundaries": {
-          "right": "corner-junction",
-          "left": "free"
         }
       }
     },
