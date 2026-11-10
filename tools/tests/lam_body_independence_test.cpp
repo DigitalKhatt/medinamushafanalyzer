@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
                 const auto policy = r < 0 ? cuts.value("entryRoute").toObject() : policies[r].toObject();
                 for (int reverse = 0; reverse < 2; ++reverse) {
                     context.res = {};
-                    const bool direct = lamRouteCut(context, route, policy, &stem.crest, reverse);
+                    const bool direct = declaredContourRouteCut(context, route, policy, &stem.crest, reverse);
                     const auto expected = context.res;
                     context.res = {};
                     const bool stored = projectSavedRoute(context,

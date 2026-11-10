@@ -12,7 +12,7 @@ const locationState = () => new URLSearchParams(location.search || openingQuery)
 const kindOf = p => Object.hasOwn(names,p.get('kind')) ? p.get('kind') : 'letters';
 function viewOf(p, kind) {
   const context = p.get('context');
-  return {pair:p.has('pair'),kleft:p.has('kleft'),kright:p.has('kright'),
+  return {pair:p.has('pair'),kleft:p.has('kleft'),kright:p.has('kright'),marks:p.get('marks')!=='0',
     context:context==='word'?'word':kind==='letters' && context!=='subword'?'match':'crop'};
 }
 let facets, query = null, selected = null, controlsKey = null;
@@ -70,6 +70,7 @@ function restore(p, kind) {
   $('sort').querySelector('[value="confidence"]').disabled = !letters && kind!=='marks';
   $('context').checked = p.get('context')==='word';
   $('subword').checked = letters && p.get('context')==='subword';
+  $('showMarks').checked = p.get('marks')!=='0';
   for (const k of ['pair','kleft','kright']) $(k).checked=p.has(k);
   const limit = limitOf(p);
   if (![...$('limit').options].some(o=>o.value===limit)) $('limit').add(new Option(limit,limit));
@@ -92,6 +93,7 @@ function collect() {
   if ($('limit').value!==defaults.limit) p.set('limit',$('limit').value);
   if ($('context').checked) p.set('context','word');
   else if (!$('subword').disabled && $('subword').checked) p.set('context','subword');
+  if (!$('showMarks').checked) p.set('marks','0');
   for (const k of ['pair','kleft','kright']) if (!$(k).disabled && $(k).checked) p.set(k,'1');
   return p;
 }
@@ -103,7 +105,7 @@ form.onsubmit = event => {
 };
 $('kind').onchange=()=>{
   const old=locationState(), p=new URLSearchParams({kind:$('kind').value});
-  for(const k of ['page','limit']) if(old.has(k)) p.set(k,old.get(k));
+  for(const k of ['page','limit','marks']) if(old.has(k)) p.set(k,old.get(k));
   if (old.get('context')==='word') p.set('context','word');
   if (/^page\d/.test(old.get('q')||'')) p.set('q',old.get('q'));
   navigate(p);
@@ -134,6 +136,11 @@ for (const [id,context] of [['context','word'],['subword','subword']]) $(id).onc
 for (const k of ['pair','kleft','kright']) $(k).onchange=()=>{
   const p=locationState(); if (!p.has('kind')) p.set('kind',$('kind').value);
   if ($(k).checked) p.set(k,'1'); else p.delete(k);
+  navigate(p);
+};
+$('showMarks').onchange=()=>{
+  const p=locationState();
+  if ($('showMarks').checked) p.delete('marks'); else p.set('marks','0');
   navigate(p);
 };
 function move(sign) {
@@ -189,7 +196,7 @@ function showSelection(p) {
   }
   document.querySelector('.app').classList.toggle('has-selection',p.has('word'));
   const kind = kindOf(p);
-  openWord(p.get('word'),id,kind,kind==='letters'?viewOf(p,kind):{});
+  openWord(p.get('word'),id,kind,viewOf(p,kind));
 }
 function distribution(data,total) {
   const box=$('statsView'), dist=data.distribution, n=total-data.unmeasured;
@@ -287,7 +294,7 @@ function render() {
   if (!facets)return;
   const p=locationState(),kind=kindOf(p), params=new URLSearchParams(p);
   params.set('kind',kind);
-  for (const k of ['word','focus','context','pair','kleft','kright','limit','offset','stats']) params.delete(k);
+  for (const k of ['word','focus','context','pair','kleft','kright','marks','limit','offset','stats']) params.delete(k);
   const size=pageSize(p), offset=Number.isFinite(size) && /^\d{1,7}$/.test(p.get('offset')||'')?Number(p.get('offset')):0;
   const key=params.toString()+'|'+offset+'|'+size, viewKey=JSON.stringify(viewOf(p,kind));
   const visible=new URLSearchParams(p);

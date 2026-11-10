@@ -4,13 +4,12 @@ const inkLegend = 'Pale green for surrounding ink, dark green for the matched bo
 function selectInk(kind, id, description) {
   const image = $('wordInk');
   if (!image) return;
-  const context = kind === 'marks' ? 'letter' : kind === 'letters' ? preview.context || 'word' : 'word';
-  image.src = imageURL(kind, id, context, preview);
+  image.src = imageURL(kind, id, 'word', preview);
   image.alt = description;
   $('selection').textContent = description;
-  $('inkLegend').textContent = kind === 'marks'
-    ? 'The selected mark is highlighted in the letter and shown again inside the circle.'
-    : inkLegend;
+  $('inkLegend').textContent = kind === 'marks' && preview.marks !== false
+    ? 'The selected mark is highlighted in the whole word.'
+    : preview.marks === false ? 'Marks and dots are hidden.' : inkLegend;
   for (const b of $('inspection').querySelectorAll('button[data-ink]'))
     b.classList.toggle('selected', b.dataset.ink === id);
 }
@@ -19,7 +18,8 @@ function inkButton(title, kind, id, description) {
   b.dataset.ink = id;
   return b;
 }
-export async function openWord(wid, focus, kind, view = {}) {
+export async function openWord(wid, focus, kind, { marks = true, kleft, kright } = {}) {
+  const view = { marks, kleft, kright };
   preview = view;
   const token = [wid,focus,kind,JSON.stringify(view)].join('|');
   if (inspectionId === token) return;
@@ -34,7 +34,7 @@ export async function openWord(wid, focus, kind, view = {}) {
     const w = await api('/api/word', { id: wid });
     if (request !== inspectRevision) return;
     const box = $('inspection'),
-      icon = inkImage('words', wid, 'word', 'inspect-art'),
+      icon = inkImage('words', wid, 'word', 'inspect-art', view),
       description = el('p', wid, 'focus-label');
     icon.id = 'wordInk';
     description.id = 'selection';
@@ -47,7 +47,7 @@ export async function openWord(wid, focus, kind, view = {}) {
       const start=first.word_offset, end=last.word_offset+Array.from(last.text).length;
       title.append(chars.slice(0,start).join(''),el('mark',chars.slice(start,end).join('')),chars.slice(end).join(''));
     } else title.textContent=w.text;
-    const legend = el('p', inkLegend, 'legend');
+    const legend = el('p', marks ? inkLegend : 'Marks and dots are hidden.', 'legend');
     legend.id = 'inkLegend';
     box.replaceChildren(title, kv('word',wid), icon, description, legend);
     const details = el('details');

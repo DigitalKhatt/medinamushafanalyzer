@@ -184,6 +184,16 @@ class CatalogTests(unittest.TestCase):
         rows = search(self.db,dict(kind='letters',metric='width',min='1',max='2',sort='largest'))['rows']
         self.assertEqual([(r['id'],r['metric_value']) for r in rows],[(O0,2),(O2,1)])
 
+    def test_whole_word_preview_can_hide_marks_from_the_background(self):
+        self.attach(self.bundle)
+        with_marks = image(self.db,'letters',O0,'word')
+        without_marks = image(self.db,'letters',O0,'word',marks=False)
+        self.assertIn('M2 4h1',with_marks)
+        self.assertNotIn('M2 4h1',without_marks)
+        self.assertIn('M3 1h2',without_marks)
+        other_subword = image(self.db,'subwords',WID+'-s2','crop',marks=False)
+        self.assertIn(other_subword.split(' d="')[1].split('"')[0],without_marks)
+
     def test_unbounded_kashida_keeps_zero_and_unmeasured_matches(self):
         self.bundle['parts'][0]['metrics']['kashidaLeft'] = 0
         self.bundle['parts'][1]['metrics']['kashidaRight'] = 0

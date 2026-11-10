@@ -49,7 +49,8 @@ def serve(database, port, host='127.0.0.1'):
                         elif route.path=='/api/image':
                             data = image(db, params.get('kind','subwords'),params.get('id',''),params.get('context','crop'),
                                          pair=params.get('pair')=='1',left=params.get('kleft')=='1',
-                                         right=params.get('kright')=='1',dark=params.get('theme')=='dark')
+                                         right=params.get('kright')=='1',dark=params.get('theme')=='dark',
+                                         marks=params.get('marks')!='0')
                         else: raise KeyError('Unknown endpoint')
                     if route.path in ('/api/image','/api/page.svg'): content,mime = data.encode(),'image/svg+xml'
                     else: content,mime = json.dumps(data,ensure_ascii=False).encode(),'application/json'

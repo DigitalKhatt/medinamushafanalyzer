@@ -31,6 +31,7 @@ export async function api(path, params = {}, signal) {
 }
 export function imageURL(kind, id, context, view = {}) {
   const p = new URLSearchParams({kind, id, context});
+  if (view.marks === false) p.set('marks','0');
   if (kind === 'letters') for (const k of ['pair','kleft','kright']) if (view[k]) p.set(k,'1');
   return '/api/image?' + p;
 }

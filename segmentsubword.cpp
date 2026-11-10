@@ -878,8 +878,17 @@ static QJsonObject formDescription(const QJsonObject& config, const QJsonObject&
 
 static QJsonObject resolvedBodyForm(const QJsonObject& config, QJsonObject form) {
     if (form.contains("body")) {
-        form.insert("body", formDescription(config, form, "body"));
-        form.insert("cuts", formDescription(config, form, "cuts"));
+        const auto body = formDescription(config, form, "body");
+        auto cuts = formDescription(config, form, "cuts");
+        if (body.value("shape") == "tail-branch") {
+            auto tail = cuts.value("tail").toObject();
+            if (tail.value("strokeSource") == "global") {
+                tail.insert("strokeWidth", config.value("strokeWidth"));
+                cuts.insert("tail", tail);
+            }
+        }
+        form.insert("body", body);
+        form.insert("cuts", cuts);
     }
     return form;
 }
@@ -1135,6 +1144,10 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         bodyKeys << "tail";
         cutKeys << "tail" << "recoveryTail";
     }
+    if (shape == "rising-return") {
+        bodyKeys << "entryRecoveryRoute";
+        cutKeys << "entryRecoveryRoute";
+    }
     if (shape == "upright-stem")
         cutKeys << "recoveryShaft";
     if (shape == "tail-branch")
@@ -1227,6 +1240,26 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() ||
          cuts.value("tail").toObject().isEmpty()))
         return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    if (body.contains("entryRecoveryRoute") || cuts.contains("entryRecoveryRoute")) {
+        const auto route = body.value("entryRecoveryRoute").toObject();
+        const auto policy = cuts.value("entryRecoveryRoute").toObject();
+        if (route.value("top").toArray().isEmpty() || policy.isEmpty())
+            return id + ": entryRecoveryRoute needs a top walk and a cut policy";
+        const auto problem = invalidWalkSettings(withOverrides(route, policy), id + ".entryRecoveryRoute");
+        if (!problem.isEmpty()) return problem;
+    }
+    if (shape == "tail-branch") {
+        const auto tail = cuts.value("tail").toObject();
+        const auto strokeSource = tail.value("strokeSource");
+        const auto strokeWidth = tail.value("strokeWidth");
+        if (!strokeSource.isUndefined() && strokeSource != "global")
+            return id + ": cuts.tail.strokeSource must be global";
+        if (strokeSource == "global" && strokeWidth.isUndefined())
+            return id + ": global strokeSource requires a top-level strokeWidth";
+        if (!strokeWidth.isUndefined() && (!strokeWidth.isDouble() ||
+            !std::isfinite(strokeWidth.toDouble()) || strokeWidth.toDouble() <= 0))
+            return id + ": cuts.tail.strokeWidth must be a positive width in page units";
+    }
     const auto flankSample = body.value("tail").toObject().value("flankSampleWidths");
     if (!flankSample.isUndefined() && (!flankSample.isDouble() || !std::isfinite(flankSample.toDouble()) ||
         flankSample.toDouble() <= 0 || flankSample.toDouble() > 1))
@@ -1500,12 +1533,11 @@ static QJsonObject medialLamShortExit(const QJsonObject& config) {
 
 static QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form) {
     if (!form.contains("body")) return form;
-    const auto body = formDescription(config, form, "body");
-    const auto cuts = formDescription(config, form, "cuts");
+    const auto resolved = resolvedBodyForm(config, form);
+    const auto body = resolved.value("body").toObject();
+    const auto cuts = resolved.value("cuts").toObject();
     if (sharedShapeDescription(body)) {
-        form.insert("body", body);
-        form.insert("cuts", cuts);
-        form = sharedShapeProjectionForm(form);
+        form = sharedShapeProjectionForm(resolved);
     }
     if (toothDescription(body)) form.insert("tightJoin", cuts.value("tightJoin") == "shared-boundary");
     if (body.value("features").isObject()) form.insert("bodyFeatures", body.value("features"));
@@ -1561,6 +1593,10 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
         !config.value("medial").isArray() || !config.value("final").isArray()) {
         return "Expected a version 2 config with initial, medial and final lists";
     }
+    const auto strokeWidth = config.value("strokeWidth");
+    if (!strokeWidth.isUndefined() && (!strokeWidth.isDouble() ||
+        !std::isfinite(strokeWidth.toDouble()) || strokeWidth.toDouble() <= 0))
+        return "strokeWidth must be a positive width in page units";
     for (const auto* obsolete : {"preferred", "fallback", "medialBodies"})
         if (config.contains(obsolete)) return QString("Obsolete template section: %1").arg(obsolete);
     if (config.contains("provisionalFallbacks")) {
@@ -3645,9 +3681,8 @@ static bool searchContourWalk(SearchContext& context, const PathExtrema* crest =
     return projectContourRoute(context, context.form, *evidence, fork);
 }
 
-// Lām uses the independent route evidence directly. No method dispatcher or
-// legacy form is reconstructed from the declarations.
-static bool lamRouteCut(SearchContext& context, const QJsonObject& bodyRoute,
+// Project a cut using the contour evidence and policy declared by the form.
+static bool declaredContourRouteCut(SearchContext& context, const QJsonObject& bodyRoute,
         const QJsonObject& cutPolicy, const PathExtrema* crest = nullptr,
         bool reverse = false, std::optional<ForkRefinement>* fork = nullptr) {
     const auto evidence = recognizeContourRoute(context, bodyRoute, crest, reverse);
@@ -7564,7 +7599,9 @@ static bool cutTailBranches(SearchContext &context, const TailBody &body, const 
             found = found && cut.topBaseLine.point.y() > corner->point.y() &&
                     cut.bottomBaseLine.point.x() > corner->point.x();
         } else {
-            found = advanceOnContour(ink, *corner, limit, forward, settings.value("walkWidths").toDouble(1) * width,
+            const double walkWidth = settings.value("strokeWidth").toDouble(width);
+            const double walkDistance = settings.value("walkWidths").toDouble(1) * walkWidth;
+            found = advanceOnContour(ink, *corner, limit, forward, walkDistance,
                                      lower, tangent) &&
                     (branch.recovered ? (forward ? tangent.x() : -tangent.x()) > 0 :
                                         lower.point.x() > corner->point.x()) &&
@@ -9104,7 +9141,7 @@ static bool declaredLamBoundary(SearchContext& context, const QJsonObject& confi
     const auto shape = body.value("shape").toString();
     bool found = false;
     if (shape == "contour-stem")
-        found = lamRouteCut(context, body.value("route").toObject(), cuts.value("route").toObject());
+        found = declaredContourRouteCut(context, body.value("route").toObject(), cuts.value("route").toObject());
     else if (shape == "descending-stem")
         found = descendingStemExit(context, body.value("stem").toObject(), context.res);
     else if (shape == "terminal-bowl") {
@@ -12432,8 +12469,19 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         const auto seam = sub.kashidaPaths.back().isEmpty() ? join : entry(join);
         auto boundary = cutAfterEntryCrest(outline, seam);
         if (!boundary && last > 1) {
-            boundary = walk("final", "reh-rising-root-fina");
-            if (boundary) orientSection(outline, *boundary, outline.xSorted.rbegin()->time, true);
+            const auto declaration = resolvedBodyForm(config, form("final", terminal));
+            const auto route = declaration.value("body").toObject().value("entryRecoveryRoute").toObject();
+            const auto policy = declaration.value("cuts").toObject().value("entryRecoveryRoute").toObject();
+            if (!route.isEmpty()) {
+                InspectFormScope inspection(declaration, outline.transformedPath);
+                outline.nextIter = std::next(outline.xSorted.begin());
+                outline.res = {};
+                if (declaredContourRouteCut(outline, route, policy)) {
+                    boundary = outline.res;
+                    orientSection(outline, *boundary, outline.xSorted.rbegin()->time, true);
+                    inspectCandidate("Raised entry recovery", *boundary);
+                }
+            }
         }
         if (boundary) {
             const auto right = last == 1 ? walk("initial", initial) : std::optional<Stretching>{join};

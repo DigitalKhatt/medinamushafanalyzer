@@ -5,7 +5,7 @@ import unicodedata
 from html import escape
 from math import hypot
 
-from store import INK_REF, META, meta, plain, report_ink, require, shape_class, unpack_runs
+from store import INK_REF, META, meta, pack_runs, plain, report_ink, require, shape_class, unpack_runs
 from page_view import decode_vectors, mark_outlines, matching_part
 from automatic.common import mask_path
 
@@ -349,7 +349,7 @@ def body_source(db, sid):
                 svgSha256=row['source_sha'], runs=runs, owners=owners)
 
 
-def image(db, kind, identifier, context, *, pair=False, left=False, right=False, dark=False):
+def image(db, kind, identifier, context, *, pair=False, left=False, right=False, dark=False, marks=True):
     require(kind in KINDS and (context in ('word','crop') or (kind,context) in (('marks','letter'),('letters','match'))),
             'Unknown image kind or context')
     # A sequence preview uses the same verified contiguous transcript owners returned by search.
@@ -383,6 +383,10 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
             layers.append(f'<path fill="{color}" d="{mask_path(unpack_runs(runs),width)}"/>')
 
     def word_layer(color):
+        if not marks:
+            for sid,runs in db.execute('SELECT id,runs FROM catalog_subwords WHERE word_id=? ORDER BY seq',(wid,)):
+                subword_layer(sid,runs,color)
+            return
         prefix = wid.split(':',1)[1]+'-p'
         outlines = [path for name,path in vectors['paths'].items()
                     if name.startswith(prefix) and name[len(prefix):].isdigit()]
@@ -393,7 +397,7 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
                 layer(runs,color)
 
     def mark_layer(mark_id,ids,runs,color=mark):
-        if runs is not None:
+        if marks and runs is not None:
             layer(runs,color,mark_outlines(vectors,raster_marks,mark_id,ids))
 
     def part_layer(owner,role,runs,color):
@@ -410,9 +414,10 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
                 layer(blob,color,[outline] if outline else [])
         else:
             if runs==b'':
-                _,_,groups = report_ink(db,sid[:7])
+                bodies,_,groups = report_ink(db,sid[:7])
                 outlines = [vectors['paths'].get(i) for i in groups.get(sid,[])]
-                layer(None,color,outlines if all(outlines) else [])
+                native_body = bodies.get(sid)
+                layer(pack_runs(native_body) if native_body else None,color,outlines if all(outlines) else [])
             else:
                 layer(runs,color)
 
@@ -424,7 +429,9 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
         m = db.execute('''SELECT x,y,w,h,runs,path_ids,coalesce(attached_letter_id,owner_id)
             FROM native_marks WHERE id=? AND word_id=?''',(identifier,wid)).fetchone()
         if not m: raise KeyError('Unknown mark')
-        if context=='letter':
+        if not marks:
+            context = 'word'
+        elif context=='letter':
             owner = m[6]
             sub = db.execute('''SELECT s.id,s.x,s.y,s.w,s.h,s.runs FROM catalog_owners o
                 JOIN catalog_subwords s ON s.id=o.subword_id WHERE o.id=? AND o.role='letter' ''',(owner,)).fetchone()
@@ -449,7 +456,7 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
                 h = max(by+bh for _,by,_,bh in bounds)-y
             else:
                 context = 'word'
-        if m[4] is not None:
+        if marks and m[4] is not None:
             if context=='crop': x,y,w,h = m[:4]
             mark_layer(identifier,m[5],m[4])
             if show_inset:

@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     const Fixture fixtures[] = {
         {3,1,9,3,"heh-init"}, {3,1,6,5,"heh-body-medi"}, {3,2,5,2,"heh-counter-fina"},
         {3,1,6,5,"beh-init"}, {13,2,6,3,"beh-shallow-step-init"},
-        {3,1,3,1,"reh-fina"},
+        {3,1,3,1,"reh-fina"}, {1,7,2,1,"reh-rising-tail-fina"},
         {600,2,9,1,"yeh-fina"},
         {13,15,5,1,"kaf-flat-medi"},
         {3,13,3,1,"hah-stacked-medi"},
@@ -50,6 +50,13 @@ int main(int argc, char** argv) {
         check(inspection.complete == baseline, "Inspection changed completion");
         samePartition(expected, analysis.page.lines[f.line-1].words[f.word-1].wordResultInfo.subWords[f.sub-1]);
         check(!inspection.ink.isEmpty() && !inspection.assembly.isEmpty(), "Missing preview/assembly information");
+        if (QString(f.id) == "reh-rising-tail-fina") {
+            check(baseline && expected.letterDiagnostics.last().toObject().value("template") == f.id,
+                  "Rising reh fixture did not select its body template");
+            check(std::any_of(inspection.candidates.cbegin(), inspection.candidates.cend(), [](const auto& candidate) {
+                return candidate.label == "Raised entry recovery";
+            }), "The selected reh template did not expose its recovery cut");
+        }
         qInfo().noquote() << f.id << "landmarks" << inspection.landmarks.size() << "cuts" << inspection.candidates.size()
                          << "attempted" << inspection.attempted;
         if (QString(f.id) == "lam-medi" && f.page == 3) {

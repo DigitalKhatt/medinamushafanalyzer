@@ -17,12 +17,14 @@ int main(int argc, char** argv) {
     const auto form = resolvedLetterForm(config, "beh-return-fina");
     const auto settings = shapeSettings(form, "tail");
     check(settings.value("flankSampleWidths").toDouble() == .25, "Missing intrinsic flank sampling distance");
+    auto localWalk = settings;
+    localWalk.remove("strokeWidth");
     auto page = fixture();
     auto& word = page.page.lines[6].words[5];
     const auto source = word.bodyShape(word.wordResultInfo.subWords[0]);
     auto ink = source.transform.map(source.path).translated(source.pos);
     ink.setFillRule(Qt::WindingFill);
-    QLineF expected;
+    QLineF expected, configuredCut;
     for (double scale : {1., .7, 1.6}) {
         const QTransform map(scale, 0, 0, scale, 37, -21);
         WordResultInfo::SubWordInfo empty;
@@ -39,11 +41,18 @@ int main(int argc, char** argv) {
         check(micro->point.x() < at->point.x() && QLineF(at->point, micro->point).length() < .1 * branch.width,
               "Fixture no longer contains the microscopic reverse bend");
         Stretching cut{};
-        check(cutTailBranches(context, body, settings, cut), "Shoulder did not produce a valid normal cut");
+        check(cutTailBranches(context, body, localWalk, cut), "Shoulder did not produce a valid normal cut");
         const QLineF chord(cut.topBaseLine.point, cut.bottomBaseLine.point);
         check(QLineF(chord.p2(), branch.corner.point).length() <= .5 * branch.width + 1e-5,
               "The half-width walk moved away from the bowl's shoulder");
-        if (scale == 1) expected = QLineF(map.inverted().map(chord.p1()), map.inverted().map(chord.p2()));
+        if (scale == 1) {
+            const auto inverse = map.inverted();
+            expected = QLineF(inverse.map(chord.p1()), inverse.map(chord.p2()));
+            Stretching fixed{};
+            check(cutTailBranches(context, body, settings, fixed), "Configured stroke width did not produce a cut");
+            configuredCut = QLineF(inverse.map(fixed.topBaseLine.point), inverse.map(fixed.bottomBaseLine.point));
+            check(configuredCut != expected, "Configured stroke width did not affect the cut");
+        }
         else {
             const double error = std::max(QLineF(chord.p1(), map.map(expected.p1())).length(),
                                           QLineF(chord.p2(), map.map(expected.p2())).length());
@@ -57,7 +66,7 @@ int main(int argc, char** argv) {
         context.timeSorted.erase(micro);
         const auto simplified = recognizeTailBranches(inkOutline(context), form.value("body").toObject().value("tail").toObject());
         Stretching same{};
-        check(cutTailBranches(context, simplified, settings, same) &&
+        check(cutTailBranches(context, simplified, localWalk, same) &&
               same.topBaseLine.point == cut.topBaseLine.point && same.bottomBaseLine.point == cut.bottomBaseLine.point,
               "The cut depends on a microscopic intermediate landmark");
 
@@ -65,7 +74,7 @@ int main(int argc, char** argv) {
         Stretching unrelated{}; unrelated.topBaseLine.point={-200,300}; unrelated.bottomBaseLine.point={-100,500};
         empty.joins.insert(unrelated); context.baseText=QStringLiteral("اختبار"); context.pairedStrokeWidth=1000;
         const auto independent = recognizeTailBranches(inkOutline(context), form.value("body").toObject().value("tail").toObject());
-        check(cutTailBranches(context, independent, settings, same) &&
+        check(cutTailBranches(context, independent, localWalk, same) &&
               same.topBaseLine.point == cut.topBaseLine.point && same.bottomBaseLine.point == cut.bottomBaseLine.point,
               "Bowl shoulder depends on a neighboring cut");
     }
@@ -74,9 +83,15 @@ int main(int argc, char** argv) {
     check(sub.baseGlyphs.size()==3 && sub.letterDiagnostics.last().toObject().value("template")=="beh-return-fina",
           "Assembly replaced the bowl's own shoulder with another template");
     check(sub.kashidaCuts.size()==2 && !sub.kashidaPaths.back().isEmpty(), "The genuine connector was lost");
-    check(QLineF(sub.kashidaCuts.back().second.p1(), expected.p1()).length()<1e-5 &&
-          QLineF(sub.kashidaCuts.back().second.p2(), expected.p2()).length()<1e-5,
+    check(QLineF(sub.kashidaCuts.back().second.p1(), configuredCut.p1()).length()<1e-5 &&
+          QLineF(sub.kashidaCuts.back().second.p2(), configuredCut.p2()).length()<1e-5,
           "Assembly moved the final cut away from its intrinsic shoulder");
+    auto widerStroke = config;
+    widerStroke.insert("strokeWidth", 1.2);
+    check(page.segmentSubword(441,6,5,0,nullptr,true,&widerStroke) &&
+          sub.letterDiagnostics.last().toObject().value("template")=="beh-return-fina" &&
+          sub.kashidaCuts.size()==2 && sub.kashidaCuts.back().second != configuredCut,
+          "Changing the global stroke width did not move the inherited returning-bowl cut");
 
     // A correct new final proposal must not let assembly reuse that bowl's
     // shoulder as a medial tooth and give the actual tooth to initial kaf.
