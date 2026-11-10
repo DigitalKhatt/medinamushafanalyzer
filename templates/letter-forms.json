@@ -4787,31 +4787,45 @@
     },
     {
       "id": "sad-tah-fina",
-      "method": "sad-tah",
-      "join": {
-        "lookback": 14,
-        "minX": 3,
-        "maxX": 6.5,
-        "minY": 1,
-        "maxY": 2
-      },
-      "crossings": 4,
-      "probeX": 1.5,
-      "neighbors": [
-        {
-          "to": "topLeft",
-          "minX": 0,
-          "maxY": 0,
-          "from": "top"
+      "current": "صضطظ",
+      "body": {
+        "shape": "profile-neck",
+        "neck": {
+          "lookback": 14,
+          "previousOffset": 1,
+          "minX": 3,
+          "maxX": 6.5,
+          "minY": 1,
+          "maxY": 2,
+          "topCheck": false,
+          "neighbors": [
+            {
+              "to": "topLeft",
+              "minX": 0,
+              "maxY": 0,
+              "from": "top"
+            },
+            {
+              "to": "topRight",
+              "minX": 0,
+              "maxY": 0,
+              "from": "top"
+            }
+          ]
         },
-        {
-          "to": "topRight",
-          "minX": 0,
-          "maxY": 0,
-          "from": "top"
+        "profile": {
+          "centerCrossings": 4
         }
-      ],
-      "current": "صضطظ"
+      },
+      "cuts": {
+        "probe": {
+          "offsetX": 1.5
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "lower-probe"
+        }
+      }
     },
     {
       "id": "beh-return-fina",
