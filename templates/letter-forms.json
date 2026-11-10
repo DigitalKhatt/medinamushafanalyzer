@@ -855,13 +855,23 @@
     {
       "id": "hah-enclosed-head-init",
       "current": "جحخ",
-      "method": "enclosed-head",
-      "head": {
-        "minAspect": 1.25
-      },
-      "bodyCounters": 1,
       "tryNext": true,
-      "onIncomplete": true
+      "onIncomplete": true,
+      "body": {
+        "shape": "enclosed-lips",
+        "head": {
+          "minAspect": 1.25,
+          "freeEntry": true
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "head": {},
+        "boundaries": {
+          "right": "free",
+          "left": "corner-normal"
+        }
+      }
     },
     {
       "id": "kaf-flat-init",
@@ -2785,10 +2795,23 @@
       "onIncomplete": true,
       "tightJoin": true,
       "reclaimEntry": true,
-      "bodyCounters": 1,
-      "enclosedHead": {
-        "minAspect": 1.6,
-        "radius": 1.7
+      "body": {
+        "shape": "enclosed-lips",
+        "head": {
+          "minAspect": 1.6,
+          "radius": 1.7,
+          "freeEntry": false
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "head": {
+          "maxSectionWidth": 1.5
+        },
+        "boundaries": {
+          "right": "corner-normal",
+          "left": "corner-normal"
+        }
       }
     },
     {

@@ -745,7 +745,7 @@ static bool lamDescription(const QJsonObject& body) {
 
 static bool sharedShapeDescription(const QJsonObject& body) {
     static const QStringList shapes{"counter-neck", "counter-shoulder", "counter-bridge", "counter-loop", "counter-rim",
-        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster"};
+        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips"};
     return shapes.contains(body.value("shape").toString());
 }
 
@@ -816,6 +816,7 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
     const auto body = form.value("body").toObject();
     if (!sharedShapeDescription(body)) return form;
     const auto shape = body.value("shape");
+    if (shape == "enclosed-lips") { auto head = shapeSettings(form, "head"); head.remove("freeEntry"); form.insert(body.value("head").toObject().value("freeEntry").toBool() ? "head" : "enclosedHead", head); }
     if (shape == "tooth-cluster") {
         form = withOverrides(form, seenSettings(form));
         form.insert("seenTeeth", seenSettings(form));
@@ -861,7 +862,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         (phase == "initial" && boundaries.value("right") != "free") ||
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
-    const QString section = shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
+    const QString section = shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
@@ -893,7 +894,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (!checkBody(checkBody, body)) return id + ": projection settings cannot change recognized body evidence";
     for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
         const auto mode = it.value().toString();
-        const QStringList modes = shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
+        const QStringList modes = shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
             shape == "bowl-neck" ? QStringList{"free", "bowl-neck"} : shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
             (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? QStringList{"free", "counter-neck", "counter-shoulder", "counter-bridge"} :
             shape == "contour-route" ? QStringList{"free", "contour-route"} :
@@ -910,6 +911,14 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (shape == "contour-route" && cuts.contains("recoveryTail") &&
         (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() || cuts.value("tail").toObject().isEmpty()))
         return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    if (shape == "enclosed-lips") {
+        const auto head = body.value("head").toObject();
+        if (phase == "final" || head.value("freeEntry").toBool() != (phase == "initial")) return id + ": enclosed-lips position disagrees with its free entry";
+        for (const auto* field : {"minAspect", "radius"})
+            if (head.contains(field) && (!head.value(field).isDouble() || !(head.value(field).toDouble() > 0))) return id + ": invalid head measurement";
+        const auto width = cuts.value("head").toObject().value("maxSectionWidth");
+        if (!width.isUndefined() && (!width.isDouble() || !(width.toDouble() > 0))) return id + ": invalid head section width";
+    }
     if (shape == "tooth-cluster") {
         const auto cluster = body.value("cluster").toObject(), policy = cuts.value("cluster").toObject();
         for (auto it = cluster.begin(); it != cluster.end(); ++it)
@@ -968,7 +977,8 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString& ph
     const auto shape = form.value("body").toObject().value("shape");
     form = sharedShapeProjectionForm(form);
     form.remove("body"); form.remove("cuts");
-    if (shape == "tooth-cluster" && phase != "medial") form.insert("method", "seen-teeth");
+    if (shape == "enclosed-lips" && phase == "initial") form.insert("method", "enclosed-head");
+    else if (shape == "tooth-cluster" && phase != "medial") form.insert("method", "seen-teeth");
     else if (shape == "contour-route") form.insert("method", "walk");
     else if (shape == "tail-branch") form.insert("method", "tail-entry");
     else if (shape == "rising-return") form.insert("method", "rising-tail");
@@ -8006,76 +8016,106 @@ static std::vector<std::pair<Stretching, Stretching>> bladeSections(SearchContex
 
 // In the enclosed hah the counter tapers to the right, under the protruding
 // nose. The receiving and departing strokes attach below the two lips.
-static std::vector<std::pair<Stretching, Stretching>> enclosedHeadSections(SearchContext& ctx,
-                                                                           const QJsonObject& form) {
-    std::vector<std::pair<Stretching, Stretching>> result;
+struct EnclosedLipsBody {
+    QRectF counter;
+    PathExtrema nose;
+    std::array<std::vector<PathExtrema>, 2> corners;
+};
+
+static std::vector<EnclosedLipsBody> recognizeEnclosedLips(const InkOutline& outline, const QJsonObject& settings) {
+    WordResultInfo::SubWordInfo empty;
+    auto ctx = outline.geometry(empty);
+    const bool initial = settings.value("freeEntry").toBool();
+    std::vector<EnclosedLipsBody> bodies;
     for (size_t i = 1; i < ctx.subPaths.size(); ++i) {
         const auto& hole = ctx.subPaths[i];
         const auto box = hole.boundingRect();
         const double h = box.height();
-        if (h <= 0 || box.width() < form.value("minAspect").toDouble(1.6) * h || !ctx.subPaths[0].contains(hole))
-            continue;
-        // The extended tip is part of the upper lip even where it overhangs
-        // the incoming stroke. A cut through the middle of the head loses it.
+        if (h <= 0 || box.width() < settings.value("minAspect").toDouble(initial ? 1.25 : 1.6) * h ||
+            !ctx.subPaths[0].contains(hole)) continue;
         for (auto nose = ctx.timeSorted.begin(); nose != ctx.timeSorted.end(); ++nose) {
-            const auto d = nose->point - QPointF(box.right(), box.center().y());
-            if (d.x() < .35 * h || d.x() > 3.7 * h || d.y() < -1.2 * h || d.y() > .75 * h ||
-                ctx.prev(nose)->point.x() > nose->point.x() + 1e-7 ||
-                ctx.next(nose)->point.x() > nose->point.x() + 1e-7)
-                continue;
-            std::vector<std::pair<double, Stretching>> sides[2];
-            for (auto corner = ctx.timeSorted.begin(); corner != ctx.timeSorted.end(); ++corner) {
-                if (!corner->isSharp)
+            if (initial) {
+                if (nose->time != ctx.xSorted.begin()->time ||
+                    nose->point.x() < box.right() + .3*h || nose->point.x() > box.right() + 4*h ||
+                    nose->point.y() < box.top()-h || nose->point.y() > box.bottom()+h) continue;
+            } else {
+                const auto d = nose->point - QPointF(box.right(), box.center().y());
+                if (d.x() < .35*h || d.x() > 3.7*h || d.y() < -1.2*h || d.y() > .75*h ||
+                    ctx.prev(nose)->point.x() > nose->point.x()+1e-7 || ctx.next(nose)->point.x() > nose->point.x()+1e-7) continue;
+            }
+            EnclosedLipsBody body{box, *nose, {}};
+            for (const auto& corner : ctx.timeSorted) {
+                if (!corner.isSharp) continue;
+                const auto p = corner.point;
+                if (initial) {
+                    if (p.x() <= box.left()+.35*h && QLineF(p,box.bottomLeft()).length() <= settings.value("radius").toDouble(2)*h)
+                        body.corners[1].push_back(corner);
                     continue;
-                for (int side : {0, 1}) {
+                }
+                for (int side : {0,1}) {
                     const bool entry = side == 0;
-                    const double scale = form.value("radius").toDouble(1.7);
-                    const double x = corner->point.x(), y = corner->point.y();
-                    if (entry ? (x < box.right() - .1 * h || x > nose->point.x() + .6 * h ||
-                                 y < box.top() - .5 * h || y > box.bottom() + .6 * h)
-                              : (x > box.left() + .3 * h || x < box.left() - scale * h || y < box.top() - .5 * h ||
-                                 y > box.bottom() + .8 * h))
-                        continue;
-                    for (auto cut : cornerSections(ctx, *corner)) {
-                        const QLineF line(cut.topBaseLine.point, cut.bottomBaseLine.point);
-                        if (line.length() > 1.5 * h)
-                            continue;
-                        orientSection(ctx, cut, nose->time, entry);
-                        const auto pieces = cutRegions(ctx.transformedPath, {}, {cut}, ctx.orientation, true);
-                        if (pieces.size() != 2 || !pieces[entry ? 1 : 0]
-                                                       .path.boundingRect()
-                                                       .adjusted(-1e-7, -1e-7, 1e-7, 1e-7)
-                                                       .contains(box))
-                            continue;
-                        const auto aim =
-                            entry ? QPointF(nose->point.x() - .45 * h, box.center().y()) : box.bottomLeft();
-                        sides[side].emplace_back(QLineF(corner->point, aim).length() + .35 * line.length(), cut);
-                    }
+                    const double scale = settings.value("radius").toDouble(1.7), x = p.x(), y = p.y();
+                    if (entry ? (x < box.right()-.1*h || x > nose->point.x()+.6*h || y < box.top()-.5*h || y > box.bottom()+.6*h) :
+                        (x > box.left()+.3*h || x < box.left()-scale*h || y < box.top()-.5*h || y > box.bottom()+.8*h)) continue;
+                    body.corners[side].push_back(corner);
                 }
             }
-            for (auto& side : sides)
-                std::sort(side.begin(), side.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-            for (const auto& [sr, right] : sides[0])
-                for (const auto& [sl, left] : sides[1]) {
-                    const auto boundary = getJoinTime(right, ctx.orientation);
-                    if (!boundary.isStrictLeft(left.topBaseLine.time) ||
-                        !boundary.isStrictLeft(left.bottomBaseLine.time))
-                        continue;
-                    const auto parts = cutRegions(ctx.transformedPath, {}, {right, left}, ctx.orientation, true);
-                    if (parts.size() != 3)
-                        continue;
-                    const auto paths = toSubpaths(parts[1].path);
-                    if (paths.size() != 2 || paths[1].boundingRect() != box)
-                        continue;
-                    const auto body = paths[0].boundingRect();
-                    if (body.height() > 3.6 * h || body.width() > box.width() + 4 * h)
-                        continue;
-                    result.emplace_back(right, left);
-                }
+            bodies.push_back(std::move(body));
+        }
+    }
+    return bodies;
+}
+
+static std::vector<std::pair<Stretching, Stretching>> cutEnclosedLips(SearchContext& ctx,
+        const std::vector<EnclosedLipsBody>& bodies, const QJsonObject& policy, bool initial) {
+    std::vector<std::pair<Stretching, Stretching>> result;
+    double best = std::numeric_limits<double>::infinity();
+    for (const auto& body : bodies) {
+        const auto& box = body.counter;
+        const auto& nose = body.nose;
+        const double h = box.height();
+        if (initial) {
+            for (const auto& corner : body.corners[1]) for (auto cut : cornerSections(ctx, corner)) {
+                orientSection(ctx, cut, nose.time, false);
+                const auto parts = cutRegions(ctx.transformedPath, {}, {cut}, ctx.orientation, true);
+                if (parts.size() != 2) continue;
+                const auto paths = toSubpaths(parts[0].path);
+                if (paths.size() != 2 || paths[1].boundingRect() != box || paths[0].boundingRect().height() > 3.4*h) continue;
+                const double score = QLineF(corner.point, box.bottomLeft()).length() +
+                    .35*QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point).length();
+                if (score < best) { best = score; result = {{Stretching{}, cut}}; }
+            }
+            continue;
+        }
+        std::vector<std::pair<double, Stretching>> sides[2];
+        for (int side : {0,1}) for (const auto& corner : body.corners[side]) {
+            const bool entry = side == 0;
+            for (auto cut : cornerSections(ctx, corner)) {
+                const QLineF line(cut.topBaseLine.point, cut.bottomBaseLine.point);
+                if (line.length() > policy.value("maxSectionWidth").toDouble(1.5)*h) continue;
+                orientSection(ctx, cut, nose.time, entry);
+                const auto pieces = cutRegions(ctx.transformedPath, {}, {cut}, ctx.orientation, true);
+                if (pieces.size() != 2 || !pieces[entry ? 1 : 0].path.boundingRect().adjusted(-1e-7,-1e-7,1e-7,1e-7).contains(box)) continue;
+                const auto aim = entry ? QPointF(nose.point.x()-.45*h, box.center().y()) : box.bottomLeft();
+                sides[side].emplace_back(QLineF(corner.point, aim).length()+.35*line.length(), cut);
+            }
+        }
+        for (auto& side : sides) std::sort(side.begin(), side.end(), [](const auto& a,const auto& b){ return a.first < b.first; });
+        for (const auto& [sr,right] : sides[0]) for (const auto& [sl,left] : sides[1]) {
+            const auto boundary = getJoinTime(right, ctx.orientation);
+            if (!boundary.isStrictLeft(left.topBaseLine.time) || !boundary.isStrictLeft(left.bottomBaseLine.time)) continue;
+            const auto parts = cutRegions(ctx.transformedPath, {}, {right,left}, ctx.orientation, true);
+            if (parts.size() != 3) continue;
+            const auto paths = toSubpaths(parts[1].path);
+            if (paths.size()!=2 || paths[1].boundingRect()!=box) continue;
+            const auto bounds = paths[0].boundingRect();
+            if (bounds.height()>3.6*h || bounds.width()>box.width()+4*h) continue;
+            result.emplace_back(right,left);
         }
     }
     return result;
 }
+
 // Locate the cap of a tall narrow shaft and follow both flanks from the
 // cap. A change from descending to lateral motion gives one attachment per
 // flank. Both sections must enclose the same cap and keep the shaft intact.
@@ -8881,6 +8921,7 @@ struct SharedShapeEvidence {
     std::optional<BowlTurnBody> bowlTurn;
     std::vector<NeckBody> bowlNecks;
     std::vector<ToothClusterBody> clusters;
+    std::vector<EnclosedLipsBody> enclosedLips;
     std::vector<OpenHeadBody> openHeads;
     std::optional<HorizontalCounterPair> horizontalPair;
     std::vector<StackedCounterPair> stackedPairs;
@@ -8904,6 +8945,7 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop") result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn") result.bowlTurn = recognizeBowlTurn(outline);
+    else if (shape == "enclosed-lips") result.enclosedLips = recognizeEnclosedLips(outline, body.value("head").toObject());
     else if (shape == "tooth-cluster") result.clusters = recognizeToothClusters(outline, body.value("cluster").toObject());
     else if (shape == "profile-neck") result.bowlNecks = recognizeProfileNecks(outline, body);
     else if (shape == "bowl-neck") {
@@ -8976,6 +9018,10 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
     }
     for (const auto& cluster : evidence.clusters)
         for (int i : {0, 2, 4}) inspectLandmark("Tooth tip", cluster.turns[i]);
+    for (const auto& head : evidence.enclosedLips) {
+        inspectLandmark("Head nose", head.nose);
+        for (const auto& side : head.corners) for (const auto& point : side) inspectLandmark("Lip corner", point);
+    }
     if (evidence.bowlTurn) inspectLandmark("Bowl turn", evidence.bowlTurn->turn);
     for (const auto& head : evidence.openHeads) {
         inspectLandmark("Open crest", head.crest);
@@ -9043,6 +9089,11 @@ static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& fo
         found = evidence->horizontalPair && cutHorizontalPair(context, *evidence->horizontalPair, cuts.value("pair").toObject());
     else if (shape == "suspended-loop")
         found = evidence->head && cutLoopHead(context, *evidence->head, body.value("head").toObject(), cuts.value("head").toObject());
+    else if (shape == "enclosed-lips") {
+        const auto proposals = cutEnclosedLips(context, evidence->enclosedLips, cuts.value("head").toObject(), true);
+        found = !proposals.empty();
+        if (found) context.res = proposals.front().second;
+    }
     else if (shape == "tooth-cluster") {
         const auto settings = seenSettings(form);
         const bool final = cuts.value("boundaries").toObject().value("left") == "free";
@@ -9259,44 +9310,6 @@ static std::vector<std::pair<Stretching, Stretching>> parallelKafSections(Search
     }
     return pairs;
 }
-static bool initialEnclosedHead(SearchContext& ctx, const QJsonObject& settings, Stretching& result) {
-    const auto nose = ctx.xSorted.begin();
-    double best = std::numeric_limits<double>::infinity();
-    for (size_t i = 1; i < ctx.subPaths.size(); ++i) {
-        const auto& hole = ctx.subPaths[i];
-        const auto box = hole.boundingRect();
-        const double h = box.height();
-        if (h <= 0 || box.width() < settings.value("minAspect").toDouble(1.25) * h ||
-            nose->point.x() < box.right() + .3 * h || nose->point.x() > box.right() + 4 * h ||
-            nose->point.y() < box.top() - h || nose->point.y() > box.bottom() + h ||
-            !ctx.subPaths[0].contains(hole))
-            continue;
-        for (auto corner = ctx.timeSorted.begin(); corner != ctx.timeSorted.end(); ++corner) {
-            const auto p = corner->point;
-            if (!corner->isSharp || p.x() > box.left() + .35 * h || QLineF(p, box.bottomLeft()).length() > 2 * h)
-                continue;
-            for (auto cut : cornerSections(ctx, *corner)) {
-                orientSection(ctx, cut, nose->time, false);
-                const auto parts = cutRegions(ctx.transformedPath, {}, {cut}, ctx.orientation, true);
-                if (parts.size() != 2)
-                    continue;
-                const auto paths = toSubpaths(parts[0].path);
-                if (paths.size() != 2 || paths[1].boundingRect() != box)
-                    continue;
-                if (paths[0].boundingRect().height() > 3.4 * h)
-                    continue;
-                const double score = QLineF(p, box.bottomLeft()).length() +
-                                     .35 * QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point).length();
-                if (score < best) {
-                    best = score;
-                    result = cut;
-                }
-            }
-        }
-    }
-    return std::isfinite(best);
-}
-
 struct ToothSearchPlan {
     bool enumerate = false;
     int stage = 1;
@@ -12488,7 +12501,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         else if (method == "stem-entry") found = searchStemEntry(context);
         else if (method == "lam-alef") found = searchLamAlefLiga(context);
         else if (method == "sad-tah") found = searchNextSadOrTah(context);
-        else if (method=="enclosed-head") found=initialEnclosedHead(context,rule.value("head").toObject(),context.res);
         else if (method == "hah") found = searchHah(context);
         else if (method == "counter-ligature") found = searchCounterLigature(context);
         else qWarning() << "Unknown letter form method:" << method;
@@ -12588,7 +12600,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             (final.isEmpty() || (letter + 1 == lastIndex && final.contains(baseText.back())));
     };
     const auto supportsOpenBoundary = [&](const QJsonObject& form) {
-        return form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") || form.contains("counterLigature") || form.contains("mouth") || form.contains("blade") || !pairedRouteSettings(form).isEmpty() ||
+        return form.value("body").toObject().value("shape") == "enclosed-lips" || form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") || form.contains("counterLigature") || form.contains("mouth") || form.contains("blade") || !pairedRouteSettings(form).isEmpty() ||
             (formDescription(config, form, "body").value("shape") == "forked-stem" ||
              formDescription(config, form, "body").value("shape") == "turning-shaft") ||
             !pairedCounterSettings(form).isEmpty() ||
@@ -12966,7 +12978,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                         if (form.contains("parallelReturn"))
                             return parallelKafSections(context, form.value("parallelReturn").toObject());
                         if (form.contains("enclosedHead"))
-                            return enclosedHeadSections(context, form.value("enclosedHead").toObject());
+                            return cutEnclosedLips(context, recognizedSharedShape(context, form.value("body").toObject())->enclosedLips, form.value("cuts").toObject().value("head").toObject(), false);
                         if (form.contains("shaft"))
                             return shaftSections(context, form.value("shaft").toObject());
                         if (form.contains("blade"))

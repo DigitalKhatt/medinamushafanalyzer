@@ -181,6 +181,8 @@ Seen/sheen uses `tooth-cluster`: recognition records three tips, the intervening
 
 A contour route can also declare independent `body.tail` evidence. `cuts.recoveryTail` chooses that tail policy during recovery, then tries the route if it cannot produce a cut. Dal uses this shared policy instead of a special branch in the legacy dispatcher.
 
+Enclosed hah heads use `enclosed-lips`: the counter, nose and attachment corners are recognized first. Normal sections and retained-counter checks then produce the initial exit or both medial boundaries.
+
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright

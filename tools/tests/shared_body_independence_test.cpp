@@ -115,6 +115,8 @@ static QByteArray snapshot(const SharedShapeEvidence& e) {
     }
     out << quint64(e.clusters.size());
     for (const auto& c : e.clusters) { points(c.turns); out << c.advancePrevious << c.ordinary << c.wide << c.minimumX; }
+    out << quint64(e.enclosedLips.size());
+    for (const auto& b : e.enclosedLips) { out << b.counter; point(b.nose); for (const auto& side : b.corners) points(side); }
     out << bool(e.bowlTurn); if (e.bowlTurn) { point(e.bowlTurn->tip); point(e.bowlTurn->turn); }
     out << quint64(e.outlines.size());
     for (const auto& shape : e.outlines) { out << shape.eye << quint64(shape.counters.size()); for (const auto& h : shape.counters) hole(h); }
@@ -143,9 +145,9 @@ int main(int argc, char** argv) {
         bad.insert("cuts", policy); invalid.insert(phase, QJsonArray{bad});
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
     }
-    check(forms.size() >= 129 && shapes.size() >= 20, "Not all shared shapes exercised");
+    check(forms.size() >= 131 && shapes.size() >= 21, "Not all shared shapes exercised");
     struct Fixture { int page,line,word,sub; };
-    const Fixture fixtures[] = {{3,2,9,1}, {6,15,4,1}, {600,2,5,1}, {230,11,3,1}};
+    const Fixture fixtures[] = {{3,2,9,1}, {6,15,4,1}, {600,2,5,1}, {230,11,3,1}, {6,9,8,2}};
     int checks = 0;
     for (const auto& f : fixtures) {
         QFile file(QString("pages/page%1.dat").arg(f.page)); check(file.open(QIODevice::ReadOnly), "Missing source fixture");
