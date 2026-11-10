@@ -133,11 +133,13 @@ int main(int argc,char** argv) {
         bool shared;
         int subword = 1;
         const char* form = "meem-lower-flank-init";
+        bool strokeNormal = false;
     };
     for (const auto& at : {MeemJoin{285,11,1,30,false,1,"meem-init"}, MeemJoin{377,8,7,15,false,1,"meem-init"},
                           MeemJoin{415,8,3,16,false},
                           MeemJoin{82,3,2,48,true}, MeemJoin{406,2,4,28,true}, MeemJoin{442,5,11,28,true},
-                          MeemJoin{350,4,7,8,false,1,"meem-init"}, MeemJoin{402,2,5,10,false,3,"meem-init"}}) {
+                          MeemJoin{350,4,7,8,false,1,"meem-init",true},
+                          MeemJoin{402,2,5,10,false,3,"meem-init",true}}) {
         PageAnalysisResult sample;
         QDataStream stream(read(QString("pages/page%1.dat").arg(at.page)));
         stream >> sample.page;
@@ -159,6 +161,18 @@ int main(int argc,char** argv) {
               "Initial meem missed the rim or the stacked arm junction");
         if (at.shared)
             check(std::abs(cut.dy()) < 1e-5, "Stacked meem arm did not share a horizontal cut with hah");
+        if (at.strokeNormal) {
+            constexpr double step = 1e-4;
+            const int upperIndex = static_cast<int>(join.topRight.time);
+            const double t = join.topRight.time - upperIndex;
+            const auto& upper = curves.at(upperIndex);
+            const auto& lower = curves.at(at.corner - 1);
+            const auto a = QLineF(upper.pointAt(t - step), upper.pointAt(t + step)).unitVector();
+            const auto b = QLineF(lower.pt4(), lower.pointAt(1 - step)).unitVector();
+            const auto axis = (a.p2() - a.p1()) + (b.p2() - b.p1());
+            check(std::abs(QPointF::dotProduct(axis, cut.p2() - cut.p1())) < 1e-3 * cut.length(),
+                  "Initial meem cut is not normal to the two stroke flanks");
+        }
     }
     auto invalid=config;auto finals=invalid["final"].toArray();auto f=finals.last().toObject();
     f.insert("sharedBoundary","yes");finals[finals.size()-1]=f;invalid.insert("final",finals);

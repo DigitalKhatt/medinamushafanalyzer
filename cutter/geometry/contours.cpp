@@ -732,6 +732,67 @@ bool medialChordAt(const SearchContext& context, double x, double y,
     return found;
 }
 
+static QPointF unitCurveTangent(const QBezier& curve, double t) {
+    const double u = 1 - t;
+    auto tangent = u * u * (curve.pt2() - curve.pt1()) +
+        2 * u * t * (curve.pt3() - curve.pt2()) + t * t * (curve.pt4() - curve.pt3());
+    if (std::hypot(tangent.x(), tangent.y()) <= 1e-9)
+        tangent = curve.pointAt(std::min(1.0, t + 1e-4)) - curve.pointAt(std::max(0.0, t - 1e-4));
+    const double length = std::hypot(tangent.x(), tangent.y());
+    return length > 1e-9 ? tangent / length : QPointF{};
+}
+
+// Rotate a local cross-section around its lower landmark. At a corner,
+// measure both flanks in the direction of the join rather than into the body.
+bool anchoredStrokeNormalCut(const SearchContext& context, Stretching& cut, bool bottomForward) {
+    const auto& ink = context.transformedPath;
+    const auto curves = baseContourCurves(ink);
+    const int count = static_cast<int>(curves.size());
+    if (count == 0) return false;
+    const auto flank = [&](const PathExtrema& point, bool forward) {
+        double time = point.time;
+        if (std::abs(time - std::round(time)) < 1e-8) time = std::round(time);
+        int index = static_cast<int>(std::floor(time));
+        double t = time - index;
+        if (!forward && t == 0) { --index; t = 1; }
+        const auto tangent = unitCurveTangent(curves[(index % count + count) % count], t);
+        return forward ? tangent : -tangent;
+    };
+    const auto& anchor = cut.bottomBaseLine;
+    const auto lower = flank(anchor, bottomForward);
+    if (lower.isNull()) return false;
+    auto opposite = cut.topBaseLine;
+    const double reach = 2 * QLineF(anchor.point, opposite.point).length();
+    for (int step = 0; step < 16; ++step) {
+        const auto upper = flank(opposite, !bottomForward);
+        if (upper.isNull() || QPointF::dotProduct(lower, upper) <= 0) return false;
+        const auto axis = lower + upper;
+        const auto chord = opposite.point - anchor.point;
+        const double width = std::hypot(chord.x(), chord.y());
+        const double length = std::hypot(axis.x(), axis.y());
+        if (std::abs(QPointF::dotProduct(axis, chord)) <= 1e-6 * width * length) {
+            if (!interiorChord(ink, opposite, anchor)) return false;
+            cut.topBaseLine = opposite;
+            cut.referenceWidth = width;
+            return true;
+        }
+        const QPointF normal(-axis.y(), axis.x());
+        const auto ray = normal * (std::copysign(reach, QPointF::dotProduct(normal, chord)) / length);
+        std::optional<PathExtrema> hit;
+        double nearest = reach;
+        for (const auto& point : FindInterections(ink, QLineF(anchor.point, anchor.point + ray), true)) {
+            const double distance = QLineF(anchor.point, point.point).length();
+            if (point.pathIndex == 0 && point.point.y() < anchor.point.y() && distance > 1e-5 && distance < nearest) {
+                hit = point;
+                nearest = distance;
+            }
+        }
+        if (!hit) return false;
+        opposite = *hit;
+    }
+    return false;
+}
+
 // Bisect the directions of the two outline tangents to estimate the local
 // stroke direction, then intersect its normal with the surrounding ink.
 bool strokeNormalCut(const SearchContext& context, Stretching& cut, double offsetX) {
@@ -741,14 +802,7 @@ bool strokeNormalCut(const SearchContext& context, Stretching& cut, double offse
         const double time = std::abs(point.time - curves.size()) < 1e-9 ? 0 : point.time;
         const int index = static_cast<int>(std::floor(time));
         if (point.pathIndex != 0 || index < 0 || index >= static_cast<int>(curves.size())) return QPointF{};
-        const auto& curve = curves[index];
-        const double t = time - index, u = 1 - t;
-        auto tangent = u * u * (curve.pt2() - curve.pt1()) +
-            2 * u * t * (curve.pt3() - curve.pt2()) + t * t * (curve.pt4() - curve.pt3());
-        if (std::hypot(tangent.x(), tangent.y()) <= 1e-9)
-            tangent = curve.pointAt(std::min(1.0, t + 1e-4)) - curve.pointAt(std::max(0.0, t - 1e-4));
-        const double length = std::hypot(tangent.x(), tangent.y());
-        return length > 1e-9 ? tangent / length : QPointF{};
+        return unitCurveTangent(curves[index], time - index);
     };
     const auto center = [](const Stretching& candidate) {
         return QLineF(candidate.topBaseLine.point, candidate.bottomBaseLine.point).center();

@@ -521,6 +521,8 @@ bool cutLayeredHead(SearchContext &context, const LayeredHeadBody &body, const Q
 
 bool strokeNormalCut(const SearchContext &context, Stretching &cut, double offsetX = 0);
 
+bool anchoredStrokeNormalCut(const SearchContext &context, Stretching &cut, bool bottomForward);
+
 std::vector<QBezier> baseContourCurves(const QPainterPath &path);
 
 bool contourNormalCut(const SearchContext& context, const PathExtrema& anchor,

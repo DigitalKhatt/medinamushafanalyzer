@@ -1082,7 +1082,7 @@ bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &bod
         }
     }
     if (!best && settings.value("normalValley").toBool()) {
-        // Use the tangent leaving the loop toward the join, keeping the lower valley fixed.
+        // Find the opposite flank from the valley, then use both edges to orient the cut.
         const bool forward = context.orientation == Orientation::ClockWise;
         for (const auto &valley : body.valleys) {
             const double distance = QLineF(valley.point, counter.bottomLeft()).length();
@@ -1091,7 +1091,13 @@ bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &bod
             if (!contourNormalCut(context, valley, forward, false, cut, true) ||
                 cut.bottomBaseLine.point.x() > counter.left()) continue;
             std::swap(cut.topBaseLine, cut.bottomBaseLine);
-            if (!retainsCounter(cut)) continue;
+            auto normal = cut;
+            if (anchoredStrokeNormalCut(context, normal, forward) && normal.topBaseLine.point.x() <= counter.left() &&
+                retainsCounter(normal)) {
+                cut = normal;
+            } else if (!retainsCounter(cut)) {
+                continue;
+            }
             best = cut;
             nearest = distance;
         }
