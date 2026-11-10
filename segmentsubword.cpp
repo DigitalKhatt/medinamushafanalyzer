@@ -880,7 +880,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (shape == "contour-route") { bodyKeys << "tail"; cutKeys << "tail" << "recoveryTail"; }
     if (shape == "layered-head") bodyKeys << "neck";
     if (shape == "bowl-neck") { bodyKeys.removeAll("probe"); bodyKeys << "neck"; }
-    if (shape == "profile-neck") { bodyKeys = QStringList{"shape", "counters", "features", "neck", "profile"}; cutKeys = QStringList{"boundaries", "probe"}; }
+    if (shape == "profile-neck") { bodyKeys = QStringList{"shape", "counters", "features", "neck", "profile"}; cutKeys = QStringList{"boundaries", "probe", "attachment"}; }
     if (shape == "bowl-turn") {
         bodyKeys.removeAll("probe"); bodyKeys << "origin";
         if (body.value("origin") != "left") return id + ": bowl-turn starts at the free left end";
@@ -998,10 +998,18 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         if (!clear.isEmpty() && (!clear.value("width").isDouble() || !(clear.value("width").toDouble() > 0) ||
             !clear.value("offsetY").isDouble() || !std::isfinite(clear.value("offsetY").toDouble())))
             return id + ": clear-below profile needs a positive width and finite offset";
+        const auto landmarkCrossings=body.value("profile").toObject().value("minLandmarkCrossings");
+        if(!landmarkCrossings.isUndefined() && (!landmarkCrossings.isDouble() || landmarkCrossings.toInt()<2 || landmarkCrossings.toDouble()!=landmarkCrossings.toInt()))
+            return id+": landmark crossings must be an integer of at least two";
+        if(cuts.contains("attachment")) {
+            const auto attachment=cuts.value("attachment").toObject();
+            if(phase!="final" || attachment.value("previous").toString().isEmpty() ||
+                !QStringList{"initial","medial"}.contains(attachment.value("previousPosition").toString()))return id+": invalid shared attachment selection";
+        }
         const auto crossings=body.value("profile").toObject().value("centerCrossings");
         if (!crossings.isUndefined() && (!crossings.isDouble() || crossings.toInt()<2 || crossings.toDouble()!=crossings.toInt()))
             return id+": centerCrossings needs an integer of at least two";
-        if (strip.isEmpty() && clear.isEmpty() && crossings.isUndefined()) return id + ": profile-neck needs an intrinsic profile";
+        if (strip.isEmpty() && clear.isEmpty() && crossings.isUndefined() && landmarkCrossings.isUndefined()) return id + ": profile-neck needs an intrinsic profile";
         if(cuts.contains("probe")) {
             const auto probe=cuts.value("probe").toObject();
             if(phase!="final" || boundaries.value("right")!="lower-probe" || probe.size()!=1 || !probe.value("offsetX").isDouble() ||
@@ -2106,92 +2114,6 @@ static bool traceNeckFlanks(SearchContext& context, const JoinCheck& joinCheck) 
     return true;
 }
 
-bool static getJoin(SearchContext& context, const JoinCheck& joinCheck) {
-    const auto bounds = withOverrides(context.joinDefaults,
-                                      context.form.value("join").toObject());
-    const int plookbackward = bounds.value("lookback").toInt(4);
-    const int prevOff = bounds.value("previousOffset").toInt(1);
-    if (plookbackward < 1 || prevOff < 1) return false;
-
-	auto xiter = context.nextIter;
-	auto& xSorted = context.xSorted;
-	auto& res = context.res;
-
-	for (; xiter != xSorted.end(); xiter++) {
-		auto& curr = *xiter;
-
-        auto prevBasePoint = xiter;
-        int offset = prevOff;
-        while (offset > 0 && prevBasePoint != xSorted.begin()) {
-            --prevBasePoint;
-            --offset;
-        }
-        if (offset > 0) continue;
-
-		auto lookbackward = plookbackward;
-
-		while (lookbackward != 0 && prevBasePoint != xSorted.end()) {
-
-			auto& prec = *prevBasePoint;
-
-			prevBasePoint = prevBasePoint == xSorted.begin() ? xSorted.end() : std::prev(prevBasePoint);
-
-			auto yDiff = std::abs(curr.point.y() - prec.point.y());
-			auto xDiff = std::abs(curr.point.x() - prec.point.x());
-
-
-			if (!within(bounds, "minX", "maxX", xDiff) || !within(bounds, "minY", "maxY", yDiff)) {
-				lookbackward--;
-				continue;
-			}
-
-			if (prec.point.y() > curr.point.y()) {
-				res.bottomBaseLine = prec;
-				res.topBaseLine = curr;
-
-			}
-			else {
-				res.bottomBaseLine = curr;
-				res.topBaseLine = prec;
-			}
-
-			if (context.subword.joins.size() > 0) {
-				auto& lastJoin = *context.subword.joins.rbegin();
-				if (lastJoin.bottomBaseLine.time == res.bottomBaseLine.time
-					|| lastJoin.bottomBaseLine.time == res.topBaseLine.time
-					|| lastJoin.topBaseLine.time == res.bottomBaseLine.time
-					|| lastJoin.topBaseLine.time == res.topBaseLine.time) {
-					continue;
-				}
-			}
-
-
-			if (!traceNeckFlanks(context, joinCheck)) continue;
-
-			const auto neighbors = context.form.value("neighbors").toArray();
-            if ((!neighbors.isEmpty() && !matchesNeighbors(neighbors, res)) ||
-                !joinCheck.customCheck(xiter) || !matchesJoinFeatures(context)) {
-				//lookbackward--;
-				continue;
-			}
-
-
-
-			auto rightKash = std::min(res.topRight.point.x(), res.bottomRight.point.x());
-			auto leftKash = std::max(res.topLeft.point.x(), res.bottomLeft.point.x());
-
-			res.length = rightKash - leftKash;
-
-
-			context.nextIter = std::next(xiter);
-			return true;
-		}
-	}
-
-	return false;
-
-}
-
 struct BowlProbeBody { PathExtrema extremum; std::optional<PathExtrema> smooth; };
 struct NeckBody { PathExtrema cursor; Stretching section; std::optional<BowlProbeBody> probe; std::vector<PathExtrema> edges; };
 static std::vector<NeckBody> recognizeNeckBodies(const InkOutline& outline, const QJsonObject& bounds, const JoinCheck& joinCheck = {}) {
@@ -2322,6 +2244,9 @@ static bool cutBowlNecks(SearchContext& context, const std::vector<NeckBody>& bo
 
 // Profile measurements belong to the uncut neck, before a neighboring cut
 // selects which occurrence is available. Strip counts distinguish loop heads.
+static bool interiorChord(const QPainterPath& ink, const PathExtrema& top, const PathExtrema& bottom,
+                          double topTolerance = 0);
+
 static std::vector<NeckBody> recognizeProfileNecks(const InkOutline& outline, const QJsonObject& body) {
     const auto neck = body.value("neck").toObject(), profile = body.value("profile").toObject();
     JoinCheck checks;
@@ -2341,6 +2266,12 @@ static std::vector<NeckBody> recognizeProfileNecks(const InkOutline& outline, co
             int count = 0;
             for (int i = 0; i < intersected.elementCount(); ++i) count += intersected.elementAt(i).isMoveTo();
             if (count != strip.value("count").toInt(2)) return true;
+        }
+        if(profile.contains("minLandmarkCrossings")) {
+            const auto& section=candidate.section;const double x=section.topBaseLine.point.x();
+            auto hits=FindInterections(outline.ink,QLineF(x,outline.bounds.top(),x,outline.bounds.bottom()));
+            if(std::none_of(hits.begin(),hits.end(),[&](const auto& hit){return QLineF(hit.point,section.topBaseLine.point).length()<=1e-5;}))hits.push_back(section.topBaseLine);
+            if(hits.size()<profile.value("minLandmarkCrossings").toInt() || !interiorChord(outline.ink,section.topBaseLine,section.bottomBaseLine))return true;
         }
         if(profile.contains("centerCrossings")) {
             const double x=QLineF(candidate.section.topBaseLine.point,candidate.section.bottomBaseLine.point).center().x();
@@ -2467,8 +2398,6 @@ static bool cutLayeredHead(SearchContext& context,const LayeredHeadBody& body,co
 }
 
 // Each step scans forward to the first edge satisfying its direction and bounds.
-static bool interiorChord(const QPainterPath& ink, const PathExtrema& top, const PathExtrema& bottom,
-                          double topTolerance = 0);
 static bool strokeNormalCut(const SearchContext& context, Stretching& cut, double offsetX = 0);
 
 // Walk the matched contour step by arc length, retaining the curve parameter
@@ -2652,33 +2581,6 @@ static bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
 
 // A lam-alef has a shared corner-pair boundary. Initial and attached forms
 // have different lower returns, described by their own neighbor constraints.
-static bool searchLamAlefLiga(SearchContext& context) {
-    const bool attached = context.form.value("lamPosition").toString("initial") == "medial";
-    if (context.baseText.size() < 2 || (context.baseText.size() > 2) != attached ||
-        context.baseText[context.baseText.size() - 2] != QChar(0x0644) ||
-        !QStringLiteral("اآأإٱ").contains(context.baseText.back())) return false;
-    JoinCheck check;
-    check.bottomCheck = false;
-    check.sameDirectionCheck = context.form.value("sameDirectionCheck").toBool(true);
-    check.customCheck = [&](xsortedtype::iterator) {
-        const auto& cut = context.res;
-        const auto& box = context.bbox;
-        const double x = cut.topBaseLine.point.x();
-        auto crossings = FindInterections(context.transformedPath,
-            QLineF(x, box.top(), x, box.bottom()));
-        // This probe passes through a known contour landmark. At a Bezier
-        // endpoint the root solver can round both adjoining roots just outside
-        // [0, 1], dropping this hit. Count the exact landmark once, whether or
-        // not the solver returned it, without weakening the crossing test.
-        if (std::none_of(crossings.begin(), crossings.end(), [&](const auto& hit) {
-                return QLineF(hit.point, cut.topBaseLine.point).length() <= 1e-5;
-            })) crossings.push_back(cut.topBaseLine);
-        return crossings.size() >= formNumber(context, "minCrossings", 4) &&
-            interiorChord(context.transformedPath, cut.topBaseLine, cut.bottomBaseLine);
-    };
-    return getJoin(context, check);
-}
-
 static bool finalAlefStemCut(const SearchContext& context, const QJsonObject& form, Stretching& result) {
     const auto start = std::prev(context.xSorted.end());
     const auto& ink = context.transformedPath;
@@ -9395,6 +9297,12 @@ static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& fo
         }
     }
     else if (shape == "profile-neck") {
+        const auto attachment=cuts.value("attachment").toObject();
+        if(!attachment.isEmpty()) {
+            const bool medial=attachment.value("previousPosition")=="medial";
+            if(context.baseText.size()<2 || (context.baseText.size()>2)!=medial ||
+                !attachment.value("previous").toString().contains(context.baseText[context.baseText.size()-2]))return false;
+        }
         const NeckBody* selected = nullptr;
         found = cutProfileNeck(context, evidence->bowlNecks, &selected, cuts.value("probe").toObject());
         if (found && cuts.value("boundaries").toObject().value("left") == "edge-projection") {
@@ -12625,7 +12533,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                        finalAlefStemCut(context, rule, context.res);
             });
         }
-        else if (method == "lam-alef") found = searchLamAlefLiga(context);
         else qWarning() << "Unknown letter form method:" << method;
         if (found && recoverTeeth && owner == lastIndex &&
             (method == "alef-stem" || rule.value("bottomProbe") == "walk-stroke-normal")) {
@@ -12703,7 +12610,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         return true;
     };
     const auto sharedBoundary = [&](const QJsonObject& rule) {
-        return rule.value("method") == "lam-alef" || (rule.value("sharedBoundary").toBool() &&
+        return (rule.value("sharedBoundary").toBool() &&
             (!rule.contains("sharedBoundaryWith") ||
              rule.value("sharedBoundaryWith").toString().contains(baseText[lastIndex - 1])));
     };

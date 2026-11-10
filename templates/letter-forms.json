@@ -4801,58 +4801,94 @@
     {
       "id": "alef-open-fina",
       "current": "اآأإٱ",
-      "method": "lam-alef",
-      "lamPosition": "medial",
-      "sameDirectionCheck": false,
-      "join": {
-        "minX": 0.2,
-        "maxX": 0.5,
-        "minY": 0.25,
-        "maxY": 0.8
-      },
-      "minCrossings": 2,
-      "neighbors": [
-        {
-          "from": "bottom",
-          "to": "bottomLeft",
-          "maxX": 0,
-          "minY": 0
+      "tryNext": true,
+      "body": {
+        "shape": "profile-neck",
+        "neck": {
+          "lookback": 4,
+          "previousOffset": 1,
+          "minX": 0.2,
+          "maxX": 0.5,
+          "minY": 0.25,
+          "maxY": 0.8,
+          "bottomCheck": false,
+          "sameDirectionCheck": false,
+          "neighbors": [
+            {
+              "from": "bottom",
+              "to": "bottomLeft",
+              "maxX": 0,
+              "minY": 0
+            },
+            {
+              "from": "bottom",
+              "to": "bottomRight",
+              "maxX": 0,
+              "maxY": 0
+            }
+          ]
         },
-        {
-          "from": "bottom",
-          "to": "bottomRight",
-          "maxX": 0,
-          "maxY": 0
+        "profile": {
+          "minLandmarkCrossings": 2
         }
-      ],
-      "tryNext": true
+      },
+      "cuts": {
+        "attachment": {
+          "previous": "ل",
+          "previousPosition": "medial"
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "neck-section"
+        }
+      },
+      "sharedBoundary": true
     },
     {
       "id": "alef-folded-fina",
       "current": "اآأإٱ",
-      "method": "lam-alef",
-      "join": {
-        "minX": 0.2,
-        "maxX": 0.5,
-        "minY": 0.3,
-        "maxY": 0.8
-      },
-      "minCrossings": 4,
-      "neighbors": [
-        {
-          "from": "bottom",
-          "to": "bottomLeft",
-          "maxX": 0,
-          "maxY": 0
+      "tryNext": true,
+      "body": {
+        "shape": "profile-neck",
+        "neck": {
+          "lookback": 4,
+          "previousOffset": 1,
+          "minX": 0.2,
+          "maxX": 0.5,
+          "minY": 0.3,
+          "maxY": 0.8,
+          "bottomCheck": false,
+          "sameDirectionCheck": true,
+          "neighbors": [
+            {
+              "from": "bottom",
+              "to": "bottomLeft",
+              "maxX": 0,
+              "maxY": 0
+            },
+            {
+              "from": "bottom",
+              "to": "bottomRight",
+              "maxX": 0,
+              "minY": 0
+            }
+          ]
         },
-        {
-          "from": "bottom",
-          "to": "bottomRight",
-          "maxX": 0,
-          "minY": 0
+        "profile": {
+          "minLandmarkCrossings": 4
         }
-      ],
-      "tryNext": true
+      },
+      "cuts": {
+        "attachment": {
+          "previous": "ل",
+          "previousPosition": "initial"
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "neck-section"
+        }
+      },
+      "sharedBoundary": true
     },
     {
       "id": "alef-fina",

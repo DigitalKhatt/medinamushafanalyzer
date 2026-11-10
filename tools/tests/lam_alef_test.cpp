@@ -527,7 +527,7 @@ int main(int argc, char** argv) {
         if (value.toObject().value("id") == "alef-folded-fina") form = value.toObject();
         if (value.toObject().value("id") == "alef-open-fina") attachedForm = value.toObject();
     }
-    check(form.value("minCrossings").toInt() == 4, "Lam-alef crossing requirement was weakened");
+    check(form.value("body").toObject().value("profile").toObject().value("minLandmarkCrossings").toInt() == 4, "Lam-alef crossing requirement was weakened");
     QFile file("pages/page600.dat");
     check(file.open(QIODevice::ReadOnly), "Page 600 fixture is required");
     PageAnalysisResult analysis;
@@ -545,26 +545,28 @@ int main(int argc, char** argv) {
                              QStringLiteral("لآ"), QStringLiteral("لٱ")}) {
         auto context = geometry(source, dummy, form, defaults);
         context.baseText = text;
-        check(searchLamAlefLiga(context) && context.res.topBaseLine.time == 5 && context.res.bottomBaseLine.time == 14,
+        check(declaredSharedBoundary(context, context.form) && context.res.topBaseLine.time == 5 && context.res.bottomBaseLine.time == 14,
               "Lam-alef did not retain the exact 5/14 crossing corners");
     }
     const auto base = geometry(source, dummy, form, defaults);
     for (double scale : {0.7, 1.0, 1.6}) {
         auto scaledForm = form;
-        auto bounds = scaledForm.value("join").toObject();
+        auto scaledBody=scaledForm.value("body").toObject();
+        auto bounds = scaledBody.value("neck").toObject();
         for (const auto* key : {"minX", "maxX", "minY", "maxY"})
             bounds.insert(key, bounds.value(key).toDouble() * scale);
-        scaledForm.insert("join", bounds);
+        scaledBody.insert("neck",bounds);
+        scaledForm.insert("body", scaledBody);
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto context = geometry(mapping.map(source), dummy, scaledForm, defaults);
-        check(searchLamAlefLiga(context) && context.res.topBaseLine.time == 5 && context.res.bottomBaseLine.time == 14,
+        check(declaredSharedBoundary(context, context.form) && context.res.topBaseLine.time == 5 && context.res.bottomBaseLine.time == 14,
               "Lam-alef endpoint check changed under translation or page-unit scaling");
     }
     auto open = geometry(base.subPaths.front(), dummy, form, defaults);
-    check(!searchLamAlefLiga(open), "Folded ligature accepted without its lower counter crossings");
+    check(!declaredSharedBoundary(open, open.form), "Folded ligature accepted without its lower counter crossings");
     auto unrelated = geometry(source, dummy, form, defaults);
     unrelated.baseText = QStringLiteral("بإ");
-    check(!searchLamAlefLiga(unrelated), "Lam-alef rule accepted an unrelated letter pair");
+    check(!declaredSharedBoundary(unrelated, unrelated.form), "Lam-alef rule accepted an unrelated letter pair");
 
     check(analysis.segmentSubword(599, 0, 1, 1, nullptr, true), "Lam-alef with hamza below remains partial");
     check(sub.matchedTemplates.contains("alef-folded-fina") && sub.baseGlyphs.size() == 2 && sub.joins.size() == 1,
@@ -604,14 +606,14 @@ int main(int argc, char** argv) {
                              QStringLiteral("فلآ"), QStringLiteral("فلٱ")}) {
         auto context = geometry(attachedSource, dummy, attachedForm, defaults);
         context.baseText = text;
-        check(searchLamAlefLiga(context) && context.res.topBaseLine.time == 4 && context.res.bottomBaseLine.time == 12,
+        check(declaredSharedBoundary(context, context.form) && context.res.topBaseLine.time == 4 && context.res.bottomBaseLine.time == 12,
               "Attached lam-alef did not retain the exact 4/12 shared corners");
     }
     auto wrongShape = geometry(source, dummy, attachedForm, defaults);
-    check(!searchLamAlefLiga(wrongShape), "Attached rule accepted an initial lam");
+    check(!declaredSharedBoundary(wrongShape, wrongShape.form), "Attached rule accepted an initial lam");
     auto wrongPair = geometry(attachedSource, dummy, attachedForm, defaults);
     wrongPair.baseText = QStringLiteral("فبا");
-    check(!searchLamAlefLiga(wrongPair), "Attached rule accepted an unrelated suffix");
+    check(!declaredSharedBoundary(wrongPair, wrongPair.form), "Attached rule accepted an unrelated suffix");
     check(analysis.segmentSubword(599, 1, 3, 1, nullptr, true), "Attached lam-alef remains partial");
     check(attached.baseGlyphs.size() == 3 && attached.joins.size() == 2 &&
           attached.matchedTemplates.contains("lam-medi") && attached.matchedTemplates.contains("alef-open-fina"),
