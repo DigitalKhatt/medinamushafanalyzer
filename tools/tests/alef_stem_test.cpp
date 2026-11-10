@@ -68,8 +68,12 @@ int main(int argc, char** argv) {
     check(std::any_of(hits.begin(), hits.end(), [](const auto& hit) {
         return std::abs(hit.time - 2.744423) < 1e-5;
     }), "Quadratic stem edge intersection is missing");
+    const auto project=[&](SearchContext& source, const QJsonObject& declaration, Stretching& result) {
+        const auto evidence=recognizeUprightStem(inkOutline(source));
+        return evidence && cutUprightStem(source,*evidence,declaration.value("cuts").toObject().value("stem").toObject(),result);
+    };
     Stretching cut{};
-    check(finalAlefStemCut(context, form, cut) && std::abs(cut.topBaseLine.time - 14.1344) < 1e-4 &&
+    check(project(context, form, cut) && std::abs(cut.topBaseLine.time - 14.1344) < 1e-4 &&
           std::abs(cut.bottomBaseLine.time - 4.59083) < 1e-4, "Alef did not find its own turning foot");
     const QPointF normal = cut.topBaseLine.point - cut.bottomBaseLine.point;
     check(std::abs(normal.x() + normal.y()) < 1e-6 && interiorChord(ink, cut.topBaseLine, cut.bottomBaseLine),
@@ -77,12 +81,12 @@ int main(int argc, char** argv) {
     context.baseText = QStringLiteral("بدون سياق"); context.pairedStrokeWidth = 1000;
     context.nextIter = context.xSorted.end();
     Stretching independent{};
-    check(finalAlefStemCut(context, form, independent) && same(cut, independent), "Neighbor state changed the alef cut");
+    check(project(context, form, independent) && same(cut, independent), "Neighbor state changed the alef cut");
     for (double scale : {.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(ink), dummy);
         Stretching result{};
-        check(finalAlefStemCut(scaled, form, result) && same(cut, result, mapping),
+        check(project(scaled, form, result) && same(cut, result, mapping),
               "Alef cut changed under scale/translation");
     }
     check(analysis.segmentSubword(599, 9, 5, 0, nullptr, true), "Noon-alef is still partial");

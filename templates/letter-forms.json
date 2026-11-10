@@ -4892,12 +4892,23 @@
     },
     {
       "id": "alef-fina",
-      "method": "alef-stem",
-      "shaftTurn": true,
-      "turnAngle": 45,
-      "stemWidthLimit": 1.7,
       "current": "اآأإٱ",
-      "tryNext": true
+      "tryNext": true,
+      "body": {
+        "shape": "upright-stem",
+        "stem": {}
+      },
+      "cuts": {
+        "stem": {
+          "turnAngle": 45,
+          "stemWidthLimit": 1.7
+        },
+        "recoveryShaft": true,
+        "boundaries": {
+          "left": "free",
+          "right": "stem-turn"
+        }
+      }
     },
     {
       "id": "sad-tah-fina",
