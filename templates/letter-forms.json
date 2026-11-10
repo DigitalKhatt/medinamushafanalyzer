@@ -5508,11 +5508,21 @@
     {
       "id": "alef-detached-fina",
       "current": "اأإآٱ",
-      "method": "detached-arm",
       "onIncomplete": true,
-      "detachedArm": {
-        "minRise": 3,
-        "maxTipGap": 0.85
+      "body": {
+        "shape": "component-arm",
+        "arm": {
+          "minRise": 3
+        }
+      },
+      "cuts": {
+        "arm": {
+          "maxTipGap": 0.85
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "source-separation"
+        }
       }
     },
     {
