@@ -4912,11 +4912,23 @@
     {
       "id": "kaf-bowl-fina",
       "current": "ك",
-      "method": "stem-entry",
-      "turnAngle": 45,
-      "minRise": 3,
-      "maxNeckDistance": 2,
-      "retryWithVariants": true
+      "retryWithVariants": true,
+      "body": {
+        "shape": "stemmed-bowl",
+        "stem": {
+          "minRise": 3
+        }
+      },
+      "cuts": {
+        "stem": {
+          "turnAngle": 45,
+          "maxNeckDistance": 2
+        },
+        "boundaries": {
+          "left": "free",
+          "right": "stem-turn"
+        }
+      }
     },
     {
       "id": "kaf-return-fina",

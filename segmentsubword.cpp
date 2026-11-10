@@ -745,7 +745,7 @@ static bool lamDescription(const QJsonObject& body) {
 
 static bool sharedShapeDescription(const QJsonObject& body) {
     static const QStringList shapes{"counter-neck", "counter-shoulder", "counter-bridge", "counter-loop", "counter-rim",
-        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips", "inclined-blade", "parallel-return"};
+        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips", "inclined-blade", "parallel-return", "stemmed-bowl"};
     return shapes.contains(body.value("shape").toString());
 }
 
@@ -816,6 +816,7 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
     const auto body = form.value("body").toObject();
     if (!sharedShapeDescription(body)) return form;
     const auto shape = body.value("shape");
+    if (shape == "stemmed-bowl") form = withOverrides(form, shapeSettings(form, "stem"));
     if (shape == "inclined-blade") form.insert("blade", shapeSettings(form, "blade"));
     if (shape == "parallel-return") form.insert("parallelReturn", shapeSettings(form, "bands"));
     if (shape == "returning-lips") form.insert("mouth", shapeSettings(form, "mouth"));
@@ -865,7 +866,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         (phase == "initial" && boundaries.value("right") != "free") ||
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
-    const QString section = shape == "inclined-blade" ? "blade" : shape == "parallel-return" ? "bands" : shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
+    const QString section = shape == "stemmed-bowl" ? "stem" : shape == "inclined-blade" ? "blade" : shape == "parallel-return" ? "bands" : shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
@@ -897,7 +898,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (!checkBody(checkBody, body)) return id + ": projection settings cannot change recognized body evidence";
     for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
         const auto mode = it.value().toString();
-        const QStringList modes = shape == "inclined-blade" ? QStringList{"corner-normal"} : shape == "parallel-return" ? QStringList{"band-section"} : shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
+        const QStringList modes = shape == "stemmed-bowl" ? QStringList{"free", "stem-turn"} : shape == "inclined-blade" ? QStringList{"corner-normal"} : shape == "parallel-return" ? QStringList{"band-section"} : shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
             shape == "bowl-neck" ? QStringList{"free", "bowl-neck"} : shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
             (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? QStringList{"free", "counter-neck", "counter-shoulder", "counter-bridge"} :
             shape == "contour-route" ? QStringList{"free", "contour-route"} :
@@ -914,6 +915,13 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (shape == "contour-route" && cuts.contains("recoveryTail") &&
         (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() || cuts.value("tail").toObject().isEmpty()))
         return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    if (shape == "stemmed-bowl") {
+        if (phase != "final") return id + ": stemmed bowl requires a final body";
+        const auto stem=body.value("stem").toObject(), policy=cuts.value("stem").toObject();
+        if (stem.size()!=1 || !(stem.value("minRise").toDouble()>0) || policy.size()!=2 ||
+            !(policy.value("maxNeckDistance").toDouble()>0) || !(policy.value("turnAngle").toDouble()>0) ||
+            policy.value("turnAngle").toDouble()>=90) return id + ": invalid stemmed bowl settings";
+    }
     if (shape == "inclined-blade" || shape == "parallel-return") {
         if (phase != "medial") return id + ": a folded blade needs two medial boundaries";
         const auto dimensions = body.value(section).toObject(), policy = cuts.value(section).toObject();
@@ -999,6 +1007,7 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString& ph
     const auto shape = form.value("body").toObject().value("shape");
     form = sharedShapeProjectionForm(form);
     form.remove("body"); form.remove("cuts");
+    if (shape == "stemmed-bowl") form.insert("method", "stem-entry");
     if (shape == "enclosed-lips" && phase == "initial") form.insert("method", "enclosed-head");
     else if (shape == "tooth-cluster" && phase != "medial") form.insert("method", "seen-teeth");
     else if (shape == "contour-route") form.insert("method", "walk");
@@ -6619,13 +6628,15 @@ static std::vector<std::pair<Stretching, Stretching>> contourBodyBoundaries(Sear
 
 // Locate a tall stem from its own crest and width; a bowl may extend to its left.
 struct TerminalStemBody {
-    timesortedtype::iterator crest, limit, bowlEdge;
+    PathExtrema crest, limit, bowlEdge;
     QPointF bowlBottom, sample;
     double stroke;
     int traversal;
 };
 
-static std::vector<TerminalStemBody> recognizeTerminalStemBodies(SearchContext& context, const QJsonObject& body) {
+static std::vector<TerminalStemBody> recognizeTerminalStemBodies(const InkOutline& outline, const QJsonObject& body) {
+    WordResultInfo::SubWordInfo empty;
+    auto context=outline.geometry(empty);
     // The ascender is on the right of the final bowl. Its shorter upturned
     // left end is also a narrow stroke, but is not the letter's incoming stem.
     const auto bowlEdge = context.timeSorted.find(*std::prev(context.xSorted.end()));
@@ -6671,7 +6682,7 @@ static std::vector<TerminalStemBody> recognizeTerminalStemBodies(SearchContext& 
                 }
             }
             if (stroke <= 0 || rise < body.value("minRise").toDouble(3) * stroke || nearest > stroke) continue;
-            bodies.push_back({crest, limit, bowlEdge, *bowlBottom, stemSample, stroke,
+            bodies.push_back({*crest, *limit, *bowlEdge, *bowlBottom, stemSample, stroke,
                 advance == &SearchContext::prev ? 1 : -1});
         }
     }
@@ -6684,9 +6695,9 @@ static bool cutTerminalStemBodies(SearchContext& context, const std::vector<Term
     double leftmost = context.bbox.right() + 1;
     for (const auto& evidence : bodies) {
         const auto& [crest, limit, bowlEdge, bowlBottom, stemSample, stroke, traversal] = evidence;
-        if (crest->point.x() >= leftmost) continue;
+        if (crest.point.x() >= leftmost) continue;
         Stretching cut{};
-        if (!alefTurnCut(context, *limit, policy.value("turnAngle").toDouble(45), stroke, cut, &*crest,
+        if (!alefTurnCut(context, limit, policy.value("turnAngle").toDouble(45), stroke, cut, &crest,
                         traversal)) continue;
         std::vector<Stretching> options{cut};
         // An incoming stroke may attach above the bowl. Its inward
@@ -6694,7 +6705,7 @@ static bool cutTerminalStemBodies(SearchContext& context, const std::vector<Term
         // itself, which would assign the whole bowl to the kashida.
         const auto foot = QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point).center();
         for (auto corner = context.timeSorted.begin(); corner != context.timeSorted.end(); ++corner) {
-            if (!corner->isSharp || corner->point.x() <= crest->point.x() ||
+            if (!corner->isSharp || corner->point.x() <= crest.point.x() ||
                 corner->point.y() >= context.prev(corner)->point.y() ||
                 corner->point.y() >= context.next(corner)->point.y() ||
                 QLineF(foot, corner->point).length() >
@@ -6712,25 +6723,20 @@ static bool cutTerminalStemBodies(SearchContext& context, const std::vector<Term
             if (pieces.size() != 2) continue;
             const auto& body = pieces[1].path;
             const auto bounds = body.boundingRect().adjusted(-1e-6, -1e-6, 1e-6, 1e-6);
-            if (!bounds.contains(crest->point) || !bounds.contains(bowlEdge->point) ||
+            if (!bounds.contains(crest.point) || !bounds.contains(bowlEdge.point) ||
                 !body.contains(stemSample) || !body.contains(bowlBottom - QPointF(0, .01 * stroke))) continue;
             accepted = option;
             break;
         }
         if (!accepted) continue;
         best = *accepted;
-        leftmost = crest->point.x();
+        leftmost = crest.point.x();
     }
     if (!best) return false;
     context.res = *best;
     context.res.topLeft = context.res.topRight = best->topBaseLine;
     context.res.bottomLeft = context.res.bottomRight = best->bottomBaseLine;
     return true;
-}
-
-static bool searchStemEntry(SearchContext& context) {
-    return cutTerminalStemBodies(context, recognizeTerminalStemBodies(context, context.form),
-                                 context.form, context.form);
 }
 
 // Walk the lower side of the outline and select a cross-section near its landmark.
@@ -8480,11 +8486,11 @@ static bool declaredLamBoundary(SearchContext& context, const QJsonObject& confi
     else if (shape == "descending-stem")
         found = descendingStemExit(context, body.value("stem").toObject(), context.res);
     else if (shape == "terminal-bowl") {
-        const auto evidence = recognizeTerminalStemBodies(context, body.value("stem").toObject());
+        const auto evidence = recognizeTerminalStemBodies(inkOutline(context), body.value("stem").toObject());
         if (inspectingForm) for (const auto& item : evidence) {
-            inspectLandmark("Stem crest", *item.crest);
-            inspectLandmark("Stem foot", *item.limit);
-            inspectLandmark("Bowl edge", *item.bowlEdge);
+            inspectLandmark("Stem crest", item.crest);
+            inspectLandmark("Stem foot", item.limit);
+            inspectLandmark("Bowl edge", item.bowlEdge);
         }
         if (evidence.empty()) inspectReason("Body", "No terminal shaft passed the crest, rise and local width constraints.");
         found = cutTerminalStemBodies(context, evidence, body.value("stem").toObject(), cuts.value("section").toObject());
@@ -9116,6 +9122,7 @@ struct SharedShapeEvidence {
     std::vector<OpenMouthBody> mouths;
     std::vector<BladeBody> blades;
     std::vector<ParallelReturnBody> parallelReturns;
+    std::vector<TerminalStemBody> terminalStems;
     std::vector<OpenHeadBody> openHeads;
     std::optional<HorizontalCounterPair> horizontalPair;
     std::vector<StackedCounterPair> stackedPairs;
@@ -9139,6 +9146,7 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop") result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn") result.bowlTurn = recognizeBowlTurn(outline);
+    else if (shape == "stemmed-bowl") result.terminalStems = recognizeTerminalStemBodies(outline, body.value("stem").toObject());
     else if (shape == "inclined-blade") result.blades = recognizeBlades(outline, body.value("blade").toObject());
     else if (shape == "parallel-return") result.parallelReturns = recognizeParallelReturns(outline, body.value("bands").toObject());
     else if (shape == "returning-lips") result.mouths = recognizeOpenMouths(outline, body.value("mouth").toObject());
@@ -9225,6 +9233,7 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
     }
     for (const auto& blade:evidence.blades) { inspectLandmark("Blade tip",blade.tip); inspectLandmark("Elbow",blade.elbow); inspectLandmark("Fork",blade.fork); }
     for (const auto& band:evidence.parallelReturns) { inspectLandmark("Return edge",band.edge); inspectLandmark("Elbow",band.elbow); inspectLandmark("Blade tip",band.tip); }
+    for (const auto& stem:evidence.terminalStems) { inspectLandmark("Stem crest",stem.crest); inspectLandmark("Stem foot",stem.limit); inspectLandmark("Bowl edge",stem.bowlEdge); }
     if (evidence.bowlTurn) inspectLandmark("Bowl turn", evidence.bowlTurn->turn);
     for (const auto& head : evidence.openHeads) {
         inspectLandmark("Open crest", head.crest);
@@ -9284,6 +9293,8 @@ static bool declaredSharedBoundary(SearchContext& context, const QJsonObject& fo
             found = cutTailBranches(context, *evidence->tail, shapeSettings(form, "tail"), context.res);
         if (!found) found = projectSavedRoute(context, evidence->route, body.value("route").toObject(), cuts.value("route").toObject());
     }
+    else if (shape == "stemmed-bowl")
+        found = cutTerminalStemBodies(context, evidence->terminalStems, cuts.value("stem").toObject(), cuts.value("stem").toObject());
     else if (shape == "tail-branch")
         found = evidence->tail && cutTailBranches(context, *evidence->tail, shapeSettings(form, "tail"), context.res);
     else if (shape == "rising-return" || shape == "folded-return")
@@ -12604,7 +12615,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                        finalAlefStemCut(context, rule, context.res);
             });
         }
-        else if (method == "stem-entry") found = searchStemEntry(context);
         else if (method == "lam-alef") found = searchLamAlefLiga(context);
         else if (method == "sad-tah") found = searchNextSadOrTah(context);
         else if (method == "hah") found = searchHah(context);
