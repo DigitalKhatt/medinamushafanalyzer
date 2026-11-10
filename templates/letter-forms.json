@@ -2888,19 +2888,30 @@
       "id": "hah-returning-lips-medi",
       "onHeadConflict": true,
       "current": "جحخ",
-      "mouth": {
-        "minLipRun": 1.65,
-        "maxLipRun": 22,
-        "maxHeight": 5.5,
-        "projectExit": true,
-        "exitMargin": 0.25,
-        "maxThroat": 0.85,
-        "separateSharedEntry": true
-      },
-      "bodyCounters": 0,
       "tightJoin": true,
       "onIncomplete": true,
-      "reclaimEntry": true
+      "reclaimEntry": true,
+      "body": {
+        "shape": "returning-lips",
+        "mouth": {
+          "minLipRun": 1.65,
+          "maxLipRun": 22,
+          "maxHeight": 5.5
+        },
+        "counters": 0
+      },
+      "cuts": {
+        "mouth": {
+          "projectExit": true,
+          "exitMargin": 0.25,
+          "maxThroat": 0.85,
+          "separateSharedEntry": true
+        },
+        "boundaries": {
+          "left": "corner-normal",
+          "right": "corner-normal"
+        }
+      }
     },
     {
       "id": "kaf-flat-medi",
