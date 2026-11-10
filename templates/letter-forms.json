@@ -3462,9 +3462,22 @@
       "id": "hah-overhanging-entry-medi",
       "current": "جحخ",
       "onIncomplete": true,
-      "overhangingEntry": {
-        "maxGap": 0.8,
-        "maxEntryToHead": 1.1
+      "body": {
+        "shape": "separate-components",
+        "parts": {
+          "count": 2
+        }
+      },
+      "cuts": {
+        "parts": {
+          "mode": "overhanging-head",
+          "maxGap": 0.8,
+          "maxEntryToHead": 1.1
+        },
+        "boundaries": {
+          "left": "component-form",
+          "right": "component-form"
+        }
       }
     },
     {
@@ -3859,24 +3872,50 @@
       "id": "seen-lifted-exit-medi",
       "current": "سش",
       "onUnresolved": true,
-      "penLift": {
-        "side": "exit",
-        "forms": [
-          "seen-bowl-entry-fina",
-          "seen-fina"
-        ]
+      "body": {
+        "shape": "separate-components",
+        "parts": {
+          "count": 2,
+          "forms": [
+            "seen-bowl-entry-fina",
+            "seen-fina"
+          ]
+        }
+      },
+      "cuts": {
+        "parts": {
+          "mode": "pen-lift",
+          "side": "exit"
+        },
+        "boundaries": {
+          "left": "component-form",
+          "right": "component-form"
+        }
       }
     },
     {
       "id": "heh-lifted-entry-medi",
       "current": "ه",
       "onUnresolved": true,
-      "penLift": {
-        "side": "entry",
-        "forms": [
-          "heh-init",
-          "heh-paired-rim-init"
-        ]
+      "body": {
+        "shape": "separate-components",
+        "parts": {
+          "count": 2,
+          "forms": [
+            "heh-init",
+            "heh-paired-rim-init"
+          ]
+        }
+      },
+      "cuts": {
+        "parts": {
+          "mode": "pen-lift",
+          "side": "entry"
+        },
+        "boundaries": {
+          "left": "component-form",
+          "right": "component-form"
+        }
       }
     },
     {

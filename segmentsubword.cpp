@@ -745,7 +745,7 @@ static bool lamDescription(const QJsonObject& body) {
 
 static bool sharedShapeDescription(const QJsonObject& body) {
     static const QStringList shapes{"counter-neck", "counter-shoulder", "counter-bridge", "counter-loop", "counter-rim",
-        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips", "inclined-blade", "parallel-return", "stemmed-bowl", "forked-bowl", "counter-attachment", "layered-head", "upright-stem", "tapered-arm", "component-arm"};
+        "counter-outline", "contour-route", "suspended-loop", "crested-loop", "bowl-turn", "open-head", "horizontal-counters", "stacked-counters", "tail-branch", "rising-return", "folded-return", "paired-route", "bowl-neck", "profile-neck", "tooth-cluster", "enclosed-lips", "returning-lips", "inclined-blade", "parallel-return", "stemmed-bowl", "forked-bowl", "counter-attachment", "layered-head", "upright-stem", "tapered-arm", "component-arm", "separate-components"};
     return shapes.contains(body.value("shape").toString());
 }
 
@@ -816,6 +816,12 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
     const auto body = form.value("body").toObject();
     if (!sharedShapeDescription(body)) return form;
     const auto shape = body.value("shape");
+    if(shape=="separate-components") {
+        auto policy=form.value("cuts").toObject().value("parts").toObject();
+        const auto mode=policy.take("mode");
+        if(mode=="pen-lift") {policy.insert("forms",body.value("parts").toObject().value("forms"));form.insert("penLift",policy);}
+        else form.insert("overhangingEntry",policy);
+    }
     if(shape=="component-arm")form.insert("detachedArm",shapeSettings(form,"arm"));
     if(shape=="tapered-arm") {auto arm=shapeSettings(form,"arm");arm.insert("maxNeck",arm.take("maxRootWidth"));form=withOverrides(form,arm);}
     if(shape=="upright-stem") form=withOverrides(form,shapeSettings(form,"stem"));
@@ -876,7 +882,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
         (phase == "initial" && boundaries.value("right") != "free") ||
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
-    const QString section = shape == "component-arm" ? "arm" : shape == "tapered-arm" ? "arm" : shape == "upright-stem" ? "stem" : shape == "layered-head" ? "head" : shape == "counter-attachment" ? "attachment" : shape == "forked-bowl" ? "fork" : shape == "stemmed-bowl" ? "stem" : shape == "inclined-blade" ? "blade" : shape == "parallel-return" ? "bands" : shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
+    const QString section = shape == "separate-components" ? "parts" : shape == "component-arm" ? "arm" : shape == "tapered-arm" ? "arm" : shape == "upright-stem" ? "stem" : shape == "layered-head" ? "head" : shape == "counter-attachment" ? "attachment" : shape == "forked-bowl" ? "fork" : shape == "stemmed-bowl" ? "stem" : shape == "inclined-blade" ? "blade" : shape == "parallel-return" ? "bands" : shape == "returning-lips" ? "mouth" : shape == "enclosed-lips" ? "head" : shape == "tooth-cluster" ? "cluster" : shape == "paired-route" ? "routes" : shape == "tail-branch" ? "tail" : (shape == "rising-return" || shape == "folded-return") ? "return" : shape == "horizontal-counters" || shape == "stacked-counters" ? "pair" : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? "head" : (shape == "bowl-turn" || shape == "bowl-neck") ? "probe" :
         shape == "contour-route" ? "route" : (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? "counter" :
         shape == "counter-loop" ? "loop" : shape == "counter-rim" ? "rim" : "outline";
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
@@ -910,7 +916,7 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (!checkBody(checkBody, body)) return id + ": projection settings cannot change recognized body evidence";
     for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
         const auto mode = it.value().toString();
-        const QStringList modes = shape == "component-arm" ? QStringList{"free", "source-separation"} : shape == "tapered-arm" ? QStringList{"free", "arm-root"} : shape == "upright-stem" ? QStringList{"free", "stem-turn"} : shape == "layered-head" ? QStringList{"free", "head-probe"} : shape == "counter-attachment" ? QStringList{"free", "counter-bridge", "counter-shoulder"} : shape == "forked-bowl" ? QStringList{"free", "branch-normal"} : shape == "stemmed-bowl" ? QStringList{"free", "stem-turn"} : shape == "inclined-blade" ? QStringList{"corner-normal"} : shape == "parallel-return" ? QStringList{"band-section"} : shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection", "lower-probe"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
+        const QStringList modes = shape == "separate-components" ? QStringList{"component-form"} : shape == "component-arm" ? QStringList{"free", "source-separation"} : shape == "tapered-arm" ? QStringList{"free", "arm-root"} : shape == "upright-stem" ? QStringList{"free", "stem-turn"} : shape == "layered-head" ? QStringList{"free", "head-probe"} : shape == "counter-attachment" ? QStringList{"free", "counter-bridge", "counter-shoulder"} : shape == "forked-bowl" ? QStringList{"free", "branch-normal"} : shape == "stemmed-bowl" ? QStringList{"free", "stem-turn"} : shape == "inclined-blade" ? QStringList{"corner-normal"} : shape == "parallel-return" ? QStringList{"band-section"} : shape == "returning-lips" ? QStringList{"corner-normal"} : shape == "enclosed-lips" ? QStringList{"free", "corner-normal"} : shape == "tooth-cluster" ? QStringList{"free", "tooth-entry", "tooth-exit"} : shape == "profile-neck" ? QStringList{"free", "neck-section", "edge-projection", "lower-probe"} : shape == "paired-route" ? QStringList{"route-left", "route-right"} : shape == "tail-branch" ? QStringList{"free", "branch-normal"} : (shape == "rising-return" || shape == "folded-return") ? QStringList{"free", "return-seam"} : shape == "horizontal-counters" || shape == "stacked-counters" ? QStringList{"free", "pair-neck"} : shape == "suspended-loop" || shape == "crested-loop" || shape == "open-head" ? QStringList{"free", "head-neck"} :
             shape == "bowl-neck" ? QStringList{"free", "bowl-neck"} : shape == "bowl-turn" ? QStringList{"free", "turn-probe"} :
             (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") ? QStringList{"free", "counter-neck", "counter-shoulder", "counter-bridge"} :
             shape == "contour-route" ? QStringList{"free", "contour-route"} :
@@ -927,6 +933,18 @@ static QString validateSharedShape(const QJsonObject& form, const QString& phase
     if (shape == "contour-route" && cuts.contains("recoveryTail") &&
         (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() || cuts.value("tail").toObject().isEmpty()))
         return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    if(shape=="separate-components") {
+        const auto parts=body.value("parts").toObject(),policy=cuts.value("parts").toObject();
+        if(phase!="medial" || parts.value("count")!=2)return id+": separated bodies require two source components";
+        for(auto it=parts.begin();it!=parts.end();++it)if(!QStringList{"count","forms"}.contains(it.key()))return id+": unknown component body feature";
+        const auto mode=policy.value("mode");
+        if(mode=="pen-lift") {
+            if(policy.size()!=2 || !QStringList{"entry","exit"}.contains(policy.value("side").toString()) ||
+                parts.value("forms").toArray().isEmpty())return id+": pen lift needs a side and component forms";
+        } else if(mode=="overhanging-head") {
+            if(policy.size()!=3 || !(policy.value("maxGap").toDouble()>0) || !(policy.value("maxEntryToHead").toDouble()>0) || parts.contains("forms"))return id+": invalid overhanging head policy";
+        } else return id+": unknown component assembly policy";
+    }
     if(shape=="component-arm") {
         const auto arm=body.value("arm").toObject(),policy=cuts.value("arm").toObject();
         if(phase!="final" || arm.size()!=1 || !(arm.value("minRise").toDouble()>0) || policy.size()!=1 ||
@@ -9144,6 +9162,31 @@ static std::vector<ComponentArmBody> recognizeComponentArms(const InkOutline& ou
     return result;
 }
 
+// Source components are evidence before any letter boundary is assembled.
+struct InkComponentBody {
+    QPainterPath ink;
+    std::vector<int> indices;
+};
+static std::vector<InkComponentBody> recognizeSourceComponents(const QPainterPath& ink) {
+    const auto paths=toSubpaths(ink);
+    std::vector<InkComponentBody> pieces;
+    if(paths.size()<2)return pieces;
+    for(int i=0;i<paths.size();++i) {
+        bool inside=false;
+        for(int j=0;j<paths.size() && !inside;++j)inside=i!=j && paths[j].contains(paths[i]);
+        if(!inside)pieces.push_back({paths[i],{i}});
+    }
+    if(pieces.size()!=2 || pieces[0].ink.intersects(pieces[1].ink))return {};
+    for(auto& piece:pieces) {
+        const auto outer=piece.ink;
+        for(int i=0;i<paths.size();++i)if(i!=piece.indices.front() && outer.contains(paths[i])) {
+            piece.ink.addPath(paths[i]);piece.indices.push_back(i);
+        }
+        piece.ink.setFillRule(ink.fillRule());
+    }
+    return pieces;
+}
+
 struct SharedShapeEvidence {
     QPainterPath source;
     std::vector<CounterHole> holes;
@@ -9172,6 +9215,7 @@ struct SharedShapeEvidence {
     std::optional<DescendingShaftBody> descendingShaft;
     std::vector<TaperedArmBody> taperedArms;
     std::vector<ComponentArmBody> componentArms;
+    std::vector<InkComponentBody> components;
     std::vector<OpenHeadBody> openHeads;
     std::optional<HorizontalCounterPair> horizontalPair;
     std::vector<StackedCounterPair> stackedPairs;
@@ -9195,6 +9239,7 @@ static SharedShapeEvidence recognizeSharedShape(const InkOutline& outline, const
     } else if (shape == "suspended-loop") result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop") result.crestedHeads = recognizeCrestedLoops(outline, body.value("head").toObject());
     else if (shape == "bowl-turn") result.bowlTurn = recognizeBowlTurn(outline);
+    else if(shape=="separate-components")result.components=recognizeSourceComponents(outline.ink);
     else if(shape=="component-arm")result.componentArms=recognizeComponentArms(outline,body.value("arm").toObject());
     else if(shape=="tapered-arm")result.taperedArms=recognizeTaperedArms(outline,body.value("arm").toObject());
     else if(shape=="upright-stem") {result.uprightStem=recognizeUprightStem(outline);result.descendingShaft=recognizeDescendingShaft(outline);}
@@ -9301,6 +9346,9 @@ static void inspectSharedShape(const SharedShapeEvidence& evidence) {
     if(evidence.uprightStem){inspectLandmark("Stem tip",evidence.uprightStem->tip);for(const auto& turn:evidence.uprightStem->turns)inspectLandmark("Lower turn",turn);}
     for(const auto& arm:evidence.taperedArms){inspectLandmark("Arm root",arm.first);inspectLandmark("Arm root",arm.second);}
     for(const auto& arm:evidence.componentArms){inspectLandmark("Separate arm top",arm.top);inspectLandmark("Separate arm tip",arm.bottom);}
+    for(const auto& part:evidence.components) {
+        PathExtrema corner{};corner.pathIndex=part.indices.front();corner.point=part.ink.boundingRect().topLeft();inspectLandmark("Source component",corner);
+    }
     if (evidence.bowlTurn) inspectLandmark("Bowl turn", evidence.bowlTurn->turn);
     for (const auto& head : evidence.openHeads) {
         inspectLandmark("Open crest", head.crest);
@@ -10236,7 +10284,7 @@ static bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, c
     QJsonObject form;
     QJsonArray lifted;
     for (const auto& value : config.value("medial").toArray()) {
-        const auto rule = value.toObject();
+        const auto rule = bodyConstraintForm(config,value.toObject());
         if (rule.contains("overhangingEntry") && form.isEmpty()) form = rule;
         if (rule.contains("penLift")) lifted.append(rule);
     }
@@ -10250,32 +10298,9 @@ static bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, c
         return QJsonObject{};
     };
     const auto shape = word.bodyShape(result);
-    const auto paths = toSubpaths(shape.path);
-    if (paths.size() < 2)
-        return false;
-    struct Component {
-        QPainterPath ink;
-        std::vector<int> indices;
-    };
-    std::vector<Component> pieces;
-    for (int i = 0; i < paths.size(); ++i) {
-        bool inside = false;
-        for (int j = 0; j < paths.size() && !inside; ++j)
-            inside = i != j && paths[j].contains(paths[i]);
-        if (!inside)
-            pieces.push_back({paths[i], {i}});
-    }
-    if (pieces.size() != 2 || pieces[0].ink.intersects(pieces[1].ink))
-        return false;
-    for (auto& piece : pieces) {
-        const auto outer = piece.ink;
-        for (int i = 0; i < paths.size(); ++i)
-            if (i != piece.indices.front() && outer.contains(paths[i])) {
-                piece.ink.addPath(paths[i]);
-                piece.indices.push_back(i);
-            }
-        piece.ink.setFillRule(shape.path.fillRule());
-    }
+    using Component=InkComponentBody;
+    auto pieces=recognizeSourceComponents(shape.path);
+    if(pieces.empty())return false;
     auto world = [&](const QPainterPath& p) {
         auto q = shape.transform.map(p);
         q.translate(shape.pos);
