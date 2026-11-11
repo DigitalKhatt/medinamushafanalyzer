@@ -318,7 +318,8 @@ void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, 
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (letters.size() != 2) return;
     const auto line = [](const Stretching& cut) { return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point); };
-    const auto current = sub.kashidaPaths.front().isEmpty() ? line(*sub.joins.begin()) : sub.kashidaCuts.front().second;
+    const bool hasConnector = !sub.kashidaPaths.front().isEmpty();
+    const auto current = hasConnector ? sub.kashidaCuts.front().second : line(*sub.joins.begin());
     if (current.length() <= 2 * config.value("strokeWidth").toDouble(1)) return;
 
     const auto idAt = [&](int slot) { return sub.letterDiagnostics[slot].toObject().value("template").toString(); };
@@ -327,6 +328,8 @@ void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, 
     if (initial == program.forms.cend()) return;
     const auto shapeType = initial->body.value("shape");
     if (shapeType != "contour-route" && shapeType != "contour-stem") return;
+    const bool keepStemArm = shapeType == "contour-stem";
+    if (keepStemArm && !hasConnector) return;
     const auto finalRules = config.value("final").toArray();
     const auto returning = std::find_if(finalRules.begin(), finalRules.end(), [&](const auto& value) {
         const auto rule = value.toObject();
@@ -359,8 +362,21 @@ void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, 
     if (cut.length() > sending.length() || QLineF(sending.p1(), cut.p1()).length() > 1e-6 ||
         !interiorChord(source.transformedPath, seam.topBaseLine, seam.bottomBaseLine) ||
         !matchesBoundaryBody(source, start, seam, true) || !matchesBoundaryBody(source, final, seam, false)) return;
-    if (!sub.kashidaPaths.front().isEmpty() && QLineF(sub.kashidaCuts.front().first.p1(), cut.p1()).length() > 1e-6)
+    if (hasConnector && QLineF(sub.kashidaCuts.front().first.p1(), cut.p1()).length() > 1e-6)
         return;
+
+    if (keepStemArm) {
+        // The stem turns into a short arm directly above the final fold.
+        // Measure its reach against the existing fold before sharing that cut.
+        const auto& startCap = sub.kashidaCuts.front().first;
+        const double reach = startCap.center().x() - current.center().x();
+        if (reach <= 0 || reach > current.length()) return;
+        std::vector<std::vector<QBezier>> curves;
+        const auto entry = assembledJoinCap(sub, 0, true, source, curves);
+        if (!entry || !interiorChord(source.transformedPath, entry->topBaseLine, entry->bottomBaseLine) ||
+            !matchesBoundaryBody(source, start, *entry, true)) return;
+        seam = *entry;
+    }
 
     seam.topRight = seam.topLeft = seam.topBaseLine;
     seam.bottomRight = seam.bottomLeft = seam.bottomBaseLine;
@@ -378,12 +394,17 @@ void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, 
     if (toSubpaths(first).size() != 1 || toSubpaths(last).size() != 1 ||
         std::abs(first.boundingRect().top() - inPage(sub.baseGlyphs.front().path).boundingRect().top()) > 1e-6)
         return;
-    auto diagnostic = trial.letterDiagnostics[1].toObject();
-    diagnostic.insert("template", final.value("id"));
-    trial.letterDiagnostics[1] = diagnostic;
-    trial.matchedTemplates.removeAll(idAt(1));
-    trial.matchedTemplates.append(final.value("id").toString());
-    trial.templateTrace.append(final.value("id").toString() + " · shared cut across the returning lip");
+    if (keepStemArm) {
+        if (!preserveUnchangedOutline(sub.baseGlyphs.back().path, trial.baseGlyphs.back().path)) return;
+        trial.templateTrace.append(idAt(1) + " · shared cut at the final fold");
+    } else {
+        auto diagnostic = trial.letterDiagnostics[1].toObject();
+        diagnostic.insert("template", final.value("id"));
+        trial.letterDiagnostics[1] = diagnostic;
+        trial.matchedTemplates.removeAll(idAt(1));
+        trial.matchedTemplates.append(final.value("id").toString());
+        trial.templateTrace.append(final.value("id").toString() + " · shared cut across the returning lip");
+    }
     sub = std::move(trial);
 }
 

@@ -113,5 +113,29 @@ int main(int argc, char** argv) {
               "The stretched senna–yeh join must retain its separate connector");
     }
 
-    qInfo("Yeh ligatures passed: contextual priority, shared cuts, counter ownership and a stretched connector.");
+    const Example lamYehExamples[] = {{5, 14, 8, 2}, {43, 12, 5, 2}};
+    for (const auto& [page, line, wordIndex, subIndex] : lamYehExamples) {
+        PageAnalysisResult analysis;
+        loadWord(analysis, page, line, wordIndex, font);
+        const auto& word = analysis.page.lines[line-1].words[wordIndex-1];
+        const auto& sub = word.wordResultInfo.subWords[subIndex-1];
+        const auto shape = word.bodyShape(sub);
+        WordResultInfo::SubWordInfo geometry;
+        OutlineSearchCache cache;
+        SearchContext context{.transformedPath = shape.transform.map(shape.path).translated(shape.pos),
+                              .subword = geometry, .outlineCache = &cache};
+        context.bbox = context.transformedPath.boundingRect();
+        check(preparePassOutline(context, cache) && declaredSharedBoundary(context, yeh),
+              "Final yeh must find its fold after lam");
+        check(analysis.segmentSubword(page-1, line-1, wordIndex-1, subIndex-1, &font, true, &config) &&
+              sub.joins.size() == 1 && sub.baseGlyphs.size() == 2 &&
+              sub.kashidaPaths.size() == 1 && sub.kashidaPaths.front().isEmpty() &&
+              coversOriginalInk(word, sub), "The lam arm and yeh must share one cut");
+        const auto& cut = *sub.joins.begin();
+        check(QLineF(cut.topBaseLine.point, context.res.topBaseLine.point).length() < 1e-6 &&
+              QLineF(cut.bottomBaseLine.point, context.res.bottomBaseLine.point).length() < 1e-6,
+              "The shared cut must follow the yeh fold and retain lam's short arm");
+    }
+
+    qInfo("Yeh ligatures passed: contextual priority, shared folds, counter ownership and a stretched connector.");
 }
