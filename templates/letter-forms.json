@@ -702,7 +702,6 @@
       "current": "ك",
       "ligatureWith": "اآأإٱل",
       "tryNext": true,
-      "onIncomplete": true,
       "body": {
         "shape": "counter-attachment",
         "attachment": {
@@ -1062,6 +1061,9 @@
     {
       "id": "kaf-elbow-init",
       "current": "ك",
+      "chord": {
+        "maxDistance": 2.5
+      },
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2398,6 +2400,7 @@
         "counters": 0
       },
       "cuts": {
+        "lowerLipExitWidths": 2.5,
         "routes": {
           "right": {
             "bottomProbe": "down",
@@ -2611,6 +2614,7 @@
         "counters": 0
       },
       "cuts": {
+        "lowerLipExitWidths": 2.5,
         "routes": {
           "right": {
             "bottomProbe": "normal"

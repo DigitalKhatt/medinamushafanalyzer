@@ -311,6 +311,82 @@ static std::optional<Stretching> assembledJoinCap(const WordResultInfo::SubWordI
     return cap;
 }
 
+void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+    if (sub.baseGlyphs.size() != 2 || sub.letterDiagnostics.size() != 2 || sub.joins.size() != 1 ||
+        sub.kashidaPaths.size() != 1 || sub.kashidaCuts.size() != 1 ||
+        sub.joins.begin()->counterEntry.pathIndex > 0 || sub.text.contains(QChar(0x0640))) return;
+    const auto letters = PageAnalysisResult::bodyLetters(sub.text);
+    if (letters.size() != 2) return;
+    const auto line = [](const Stretching& cut) { return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point); };
+    const auto current = sub.kashidaPaths.front().isEmpty() ? line(*sub.joins.begin()) : sub.kashidaCuts.front().second;
+    if (current.length() <= 2 * config.value("strokeWidth").toDouble(1)) return;
+
+    const auto idAt = [&](int slot) { return sub.letterDiagnostics[slot].toObject().value("template").toString(); };
+    const auto& program = bodyCutProgram(config);
+    const auto initial = program.forms.constFind(idAt(0));
+    if (initial == program.forms.cend()) return;
+    const auto shapeType = initial->body.value("shape");
+    if (shapeType != "contour-route" && shapeType != "contour-stem") return;
+    const auto finalRules = config.value("final").toArray();
+    const auto returning = std::find_if(finalRules.begin(), finalRules.end(), [&](const auto& value) {
+        const auto rule = value.toObject();
+        return rule.value("returningStroke").toBool() && rule.value("ownsLeftTip").toBool() &&
+            rule.value("body").toObject().value("shape") == "contour-route" &&
+            rule.value("current").toString().contains(letters.back()) && rule.value("id") != idAt(1);
+    });
+    if (returning == finalRules.end()) return;
+    const auto final = bodyConstraintForm(config, returning->toObject());
+    const auto start = bodyConstraintForm(config, namedLetterForm(config, idAt(0)));
+
+    const auto shape = word.bodyShape(sub);
+    const auto inPage = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
+    WordResultInfo::SubWordInfo geometryOnly{};
+    SearchContext source{.transformedPath = inPage(shape.path), .subword = geometryOnly, .baseText = letters};
+    if (!readTerminalOutline(source)) return;
+    source.nextIter = std::next(source.xSorted.begin());
+    source.res = {};
+    if (!proposeTemplateBoundary(source, config, start, false, false, nullptr)) return;
+    const auto sending = line(source.res);
+    if (current.length() <= 2 * sending.length()) return;
+
+    source.nextIter = std::next(source.xSorted.begin());
+    source.res = {};
+    if (!declaredSharedBoundary(source, final)) return;
+    auto seam = source.res;
+    const auto cut = line(seam);
+    // The two forms locate the same shoulder. The short normal crosses its
+    // neck, whereas the long entry slices along the returning lip.
+    if (cut.length() > sending.length() || QLineF(sending.p1(), cut.p1()).length() > 1e-6 ||
+        !interiorChord(source.transformedPath, seam.topBaseLine, seam.bottomBaseLine) ||
+        !matchesBoundaryBody(source, start, seam, true) || !matchesBoundaryBody(source, final, seam, false)) return;
+    if (!sub.kashidaPaths.front().isEmpty() && QLineF(sub.kashidaCuts.front().first.p1(), cut.p1()).length() > 1e-6)
+        return;
+
+    seam.topRight = seam.topLeft = seam.topBaseLine;
+    seam.bottomRight = seam.bottomLeft = seam.bottomBaseLine;
+    seam.fixedRightBoundary = true;
+    seam.fixedLeftBoundary = false;
+    seam.length = 0;
+    seam.kashidaOverrides.insert("enabled", false);
+    auto trial = sub;
+    trial.joins.clear();
+    trial.joins.insert(seam);
+    if (!assembleBodyPartition(word, trial, config) || trial.baseGlyphs.size() != 2 || trial.kashidaPaths.size() != 1 ||
+        !trial.kashidaPaths.front().isEmpty() || !coversOriginalInk(word, trial)) return;
+    const auto first = inPage(trial.baseGlyphs.front().path);
+    const auto last = inPage(trial.baseGlyphs.back().path);
+    if (toSubpaths(first).size() != 1 || toSubpaths(last).size() != 1 ||
+        std::abs(first.boundingRect().top() - inPage(sub.baseGlyphs.front().path).boundingRect().top()) > 1e-6)
+        return;
+    auto diagnostic = trial.letterDiagnostics[1].toObject();
+    diagnostic.insert("template", final.value("id"));
+    trial.letterDiagnostics[1] = diagnostic;
+    trial.matchedTemplates.removeAll(idAt(1));
+    trial.matchedTemplates.append(final.value("id").toString());
+    trial.templateTrace.append(final.value("id").toString() + " · shared cut across the returning lip");
+    sub = std::move(trial);
+}
+
 void applyInitialToothExit(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
     if (sub.letterDiagnostics.isEmpty() || sub.joins.empty() || sub.kashidaPaths.empty() ||
         sub.kashidaCuts.empty() || sub.joins.begin()->counterEntry.pathIndex > 0) return;

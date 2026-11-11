@@ -83,6 +83,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         }
         valid = resolveSubwordCutPlan(word, recognition, plan, requested);
         if (valid) applyTerminalJunction(word, plan.partition, requested);
+        if (valid) applySharedReturnEntry(word, plan.partition, requested);
     }
     // A scaled or split recovery trial is only a proposal. Verify the
     // assembled masks on the source artwork when returning a page result.

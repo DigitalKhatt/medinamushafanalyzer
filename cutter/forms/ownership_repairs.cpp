@@ -133,12 +133,17 @@ void PageAnalysisResult::refineLipCuts(int line, int wordIndex, int subIndex, co
         sending.kashidaOverrides.insert("enabled", !shared);
         return sending;
     };
+    const auto& forms = bodyCutProgram(config).forms;
     for (int i = 1; i < letters.size() - 1; ++i) {
         if (!form.value("current").toString().contains(letters[i])) continue;
         const auto slot = sub.letterDiagnostics[i].toObject();
         const bool ain = QStringLiteral("عغ").contains(letters[i-1]);
         const bool seen = QStringLiteral("سش").contains(letters[i-1]);
-        if (!ain && !seen && slot.value("template") != form.value("id")) continue;
+        const bool refineEntry = ain || seen || slot.value("template") == form.value("id");
+        const auto matched = forms.constFind(slot.value("template").toString());
+        const double lipExitWidths = matched == forms.cend() ? 0 : matched->cuts.value("lowerLipExitWidths").toDouble();
+        const bool refineExit = lipExitWidths > 0 && !sub.kashidaPaths[i].isEmpty();
+        if (!refineEntry && !refineExit) continue;
         auto cuts = std::vector<Stretching>(sub.joins.begin(), sub.joins.end());
         const auto entry = cuts[i-1]; const auto exit = cuts[i];
         if (entry.counterEntry.pathIndex > 0 || exit.counterEntry.pathIndex > 0 ||
@@ -155,25 +160,50 @@ void PageAnalysisResult::refineLipCuts(int line, int wordIndex, int subIndex, co
             found = &m;
         }
         if (!found) continue;
-        // At the free tip's projection there is only the departing stroke.
-        // Keep the last fraction of the nib with the lip before starting the join.
-        Stretching newExit = exit, projected{};
-        const double x = found->upper.point.x() - mouth.value("exitMargin").toDouble();
-        if (medialChordAt(ctx, x, found->lower.point.y(), 2.5, projected)) {
-            orientSection(ctx, projected, found->notch.time, false);
-            if (before(oldHeadStart, projected) && before(projected, nextBody) &&
-                chord(projected).length() <= 2.5 && std::abs(chord(projected).center().x() - chord(exit).center().x()) > .05)
-                newExit = projected;
+        Stretching newExit = exit;
+        if (refineEntry) {
+            // At the free tip's projection there is only the departing stroke.
+            // Keep the last fraction of the nib with the lip before starting the join.
+            Stretching projected{};
+            const double x = found->upper.point.x() - mouth.value("exitMargin").toDouble();
+            if (medialChordAt(ctx, x, found->lower.point.y(), 2.5, projected)) {
+                orientSection(ctx, projected, found->notch.time, false);
+                if (before(oldHeadStart, projected) && before(projected, nextBody) &&
+                    chord(projected).length() <= 2.5 && std::abs(chord(projected).center().x() - chord(exit).center().x()) > .05)
+                    newExit = projected;
+            }
+        }
+        const auto exitForEntry = newExit;
+        const auto currentExit = chord(exit);
+        const double stroke = currentExit.length();
+        const double lowerReach = found->upper.point.x() - found->lower.point.x();
+        const double maxReach = lipExitWidths * stroke;
+        if (refineExit && lowerReach <= maxReach && leftSide.isStrictLeft(found->lower.time) &&
+            getJoinTime(nextBody, ctx.orientation).isStrictRight(found->lower.time)) {
+            // A lower turn near the mouth belongs to the lip. A turn farther
+            // along the stroke can be the bottom of the connector itself.
+            double shortest = std::min(2.5, 1.4 * stroke);
+            for (bool forward : {true, false}) {
+                Stretching cut{};
+                if (!contourNormalCut(ctx, found->lower, forward, false, cut)) continue;
+                orientSection(ctx, cut, found->notch.time, false);
+                const auto section = chord(cut);
+                if (section.length() < .6 * stroke || section.length() >= shortest ||
+                    QLineF(section.center(), currentExit.center()).length() > maxReach ||
+                    !before(exit, cut) || !before(cut, nextBody)) continue;
+                shortest = section.length();
+                newExit = cut;
+            }
         }
         auto headStart = oldHeadStart, sender = entry;
         const bool wasShared = sub.kashidaPaths[i-1].isEmpty();
         bool shared = wasShared;
         std::optional<Stretching> ainExit;
-        const bool refineSharedEntry = wasShared && mouth.value("separateSharedEntry").toBool();
+        const bool refineSharedEntry = refineEntry && wasShared && mouth.value("separateSharedEntry").toBool();
         if (ain || seen || refineSharedEntry) {
             auto start = lipEntry(ctx, *found, mouth.value("maxThroat").toDouble(), false, oldHeadStart);
             if (!start && ain) start = lipEntry(ctx, *found, 0, true, oldHeadStart);
-            if (start && before(oldHeadStart, *start) && before(*start, newExit)) {
+            if (start && before(oldHeadStart, *start) && before(*start, exitForEntry) && before(*start, newExit)) {
                 if (ain && shared) { sender = headStart = *start; }
                 else {
                     headStart = *start; shared = false;
