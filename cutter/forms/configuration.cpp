@@ -584,12 +584,7 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     for (auto it = body.begin(); it != body.end(); ++it)
         if (!bodyKeys.contains(it.key()))
             return id + ": unknown body setting " + it.key();
-    cutKeys << "turnBoundaries" << "lowerLipExitWidths";
-    const auto lipExit = cuts.value("lowerLipExitWidths");
-    if (!lipExit.isUndefined() && (phase != "medial" || shape != "paired-route" ||
-        body.value("counters") != 0 || !lipExit.isDouble() ||
-        !std::isfinite(lipExit.toDouble()) || lipExit.toDouble() <= 0))
-        return id + ": a lower lip exit needs an open medial route and a positive stroke-width limit";
+    cutKeys << "turnBoundaries";
     for (auto it = cuts.begin(); it != cuts.end(); ++it)
         if (!cutKeys.contains(it.key()))
             return id + ": unknown cut-policy setting " + it.key();

@@ -2428,7 +2428,6 @@
         "counters": 0
       },
       "cuts": {
-        "lowerLipExitWidths": 2.5,
         "routes": {
           "right": {
             "bottomProbe": "down",
@@ -2642,7 +2641,6 @@
         "counters": 0
       },
       "cuts": {
-        "lowerLipExitWidths": 2.5,
         "routes": {
           "right": {
             "bottomProbe": "normal"
