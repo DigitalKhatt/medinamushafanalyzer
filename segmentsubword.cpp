@@ -368,8 +368,16 @@ bool PageAnalysisResult::segmentConfigured(int pageIndex, int lineIndex, int wor
     const bool finalRetry = position == "final" && requested.value("reconsiderFinalAttachments").toString().contains(ch);
     // Detach the choice from the thread-local cache before analysing a folded prefix recursively.
     const QJsonObject config = finalRetry ? requested : established;
-    if (!finalRetry && !config.value("reconsiderForms").toObject().value(position).toString().contains(ch))
-        return false;
+    if (!finalRetry && !config.value("reconsiderForms").toObject().value(position).toString().contains(ch)) {
+        const auto& forms = bodyCutProgram(config).forms;
+        const auto candidates = slot.value("candidates").toArray();
+        const bool hasCutRange = std::any_of(candidates.begin(), candidates.end(), [&](const auto& candidate) {
+            const auto form = forms.constFind(candidate.toString());
+            return form != forms.cend() && form->body.value("shape") == "contour-route" &&
+                form->cuts.value("route").toObject().value("range").isObject();
+        });
+        if (!hasCutRange) return false;
+    }
     auto previous = sub;
     if (recoverFoldedArm(word, sub, config, false)) {
         if (plausibleRecoveredBodies(word, sub, config.value("recoveryChecks").toObject()) &&
@@ -574,28 +582,31 @@ bool PageAnalysisResult::segmentWithLetterForms(int pageIndex, int lineIndex, in
             if (!seenExit) consider();
             return false;
         };
-        // Exhaust earlier forms and their placements before expanding the shape vocabulary.
-        for (; plan.stage <= 3; ++plan.stage) {
-            if (plan.stage > 1) {
-                if (std::none_of(forms.begin(), forms.end(), [&](const auto& value) {
-                        return value.toObject().value("recoveryStage").toInt() == plan.stage;
-                    })) continue;
-            }
-            plan.enumerate = false;
-            if (run()) return true;
-            plan.enumerate = true;
-            plan.skip.fill(0);
-            plan.choices.fill(0);
-            for (auto& seen : plan.encountered) seen.clear();
-            for (int trial = 0; trial < 64; ++trial) {
+        // Exhaust the body placements at the preferred route position before
+        // trying the next position. Reuse the cached bodies and contour cuts.
+        do {
+            for (plan.stage = 1; plan.stage <= 3; ++plan.stage) {
+                if (plan.stage > 1) {
+                    if (std::none_of(forms.begin(), forms.end(), [&](const auto& value) {
+                            return value.toObject().value("recoveryStage").toInt() == plan.stage;
+                        })) continue;
+                }
+                plan.enumerate = false;
                 if (run()) return true;
-                int failed = 0;
-                while (failed < sub.letterDiagnostics.size() &&
-                       sub.letterDiagnostics[failed].toObject().value("status") == "matched")
-                    ++failed;
-                if (!plan.advance(failed)) break;
+                plan.enumerate = true;
+                plan.skip.fill(0);
+                plan.choices.fill(0);
+                for (auto& seen : plan.encountered) seen.clear();
+                for (int trial = 0; trial < 64; ++trial) {
+                    if (run()) return true;
+                    int failed = 0;
+                    while (failed < sub.letterDiagnostics.size() &&
+                           sub.letterDiagnostics[failed].toObject().value("status") == "matched")
+                        ++failed;
+                    if (!plan.advance(failed)) break;
+                }
             }
-        }
+        } while (plan.advanceRoute());
         return false;
     };
     if (expand || std::any_of(initial.begin(),initial.end(),needsRecovery)) {

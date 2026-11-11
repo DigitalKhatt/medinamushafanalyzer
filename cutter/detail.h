@@ -205,6 +205,11 @@ struct PreparedPassRules {
     QMap<QString, QJsonObject> constraints;
 };
 
+struct ContourRouteSearch {
+    size_t position = 0;
+    size_t count = 1;
+};
+
 } // namespace MedinaCutter
 
 // Shared by retries on a single, fixed outline in page coordinates.
@@ -213,6 +218,7 @@ struct OutlineSearchCache {
     std::vector<std::unique_ptr<MedinaCutter::PreparedPassRules>> rules;
     std::map<std::pair<double, double>, MedinaCutter::StrokeNormalSample> normalsByCenter;
     std::map<std::pair<QString, bool>, std::optional<Stretching>> terminalCuts;
+    std::map<QByteArray, std::vector<std::optional<Stretching>>> routeCuts;
     std::map<std::pair<QString, double>, std::vector<std::pair<Stretching, Stretching>>> contourBodies;
     // Interior points on the two lips found in an adjoining connector.
     std::map<int, QLineF> misplacedHeads;
@@ -1100,6 +1106,9 @@ TailBody recognizeTailBranches(const InkOutline &outline, const QJsonObject &set
 bool cutTailBranches(SearchContext &context, const TailBody &body, const QJsonObject &settings,
                             Stretching &result, PathExtrema* shoulder = nullptr);
 
+std::vector<std::optional<Stretching>> contourShoulderCuts(SearchContext& context, const TailBody& body,
+        const QJsonObject& shoulder, const QJsonObject& range);
+
 bool terminalTailEntry(SearchContext &context, const QJsonObject &settings, Stretching &result);
 
 std::optional<Stretching> stackedAttachment(SearchContext& context, const QJsonObject& settings,
@@ -1507,7 +1516,7 @@ declaredOpenHeadCuts(SearchContext &context, const QJsonObject &form, double min
 
 bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
                                    const SeenExitRetry *retry = nullptr, bool recovering = false,
-                                   const Stretching *finalFold = nullptr);
+                                   const Stretching *finalFold = nullptr, ContourRouteSearch* routeSearch = nullptr);
 
 } // namespace MedinaCutter
 
@@ -1520,7 +1529,8 @@ struct ToothSearchPlan {
     QMap<QString, std::vector<std::pair<Stretching,Stretching>>> intrinsic;
     QVector<int> skip, choices;
     QVector<std::set<std::array<int, 4>>> encountered;
-    explicit ToothSearchPlan(int size) : skip(size), choices(size), encountered(size) {}
+    QVector<MedinaCutter::ContourRouteSearch> routeSearches;
+    explicit ToothSearchPlan(int size) : skip(size), choices(size), encountered(size), routeSearches(size) {}
     bool accepts(int letter, const Stretching& entry, const Stretching& exit) {
         const auto key = [](double time) { return static_cast<int>(std::lround(time * 100)); };
         if (!encountered[letter]
@@ -1542,13 +1552,24 @@ struct ToothSearchPlan {
         }
         return false;
     }
+    bool advanceRoute() {
+        for (auto it = routeSearches.rbegin(); it != routeSearches.rend(); ++it) {
+            if (it->position + 1 >= it->count) continue;
+            ++it->position;
+            for (auto following = routeSearches.rbegin(); following != it; ++following)
+                following->position = 0;
+            return true;
+        }
+        return false;
+    }
 };
 
 namespace MedinaCutter {
 
 bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
                                     const QJsonObject& rule, bool terminal, bool recoverTeeth,
-                                    const SeenExitRetry* seenRetry, const Stretching* finalFold = nullptr);
+                                    const SeenExitRetry* seenRetry, const Stretching* finalFold = nullptr,
+                                    ContourRouteSearch* routeSearch = nullptr);
 
 bool supportsOpenMedialBoundary(const QJsonObject& config, const QJsonObject& form);
 

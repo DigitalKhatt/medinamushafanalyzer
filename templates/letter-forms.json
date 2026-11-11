@@ -4159,21 +4159,21 @@
               "direction": "down",
               "minX": 1
             }
-          ]
-        },
-        "tail": {
-          "minRise": 2,
-          "flankSampleWidths": 0.25
+          ],
+          "shoulder": {
+            "minRise": 2,
+            "flankSampleWidths": 0.25
+          }
         }
       },
       "cuts": {
         "route": {
-          "bottomProbe": "walk-stroke-normal"
+          "bottomProbe": "walk-stroke-normal",
+          "range": {
+            "minWidths": 0,
+            "preferredWidths": 1
+          }
         },
-        "tail": {
-          "walkWidths": 1
-        },
-        "recoveryTail": true,
         "boundaries": {
           "left": "free",
           "right": "contour-route"

@@ -514,59 +514,144 @@ TailBody recognizeTailBranches(const InkOutline &outline, const QJsonObject &set
     return body;
 }
 
+static bool cutNormalFromShoulder(SearchContext& context, const TailBranch& branch,
+        const PathExtrema& limit, double distance, Stretching& cut) {
+    const auto& corner = branch.corner;
+    PathExtrema lower = corner;
+    if (distance > 0) {
+        QPointF tangent;
+        if (!advanceOnContour(context.transformedPath, corner, limit, branch.forward, distance, lower, tangent) ||
+            lower.point.y() <= corner.point.y() ||
+            (branch.recovered ? (branch.forward ? tangent.x() : -tangent.x()) <= 0 :
+                                lower.point.x() <= corner.point.x()))
+            return false;
+    }
+    if (!contourNormalCut(context, lower, branch.forward, false, cut, true)) return false;
+    std::swap(cut.topBaseLine, cut.bottomBaseLine);
+    // At a tight reverse bend, use the direction of both stroke edges.
+    return !branch.recovered || distance == 0 || strokeNormalCut(context, cut);
+}
+
+static bool retainsTailBody(const SearchContext& context, const PathExtrema& tip, const TailBranch& branch,
+        const Stretching& cut, double minRise, bool atShoulder = false) {
+    const auto side = getJoinTime(cut, context.orientation);
+    if (!side.isStrictLeft(tip.time) ||
+        !(atShoulder ? side.isLeft(branch.corner.time) : side.isStrictLeft(branch.corner.time))) return false;
+    const auto pieces = cutRegions(context.transformedPath, {}, {cut}, context.orientation, true);
+    return pieces.size() == 2 && toSubpaths(pieces[1].path).size() == 1 &&
+        branch.corner.point.y() - pieces[1].path.boundingRect().top() >= minRise * branch.width;
+}
+
 bool cutTailBranches(SearchContext &context, const TailBody &body, const QJsonObject &settings,
                             Stretching &result, PathExtrema* shoulder) {
-    const auto &ink = context.transformedPath;
-    const auto *tail = &body.tip;
-    const auto count = body.curveCount;
     for (const auto &branch : body.branches) {
         const auto *corner = &branch.corner;
         const bool forward = branch.forward;
         const double width = branch.width;
-        PathExtrema limit = *corner, lower{};
-        limit.time += forward ? count : -count;
-        QPointF tangent;
+        PathExtrema limit = *corner;
+        limit.time += forward ? body.curveCount : -body.curveCount;
         Stretching cut{};
         bool found;
         if (settings.contains("turnAngle")) {
             // From the bowl fork, follow the inner edge down to the foot of the shaft.
             found = alefTurnCut(context, limit, settings.value("turnAngle").toDouble(), width, cut, &*corner,
                                 forward ? 1 : -1, true);
-            if (found && !getJoinTime(cut, context.orientation).isStrictLeft(tail->time))
+            if (found && !getJoinTime(cut, context.orientation).isStrictLeft(body.tip.time))
                 std::swap(cut.topBaseLine, cut.bottomBaseLine);
             found = found && cut.topBaseLine.point.y() > corner->point.y() &&
                     cut.bottomBaseLine.point.x() > corner->point.x();
         } else {
             const double walkWidth = settings.value("strokeWidth").toDouble(width);
             const double walkDistance = settings.value("walkWidths").toDouble(1) * walkWidth;
-            found = advanceOnContour(ink, *corner, limit, forward, walkDistance,
-                                     lower, tangent) &&
-                    (branch.recovered ? (forward ? tangent.x() : -tangent.x()) > 0 :
-                                        lower.point.x() > corner->point.x()) &&
-                    lower.point.y() > corner->point.y() &&
-                    contourNormalCut(context, lower, forward, false, cut, true);
-            if (found) {
-                std::swap(cut.topBaseLine, cut.bottomBaseLine);
-                // At a tight turn the lower edge alone can point across
-                // the stroke. Use the direction of both edges here.
-                if (branch.recovered)
-                    found = strokeNormalCut(context, cut);
-            }
+            found = cutNormalFromShoulder(context, branch, limit, walkDistance, cut);
         }
-        if (found) {
-            const auto side = getJoinTime(cut, context.orientation);
-            const auto pieces = cutRegions(ink, {}, {cut}, context.orientation, true);
-            if (side.isStrictLeft(tail->time) && side.isStrictLeft(corner->time) && pieces.size() == 2 &&
-                toSubpaths(pieces[1].path).size() == 1 &&
-                corner->point.y() - pieces[1].path.boundingRect().top() >=
-                    settings.value("minRise").toDouble(2) * width) {
-                result = cut;
-                if (shoulder) *shoulder = branch.corner;
-                return true;
-            }
+        if (found && retainsTailBody(context, body.tip, branch, cut, settings.value("minRise").toDouble(2))) {
+            result = cut;
+            if (shoulder) *shoulder = branch.corner;
+            return true;
         }
     }
     return false;
+}
+
+// A flank can cross the start of a closed SVG contour or contain tiny bends.
+// End the range where the connected descent first turns back up or left.
+static double descendingFlankLength(const SearchContext& context, const TailBranch& branch,
+        const std::vector<QBezier>& curves, double tolerance) {
+    const auto start = context.timeSorted.find(branch.corner);
+    if (start == context.timeSorted.end() || curves.empty()) return 0;
+    const auto step = branch.forward ? &SearchContext::prev : &SearchContext::next;
+    auto end = start;
+    QPointF furthest = start->point;
+    for (auto next = (context.*step)(end); next != start; next = (context.*step)(end)) {
+        if (next->point.x() < furthest.x() - tolerance || next->point.y() < furthest.y() - tolerance) break;
+        furthest.setX(std::max(furthest.x(), next->point.x()));
+        furthest.setY(std::max(furthest.y(), next->point.y()));
+        end = next;
+    }
+    if (end == start) return 0;
+    const int count = static_cast<int>(curves.size());
+    double finish = end->time;
+    if (branch.forward && finish < start->time) finish += count;
+    if (!branch.forward && finish > start->time) finish -= count;
+    const double low = std::min(start->time, finish), high = std::max(start->time, finish);
+    double length = 0;
+    for (int i = int(std::floor(low)); i < int(std::ceil(high)); ++i) {
+        const auto& curve = curves[(i % count + count) % count];
+        length += curve.getSubRange(std::max(0., low - i), std::min(1., high - i)).length(.001);
+    }
+    return length;
+}
+
+std::vector<std::optional<Stretching>> contourShoulderCuts(SearchContext& context, const TailBody& body,
+        const QJsonObject& shoulder, const QJsonObject& range) {
+    const auto curves = baseContourCurves(context.transformedPath);
+    const double minimum = range.value("minWidths").toDouble();
+    const double preferred = range.value("preferredWidths").toDouble();
+    const double minRise = shoulder.value("minRise").toDouble(2);
+    struct Candidate { double error; Stretching cut; };
+    std::vector<Candidate> candidates;
+    for (const auto& branch : body.branches) {
+        const double tolerance = shoulder.value("flankSampleWidths").toDouble(.25) * branch.width;
+        const double flankEnd = descendingFlankLength(context, branch, curves, tolerance) / branch.width;
+        const double maximum = std::min(flankEnd, range.value("maxWidths").toDouble(flankEnd));
+        if (maximum < minimum || flankEnd <= 0) continue;
+
+        const double target = std::clamp(preferred, minimum, maximum);
+        std::vector<double> offsets{target};
+        // Sample each side of the target, including the bounds. Keep the search
+        // finite even when a connecting stroke makes the flank unusually long.
+        for (double bound : {minimum, maximum})
+            for (int i = 1; i <= 4; ++i)
+                if (bound != target) offsets.push_back(std::lerp(target, bound, i / 4.));
+
+        auto limit = branch.corner;
+        limit.time += branch.forward ? body.curveCount : -body.curveCount;
+        for (double offset : offsets) {
+            Stretching cut{};
+            if (cutNormalFromShoulder(context, branch, limit, offset * branch.width, cut) &&
+                retainsTailBody(context, body.tip, branch, cut, minRise, offset == 0))
+                candidates.push_back({std::abs(offset - preferred), cut});
+        }
+    }
+    std::stable_sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+        return a.error < b.error;
+    });
+    // Slot zero is the preferred shoulder placement. If unavailable, the
+    // ordinary route remains eligible before trying the sampled offsets.
+    std::vector<std::optional<Stretching>> result(1);
+    for (const auto& candidate : candidates) {
+        if (!result.front() && candidate.error < 1e-9) {
+            result.front() = candidate.cut;
+            continue;
+        }
+        const auto alreadyTried = std::any_of(result.begin(), result.end(), [&](const auto& cut) {
+            return cut && cut->topBaseLine.time == candidate.cut.topBaseLine.time &&
+                          cut->bottomBaseLine.time == candidate.cut.bottomBaseLine.time;
+        });
+        if (!alreadyTried) result.emplace_back(candidate.cut);
+    }
+    return result;
 }
 
 // Legacy declarations share the primitive until their family is migrated.

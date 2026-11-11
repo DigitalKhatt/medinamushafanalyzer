@@ -146,7 +146,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         const int owner = rule.value("bodyBoundary") == "current" ? 0 : lastIndex;
         bodyAttempted[owner] = true;
         bool found = proposeTemplateBoundary(context, config, rule, owner == lastIndex, recoverTeeth,
-                                              seenRetryFor(owner, rule), finalFold);
+                                              seenRetryFor(owner, rule), finalFold,
+                                              plan ? &plan->routeSearches[owner] : nullptr);
         QString rejectionReason;
         const bool bodyRejected = found && !matchesBoundaryBody(context, rule, context.res, owner == 0,
             config.value("_initialHeadLips").toObject(), &rejectionReason);

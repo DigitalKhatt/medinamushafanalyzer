@@ -157,18 +157,10 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
     else if (shape == "contour-route") {
         WordResultInfo::SubWordInfo empty;
         auto geometry = outline.geometry(empty);
-        const auto route = recognizeContourRoute(geometry, body.value("route").toObject());
-        if (body.contains("tail"))
-            result.tail = recognizeTailBranches(outline, body.value("tail").toObject());
-        if (route)
-            result.route = SavedContourRoute{*route->start,
-                                             *route->origin,
-                                             route->anchor,
-                                             route->topBefore,
-                                             route->topEnd,
-                                             route->forward == &SearchContext::prev,
-                                             route->topDirection == &SearchContext::prev,
-                                             route->endpointTolerance};
+        const auto route = body.value("route").toObject();
+        result.route = recognizeSavedRoute(geometry, route);
+        if (route.contains("shoulder"))
+            result.tail = recognizeTailBranches(outline, route.value("shoulder").toObject());
     } else if (shape == "suspended-loop")
         result.head = recognizeLoopHead(outline, body.value("head").toObject());
     else if (shape == "crested-loop")
@@ -463,18 +455,38 @@ declaredOpenHeadCuts(SearchContext &context, const QJsonObject &form, double min
 }
 
 bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
-                                   const SeenExitRetry *retry, bool recovering, const Stretching *finalFold) {
+                                   const SeenExitRetry *retry, bool recovering, const Stretching *finalFold,
+                                   ContourRouteSearch* routeSearch) {
     InspectFormScope inspection(form, context.transformedPath);
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto evidence = recognizedSharedShape(context, body);
     const auto shape = body.value("shape");
     bool found = false;
     if (shape == "contour-route") {
-        if (recovering && cuts.value("recoveryTail").toBool() && evidence->tail)
-            found = cutTailBranches(context, *evidence->tail, shapeSettings(form, "tail"), context.res);
-        if (!found)
-            found = projectSavedRoute(context, evidence->route, body.value("route").toObject(),
-                                      cuts.value("route").toObject());
+        const auto route = body.value("route").toObject(), policy = cuts.value("route").toObject();
+        if (routeSearch && policy.contains("range") && evidence->tail) {
+            const auto range = policy.value("range").toObject();
+            const auto shoulder = route.value("shoulder").toObject();
+            const auto project = [&] { return contourShoulderCuts(context, *evidence->tail, shoulder, range); };
+            std::vector<std::optional<Stretching>> local;
+            const auto* positions = &local;
+            if (context.outlineCache && context.outlineCache->outline &&
+                context.outlineCache->outline->ink == context.transformedPath) {
+                auto& cached = context.outlineCache->routeCuts;
+                const auto key = bodyDescriptionKey({{"shoulder", shoulder}, {"range", range}});
+                auto entry = cached.find(key);
+                if (entry == cached.end()) entry = cached.emplace(key, project()).first;
+                positions = &entry->second;
+            } else local = project();
+            routeSearch->count = std::max(routeSearch->count, positions->size());
+            const auto index = routeSearch->position;
+            if (index < positions->size() && (*positions)[index]) {
+                context.res = *(*positions)[index];
+                found = true;
+            }
+        }
+        if (!found && (!routeSearch || !policy.contains("range") || routeSearch->position == 0))
+            found = projectSavedRoute(context, evidence->route, route, policy);
     } else if (shape == "tapered-arm")
         found = cutTaperedArms(evidence->taperedArms, cuts.value("arm").toObject(), context.res);
     else if (shape == "open-bowl") {
@@ -616,7 +628,8 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
 // Turn an initial or final template's evidence into one boundary proposal.
 bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
                                     const QJsonObject& rule, bool terminal, bool recoverTeeth,
-                                    const SeenExitRetry* seenRetry, const Stretching* finalFold) {
+                                    const SeenExitRetry* seenRetry, const Stretching* finalFold,
+                                    ContourRouteSearch* routeSearch) {
     // These terminal searches use the fixed outline and their own settings.
     // Keep the proposal, including a miss. The join and ownership checks
     // below still run against the current placement.
@@ -639,7 +652,7 @@ bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
                                                  return declaredSharedBoundary(
                                                      context, rule, seenRetry, recoverTeeth);
                                              })
-                         : declaredSharedBoundary(context, rule, seenRetry, recoverTeeth, finalFold);
+                         : declaredSharedBoundary(context, rule, seenRetry, recoverTeeth, finalFold, routeSearch);
     } else if (rule.contains("body"))
         found = declaredLamBoundary(context, config, rule);
     else

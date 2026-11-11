@@ -409,11 +409,8 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
         if (form.value("cuts").toObject().value("boundaries").toObject().value("left") == "free")
             form.insert("side", "right");
     }
-    if (shape == "contour-route") {
+    if (shape == "contour-route")
         form = withOverrides(form, shapeSettings(form, "route"));
-        if (body.contains("tail"))
-            form.insert("tailEntry", shapeSettings(form, "tail"));
-    }
     if (shape == "profile-neck" && form.value("cuts").toObject().value("boundaries").toObject().value("left") == "free")
         form.insert("start", "left");
     if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
@@ -491,8 +488,6 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     const auto &section = schema.section;
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
     if (shape == "contour-route") {
-        bodyKeys << "tail";
-        cutKeys << "tail" << "recoveryTail";
         if (phase == "initial" && cuts.contains("minConnectorWidths")) {
             const auto length = cuts.value("minConnectorWidths");
             if (!length.isDouble() || !std::isfinite(length.toDouble()) || length.toDouble() <= 0)
@@ -622,10 +617,32 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         ((shape == "crested-loop" || shape == "open-head") && phase != "medial") ||
         ((shape == "bowl-turn" || shape == "bowl-neck") && phase != "final"))
         return id + ": shape does not support this letter position";
-    if (shape == "contour-route" && cuts.contains("recoveryTail") &&
-        (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() ||
-         cuts.value("tail").toObject().isEmpty()))
-        return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    if (shape == "contour-route") {
+        const auto route = body.value("route").toObject(), policy = cuts.value("route").toObject();
+        if (route.contains("shoulder") || policy.contains("range")) {
+            const auto shoulder = route.value("shoulder").toObject();
+            const auto range = policy.value("range").toObject();
+            if (!route.value("shoulder").isObject() || range.isEmpty() ||
+                policy.value("bottomProbe") != "walk-stroke-normal")
+                return id + ": a contour cut range needs a shoulder and a normal probe";
+            for (auto field = shoulder.begin(); field != shoulder.end(); ++field) {
+                if (!QStringList{"minRise", "minRun", "maxRun", "flankSampleWidths"}.contains(field.key()) ||
+                    !field.value().isDouble() || !std::isfinite(field.value().toDouble()) || field.value().toDouble() <= 0)
+                    return id + ": contour shoulder measurements must be positive numbers";
+            }
+            if (shoulder.value("flankSampleWidths").toDouble(.25) > 1 ||
+                shoulder.value("minRun").toDouble(2) > shoulder.value("maxRun").toDouble(12))
+                return id + ": invalid contour shoulder flank or run limits";
+            const auto minimum = range.value("minWidths"), preferred = range.value("preferredWidths");
+            const auto maximum = range.value("maxWidths");
+            if (range.size() != 2 + range.contains("maxWidths") ||
+                !minimum.isDouble() || !std::isfinite(minimum.toDouble()) || minimum.toDouble() < 0 ||
+                !preferred.isDouble() || !std::isfinite(preferred.toDouble()) || preferred.toDouble() < minimum.toDouble() ||
+                (!maximum.isUndefined() && (!maximum.isDouble() || !std::isfinite(maximum.toDouble()) ||
+                                            maximum.toDouble() < preferred.toDouble())))
+                return id + ": contour cut range needs ordered minWidths, preferredWidths and optional maxWidths";
+        }
+    }
     if (shape == "folded-return") {
         const auto positive = [](const QJsonValue& value) {
             return value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble() > 0;
@@ -646,7 +663,7 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         const auto problem = invalidWalkSettings(withOverrides(route, policy), id + ".entryRecoveryRoute");
         if (!problem.isEmpty()) return problem;
     }
-    if (shape == "tail-branch" || (shape == "contour-route" && cuts.value("recoveryTail").toBool())) {
+    if (shape == "tail-branch") {
         const auto tail = cuts.value("tail").toObject();
         const auto strokeSource = tail.value("strokeSource");
         const auto strokeWidth = tail.value("strokeWidth");

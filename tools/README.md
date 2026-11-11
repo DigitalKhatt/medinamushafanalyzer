@@ -177,6 +177,13 @@ Assembly preserves the recognized shoulder when reconciling shared boundaries;
 a neighboring tooth cannot take it from the final bowl.
 Check this with `python3 tools/tests/check_letter_forms.py tail_shoulder_test.cpp`.
 
+A contour route can declare `body.route.shoulder` and `cuts.route.range`.
+The range measures distance along the descending flank in local stroke widths.
+`minWidths: 0` starts at the shoulder, `preferredWidths` sets the target, and
+optional `maxWidths` can shorten the range. Assembly keeps the ordinary route
+when it fits. Otherwise it tests the preferred shoulder cut and then other
+positions in the range, checking the neighboring bodies at each position.
+
 | Shape family | Recognized evidence | Cut policy |
 | --- | --- | --- |
 | Counter necks, loops, rims and heads | Counters, corners, shoulders, teeth | Normals, offsets and retained loops |
