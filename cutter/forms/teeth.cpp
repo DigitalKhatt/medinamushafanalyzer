@@ -4,11 +4,35 @@ using namespace MedinaCutter;
 
 namespace MedinaCutter {
 
+static std::vector<PathExtrema> lowerBendsAtCurveJoins(const QPainterPath& path) {
+    const auto curves = baseContourCurves(path);
+    std::vector<PathExtrema> bends;
+    // The first control point with a different height determines the
+    // direction away from the join, even when an endpoint tangent is flat.
+    const auto descendsFrom = [](double height, std::array<double, 3> controls) {
+        for (double y : controls)
+            if (y != height) return y > height;
+        return false;
+    };
+    for (size_t i = 0; i < curves.size(); ++i) {
+        const auto& before = curves[i == 0 ? curves.size() - 1 : i - 1];
+        const auto& after = curves[i];
+        const auto point = after.pt1();
+        if (before.pt4() == point &&
+            descendsFrom(point.y(), {before.y3, before.y2, before.y1}) &&
+            descendsFrom(point.y(), {after.y2, after.y3, after.y4}))
+            bends.push_back({0, double(i), point, false, true});
+    }
+    return bends;
+}
+
 // The incoming tooth shoulder turns back to the right; its opposite inner
 // bend is a local minimum on the lower contour. Recognize sharp corners and
 // their rounded extrema equivalents using only the first tooth's geometry.
 std::optional<Stretching> seenEntryCornerPair(SearchContext& context, const PathExtrema& tip,
-                                                    bool increasingTime, double maxDistance) {
+                                             bool increasingTime, double maxDistance, bool includeCurveJoins) {
+    const auto curveBends = includeCurveJoins ? lowerBendsAtCurveJoins(context.transformedPath)
+                                             : std::vector<PathExtrema>{};
     const auto advance = increasingTime ? &SearchContext::prev : &SearchContext::next;
     auto current = context.timeSorted.find(tip);
     if (current == context.timeSorted.end()) return {};
@@ -22,19 +46,21 @@ std::optional<Stretching> seenEntryCornerPair(SearchContext& context, const Path
             QLineF(current->point, tip.point).length() > maxDistance) continue;
         std::optional<Stretching> pair;
         double nearest = maxDistance;
-        for (auto bottom = context.timeSorted.begin(); bottom != context.timeSorted.end(); ++bottom) {
-            const double distance = QLineF(current->point, bottom->point).length();
-            if ((!bottom->isSharp && !bottom->isY) ||
-                bottom->point.y() >= context.prev(bottom)->point.y() ||
-                bottom->point.y() >= context.next(bottom)->point.y() ||
-                bottom->point.y() <= current->point.y() || distance >= nearest ||
-                !interiorChord(context.transformedPath, *current, *bottom)) continue;
+        const auto consider = [&](const PathExtrema& bottom) {
+            const double distance = QLineF(current->point, bottom.point).length();
+            if (bottom.point.y() <= current->point.y() || distance >= nearest ||
+                !interiorChord(context.transformedPath, *current, bottom)) return;
             Stretching cut{};
             cut.topBaseLine = *current;
-            cut.bottomBaseLine = *bottom;
+            cut.bottomBaseLine = bottom;
             pair = cut;
             nearest = distance;
-        }
+        };
+        for (auto bottom = context.timeSorted.begin(); bottom != context.timeSorted.end(); ++bottom)
+            if ((bottom->isSharp || bottom->isY) &&
+                bottom->point.y() < context.prev(bottom)->point.y() &&
+                bottom->point.y() < context.next(bottom)->point.y()) consider(*bottom);
+        for (const auto& bottom : curveBends) consider(bottom);
         if (pair) return pair;
     }
     return {};
@@ -251,7 +277,9 @@ static bool keepsClusterAtExit(const ToothClusterBody& cluster, const Stretching
 static std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
                                                         const Stretching& current) {
     const auto& tip = cluster.turns.front();
-    auto junction = seenEntryCornerPair(context, tip, !cluster.advancePrevious, meanToothPitch(cluster));
+    // Compare all opposing bends. An extrema flag can mark a farther bend
+    // on the preceding letter even when a smooth bend faces this tooth.
+    auto junction = seenEntryCornerPair(context, tip, !cluster.advancePrevious, meanToothPitch(cluster), true);
     if (!junction) return {};
     orientSection(context, *junction, tip.time, true);
     const auto side = getJoinTime(*junction, context.orientation);

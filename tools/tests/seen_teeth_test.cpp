@@ -298,6 +298,42 @@ static void checkSeenEntryAndExit(const QJsonObject& config) {
     }
 }
 
+static void checkFoldedAndSharedSeenEntries(const QJsonObject& config) {
+    struct Example {
+        int page, line, word, subword, join;
+        double upper, lower;
+        bool shared;
+    };
+    const std::array<Example, 3> examples{{
+        {230, 2, 1, 1, 0, 5, 27, false},
+        {356, 13, 4, 2, 1, 7.65867, 33, true},
+        {478, 2, 2, 2, 0, 5, 33, true}
+    }};
+    for (const auto& e : examples) {
+        QFile file(QString("pages/page%1.dat").arg(e.page));
+        check(file.open(QIODevice::ReadOnly), "Missing folded or shared sheen fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        auto& word = page.page.lines[e.line - 1].words[e.word - 1];
+        check(page.segmentSubword(e.page - 1, e.line - 1, e.word - 1, e.subword - 1, nullptr, true, &config),
+              "Sheen must segment completely at the junction");
+        const auto& sub = word.wordResultInfo.subWords[e.subword - 1];
+        check(sub.kashidaPaths.size() == sub.baseGlyphs.size() - 1 && sub.kashidaPaths[e.join].isEmpty() == e.shared,
+              "Placing the sheen entry must preserve the type of join");
+        const auto shape = word.bodyShape(sub);
+        const auto curves = baseContourCurves(shape.transform.map(shape.path).translated(shape.pos));
+        const auto pointAt = [&](double t) { return curves[int(t)].pointAt(t - int(t)); };
+        const auto join = std::next(sub.joins.begin(), e.join);
+        const auto cut = e.shared ? QLineF(join->topBaseLine.point, join->bottomBaseLine.point)
+                                  : sub.kashidaCuts[e.join].second;
+        check(QLineF(cut.p1(), pointAt(e.upper)).length() < 1e-4 &&
+              QLineF(cut.p2(), pointAt(e.lower)).length() < 1e-4,
+              "The entry must use the first tooth's upper shoulder and opposing bend");
+        checkPartition(shape.path, sub);
+    }
+}
+
 static void checkClusterAttachments(const QJsonObject& config) {
     struct Example {
         int page, line, word, subword, seen;
@@ -390,6 +426,7 @@ int main(int argc, char** argv) {
     checkClusterAttachments(config);
     checkSeenTailOwnership(config);
     checkSeenEntryAndExit(config);
+    checkFoldedAndSharedSeenEntries(config);
     {
         QFile file("pages/page230.dat");
         check(file.open(QIODevice::ReadOnly), "Missing upright beh and wide sheen fixture");

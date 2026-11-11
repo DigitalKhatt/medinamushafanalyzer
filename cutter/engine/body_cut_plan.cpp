@@ -207,7 +207,8 @@ static std::optional<WordResultInfo::SubWordInfo> recutClusterJoin(
         const Stretching& sending, const std::optional<Stretching>& receiving, const QJsonObject& config) {
     auto trial = sub;
     const auto current = std::next(trial.joins.begin(), slot);
-    auto join = *current;
+    const auto original = *current;
+    auto join = original;
     if (join.counterEntry.pathIndex > 0) return {};
     join.topBaseLine = join.topRight = sending.topBaseLine;
     join.bottomBaseLine = join.bottomRight = sending.bottomBaseLine;
@@ -248,10 +249,23 @@ static std::optional<WordResultInfo::SubWordInfo> recutClusterJoin(
         const auto oldBounds = shape.transform.map(before).boundingRect();
         const auto newBounds = shape.transform.map(after).boundingRect();
         const auto outerEdge = [&](const QRectF& bounds) { return atEntry ? bounds.right() : bounds.left(); };
+        constexpr double tolerance = 1e-5;
         if (toSubpaths(before).size() != toSubpaths(after).size() ||
-            std::abs(outerEdge(oldBounds) - outerEdge(newBounds)) > 1e-5 ||
-            std::abs(oldBounds.top() - newBounds.top()) > 1e-5 ||
-            std::abs(oldBounds.bottom() - newBounds.bottom()) > 1e-5) return {};
+            std::abs(outerEdge(oldBounds) - outerEdge(newBounds)) > tolerance) return {};
+        if (std::abs(oldBounds.top() - newBounds.top()) > tolerance ||
+            std::abs(oldBounds.bottom() - newBounds.bottom()) > tolerance) {
+            // Moving an incoming shared cut forward can add a sloping
+            // connector to the previous body and extend its bounds. Check the
+            // ink between the two cuts to distinguish that from adding a head.
+            if (!atEntry || !newBounds.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(oldBounds))
+                return {};
+            const auto regions = cutRegions(shape.path, {}, {original, sending}, sub.basePathOrientation, true);
+            if (regions.size() != 3) return {};
+            const auto ribbon = shape.transform.map(regions[1].path).translated(shape.pos);
+            const QLineF oldCut(original.topBaseLine.point, original.bottomBaseLine.point);
+            const QLineF newCut(sending.topBaseLine.point, sending.bottomBaseLine.point);
+            if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, oldCut, newCut)) return {};
+        }
     }
     if (!coversOriginalInk(word, trial)) return {};
     return trial;

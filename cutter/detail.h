@@ -648,7 +648,7 @@ bool matchesBoundaryBody(SearchContext& context, const QJsonObject& rule,
                                 QString* reason = nullptr);
 
 std::optional<Stretching> seenEntryCornerPair(SearchContext& context, const PathExtrema& tip,
-                                                    bool increasingTime, double maxDistance);
+                                             bool increasingTime, double maxDistance, bool includeCurveJoins = false);
 
 bool seenTipMeetsFold(SearchContext& context, const PathExtrema& tip, bool increasingTime,
                              const Stretching& cut);
