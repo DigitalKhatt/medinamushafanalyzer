@@ -25,7 +25,13 @@ An initial form with `sharedFoldWithFinal` takes its turn in the initial array
 and uses the first matching final boundary for the declared adjacent letters.
 `sharedFoldForm` can name the specific final template supplying the cut.
 `onUnresolved` reserves a form for extended recovery. `onIncomplete` enables
-it on a retry within that pass. The folded fāʾ form uses both settings.
+it on a retry within that pass.
+
+`ligatures` takes priority for two-letter subwords without an explicit tatweel.
+Each entry selects the letters and names the initial and final templates.
+Optional `body` and `cuts` settings apply only in that ligature. The final
+template supplies the shared cut, and both bodies must pass ownership checks.
+If the first eligible entry fails, the subword stays unresolved.
 
 A medial form can declare `terminalArmRecovery` with a final `prefixForm`
 for its own letters and an `attached` or `detached` mode. Each mode names a

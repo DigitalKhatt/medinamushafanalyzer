@@ -29,12 +29,12 @@ int main(int argc, char** argv) {
         {3,1,9,3,"heh-init"}, {3,1,6,5,"heh-body-medi"}, {3,2,5,2,"heh-counter-fina"},
         {3,1,6,5,"beh-init"}, {13,2,6,3,"beh-shallow-step-init"},
         {3,1,3,1,"reh-fina"}, {1,7,2,1,"reh-rising-tail-fina"},
-        {600,2,9,1,"yeh-fina"},
+        {600,2,9,1,"yeh-first-turn-fina"},
         {13,15,5,1,"kaf-flat-medi"},
         {3,13,3,1,"hah-stacked-medi"},
         {6,9,8,2,"hah-enclosed-lips-medi"}, {3,1,4,1,"waw-fina"}, {600,2,2,1,"seen-medi"}, {3,3,1,2,"sad-medi"}, {3,13,3,1,"noon-fina"},
         {3,1,5,1,"ain-init"}, {3,2,9,1,"ain-medi"},
-        {600,2,9,1,"feh-init"}, {600,2,10,2,"feh-head-medi"}, {13,15,1,1,"feh-fina"},
+        {600,2,9,1,"feh-descending-init"}, {600,2,10,2,"feh-head-medi"}, {13,15,1,1,"feh-fina"},
         {3,2,2,2,"meem-init"}, {3,2,9,1,"meem-medi"}, {3,1,8,1,"meem-counter-fina"},
         {3,1,5,1,"lam-medi"}, {3,1,8,1,"lam-init"}, {588,5,10,1,"lam-medi"},
         {3,2,4,1,"beh-tooth-medi"}, {600,8,10,1,"beh-upright-medi"},
@@ -50,6 +50,8 @@ int main(int argc, char** argv) {
         check(inspection.complete == baseline, "Inspection changed completion");
         samePartition(expected, analysis.page.lines[f.line-1].words[f.word-1].wordResultInfo.subWords[f.sub-1]);
         check(!inspection.ink.isEmpty() && !inspection.assembly.isEmpty(), "Missing preview/assembly information");
+        if (f.page == 600 && f.line == 2 && f.word == 9)
+            check(inspection.attempted && !inspection.selectedBody.isEmpty(), "Missing ligature body inspection");
         if (QString(f.id) == "reh-rising-tail-fina") {
             check(baseline && expected.letterDiagnostics.last().toObject().value("template") == f.id,
                   "Rising reh fixture did not select its body template");

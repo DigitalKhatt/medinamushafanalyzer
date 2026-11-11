@@ -195,6 +195,23 @@ class PageViewTests(unittest.TestCase):
             self.assertNotIn(vectors['parts'][O2+'/body']['d'],stale_preview)
             self.assertIn('M1 1h1v1h-1z',stale_preview)
 
+    def test_letter_sequence_preview_distinguishes_bodies_and_connector(self):
+        paths = ['M3 1L5 1L5 3L3 3L3 1', 'M1 1L2 1L2 3L1 3L1 1', 'M2 1L3 1L3 3L2 3L2 1']
+        vectors = {'parts': {
+            part['owner']+'/'+part['role']: dict(d=path, ink=sha(pack_runs(part['runs'])))
+            for part,path in zip(self.parts,paths)
+        }}
+        with self.db:
+            publish_page(self.db,PID,self.batch('template'),pack_vectors(vectors),NATIVE+'fixture',Counter())
+        with closing(read(self.database)) as reader:
+            row, = search(reader,dict(kind='letters',sequence='بر',match='letter'))['rows']
+            for context in ('match','word'):
+                svg = ET.fromstring(image(reader,'letters',row['sequence_ids'],context))
+                fills = {p.get('d'):p.get('fill') for p in svg.findall(SVG+'path')}
+                self.assertEqual(len({fills[path] for path in paths}),3)
+            single = ET.fromstring(image(reader,'letters',O2,'match'))
+            self.assertNotEqual(single.find(SVG+'path').get('fill'),fills[paths[1]])
+
     def test_native_connector_reaches_the_longest_search_on_both_letters(self):
         query = dict(kind='letters',metric='kashidaLeft',sort='largest',min='0')
         with closing(read(self.database)) as reader:

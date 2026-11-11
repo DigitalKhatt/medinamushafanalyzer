@@ -285,6 +285,15 @@ QJsonObject shapeSettings(const QJsonObject &form, const QString &key) {
                               form.value("cuts").toObject().value(key).toObject());
 }
 
+QJsonObject ligatureForm(const QJsonObject& config, const QJsonObject& selection) {
+    auto form = resolvedBodyForm(config, namedLetterForm(config, selection.value("template").toString()));
+    for (const auto* field : {"body", "cuts"}) {
+        if (selection.contains(field))
+            form.insert(field, mergeShapeSettings(form.value(field).toObject(), selection.value(field).toObject()));
+    }
+    return form;
+}
+
 bool hasSeenBody(const QJsonObject &form) {
     return form.value("body").toObject().value("shape") == "tooth-cluster" || form.contains("seenTeeth") ||
            form.value("method") == "seen-teeth";
@@ -607,6 +616,18 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         (!cuts.value("recoveryTail").isBool() || body.value("tail").toObject().isEmpty() ||
          cuts.value("tail").toObject().isEmpty()))
         return id + ": recoveryTail needs independent tail evidence and a tail cut policy";
+    if (shape == "folded-return") {
+        const auto positive = [](const QJsonValue& value) {
+            return value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble() > 0;
+        };
+        const auto turn = body.value("return").toObject();
+        for (const auto* field : {"minBowlRun", "minFoldRun", "minReturn"})
+            if (!positive(turn.value(field))) return id + ": folded return distances must be positive";
+        if (turn.contains("maxShoulderDistance") && !positive(turn.value("maxShoulderDistance")))
+            return id + ": maxShoulderDistance must be positive";
+        if (!positive(cuts.value("return").toObject().value("maxChord")))
+            return id + ": return cut needs a positive maxChord";
+    }
     if (body.contains("entryRecoveryRoute") || cuts.contains("entryRecoveryRoute")) {
         const auto route = body.value("entryRecoveryRoute").toObject();
         const auto policy = cuts.value("entryRecoveryRoute").toObject();
@@ -760,13 +781,6 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
                              "exitDrop", "retryBendOffset", "terminalBowl", "roundedEntry"}
                      .contains(it.key()))
                 return id + ": unknown tooth-cluster cut setting " + it.key();
-    }
-    if (shape == "suspended-loop") {
-        const auto head = cuts.value("head").toObject();
-        const auto depth = head.value("minFoldDepth");
-        if (!depth.isUndefined() && (!form.contains("sharedFoldWithFinal") || !depth.isDouble() ||
-            !(depth.toDouble() > 0 && depth.toDouble() <= head.value("maxNeckDistance").toDouble(4))))
-            return id + ": minFoldDepth needs a shared fold and a positive depth within the neck limit";
     }
     if (shape == "profile-neck") {
         if (phase == "medial")
@@ -1712,8 +1726,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 return id + ": sameDirectionCheck requires lam-alef and must be true or false";
             const auto teeth = method == "seen-teeth" ? rule : rule.value("seenTeeth").toObject();
             if (rule.contains("sharedFoldWithFinal")) {
-                const bool initialBody = QString(phase) == "initial" &&
-                    (method == "seen-teeth" || method == "initial-loop-head");
+                const bool initialBody = QString(phase) == "initial" && method == "seen-teeth";
                 const bool medialBody = QString(phase) == "medial" &&
                     (!teeth.isEmpty() || !rule.value("contourBody").toObject().isEmpty());
                 if ((!initialBody && !medialBody) || !rule.value("sharedFoldWithFinal").isString() ||
@@ -1834,11 +1847,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 for (auto key : {"minRun", "minRise", "maxChord"})
                     if (!positive(spec.value(key))) return id + ": rising tail distances must be positive";
             }
-            if (method == "folded-bowl") {
-                const auto fold = rule.value("fold").toObject();
-                for (const auto* key : {"minBowlRun","minFoldRun","minReturn","maxChord"})
-                    if (!positive(fold.value(key))) return id + ": folded bowl distances must be positive";
-            }
             if (method == "walk") {
                 problem = invalidWalkSettings(rule, id);
                 if (!problem.isEmpty()) return problem;
@@ -1921,6 +1929,41 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             }
             problem = invalidKashidaSettings(rule.value("kashida"), effective, id + ".kashida");
             if (!problem.isEmpty()) return problem;
+        }
+    }
+    const auto ligatures = config.value("ligatures");
+    if (!ligatures.isUndefined() && !ligatures.isArray()) return "ligatures must be an array";
+    for (const auto& value : ligatures.toArray()) {
+        const auto rule = value.toObject();
+        const auto id = rule.value("id").toString();
+        if (id.isEmpty() || ids.contains(id)) return "Each ligature needs a unique nonempty id";
+        ids.insert(id);
+        const auto letters = rule.value("letters").toArray();
+        if (letters.size() != 2 || letters.at(0).toString().isEmpty() || letters.at(1).toString().isEmpty())
+            return id + ": letters must select both bases in the ligature";
+        for (const auto& [position, index] : {std::pair{"initial", 0}, std::pair{"final", 1}}) {
+            const auto selection = rule.value(position).toObject();
+            const auto name = selection.value("template").toString();
+            const auto selected = letters.at(index).toString();
+            const auto forms = config.value(position).toArray();
+            const auto valid = std::any_of(forms.begin(), forms.end(), [&](const auto& item) {
+                const auto form = item.toObject();
+                const auto current = form.value("current").toString();
+                return form.value("id") == name && form.contains("body") && form.contains("cuts") &&
+                    std::all_of(selected.begin(), selected.end(), [&](QChar ch) { return current.contains(ch); });
+            });
+            if (!valid) return id + ": " + position + " must name a body/cuts template for the selected letters";
+            for (auto setting = selection.begin(); setting != selection.end(); ++setting)
+                if (setting.key() != "template" &&
+                    ((setting.key() != "body" && setting.key() != "cuts") || !setting.value().isObject()))
+                    return id + ": template overrides must be body or cuts objects";
+            const auto body = selection.value("body").toObject();
+            const auto cuts = selection.value("cuts").toObject();
+            if (body.contains("shape") || body.contains("inherit") || cuts.contains("inherit"))
+                return id + ": a ligature override cannot change the template's shape or parent";
+            const auto form = ligatureForm(config, selection);
+            problem = validateSharedShape(form, position);
+            if (!problem.isEmpty()) return id + ": " + problem;
         }
     }
     config.insert("kashidaDefaults", effective);

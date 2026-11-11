@@ -512,7 +512,7 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
     else if (shape == "suspended-loop")
         found = evidence->head &&
                 cutLoopHead(context, *evidence->head, body.value("head").toObject(),
-                            cuts.value("head").toObject(), finalFold);
+                            cuts.value("head").toObject());
     else if (shape == "enclosed-lips") {
         const auto proposals = cutEnclosedLips(context, evidence->enclosedLips, cuts.value("head").toObject(), true);
         found = !proposals.empty();

@@ -451,9 +451,31 @@ std::optional<ReturnSeamBody> recognizeFoldedReturn(const InkOutline &outline, c
         return {};
     };
     const auto a = turn(true), b = turn(false);
-    if (!a || !b)
+    const double shoulderDistance = spec.value("maxShoulderDistance").toDouble();
+    if (a && b && (shoulderDistance <= 0 || interiorChord(ctx.transformedPath, a->first, b->first)))
+        return ReturnSeamBody{*tip, a->first, b->first, std::max(a->second, b->second)};
+    if (shoulderDistance <= 0) return {};
+
+    // A rising flank can meet the upper stroke at a shoulder without
+    // reversing in X. Pair that corner with the return on the opposite flank.
+    const auto shoulder = [&](const auto& bend, bool forward) -> std::optional<ReturnSeamBody> {
+        if (!bend) return {};
+        const auto advance = forward ? &SearchContext::next : &SearchContext::prev;
+        auto before = tip;
+        for (auto point = (ctx.*advance)(tip); point != tip; point = (ctx.*advance)(point)) {
+            const auto after = (ctx.*advance)(point);
+            if (point->time == bend->first.time) break;
+            const bool rising = point->point.y() < before->point.y() && after->point.y() < point->point.y();
+            if (point->isSharp && rising && point->point.x() - tip->point.x() >= spec.value("minBowlRun").toDouble() &&
+                QLineF(point->point, bend->first.point).length() <= shoulderDistance &&
+                interiorChord(ctx.transformedPath, *point, bend->first))
+                return ReturnSeamBody{*tip, bend->first, *point, std::max(bend->second, point->point.x())};
+            before = point;
+        }
         return {};
-    return ReturnSeamBody{*tip, a->first, b->first, std::max(a->second, b->second)};
+    };
+    if (const auto found = shoulder(a, false)) return found;
+    return shoulder(b, true);
 }
 
 bool readTerminalOutline(SearchContext& context) {

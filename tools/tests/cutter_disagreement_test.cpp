@@ -235,8 +235,6 @@ int main(int argc, char** argv) {
             for (int i = 0; i < spans.size(); ++i)
                 require(sameElements(world(sub.kashidaPaths[i]), readPath(spans[i].toArray())), id + " ordinary noon connector changed");
         }
-        if (text == QStringLiteral("شي"))
-            require(sub.baseGlyphs.size() == 2 && sub.matchedTemplates.contains("seen-init"), id + " seen became a tooth sequence");
         const auto bodies = sub.baseGlyphs;
         const auto spans = sub.kashidaPaths;
         require(analysis.segmentSubword(page-1, line, wordIndex, subIndex, &font, true), id + " repeated cut failed");

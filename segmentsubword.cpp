@@ -54,6 +54,8 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     if (!refresh && !sub.baseGlyphs.empty())
         return sub.correct;
     const auto& sourceConfig = draft ? *draft : letterForms();
+    if (const auto ligature = segmentDeclaredLigature(word, sub, sourceConfig))
+        return *ligature;
     static thread_local QJsonObject previousConfig, compiledConfig;
     static thread_local QHash<QString, QString> compiledRetryParents;
     if (previousConfig != sourceConfig) {

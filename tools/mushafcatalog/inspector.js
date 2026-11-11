@@ -7,9 +7,14 @@ function selectInk(kind, id, description) {
   image.src = imageURL(kind, id, 'word', preview);
   image.alt = description;
   $('selection').textContent = description;
-  $('inkLegend').textContent = kind === 'marks' && preview.marks !== false
-    ? 'The selected mark is highlighted in the whole word.'
-    : preview.marks === false ? 'Marks and dots are hidden.' : inkLegend;
+  const legend = $('inkLegend');
+  if (kind === 'letters' && id.includes(',')) {
+    legend.textContent = 'Alternating colors show the matched letter bodies. Blue shows connecting ink.';
+  } else if (kind === 'marks' && preview.marks !== false) {
+    legend.textContent = 'The selected mark is highlighted in the whole word.';
+  } else {
+    legend.textContent = preview.marks === false ? 'Marks and dots are hidden.' : inkLegend;
+  }
   for (const b of $('inspection').querySelectorAll('button[data-ink]'))
     b.classList.toggle('selected', b.dataset.ink === id);
 }

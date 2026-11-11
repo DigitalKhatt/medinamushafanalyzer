@@ -10,7 +10,8 @@ static void check(bool passed, const QString& message) {
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
-    const auto config = PageAnalysisResult::letterForms();
+    auto config = PageAnalysisResult::letterForms();
+    config.remove("ligatures");
     auto initialOnly = config;
     QJsonArray heads;
     // Keep this control focused on the original upright loop heads; the
@@ -46,7 +47,7 @@ int main(int argc, char** argv) {
                     const auto id = QString("page%1:l%2-w%3-s%4").arg(number, 3, 10, QChar('0'))
                         .arg(li + 1).arg(wi + 1).arg(si + 1);
                     const auto expected = letters.front() == QChar(0x0641) ? "feh-init" : "qaf-init";
-                    const bool complete = analysis.segmentSubword(number - 1, li, wi, si, nullptr, true);
+                    const bool complete = analysis.segmentSubword(number - 1, li, wi, si, nullptr, true, &config);
                     const bool matched = !sub.letterDiagnostics.isEmpty() &&
                         sub.letterDiagnostics.first().toObject().value("template") == expected;
                     report.append(QJsonObject{{"id", id}, {"text", sub.text}, {"template", expected},

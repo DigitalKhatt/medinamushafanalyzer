@@ -766,7 +766,7 @@ struct LoopHeadBody {
 std::optional<LoopHeadBody> recognizeLoopHead(const InkOutline &outline, const QJsonObject &settings);
 
 bool cutLoopHead(SearchContext &context, const LoopHeadBody &evidence, const QJsonObject &bodySettings,
-                        const QJsonObject &policy, const Stretching *finalFold = nullptr);
+                        const QJsonObject &policy);
 
 // Projected tooth boundaries retain their intrinsic tip and bend for the
 // assembler to verify that the complete body survives its neighboring cuts.
@@ -1184,6 +1184,10 @@ const LamBodyRecognition* recognizedLamBody(const SubwordBodyRecognition& recogn
 
 SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
         const WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
+
+std::optional<bool> segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordInfo& sub,
+                                             const QJsonObject& config);
+QJsonObject ligatureForm(const QJsonObject& config, const QJsonObject& selection);
 
 // Phase 2: assemble the declared lām candidates alongside the other letters.
 // Each recognized lām form supplies its body and boundary policies. Forms not

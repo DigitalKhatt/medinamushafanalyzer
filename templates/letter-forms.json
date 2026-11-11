@@ -32,6 +32,30 @@
     "neighborSearchRatio": 0.8,
     "sharedCutTolerance": 0.25
   },
+  "ligatures": [
+    {
+      "id": "feh-yeh-ligature",
+      "letters": ["ف", "يىئ"],
+      "initial": {
+        "template": "feh-descending-init"
+      },
+      "final": {
+        "template": "yeh-first-turn-fina",
+        "body": {
+          "return": {
+            "minFoldRun": 0.35,
+            "minReturn": 0.25,
+            "maxShoulderDistance": 3
+          }
+        },
+        "cuts": {
+          "return": {
+            "maxChord": 4
+          }
+        }
+      }
+    }
+  ],
   "initial": [
     {
       "id": "kaf-upright-bridge-init",
@@ -1134,32 +1158,6 @@
             "bottomProbe": "left",
             "anchorSide": "bottom"
           }
-        },
-        "boundaries": {
-          "left": "head-neck",
-          "right": "free"
-        }
-      }
-    },
-    {
-      "id": "feh-folded-init",
-      "current": "ف",
-      "tryNext": true,
-      "onIncomplete": true,
-      "onUnresolved": true,
-      "sharedFoldWithFinal": "يئى",
-      "sharedFoldForm": "yeh-fina",
-      "body": {
-        "shape": "suspended-loop",
-        "head": {
-          "maxEdgeDistance": 1.5
-        },
-        "counters": 1
-      },
-      "cuts": {
-        "head": {
-          "minFoldDepth": 2,
-          "maxNeckDistance": 4
         },
         "boundaries": {
           "left": "head-neck",

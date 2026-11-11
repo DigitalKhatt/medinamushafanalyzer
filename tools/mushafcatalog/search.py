@@ -523,10 +523,13 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
             if right:
                 for r in db.execute("SELECT x,y,w,h,owner_id,role,runs FROM catalog_parts WHERE subword_id=? AND next_owner_id=?",(sid,focus[0])):
                     draw(part_layer,r[:4],*r[4:],connector)
+            letter_colors = (body, '#e4b0f4' if dark else '#84366d')
             for i,owner in enumerate(focus):
                 for bx,by,bw,bh,role,runs in db.execute('SELECT x,y,w,h,role,runs FROM catalog_parts WHERE owner_id=?',(owner,)):
-                    if role=='body' or i<len(focus)-1: draw(part_layer,(bx,by,bw,bh),owner,role,runs,body)
-                    elif left: draw(part_layer,(bx,by,bw,bh),owner,role,runs,connector)
+                    if role=='body':
+                        draw(part_layer,(bx,by,bw,bh),owner,role,runs,letter_colors[i % 2])
+                    elif i<len(focus)-1 or left:
+                        draw(part_layer,(bx,by,bw,bh),owner,role,runs,connector)
                 for r in db.execute('SELECT x,y,w,h,id,path_ids,runs FROM native_marks WHERE owner_id=? OR attached_letter_id=?',
                                     (owner,owner)):
                     draw(mark_layer,r[:4],*r[4:])
