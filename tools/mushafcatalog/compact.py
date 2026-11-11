@@ -4,18 +4,17 @@ from pathlib import Path
 import sqlite3
 
 from page_view import decode_vectors, mark_outlines, matching_part
-from store import INK_REF, META, VECTOR_STORAGE, ink_reference, inventory, meta, put_meta, require, verify
+from store import INK_REF, META, VECTOR_STORAGE, ink_reference, meta, put_meta, require, verify
 
 
 def verify_vectors(db, *, stripped=True):
-    counts = inventory(db)
-    require(counts['pending']==0, 'Publish all letter vectors before removing masks.')
     pages = db.execute('''SELECT c.page_id,a.vectors FROM catalog_pages c JOIN pages p USING(page_id)
         LEFT JOIN catalog_page_art a ON a.page_id=c.page_id AND a.report_sha=c.report_sha AND a.source_sha=p.source_sha
         ORDER BY c.page_id''')
     for pid,blob in pages:
         require(blob, f'{pid}: publish native vector artwork first')
         vectors = decode_vectors(blob)
+        require(vectors.get('pageArt', {}).get('paint'), f'{pid}: missing original vector artwork')
         parts = db.execute('''SELECT p.owner_id,p.role,p.runs FROM catalog_subwords s
             JOIN catalog_parts p ON p.subword_id=s.id WHERE s.page_id=?''',(pid,))
         for owner,role,ink in parts:

@@ -31,7 +31,8 @@ stores the native page contours, grouped surah titles, basmalas and ayah
 markers, and frame openings in the catalog. The viewer draws them directly.
 Each letter-segmentation run writes `output/mushafcatalog/letter-segmentation.log`
 with page totals and the subword IDs, letter diagnostics, and cutter traces
-for unresolved cases. The log also records whether the catalog
+for unresolved cases. The viewer displays unresolved subwords as uncut
+source ink and marks their letter bodies as pending. The log records whether the catalog
 update committed. Use `segment-letters --log PATH` to keep a separate log.
 
 Check individual template edits against the saved cuts with

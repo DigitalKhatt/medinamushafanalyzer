@@ -172,8 +172,9 @@ def publish_page(db, pid, data, vectors, producer, counts, *, partial=False):
     generated = json.loads(zlib.decompress(vectors))
     if meta(db,VECTOR_STORAGE):
         require(not generated['rasterMarks'], f'{pid}: cutter could not verify all mark vectors')
-        require(all(result['status'] in ('template','single-letter')
-                    for result in data['results'].values()), f'{pid}: cutter left a body unresolved')
+        for sid, result in data['results'].items():
+            require(result['status'] in ('template','single-letter','incomplete'),
+                    f"{sid}: invalid native segmentation ({result['status']})")
     if partial:
         saved = db.execute('SELECT vectors FROM catalog_page_art WHERE page_id=? AND source_sha=? AND report_sha=?',
                            (pid,data['source'],data['report'])).fetchone()

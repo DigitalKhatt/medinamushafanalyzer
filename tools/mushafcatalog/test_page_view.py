@@ -51,11 +51,12 @@ class CutterLogTests(unittest.TestCase):
     def test_aborted_segmentation_publishes_its_log(self):
         with TemporaryDirectory() as folder:
             database, log = (Path(folder)/name for name in ('catalog.sqlite','cuts.log'))
-            with patch('segment_letters.segment_pages',side_effect=ValueError('cutter left a body unresolved')):
-                with self.assertRaisesRegex(ValueError,'cutter left a body unresolved'):
+            problem = 'invalid native segmentation'
+            with patch('segment_letters.segment_pages',side_effect=ValueError(problem)):
+                with self.assertRaisesRegex(ValueError,problem):
                     segment(database,'435',1,log_path=log)
             self.assertIn('Pages: 435',log.read_text())
-            self.assertIn('Catalog update aborted: cutter left a body unresolved',log.read_text())
+            self.assertIn('Catalog update aborted: '+problem,log.read_text())
 
 
 class ConnectorTests(unittest.TestCase):
@@ -170,6 +171,25 @@ class PageViewTests(unittest.TestCase):
             self.assertEqual(body_source(db,S2),body)
             self.assertIn(shape['d'],mark_preview(db,mark_ids[0][0],True))
         self.assertTrue(compare_rebuild(database)['passed'])
+
+        pending = dict(batch, results={**batch['results'], S1:dict(status='incomplete')})
+        pending_vectors = dict(vectors, parts={single['owner']+'/body':vectors['parts'][single['owner']+'/body']})
+        counts = Counter()
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('PRAGMA foreign_keys=ON')
+            publish_page(db,PID,pending,pack_vectors(pending_vectors),NATIVE+'fixture',counts)
+        with closing(read(database)) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM catalog_splits WHERE subword_id=?',(S1,)).fetchone()[0],0)
+            page = ET.fromstring(page_svg(db,'3',colored=True))
+        self.assertEqual(counts, {'pending/incomplete':1,'single-letter':1})
+        self.assertEqual(page.find('.//'+SVG+f'g[@data-owner="{O0}"]').get('data-quality'),'pending')
+        original = page.find(SVG+'g[@mask="url(#paper)"]')
+        self.assertIsNotNone(original.find(SVG+'path'))
+        self.assertTrue(compare_rebuild(database)['passed'])
+        invalid = dict(pending, results={**pending['results'], S1:dict(status='uncovered-ink')})
+        with closing(sqlite3.connect(database)) as db, db:
+            with self.assertRaisesRegex(ValueError,'uncovered-ink'):
+                publish_page(db,PID,invalid,pack_vectors(pending_vectors),NATIVE+'fixture',Counter())
 
     def test_search_previews_use_source_curves_and_matching_cuts(self):
         curve = 'M1 1C1 2 2 3 3 1Z'
