@@ -185,18 +185,35 @@ static bool leavesConnectorRoom(const Stretching& sending, const Stretching& rec
     return gap(receiving.topBaseLine) > minimum && gap(receiving.bottomBaseLine) > minimum;
 }
 
-static std::optional<WordResultInfo::SubWordInfo> recutClusterExit(
-        const Word& word, const WordResultInfo::SubWordInfo& sub, int slot, const Stretching& boundary,
-        const std::optional<Stretching>& receiving, const QJsonObject& config) {
+static bool preserveUnchangedOutline(const QPainterPath& original, QPainterPath& rebuilt) {
+    // Projecting an unchanged cap back onto the source can round its curve
+    // time. Keep the original outline when its Bézier data agrees to within
+    // that rounding error, and reject any actual change to the outline.
+    if (original != rebuilt) {
+        if (original.fillRule() != rebuilt.fillRule() || original.elementCount() != rebuilt.elementCount())
+            return false;
+        for (int i = 0; i < original.elementCount(); ++i) {
+            const auto a = original.elementAt(i), b = rebuilt.elementAt(i);
+            if (a.type != b.type || std::abs(a.x - b.x) > 1e-6 || std::abs(a.y - b.y) > 1e-6)
+                return false;
+        }
+    }
+    rebuilt = original;
+    return true;
+}
+
+static std::optional<WordResultInfo::SubWordInfo> recutClusterJoin(
+        const Word& word, const WordResultInfo::SubWordInfo& sub, int slot, int clusterSlot,
+        const Stretching& sending, const std::optional<Stretching>& receiving, const QJsonObject& config) {
     auto trial = sub;
     const auto current = std::next(trial.joins.begin(), slot);
     auto join = *current;
     if (join.counterEntry.pathIndex > 0) return {};
-    join.topBaseLine = join.topRight = boundary.topBaseLine;
-    join.bottomBaseLine = join.bottomRight = boundary.bottomBaseLine;
-    join.topLeft = receiving ? receiving->topBaseLine : boundary.topBaseLine;
-    join.bottomLeft = receiving ? receiving->bottomBaseLine : boundary.bottomBaseLine;
-    join.referenceWidth = boundary.referenceWidth;
+    join.topBaseLine = join.topRight = sending.topBaseLine;
+    join.bottomBaseLine = join.bottomRight = sending.bottomBaseLine;
+    join.topLeft = receiving ? receiving->topBaseLine : sending.topBaseLine;
+    join.bottomLeft = receiving ? receiving->bottomBaseLine : sending.bottomBaseLine;
+    join.referenceWidth = QLineF(sending.topBaseLine.point, sending.bottomBaseLine.point).length();
     join.length = 0;
     join.fixedRightBoundary = true;
     join.fixedLeftBoundary = receiving.has_value();
@@ -207,26 +224,32 @@ static std::optional<WordResultInfo::SubWordInfo> recutClusterExit(
         trial.kashidaPaths.size() != sub.kashidaPaths.size() ||
         trial.kashidaPaths[slot].isEmpty() == receiving.has_value()) return {};
 
-    // Moving a cap into an existing connector affects only the tooth body.
-    // Moving a shared seam may affect the neighbor at that seam as well.
+    // Keep the other cap of an existing connector and all unrelated regions
+    // intact. A shared seam can also move the edge of its immediate neighbor.
+    const bool atEntry = slot < clusterSlot;
+    const int neighbor = atEntry ? slot : slot + 1;
+    const auto unchanged = [&](const QPainterPath& original, QPainterPath& rebuilt) {
+        return atEntry ? preserveUnchangedOutline(original, rebuilt) : original == rebuilt;
+    };
     for (size_t i = 0; i < sub.baseGlyphs.size(); ++i)
-        if (i != size_t(slot) && (receiving || i != size_t(slot + 1)) &&
-            trial.baseGlyphs[i].path != sub.baseGlyphs[i].path) return {};
+        if (i != size_t(clusterSlot) && (receiving || i != size_t(neighbor)) &&
+            !unchanged(sub.baseGlyphs[i].path, trial.baseGlyphs[i].path)) return {};
     for (size_t i = 0; i < sub.kashidaPaths.size(); ++i)
-        if (i != size_t(slot) && (trial.kashidaPaths[i] != sub.kashidaPaths[i] ||
+        if (i != size_t(slot) && (!unchanged(sub.kashidaPaths[i], trial.kashidaPaths[i]) ||
             trial.kashidaCuts[i] != sub.kashidaCuts[i])) return {};
     if (receiving) {
         const auto& [start, end] = trial.kashidaCuts[slot];
-        if (start != QLineF(boundary.topBaseLine.point, boundary.bottomBaseLine.point) ||
+        if (start != QLineF(sending.topBaseLine.point, sending.bottomBaseLine.point) ||
             end != QLineF(receiving->topBaseLine.point, receiving->bottomBaseLine.point)) return {};
     } else {
         const auto shape = word.bodyShape(sub);
-        const auto& before = sub.baseGlyphs[slot + 1].path;
-        const auto& after = trial.baseGlyphs[slot + 1].path;
+        const auto& before = sub.baseGlyphs[neighbor].path;
+        const auto& after = trial.baseGlyphs[neighbor].path;
         const auto oldBounds = shape.transform.map(before).boundingRect();
         const auto newBounds = shape.transform.map(after).boundingRect();
+        const auto outerEdge = [&](const QRectF& bounds) { return atEntry ? bounds.right() : bounds.left(); };
         if (toSubpaths(before).size() != toSubpaths(after).size() ||
-            std::abs(oldBounds.left() - newBounds.left()) > 1e-5 ||
+            std::abs(outerEdge(oldBounds) - outerEdge(newBounds)) > 1e-5 ||
             std::abs(oldBounds.top() - newBounds.top()) > 1e-5 ||
             std::abs(oldBounds.bottom() - newBounds.bottom()) > 1e-5) return {};
     }
@@ -326,43 +349,86 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                     attachment.sameContour = (!slot || attachment.entry) && (terminal || attachment.exit);
                 }
                 attachment.requiresFold = !form->sharedFoldWithFinal.isEmpty();
-                attachment.canFitHollow = attachment.sameContour && attachment.exit && attachment.receiving &&
-                    diagnostic.value("cutPolicy") != "tooth-exit-walk" &&
-                    (!attachment.separateConnector || leavesConnectorRoom(*attachment.exit, *attachment.receiving, sharedTolerance));
-                auto fit = fitToothCluster(source, form->body, form->cuts, mask, terminal, penWidth, attachment, true);
+                const auto canFitHollow = [&](const ToothClusterAttachment& geometry) {
+                    return geometry.sameContour && geometry.exit && geometry.receiving &&
+                        diagnostic.value("cutPolicy") != "tooth-exit-walk" &&
+                        (!geometry.separateConnector || leavesConnectorRoom(*geometry.exit, *geometry.receiving, sharedTolerance));
+                };
+                attachment.canFitHollow = canFitHollow(attachment);
+                const auto fit = fitToothCluster(source, form->body, form->cuts, mask, terminal, penWidth, attachment, true);
                 error = fit.error;
-                for (const auto& option : fit.exits) {
+                const auto accept = [&](WordResultInfo::SubWordInfo trial, ToothClusterAttachment revised,
+                                        const Stretching& boundary, const QString& name, const QString& trace) {
+                    if (!fitToothCluster(source, form->body, form->cuts, inPage(trial.baseGlyphs[slot].path),
+                                         terminal, penWidth, revised, false).error.isEmpty()) return false;
+                    InspectFormScope inspection(id);
+                    inspectCandidate(name, boundary);
+                    trial.templateTrace.append(id + " · " + trace);
+                    sub = std::move(trial);
+                    attachment = std::move(revised);
+                    error.clear();
+                    return true;
+                };
+                const auto recutExit = [&](const ToothClusterExit& option) {
                     const auto& boundary = option.cut;
                     const bool openConnector = option.atHollow && !attachment.separateConnector;
                     const auto receiving = attachment.separateConnector || openConnector
                         ? attachment.receiving : std::nullopt;
-                    if ((attachment.separateConnector || openConnector) && !receiving) continue;
+                    if ((attachment.separateConnector || openConnector) && !receiving) return false;
                     if (option.atHollow) {
                         const double width = QLineF(receiving->topBaseLine.point, receiving->bottomBaseLine.point).length();
                         const double gap = openConnector ? minConnectorWidths * std::max({penWidth, boundary.referenceWidth, width})
                                                          : sharedTolerance;
-                        if (!leavesConnectorRoom(boundary, *receiving, gap)) continue;
+                        if (!leavesConnectorRoom(boundary, *receiving, gap)) return false;
                     }
-                    auto trial = recutClusterExit(word, sub, slot, boundary, receiving, config);
-                    if (!trial) continue;
+                    auto trial = recutClusterJoin(word, sub, slot, slot, boundary, receiving, config);
+                    if (!trial) return false;
                     if (openConnector) {
                         const auto ribbon = inPage(trial->kashidaPaths[slot]);
                         const auto& [sending, entry] = trial->kashidaCuts[slot];
-                        if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, sending, entry)) continue;
+                        if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, sending, entry)) return false;
                     }
                     auto revised = attachment;
                     revised.exit = boundary;
                     revised.receiving = receiving;
                     revised.separateConnector = receiving.has_value();
-                    if (!fitToothCluster(source, form->body, form->cuts, inPage(trial->baseGlyphs[slot].path),
-                                         terminal, penWidth, revised, false).error.isEmpty()) continue;
-                    trial->templateTrace.append(id + (option.atHollow ? " · exit at final tooth hollow"
-                                                                    : " · exit fitted after the third tooth"));
-                    InspectFormScope inspection(id);
-                    inspectCandidate(option.atHollow ? "Final tooth hollow" : "Third tooth exit", boundary);
-                    sub = std::move(*trial);
-                    error.clear();
+                    revised.canFitHollow = canFitHollow(revised);
+                    return accept(std::move(*trial), revised, boundary,
+                        option.atHollow ? "Final tooth hollow" : "Third tooth exit",
+                        option.atHollow ? "exit at final tooth hollow" : "exit fitted after the third tooth");
+                };
+                for (const auto& option : fit.exits) {
+                    if (!recutExit(option)) continue;
+                    // Pulling a cut out of a long connector can leave enough
+                    // room to use the actual lower hollow of the third tooth.
+                    if (!option.atHollow && attachment.canFitHollow &&
+                        form->cuts.value("cluster").toObject().value("exitAtHollow").toBool()) {
+                        const auto refined = fitToothCluster(source, form->body, form->cuts, inPage(sub.baseGlyphs[slot].path),
+                                                             terminal, penWidth, attachment, true);
+                        for (const auto& exit : refined.exits)
+                            if (exit.atHollow && recutExit(exit)) break;
+                    }
                     break;
+                }
+                // Finish the outgoing boundary before changing the incoming
+                // one. An entry move must preserve the accepted exit exactly.
+                if (fit.entry) {
+                    const auto& boundary = *fit.entry;
+                    const bool connector = !sub.kashidaPaths[slot - 1].isEmpty();
+                    const auto sending = actualCap(slot - 1, false);
+                    // On a shared join the previous body may gain the stroke
+                    // up to this junction, but must not lose its own landmarks.
+                    const bool fits = sending && (connector
+                        ? leavesConnectorRoom(*sending, boundary, sharedTolerance)
+                        : cutPrecedes(*sending, boundary, source.orientation));
+                    if (fits) {
+                        auto revised = attachment;
+                        revised.entry = boundary;
+                        auto trial = recutClusterJoin(word, sub, slot - 1, slot, connector ? *sending : boundary,
+                            connector ? fit.entry : std::nullopt, config);
+                        if (trial) accept(std::move(*trial), revised, boundary, "First tooth junction",
+                                          "entry at first tooth junction");
+                    }
                 }
             }
         }

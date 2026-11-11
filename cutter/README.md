@@ -23,7 +23,10 @@ fork or ligature policy.
 After assembly and recovery, a tooth-cluster body must own three upper tips
 and the two intervening valleys from the uncut outline. Final clusters must
 own the connected bowl. A pen lift inside the word can end the medial
-cluster on its own contour. The `cuts.cluster.exitAtHollow` policy
+cluster on its own contour. The `cuts.cluster.entryAtJunction` policy
+joins the opposing bends where the incoming stroke meets the first tooth.
+It keeps the other cap of a separate connector and checks that the body
+still owns all three teeth. The `cuts.cluster.exitAtHollow` policy
 uses the inward turn just past the lower bulge of the third tooth. The cut
 follows the normal at that turn and meets the tooth's descending upper flank.
 Assembly checks clearance for the connector and verifies the tooth landmarks,

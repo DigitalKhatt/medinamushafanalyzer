@@ -836,12 +836,14 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
                      .contains(it.key()))
                 return id + ": unknown tooth-cluster body setting " + it.key();
         for (auto it = policy.begin(); it != policy.end(); ++it)
-            if (!QStringList{"rightOffset", "maxExitBendDistance", "entryCornerOptional", "exitBendFirst", "exitOffset",
+            if (!QStringList{"rightOffset", "maxExitBendDistance", "entryAtJunction", "entryCornerOptional", "exitBendFirst", "exitOffset",
                              "exitDrop", "retryBendOffset", "terminalBowl", "roundedEntry", "exitAtHollow"}
                      .contains(it.key()))
                 return id + ": unknown tooth-cluster cut setting " + it.key();
         if (policy.contains("exitAtHollow") && (phase == "final" || !policy.value("exitAtHollow").isBool()))
             return id + ": exitAtHollow must be a boolean on a tooth cluster with an exit cut";
+        if (policy.contains("entryAtJunction") && (phase == "initial" || !policy.value("entryAtJunction").isBool()))
+            return id + ": entryAtJunction must be a boolean on a tooth cluster with an entry cut";
     }
     if (shape == "profile-neck") {
         if (phase == "medial")

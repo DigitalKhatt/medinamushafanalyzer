@@ -272,6 +272,32 @@ static void checkSeenTailOwnership(const QJsonObject& config) {
     }
 }
 
+static void checkSeenEntryAndExit(const QJsonObject& config) {
+    for (const auto& [p, line, wordIndex, entryJoin, upper] :
+            {std::tuple{5, 14, 0, 0, 3}, std::tuple{7, 13, 9, 1, 2}}) {
+        QFile file(QString("pages/page%1.dat").arg(p));
+        check(file.open(QIODevice::ReadOnly), "Missing seen junction fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        auto& word = page.page.lines[line].words[wordIndex];
+        check(page.segmentSubword(p-1, line, wordIndex, 0, nullptr, true, &config), "Seen must segment completely");
+        const auto& sub = word.wordResultInfo.subWords[0];
+        check(PageAnalysisResult::bodyLetters(sub.text) == (p == 5 ? "فسو" : "نفس") && sub.kashidaCuts.size() == 2 &&
+              !sub.kashidaPaths[0].isEmpty() && !sub.kashidaPaths[1].isEmpty(), "Missing the seen connectors");
+        const auto shape = word.bodyShape(sub);
+        const auto curves = baseContourCurves(shape.transform.map(shape.path).translated(shape.pos));
+        const auto entry = sub.kashidaCuts[entryJoin].second;
+        check(QLineF(entry.p1(), curves[upper].pt1()).length() < 1e-5 &&
+              QLineF(entry.p2(), curves[20].pt1()).length() < 1e-5,
+              "The seen entry must meet the first tooth at its two opposing corners");
+        if (p == 5)
+            check(QLineF(sub.kashidaCuts[1].first.p2(), curves[17].pt1()).length() < 1e-5,
+                  "The seen exit must reach the hollow beyond the third tooth");
+        checkPartition(shape.path, sub);
+    }
+}
+
 static void checkClusterAttachments(const QJsonObject& config) {
     struct Example {
         int page, line, word, subword, seen;
@@ -363,6 +389,7 @@ int main(int argc, char** argv) {
     checkFinalSeenLandmarkOwnership(config);
     checkClusterAttachments(config);
     checkSeenTailOwnership(config);
+    checkSeenEntryAndExit(config);
     {
         QFile file("pages/page230.dat");
         check(file.open(QIODevice::ReadOnly), "Missing upright beh and wide sheen fixture");
@@ -597,6 +624,7 @@ int main(int argc, char** argv) {
     }
     check(sheen.boundingRect().top() > source.boundingRect().top() + 5,
           "The sheen body includes the tall lam ascender");
+    check(sub.kashidaCuts[0].second == edge, "The assembled medial sheen entry must use corners 6 and 38");
     const auto& exit = sub.kashidaCuts[1].first;
     check(QLineF(exit.p2() - source.boundingRect().topLeft(), QPointF(9.481, 12.881)).length() < .005,
           "The medial sheen exit should meet the inward turn of the third tooth");
@@ -696,5 +724,5 @@ int main(int argc, char** argv) {
     check(roundedEntry && std::abs(roundedEntry->topBaseLine.time - 28.8386) < .001 &&
           std::abs(roundedEntry->bottomBaseLine.time - 20.8454) < .001,
           "Rounded shoulder and lower bend were not accepted as equivalent landmarks");
-    qInfo("Seen passed: corner pair 6/38, half-stroke right offset, stroke normal, rounded entry landmarks, ascender and loop rejection, own exit bend, all three teeth retained, independent geometry, translation/page-unit scaling, heh/yeh/dal recovery, ink conservation and deterministic masks.");
+    qInfo("Seen passed: exact medial and final entry junctions, third-tooth hollow, rounded landmarks, independent geometry, recovery, ink conservation and deterministic masks.");
 }

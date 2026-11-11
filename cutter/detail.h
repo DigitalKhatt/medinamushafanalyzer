@@ -703,11 +703,12 @@ struct ToothClusterExit {
 struct ToothClusterFit {
     QString error;
     std::vector<ToothClusterExit> exits;
+    std::optional<Stretching> entry;
 };
 
 ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body, const QJsonObject& cuts,
                                const QPainterPath& mask, bool terminal, double penWidth,
-                               const ToothClusterAttachment& attachment, bool proposeExit);
+                               const ToothClusterAttachment& attachment, bool proposeBoundaries);
 
 bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody> &bodies,
                              const QJsonObject &form, double minX, double maxX, Stretching *right, Stretching *left,

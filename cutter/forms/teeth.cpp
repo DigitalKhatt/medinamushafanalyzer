@@ -248,6 +248,21 @@ static bool keepsClusterAtExit(const ToothClusterBody& cluster, const Stretching
                        [&](const auto& point) { return exit.isStrictRight(point.time); });
 }
 
+static std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
+                                                        const Stretching& current) {
+    const auto& tip = cluster.turns.front();
+    auto junction = seenEntryCornerPair(context, tip, !cluster.advancePrevious, meanToothPitch(cluster));
+    if (!junction) return {};
+    orientSection(context, *junction, tip.time, true);
+    const auto side = getJoinTime(*junction, context.orientation);
+    if (!std::all_of(cluster.turns.begin(), cluster.turns.end(),
+                     [&](const auto& point) { return side.isStrictLeft(point.time); })) return {};
+    if (QLineF(junction->topBaseLine.point, current.topBaseLine.point).length() < 1e-5 &&
+        QLineF(junction->bottomBaseLine.point, current.bottomBaseLine.point).length() < 1e-5) return {};
+    junction->referenceWidth = toothCutLine(*junction).length();
+    return junction;
+}
+
 static std::optional<Stretching> clusterExitAtBend(SearchContext& context, const ToothClusterBody& cluster,
                                                 const QJsonObject& settings) {
     const SeenExitRetry retry{0, SeenExitMode::AlongContour};
@@ -344,7 +359,7 @@ static std::optional<Stretching> exitAfterFoldedTooth(SearchContext& context, co
 
 ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body, const QJsonObject& cuts,
                                const QPainterPath& mask, bool terminal, double penWidth,
-                               const ToothClusterAttachment& attachment, bool proposeExit) {
+                               const ToothClusterAttachment& attachment, bool proposeBoundaries) {
     const auto evidence = recognizedSharedShape(context, body);
     const ToothClusterBody* accepted = nullptr;
     const auto clusterSettings = body.value("cluster").toObject();
@@ -391,19 +406,22 @@ ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body,
         } else accepted = &cluster;
     }
     if (accepted) {
-        if (!proposeExit || !attachment.exit) return {};
+        ToothClusterFit fit{};
+        if (!proposeBoundaries) return fit;
+        if (attachment.sameContour && attachment.entry && cutSettings.value("entryAtJunction").toBool())
+            fit.entry = clusterEntryAtJunction(context, *accepted, *attachment.entry);
+        if (!attachment.exit) return fit;
         const auto hollow = attachment.canFitHollow && cutSettings.value("exitAtHollow").toBool()
             ? clusterExitAtHollow(context, *accepted, *attachment.exit, *attachment.receiving,
                                   penWidth, cutSettings) : std::nullopt;
-        if (hollow && toothCutLine(*hollow) == toothCutLine(*attachment.exit)) return {};
-        auto exits = attachment.separateConnector
-            ? nearerConnectorExits(context, *accepted, *attachment.exit, penWidth, clusterSettings, cutSettings)
-            : std::vector<ToothClusterExit>{};
-        if (hollow) exits.insert(exits.begin(), {*hollow, true});
-        return {{}, std::move(exits)};
+        if (hollow && toothCutLine(*hollow) == toothCutLine(*attachment.exit)) return fit;
+        if (attachment.separateConnector)
+            fit.exits = nearerConnectorExits(context, *accepted, *attachment.exit, penWidth, clusterSettings, cutSettings);
+        if (hollow) fit.exits.insert(fit.exits.begin(), {*hollow, true});
+        return fit;
     }
 
-    if (!proposeExit || terminal || !attachment.sameContour || !attachment.exit || attachment.separateConnector ||
+    if (!proposeBoundaries || terminal || !attachment.sameContour || !attachment.exit || attachment.separateConnector ||
         attachment.requiresFold || attachment.followingFold) return {reason, {}};
 
     const auto settings = mergeShapeSettings(clusterSettings, cutSettings);

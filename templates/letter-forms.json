@@ -1665,6 +1665,7 @@
       },
       "cuts": {
         "cluster": {
+          "entryAtJunction": true,
           "rightOffset": 0.5,
           "entryCornerOptional": true
         },
@@ -1689,6 +1690,7 @@
       },
       "cuts": {
         "cluster": {
+          "entryAtJunction": true,
           "retryBendOffset": 0.5,
           "rightOffset": 0.5,
           "maxExitBendDistance": 2,
@@ -3092,6 +3094,7 @@
           "left": "trim"
         },
         "cluster": {
+          "entryAtJunction": true,
           "maxExitBendDistance": 2,
           "exitBendFirst": true,
           "exitAtHollow": true,
@@ -4231,6 +4234,7 @@
       },
       "cuts": {
         "cluster": {
+          "entryAtJunction": true,
           "rightOffset": 0.35,
           "entryCornerOptional": true,
           "terminalBowl": true
@@ -4261,6 +4265,7 @@
       },
       "cuts": {
         "cluster": {
+          "entryAtJunction": true,
           "rightOffset": 0.35,
           "entryCornerOptional": true,
           "terminalBowl": true,
@@ -4286,7 +4291,9 @@
         }
       },
       "cuts": {
-        "cluster": {},
+        "cluster": {
+          "entryAtJunction": true
+        },
         "boundaries": {
           "right": "tooth-entry",
           "left": "free"
