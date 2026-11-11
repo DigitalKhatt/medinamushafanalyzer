@@ -67,3 +67,39 @@ medial cut policy after recovery. Medial lām uses both arm modes.
 Use the [native tests and catalog comparison](../tools/README.md#letter-audit)
 to check a change. Audit and training snapshots fingerprint the cutter’s
 sources and headers.
+
+## Future improvements
+
+Use one backtracking search to match letter bodies in reading order, then
+place the cuts. Each template would find candidates in the uncut ink using
+its shape and stroke measurements. A candidate would return its right entry,
+left exit, and the landmarks and contour sections it must own. An anchor
+identifies a position on a source contour. An initial or final form has one
+free end, and a pen lift can supply a boundary between separate contours.
+
+1. Select templates by letter and position. Try candidates in template order,
+   using the previous exit to find compatible entries. Check contour order
+   on both sides of the stroke and reject a candidate that claims ink already
+   owned by another body. Adjacent bodies may share one seam. Ink between
+   distinct anchors on the same stroke must form a valid connector.
+2. For a complete sequence, try the preferred cuts within the space allowed
+   by the bodies. Fall back to the anchor cuts if needed. Backtrack if the
+   cuts cannot preserve the required landmarks and partition the source ink.
+3. Stop at the first valid result for normal segmentation, or keep collecting
+   valid results for inspection.
+
+The existing `cuts.boundaries` declarations describe how to find the anchors.
+All initial and final forms declare their joining side, and most medial forms
+declare both. The two exposed-head recipes combine existing forms. The
+current result stores the anchors chosen for connected joins. Before the
+search can use all candidates, some matchers need to expose the alternatives
+they currently select internally. For example, a medial loop matcher can
+return each eligible loop and let the search check it against the preceding
+exit.
+
+Migrate gradually. Start by having the existing lām, senna, and sīn matchers
+return candidates in this format. Run the new search alongside the current
+one and compare the selected bodies and final cuts across all 604 pages.
+Move more forms over in groups, including shared ligature seams and separate
+ink components. Remove an old retry path once the new search handles its
+cases and the catalog comparison confirms the expected results.
