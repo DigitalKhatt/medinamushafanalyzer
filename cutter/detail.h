@@ -1259,7 +1259,7 @@ struct SubwordCutPlan {
 SubwordCutPlan makeSubwordCutPlan(WordResultInfo::SubWordInfo proposals, const QJsonObject& config);
 
 bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& sub,
-                                 const QJsonObject& config);
+                                 const QJsonObject& config, bool penLiftAtEnd = false);
 
 std::optional<ReturnSeamBody> recognizeRisingReturn(const InkOutline &outline, const QJsonObject &spec);
 

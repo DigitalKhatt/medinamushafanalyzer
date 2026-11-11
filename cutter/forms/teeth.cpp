@@ -71,7 +71,8 @@ std::optional<Stretching> seenEntryCornerPair(SearchContext& context, const Path
 // endpoint only on this tooth's descending flank, before its first valley.
 static bool seenExitBendCut(SearchContext& context, const PathExtrema& tip,
                             bool increasingTime, double maxDistance, Stretching& cut,
-                            double alongContour = 0) {
+                            double alongContour = 0,
+                            double maxSectionWidth = std::numeric_limits<double>::infinity()) {
     const auto advance = increasingTime ? &SearchContext::prev : &SearchContext::next;
     auto end = context.timeSorted.find(tip);
     if (end == context.timeSorted.end()) return false;
@@ -101,7 +102,8 @@ static bool seenExitBendCut(SearchContext& context, const PathExtrema& tip,
             if (!contourNormalCut(context, *inner, forward, false, proposed, true)) continue;
             if (proposed.topBaseLine.point.y() > proposed.bottomBaseLine.point.y())
                 std::swap(proposed.topBaseLine, proposed.bottomBaseLine);
-            if (distanceOnFlank(proposed.topBaseLine.time) > reach) continue;
+            if (distanceOnFlank(proposed.topBaseLine.time) > reach ||
+                proposed.referenceWidth > maxSectionWidth) continue;
             if (alongContour > 0) {
                 // Stay on the branch leaving the bend. A free normal through a
                 // shifted midpoint can re-enter a different stroke on a steep join.
@@ -274,12 +276,52 @@ static bool keepsClusterAtExit(const ToothClusterBody& cluster, const Stretching
                        [&](const auto& point) { return exit.isStrictRight(point.time); });
 }
 
+static std::optional<Stretching> seenEntryNormal(SearchContext& context, const ToothClusterBody& cluster,
+                                                 double penWidth) {
+    const auto& tip = cluster.turns.front();
+    const auto towardEntry = cluster.advancePrevious ? &SearchContext::next : &SearchContext::prev;
+    const auto lowerTowardEntry = cluster.advancePrevious ? &SearchContext::prev : &SearchContext::next;
+    auto foot = context.timeSorted.find(tip);
+    if (foot == context.timeSorted.end()) return {};
+    // Follow only the flank of the first tooth. A normal landing farther
+    // along the incoming connector or on the next tooth is unsuitable.
+    for (size_t i = 0; i < context.timeSorted.size(); ++i) {
+        const auto next = (context.*towardEntry)(foot);
+        if (next->point.y() <= foot->point.y()) break;
+        foot = next;
+    }
+    const double count = baseContourCurves(context.transformedPath).size();
+    const auto alongFlank = [&](double t) {
+        const double distance = cluster.advancePrevious ? tip.time - t : t - tip.time;
+        return distance < 0 ? distance + count : distance;
+    };
+    const double flank = alongFlank(foot->time);
+    std::optional<Stretching> best;
+    double nearest = meanToothPitch(cluster);
+    for (auto lower = context.timeSorted.begin(); lower != context.timeSorted.end(); ++lower) {
+        const double distance = QLineF(tip.point, lower->point).length();
+        if (distance >= nearest || lower->point.y() <= tip.point.y() ||
+            lower->point.y() >= context.prev(lower)->point.y() ||
+            lower->point.y() >= context.next(lower)->point.y() ||
+            (context.*lowerTowardEntry)(lower)->point.x() <= lower->point.x()) continue;
+        Stretching cut{};
+        if (!contourNormalCut(context, *lower, cluster.advancePrevious, false, cut, true) ||
+            cut.bottomBaseLine.pathIndex != 0 || cut.referenceWidth > 2 * penWidth ||
+            alongFlank(cut.bottomBaseLine.time) > flank) continue;
+        std::swap(cut.topBaseLine, cut.bottomBaseLine);
+        best = cut;
+        nearest = distance;
+    }
+    return best;
+}
+
 static std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
-                                                        const Stretching& current) {
+                                                        const Stretching& current, double penWidth) {
     const auto& tip = cluster.turns.front();
     // Compare all opposing bends. An extrema flag can mark a farther bend
     // on the preceding letter even when a smooth bend faces this tooth.
     auto junction = seenEntryCornerPair(context, tip, !cluster.advancePrevious, meanToothPitch(cluster), true);
+    if (!junction) junction = seenEntryNormal(context, cluster, penWidth);
     if (!junction) return {};
     orientSection(context, *junction, tip.time, true);
     const auto side = getJoinTime(*junction, context.orientation);
@@ -308,8 +350,8 @@ static std::optional<Stretching> clusterExitAtHollow(SearchContext& context, con
     const double reach = cutSettings.value("maxExitBendDistance").toDouble(2) * meanToothPitch(cluster);
     const double maxWidth = 2 * std::max(penWidth, toothCutLine(receiving).length());
     Stretching cut{};
-    if (!seenExitBendCut(context, tip, cluster.advancePrevious, reach, cut) ||
-        cut.topBaseLine.pathIndex != 0 || cut.referenceWidth > maxWidth ||
+    if (!seenExitBendCut(context, tip, cluster.advancePrevious, reach, cut, 0, maxWidth) ||
+        cut.topBaseLine.pathIndex != 0 ||
         !keepsClusterAtExit(cluster, cut, context.orientation) || !cutPrecedes(cut, receiving, context.orientation))
         return {};
 
@@ -318,12 +360,16 @@ static std::optional<Stretching> clusterExitAtHollow(SearchContext& context, con
     const auto hollow = context.timeSorted.find(cut.bottomBaseLine);
     if (hollow == context.timeSorted.end()) return {};
     const auto towardTooth = cluster.advancePrevious ? &SearchContext::prev : &SearchContext::next;
-    const auto bulge = (context.*towardTooth)(hollow);
-    const auto beforeBulge = (context.*towardTooth)(bulge);
     const double stroke = std::max(penWidth, cut.referenceWidth);
-    if (bulge->point.y() <= beforeBulge->point.y() || bulge->point.x() <= hollow->point.x() ||
-        std::abs(bulge->point.x() - tip.point.x()) > stroke ||
-        QLineF(bulge->point, hollow->point).length() > 2 * stroke) return {};
+    auto bulge = hollow;
+    for (size_t step = 0; step < context.timeSorted.size(); ++step) {
+        const auto next = (context.*towardTooth)(bulge);
+        if (next->point.y() < bulge->point.y()) break;
+        if (QLineF(next->point, hollow->point).length() > 2 * stroke) return {};
+        bulge = next;
+    }
+    if (bulge == hollow || bulge->point.x() <= hollow->point.x() ||
+        std::abs(bulge->point.x() - tip.point.x()) > stroke) return {};
 
     if (QLineF(cut.topBaseLine.point, current.topBaseLine.point).length() < 1e-4 &&
         QLineF(cut.bottomBaseLine.point, current.bottomBaseLine.point).length() < 1e-4) return current;
@@ -437,7 +483,7 @@ ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body,
         ToothClusterFit fit{};
         if (!proposeBoundaries) return fit;
         if (attachment.sameContour && attachment.entry && cutSettings.value("entryAtJunction").toBool())
-            fit.entry = clusterEntryAtJunction(context, *accepted, *attachment.entry);
+            fit.entry = clusterEntryAtJunction(context, *accepted, *attachment.entry, penWidth);
         if (!attachment.exit) return fit;
         const auto hollow = attachment.canFitHollow && cutSettings.value("exitAtHollow").toBool()
             ? clusterExitAtHollow(context, *accepted, *attachment.exit, *attachment.receiving,

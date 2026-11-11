@@ -298,20 +298,23 @@ static void checkSeenEntryAndExit(const QJsonObject& config) {
     }
 }
 
-static void checkFoldedAndSharedSeenEntries(const QJsonObject& config) {
+static void checkSeenJunctionEntries(const QJsonObject& config) {
     struct Example {
         int page, line, word, subword, join;
         double upper, lower;
         bool shared;
     };
-    const std::array<Example, 3> examples{{
+    const std::array<Example, 6> examples{{
+        {147, 10, 9, 2, 0, 2.847, 26, true},
         {230, 2, 1, 1, 0, 5, 27, false},
         {356, 13, 4, 2, 1, 7.65867, 33, true},
-        {478, 2, 2, 2, 0, 5, 33, true}
+        {444, 10, 3, 1, 1, 7, 39, false},
+        {478, 2, 2, 2, 0, 5, 33, true},
+        {526, 14, 12, 2, 0, 7, 43, false}
     }};
     for (const auto& e : examples) {
         QFile file(QString("pages/page%1.dat").arg(e.page));
-        check(file.open(QIODevice::ReadOnly), "Missing folded or shared sheen fixture");
+        check(file.open(QIODevice::ReadOnly), "Missing seen junction fixture");
         PageAnalysisResult page;
         QDataStream stream(&file);
         stream >> page.page;
@@ -327,9 +330,10 @@ static void checkFoldedAndSharedSeenEntries(const QJsonObject& config) {
         const auto join = std::next(sub.joins.begin(), e.join);
         const auto cut = e.shared ? QLineF(join->topBaseLine.point, join->bottomBaseLine.point)
                                   : sub.kashidaCuts[e.join].second;
-        check(QLineF(cut.p1(), pointAt(e.upper)).length() < 1e-4 &&
+        const double upperTolerance = e.page == 147 ? .005 : 1e-4;
+        check(QLineF(cut.p1(), pointAt(e.upper)).length() < upperTolerance &&
               QLineF(cut.p2(), pointAt(e.lower)).length() < 1e-4,
-              "The entry must use the first tooth's upper shoulder and opposing bend");
+              "The entry must reach the first tooth from its opposing bend");
         checkPartition(shape.path, sub);
     }
 }
@@ -340,9 +344,10 @@ static void checkClusterAttachments(const QJsonObject& config) {
         std::array<double, 3> tips;
         bool connector;
     };
-    const std::array<Example, 7> examples{{
+    const std::array<Example, 8> examples{{
         {3, 5, 8, 2, 2, {31.6225, 35.6388, 38.5079}, true},
         {39, 1, 5, 3, 0, {21.5734, 26.6657, 30.7143}, true},
+        {104, 6, 4, 1, 2, {6.42374, 11.7121, 17.6433}, true},
         {115, 4, 4, 2, 3, {14.5569, 19.6289, 23.6858}, true},
         {238, 7, 10, 1, 1, {6.4307, 10.7275, 13.6555}, false},
         {244, 11, 9, 1, 1, {4.55777, 8.50743, 12.4836}, true},
@@ -387,6 +392,11 @@ static void checkClusterAttachments(const QJsonObject& config) {
             const auto hollow = curves[e.page == 39 ? 18 : 17].pt1() + shape.pos;
             check(QLineF(sending.p2(), hollow).length() < .005 && sending.center().x() - receiving.center().x() > 5,
                   "An initial seen must leave the connector at its third tooth's inward turn");
+        } else if (e.page == 104) {
+            const auto& [sending, receiving] = sub.kashidaCuts[e.seen];
+            check(sending.length() < 1.5 && QLineF(sending.p2(), curves[29].pt1() + shape.pos).length() < 1e-5 &&
+                  QLineF(receiving.p2(), curves[28].pt1() + shape.pos).length() < 1e-5,
+                  "The sheen exit must cross the stroke at its lower hollow and preserve the reh entry");
         } else if (e.page == 115) {
             const auto& [sending, receiving] = sub.kashidaCuts[e.seen];
             check(sending.center().x() - receiving.center().x() > .7,
@@ -415,6 +425,9 @@ static void checkClusterAttachments(const QJsonObject& config) {
     check(sub.letterDiagnostics.at(2).toObject().value("template") == "seen-lifted-exit-medi" &&
           sub.letterDiagnostics.at(3).toObject().value("boundaryKind") == "separate-contours" &&
           coversOriginalInk(word, sub), "The pen lift must retain the two independently matched contours");
+    const auto& receiving = *std::next(sub.joins.begin());
+    check(std::abs(receiving.topLeft.time - 2) < 1e-6 && std::abs(receiving.bottomLeft.time - 23) < 1e-6,
+          "The pen-lift seen must enter at its own junction on the first contour");
 }
 
 int main(int argc, char** argv) {
@@ -426,7 +439,7 @@ int main(int argc, char** argv) {
     checkClusterAttachments(config);
     checkSeenTailOwnership(config);
     checkSeenEntryAndExit(config);
-    checkFoldedAndSharedSeenEntries(config);
+    checkSeenJunctionEntries(config);
     {
         QFile file("pages/page230.dat");
         check(file.open(QIODevice::ReadOnly), "Missing upright beh and wide sheen fixture");

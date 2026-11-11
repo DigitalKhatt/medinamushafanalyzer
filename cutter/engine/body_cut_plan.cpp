@@ -185,6 +185,24 @@ static bool leavesConnectorRoom(const Stretching& sending, const Stretching& rec
     return gap(receiving.topBaseLine) > minimum && gap(receiving.bottomBaseLine) > minimum;
 }
 
+static bool leavesEntryClearance(const Stretching& sending, const Stretching& receiving,
+                                 Orientation orientation, double minimumGap) {
+    if (!cutPrecedes(sending, receiving, orientation)) return false;
+    const QLineF start(sending.topBaseLine.point, sending.bottomBaseLine.point);
+    const QLineF end(receiving.topBaseLine.point, receiving.bottomBaseLine.point);
+    if (start.isNull() || end.isNull() || start.intersects(end, nullptr) == QLineF::BoundedIntersection)
+        return false;
+    // The sending cap can run along a sloping stroke. Measure the gap between
+    // the finite cuts so the direction of that cap cannot hide a valid join.
+    const auto distance = [](const QPointF& point, const QLineF& line) {
+        const auto axis = line.p2() - line.p1();
+        const double position = QPointF::dotProduct(point - line.p1(), axis) / QPointF::dotProduct(axis, axis);
+        return QLineF(point, line.pointAt(std::clamp(position, 0., 1.))).length();
+    };
+    return std::min({distance(start.p1(), end), distance(start.p2(), end),
+                     distance(end.p1(), start), distance(end.p2(), start)}) > minimumGap;
+}
+
 static bool preserveUnchangedOutline(const QPainterPath& original, QPainterPath& rebuilt) {
     // Projecting an unchanged cap back onto the source can round its curve
     // time. Keep the original outline when its Bézier data agrees to within
@@ -272,7 +290,7 @@ static std::optional<WordResultInfo::SubWordInfo> recutClusterJoin(
 }
 
 bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& sub,
-                                 const QJsonObject& config) {
+                                 const QJsonObject& config, bool penLiftAtEnd) {
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (letters.size() < 2) return true;
     const auto& program = bodyCutProgram(config);
@@ -342,6 +360,7 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
             } else if (hasOutline) {
                 ToothClusterAttachment attachment;
                 const bool terminal = slot + 1 == letters.size();
+                const bool hasBowl = terminal && !penLiftAtEnd;
                 const double minConnectorWidths = slot == 0 ? form->cuts.value("minConnectorWidths").toDouble() : 0;
                 if (alignedJoins) {
                     if (slot > 0) attachment.entry = actualCap(slot - 1, true);
@@ -364,17 +383,24 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                 }
                 attachment.requiresFold = !form->sharedFoldWithFinal.isEmpty();
                 const auto canFitHollow = [&](const ToothClusterAttachment& geometry) {
-                    return geometry.sameContour && geometry.exit && geometry.receiving &&
-                        diagnostic.value("cutPolicy") != "tooth-exit-walk" &&
-                        (!geometry.separateConnector || leavesConnectorRoom(*geometry.exit, *geometry.receiving, sharedTolerance));
+                    if (!geometry.sameContour || !geometry.exit || !geometry.receiving ||
+                        diagnostic.value("cutPolicy") == "tooth-exit-walk") return false;
+                    if (!geometry.separateConnector ||
+                        leavesConnectorRoom(*geometry.exit, *geometry.receiving, sharedTolerance)) return true;
+                    // A diagonal through the connector can be both too wide
+                    // and too close to the receiving cut. Test the true hollow.
+                    const auto width = [](const Stretching& cut) {
+                        return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point).length();
+                    };
+                    return width(*geometry.exit) > 2 * std::max(penWidth, width(*geometry.receiving));
                 };
                 attachment.canFitHollow = canFitHollow(attachment);
-                const auto fit = fitToothCluster(source, form->body, form->cuts, mask, terminal, penWidth, attachment, true);
+                const auto fit = fitToothCluster(source, form->body, form->cuts, mask, hasBowl, penWidth, attachment, true);
                 error = fit.error;
                 const auto accept = [&](WordResultInfo::SubWordInfo trial, ToothClusterAttachment revised,
                                         const Stretching& boundary, const QString& name, const QString& trace) {
                     if (!fitToothCluster(source, form->body, form->cuts, inPage(trial.baseGlyphs[slot].path),
-                                         terminal, penWidth, revised, false).error.isEmpty()) return false;
+                                         hasBowl, penWidth, revised, false).error.isEmpty()) return false;
                     InspectFormScope inspection(id);
                     inspectCandidate(name, boundary);
                     trial.templateTrace.append(id + " · " + trace);
@@ -418,7 +444,7 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                     if (!option.atHollow && attachment.canFitHollow &&
                         form->cuts.value("cluster").toObject().value("exitAtHollow").toBool()) {
                         const auto refined = fitToothCluster(source, form->body, form->cuts, inPage(sub.baseGlyphs[slot].path),
-                                                             terminal, penWidth, attachment, true);
+                                                             hasBowl, penWidth, attachment, true);
                         for (const auto& exit : refined.exits)
                             if (exit.atHollow && recutExit(exit)) break;
                     }
@@ -433,7 +459,7 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                     // On a shared join the previous body may gain the stroke
                     // up to this junction, but must not lose its own landmarks.
                     const bool fits = sending && (connector
-                        ? leavesConnectorRoom(*sending, boundary, sharedTolerance)
+                        ? leavesEntryClearance(*sending, boundary, source.orientation, sharedTolerance)
                         : cutPrecedes(*sending, boundary, source.orientation));
                     if (fits) {
                         auto revised = attachment;

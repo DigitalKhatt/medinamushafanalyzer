@@ -501,7 +501,8 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
     contact.setWidth(2 * settings.value("maxGap").toDouble(.8));
     if (!contact.createStroke(world(pieces[0].ink)).intersects(world(pieces[1].ink)))
         return false;
-    auto fit = [&](const Component& component, const QString& text, const QJsonObject& forms) {
+    auto fit = [&](const Component& component, const QString& text, const QJsonObject& forms,
+                   bool penLiftAtEnd = false) {
         PageAnalysisResult analysis;
         analysis.page.lines.resize(1);
         analysis.page.lines.front().words.resize(1);
@@ -513,6 +514,10 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
         local.paths = {0};
         local.text = text;
         analysis.segmentSubword(-2, 0, 0, 0, nullptr, true, &forms);
+        if (penLiftAtEnd && local.correct) {
+            auto refined = local;
+            if (verifyBodyLandmarkOwnership(localWord, refined, forms, true)) local = std::move(refined);
+        }
         return std::move(local);
     };
     std::optional<WordResultInfo::SubWordInfo> accepted;
@@ -539,7 +544,7 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
             }
             prefixForms.insert("final", finals);
         }
-        auto prefix = fit(pieces[0], letters.left(prefixSize), prefixForms);
+        auto prefix = fit(pieces[0], letters.left(prefixSize), prefixForms, separate);
         auto suffix = fit(pieces[1], letters.mid(slot), config);
         if (!suffix.correct ||
             prefix.baseGlyphs.size() != size_t(prefixSize) || suffix.baseGlyphs.size() != size_t(letters.size() - slot) ||
