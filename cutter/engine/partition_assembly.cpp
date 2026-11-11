@@ -4,18 +4,18 @@ using namespace MedinaCutter;
 
 namespace MedinaCutter {
 
-std::optional<bool> segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordInfo& sub,
-                                             const QJsonObject& config) {
+LigatureMatch segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordInfo& sub,
+                                      const QJsonObject& config) {
     const auto rules = config.value("ligatures").toArray();
-    if (rules.isEmpty() || sub.text.contains(QChar(0x0640))) return {};
+    if (rules.isEmpty() || sub.text.contains(QChar(0x0640))) return LigatureMatch::NotApplicable;
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
-    if (letters.size() != 2) return {};
+    if (letters.size() != 2) return LigatureMatch::NotApplicable;
     const auto selected = std::find_if(rules.begin(), rules.end(), [&](const auto& value) {
         const auto selectors = value.toObject().value("letters").toArray();
         return selectors.size() == 2 && selectors.at(0).toString().contains(letters.front()) &&
                selectors.at(1).toString().contains(letters.back());
     });
-    if (selected == rules.end()) return {};
+    if (selected == rules.end()) return LigatureMatch::NotApplicable;
 
     const auto rule = selected->toObject();
     const auto id = rule.value("id").toString();
@@ -23,34 +23,40 @@ std::optional<bool> segmentDeclaredLigature(const Word& word, WordResultInfo::Su
     const auto final = bodyConstraintForm(config, ligatureForm(config, rule.value("final").toObject()));
     const auto initialId = initial.value("id").toString();
     const auto finalId = final.value("id").toString();
-    sub.baseGlyphs.clear();
-    sub.kashidaPaths.clear();
-    sub.kashidaCuts.clear();
-    sub.joins.clear();
-    sub.extrema.clear();
-    sub.templateTrace.clear();
-    sub.matchedTemplates.clear();
+    auto trial = sub;
+    const auto clearCuts = [&] {
+        trial.baseGlyphs.clear();
+        trial.kashidaPaths.clear();
+        trial.kashidaCuts.clear();
+        trial.joins.clear();
+    };
+    clearCuts();
+    trial.extrema.clear();
+    trial.templateTrace.clear();
+    trial.matchedTemplates.clear();
     const auto slot = [&](int index, const QString& form, bool matched) {
         return QJsonObject{{"letterIndex", index + 1}, {"character", letters.mid(index, 1)},
             {"position", index == 0 ? "initial" : "final"}, {"status", matched ? "matched" : "no-match"},
             {"template", matched ? form : QString{}}, {"candidates", QJsonArray{form}}};
     };
-    sub.letterDiagnostics = {slot(0, initialId, false), slot(1, finalId, false)};
-    sub.correct = false;
+    trial.letterDiagnostics = {slot(0, initialId, false), slot(1, finalId, false)};
+    trial.correct = false;
     const auto fail = [&](const QString& reason) {
-        sub.templateTrace.append(id + " · " + reason);
-        return false;
+        clearCuts();
+        trial.templateTrace.append(id + " · " + reason);
+        sub = std::move(trial);
+        return LigatureMatch::Failed;
     };
     if (sub.paths.empty() || sub.paths.front() < 0 || sub.paths.front() >= int(word.paths.size()))
         return fail("no source outline");
     const auto shape = word.bodyShape(sub);
     OutlineSearchCache cache;
     SearchContext context{.transformedPath = shape.transform.map(shape.path).translated(shape.pos),
-                          .subword = sub, .baseText = letters, .outlineCache = &cache};
+                          .subword = trial, .baseText = letters, .outlineCache = &cache};
     context.transformedPath.setFillRule(Qt::WindingFill);
     context.bbox = context.transformedPath.boundingRect();
     if (!preparePassOutline(context, cache)) return fail("no contour landmarks");
-    sub.basePathOrientation = context.orientation;
+    trial.basePathOrientation = context.orientation;
     context.nextIter = std::next(context.xSorted.begin());
 
     // The receiving body supplies the one seam. The initial form must retain
@@ -75,6 +81,17 @@ std::optional<bool> segmentDeclaredLigature(const Word& word, WordResultInfo::Su
             return fail(initialId + " · body not recognized");
         if (cutPrecedes(seam, context.res, context.orientation))
             return fail(initialId + " · shared cut precedes the initial body's exit");
+        if (rule.contains("minConnectorWidths")) {
+            const auto& exit = context.res;
+            if (!cutPrecedes(exit, seam, context.orientation) || !matchesBoundaryBody(context, initial, exit, true))
+                return fail(initialId + " · initial exit does not fit before the shared cut");
+            const auto midpointX = [](const Stretching& cut) {
+                return (cut.topBaseLine.point.x() + cut.bottomBaseLine.point.x()) / 2;
+            };
+            const double minSpan = rule.value("minConnectorWidths").toDouble() * config.value("strokeWidth").toDouble(1);
+            if (midpointX(exit) - midpointX(seam) >= minSpan)
+                return LigatureMatch::SeparateConnector;
+        }
     }
     if (!matchesBoundaryBody(context, initial, seam, true))
         return fail(initialId + " · shared cut loses body features");
@@ -83,7 +100,6 @@ std::optional<bool> segmentDeclaredLigature(const Word& word, WordResultInfo::Su
     seam.fixedLeftBoundary = false;
     seam.length = 0;
     seam.kashidaOverrides.insert("enabled", false);
-    auto trial = sub;
     trial.joins.insert(seam);
     if (!assembleBodyPartition(word, trial, config) || trial.baseGlyphs.size() != 2 ||
         std::any_of(trial.baseGlyphs.begin(), trial.baseGlyphs.end(), [](const auto& glyph) { return glyph.path.isEmpty(); }) ||
@@ -98,7 +114,7 @@ std::optional<bool> segmentDeclaredLigature(const Word& word, WordResultInfo::Su
     sub.letterDiagnostics = {slot(0, initialId, true), slot(1, finalId, true)};
     sub.templateTrace.append(id + " · " + initialId + " + " + finalId + " · shared cut");
     sub.correct = true;
-    return true;
+    return LigatureMatch::SharedCut;
 }
 
 bool connectorContainsLeadingStroke(const QVector<PathExtrema>& extrema,

@@ -88,5 +88,30 @@ int main(int argc, char** argv) {
         }
     }
 
-    qInfo("Feh and yeh passed: contextual priority, one shared cut, and counter ownership.");
+    {
+        PageAnalysisResult analysis;
+        loadWord(analysis, 397, 3, 6, font);
+        const auto& word = analysis.page.lines[2].words[5];
+        const auto& sub = word.wordResultInfo.subWords[0];
+        check(analysis.segmentSubword(396, 2, 5, 0, &font, true, &config) &&
+              sub.joins.size() == 1 && sub.baseGlyphs.size() == 2 &&
+              sub.kashidaPaths.size() == 1 && sub.kashidaPaths.front().isEmpty() &&
+              coversOriginalInk(word, sub), "The senna arm and yeh must share one cut");
+        const auto& cut = *sub.joins.begin();
+        check(std::abs(cut.topBaseLine.time - 7.333333333) < .005 &&
+              std::abs(cut.bottomBaseLine.time - 19) < 1e-6,
+              "Page 397 must keep the senna arm up to the approved yeh fold");
+    }
+    {
+        PageAnalysisResult analysis;
+        loadWord(analysis, 403, 5, 7, font);
+        const auto& word = analysis.page.lines[4].words[6];
+        const auto& sub = word.wordResultInfo.subWords[1];
+        check(analysis.segmentSubword(402, 4, 6, 1, &font, true, &config) &&
+              sub.baseGlyphs.size() == 2 && sub.kashidaPaths.size() == 1 &&
+              !sub.kashidaPaths.front().isEmpty() && coversOriginalInk(word, sub),
+              "The stretched senna–yeh join must retain its separate connector");
+    }
+
+    qInfo("Yeh ligatures passed: contextual priority, shared cuts, counter ownership and a stretched connector.");
 }

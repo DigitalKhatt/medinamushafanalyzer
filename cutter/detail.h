@@ -1239,8 +1239,9 @@ const LamBodyRecognition* recognizedLamBody(const SubwordBodyRecognition& recogn
 SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
         const WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 
-std::optional<bool> segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordInfo& sub,
-                                             const QJsonObject& config);
+enum class LigatureMatch { NotApplicable, SharedCut, SeparateConnector, Failed };
+LigatureMatch segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordInfo& sub,
+                                      const QJsonObject& config);
 QJsonObject ligatureForm(const QJsonObject& config, const QJsonObject& selection);
 
 // Phase 2: assemble the declared lām candidates alongside the other letters.

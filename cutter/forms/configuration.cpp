@@ -2027,6 +2027,10 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
         const auto letters = rule.value("letters").toArray();
         if (letters.size() != 2 || letters.at(0).toString().isEmpty() || letters.at(1).toString().isEmpty())
             return id + ": letters must select both bases in the ligature";
+        const auto connector = rule.value("minConnectorWidths");
+        if (!connector.isUndefined() &&
+            (!connector.isDouble() || !std::isfinite(connector.toDouble()) || connector.toDouble() <= 0))
+            return id + ": minConnectorWidths must be positive";
         for (const auto& [position, index] : {std::pair{"initial", 0}, std::pair{"final", 1}}) {
             const auto selection = rule.value(position).toObject();
             const auto name = selection.value("template").toString();
@@ -2048,6 +2052,9 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             if (body.contains("shape") || body.contains("inherit") || cuts.contains("inherit"))
                 return id + ": a ligature override cannot change the template's shape or parent";
             const auto form = ligatureForm(config, selection);
+            if (index == 0 && !connector.isUndefined() &&
+                form.value("body").toObject().value("shape") == "suspended-loop")
+                return id + ": minConnectorWidths requires an initial exit cut";
             problem = validateSharedShape(form, position);
             if (!problem.isEmpty()) return id + ": " + problem;
         }

@@ -54,6 +54,34 @@
           }
         }
       }
+    },
+    {
+      "id": "senna-yeh-ligature",
+      "letters": ["بتثنيئى", "يىئ"],
+      "minConnectorWidths": 3,
+      "initial": {
+        "template": "beh-hook-init",
+        "body": {
+          "features": {
+            "maxWidthToHeight": 0.7
+          }
+        }
+      },
+      "final": {
+        "template": "yeh-first-turn-fina",
+        "body": {
+          "return": {
+            "minFoldRun": 0.35,
+            "minReturn": 0.25,
+            "maxShoulderDistance": 3
+          }
+        },
+        "cuts": {
+          "return": {
+            "maxChord": 4
+          }
+        }
+      }
     }
   ],
   "initial": [

@@ -65,6 +65,10 @@ Each entry selects the letters and names the initial and final templates.
 Optional `body` and `cuts` settings apply only in that ligature. The final
 template supplies the shared cut, and both bodies must pass ownership checks.
 If the first eligible entry fails, the subword stays unresolved.
+With `minConnectorWidths`, the cutter measures the horizontal distance
+from the recognized initial exit to the final entry in global stroke widths.
+At or above that minimum, the ordinary cutter places the separate connector
+and keeps it through final assembly.
 
 A medial form can declare `terminalArmRecovery` with a final `prefixForm`
 for its own letters and an `attached` or `detached` mode. Each mode names a
