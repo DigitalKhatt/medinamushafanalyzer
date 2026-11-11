@@ -543,6 +543,9 @@ bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
                         double angle, double stroke, Stretching& cut,
                         const PathExtrema* crest = nullptr, int traversal = 0, bool oppositeFlank = false);
 
+std::optional<Stretching> strokeFlankTurn(const SearchContext& context, const PathExtrema& start,
+        double stroke, int horizontal, bool descending, double angle, double minTravel);
+
 // Locate the shaft and its lower turns before choosing the exit normal.
 struct UprightStemBody {
     PathExtrema tip;
@@ -683,6 +686,29 @@ struct ToothClusterBody {
 
 std::vector<ToothClusterBody> recognizeToothClusters(const InkOutline &outline, const QJsonObject &form);
 
+struct ToothClusterAttachment {
+    std::optional<Stretching> entry, exit, receiving;
+    std::optional<Stretching> followingFold;
+    bool sameContour = false;
+    bool separateConnector = false;
+    bool requiresFold = false;
+    bool canFitHollow = false;
+};
+
+struct ToothClusterExit {
+    Stretching cut;
+    bool atHollow = false;
+};
+
+struct ToothClusterFit {
+    QString error;
+    std::vector<ToothClusterExit> exits;
+};
+
+ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body, const QJsonObject& cuts,
+                               const QPainterPath& mask, bool terminal, double penWidth,
+                               const ToothClusterAttachment& attachment, bool proposeExit);
+
 bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody> &bodies,
                              const QJsonObject &form, double minX, double maxX, Stretching *right, Stretching *left,
                              const Stretching *finalFold = nullptr, std::array<PathExtrema, 3> *matchedTips = nullptr,
@@ -738,6 +764,9 @@ struct CounterHole {
 };
 
 std::vector<CounterHole> recognizeCounterHoles(const InkOutline &outline);
+
+std::vector<Stretching> counterRimEntryCuts(SearchContext &context, const QRectF &counter,
+                                           const Stretching &entry);
 
 bool cutFinalCounterBody(SearchContext &context, const QRectF &counter, const CounterCornerEvidence &entry,
                                 const QJsonObject &bounds);
@@ -808,6 +837,20 @@ struct LoopEntryRoute {
     std::optional<SavedContourRoute> route;
 };
 
+// These corners belong to the lower counter of the same stacked pair,
+// independently of the neighboring bodies and cuts.
+struct CounterFoot {
+    PathExtrema anchor;
+    QPointF tangent;
+    double distance;
+    bool hasFoot;
+};
+
+struct StackedCounterPair {
+    QRectF upper, lower;
+    std::vector<CounterFoot> right, left;
+};
+
 struct LoopBodyEvidence {
     CounterHole anchor;
     QRectF hole;
@@ -817,6 +860,7 @@ struct LoopBodyEvidence {
     std::optional<CounterCornerEvidence> lowerEntry;
     std::vector<LoopEntryRoute> entryRoutes;
     std::shared_ptr<const LoopTeeth> teeth;
+    std::optional<StackedCounterPair> stackedFeet;
 };
 
 std::vector<LoopBodyEvidence> recognizeLoopBodies(const InkOutline &outline, const QJsonObject &body);
@@ -968,22 +1012,6 @@ struct ToothCandidateMemo {
 
 std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJsonObject& form);
 
-// The stacked counters identify the medial heh itself. Locate the inward
-// corners beside the lower counter, then keep each corner fixed while
-// projecting across the joining stroke. All measurements belong to this
-// pair of counters, independently of the neighboring letters and cuts.
-struct CounterFoot {
-    PathExtrema anchor;
-    QPointF tangent;
-    double distance;
-    bool hasFoot;
-};
-
-struct StackedCounterPair {
-    QRectF upper, lower;
-    std::vector<CounterFoot> right, left;
-};
-
 std::vector<StackedCounterPair> recognizeStackedPairs(const InkOutline &outline, const QJsonObject &settings);
 
 std::vector<std::pair<Stretching, Stretching>>
@@ -1022,7 +1050,7 @@ std::vector<std::pair<Stretching, Stretching>>
 cutCrestedLoops(SearchContext &context, const std::vector<CrestedLoopBody> &bodies, const QJsonObject &policy);
 
 std::optional<PathExtrema> contourFlank(SearchContext& context, timesortedtype::iterator anchor,
-                                               bool previous, const QJsonObject& bounds);
+                                               bool previous, const QJsonObject& bounds, double stepTolerance = 0);
 
 // Reusable paired contour routes, anchored on a feature of the body itself.
 struct PairedRouteBody {
@@ -1169,17 +1197,29 @@ struct DeclaredBodyForm {
     QJsonObject body, cuts;
     QByteArray key;
     QString nextLetters;
+    QString sharedFoldWithFinal;
 };
 
 struct BodyCutProgram {
     QMap<QString, DeclaredBodyForm> forms;
     QMap<QString, DeclaredBodyForm> recoveryBodies;
     std::array<QHash<QChar, QVector<QString>>, 3> formsByPosition;
+    QString toothClusterLetters;
 };
 
 inline bool hasFollowingLetter(QStringView letters, int slot, QStringView allowed, bool mustBeFinal = false) {
     const int next = slot + 1;
     return next < letters.size() && (!mustBeFinal || next + 1 == letters.size()) && allowed.contains(letters[next]);
+}
+
+inline bool hasTatweelBeforeFinal(QStringView text) {
+    bool pastFinal = false;
+    for (auto it = text.rbegin(); it != text.rend(); ++it) {
+        if (it->isMark()) continue;
+        if (pastFinal) return *it == QChar(0x0640);
+        if (*it != QChar(0x0640)) pastFinal = true;
+    }
+    return false;
 }
 
 const BodyCutProgram& bodyCutProgram(const QJsonObject& config);
@@ -1216,6 +1256,9 @@ struct SubwordCutPlan {
 };
 
 SubwordCutPlan makeSubwordCutPlan(WordResultInfo::SubWordInfo proposals, const QJsonObject& config);
+
+bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& sub,
+                                 const QJsonObject& config);
 
 std::optional<ReturnSeamBody> recognizeRisingReturn(const InkOutline &outline, const QJsonObject &spec);
 

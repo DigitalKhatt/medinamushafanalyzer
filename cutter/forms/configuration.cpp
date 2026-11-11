@@ -58,6 +58,9 @@ QString invalidWalkSettings(const QJsonObject& route, const QString& location) {
     if (route.contains("trimExitToNormal") && (!route.value("trimExitToNormal").isBool() ||
         route.value("bottomProbe") != "down"))
         return location + ": trimExitToNormal requires a down probe and a boolean value";
+    if (const auto ratio = route.value("maxChordToRun"); !ratio.isUndefined() &&
+        (!ratio.isDouble() || !std::isfinite(ratio.toDouble()) || ratio.toDouble() <= 0))
+        return location + ": maxChordToRun must be a positive ratio";
     if (route.contains("penWidth")) {
         const auto width = route.value("penWidth");
         const auto probe = route.value("bottomProbe").toString();
@@ -139,6 +142,20 @@ QString invalidWalkSettings(const QJsonObject& route, const QString& location) {
                         return location + ": contour landmark features must be supported boolean flags";
             }
         }
+    }
+    return {};
+}
+
+static QString invalidTurnBoundaries(const QJsonValue& value, const QString& id, const QString& phase) {
+    if (value.isUndefined()) return {};
+    const auto turns = value.toObject();
+    if (turns.isEmpty()) return id + ": turnBoundaries needs a boundary and a turn policy";
+    for (auto it = turns.begin(); it != turns.end(); ++it) {
+        const bool entry = it.key() == "right";
+        if ((entry ? phase == "initial" : it.key() != "left" || phase == "final") ||
+            (it.value() != "trim" && (!entry ||
+                (it.value() != "descender" && it.value() != "stem" && it.value() != "stem-foot"))))
+            return id + ": invalid contour turn policy for this boundary";
     }
     return {};
 }
@@ -487,6 +504,12 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     const auto schema = sharedShapeSchemas().value(shape);
     const auto &section = schema.section;
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
+    if (cuts.contains("preserveEntryRim")) {
+        if (phase == "initial" || !QStringList{"counter-neck", "counter-outline", "counter-loop"}.contains(shape) ||
+            !cuts.value("preserveEntryRim").isBool())
+            return id + ": preserveEntryRim requires an incoming counter boundary and a boolean";
+        cutKeys << "preserveEntryRim";
+    }
     if (shape == "contour-route") {
         if (phase == "initial" && cuts.contains("minConnectorWidths")) {
             const auto length = cuts.value("minConnectorWidths");
@@ -556,6 +579,7 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     for (auto it = body.begin(); it != body.end(); ++it)
         if (!bodyKeys.contains(it.key()))
             return id + ": unknown body setting " + it.key();
+    cutKeys << "turnBoundaries";
     for (auto it = cuts.begin(); it != cuts.end(); ++it)
         if (!cutKeys.contains(it.key()))
             return id + ": unknown cut-policy setting " + it.key();
@@ -586,7 +610,7 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     const QStringList projectionKeys{
         "normalNeck", "normalValley", "normalCut", "trimExitToNormal", "offset", "baselineOffset", "sideOffset", "entryBelowCounter",
         "required",   "strokeOffsetX", "bottomProbe",      "oppositeCorner", "normalOffset", "normalOffsetTolerance",
-        "penWidth",   "strokeSource",  "walkNormalOffset", "anchorSide",     "visibleFrom",  "maxProjectionInset"};
+        "penWidth",   "strokeSource",  "walkNormalOffset", "anchorSide",     "visibleFrom",  "maxProjectionInset", "maxChordToRun"};
     const auto checkBody = [&](auto &&self, const QJsonObject &value, bool anchor = false) -> bool {
         for (auto it = value.begin(); it != value.end(); ++it) {
             if (projectionKeys.contains(it.key()) && !(anchor && it.key() == "offset"))
@@ -617,12 +641,14 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         ((shape == "crested-loop" || shape == "open-head") && phase != "medial") ||
         ((shape == "bowl-turn" || shape == "bowl-neck") && phase != "final"))
         return id + ": shape does not support this letter position";
-    if (shape == "stacked-counters") {
-        const auto pair = cuts.value("pair").toObject();
+    if (shape == "stacked-counters" || shape == "counter-loop") {
+        const auto pair = cuts.value(shape == "stacked-counters" ? "pair" : "loop").toObject();
         const auto ratio = pair.value("maxExitWidthRatio");
+        const bool supported = shape == "stacked-counters" ? pair.value("normalCut").toBool() :
+            body.value("loop").toObject().value("counterPair") == "vertical";
         if (!ratio.isUndefined() && (!ratio.isDouble() || !std::isfinite(ratio.toDouble()) ||
-                                    ratio.toDouble() <= 0 || !pair.value("normalCut").toBool()))
-            return id + ": maxExitWidthRatio needs a positive ratio and a normal cut";
+                                    ratio.toDouble() <= 0 || !supported))
+            return id + ": maxExitWidthRatio requires stacked counters and a positive ratio";
     }
     if (shape == "contour-route") {
         const auto route = body.value("route").toObject(), policy = cuts.value("route").toObject();
@@ -812,9 +838,11 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
                 return id + ": unknown tooth-cluster body setting " + it.key();
         for (auto it = policy.begin(); it != policy.end(); ++it)
             if (!QStringList{"rightOffset", "maxExitBendDistance", "entryCornerOptional", "exitBendFirst", "exitOffset",
-                             "exitDrop", "retryBendOffset", "terminalBowl", "roundedEntry"}
+                             "exitDrop", "retryBendOffset", "terminalBowl", "roundedEntry", "exitAtHollow"}
                      .contains(it.key()))
                 return id + ": unknown tooth-cluster cut setting " + it.key();
+        if (policy.contains("exitAtHollow") && (phase != "medial" || !policy.value("exitAtHollow").isBool()))
+            return id + ": exitAtHollow must be a boolean on a medial tooth cluster";
     }
     if (shape == "profile-neck") {
         if (phase == "medial")
@@ -1063,12 +1091,16 @@ const BodyCutProgram& bodyCutProgram(const QJsonObject& config) {
             if (!form.contains("body") || !form.contains("cuts")) continue;
             const auto id = form.value("id").toString();
             const auto body = formDescription(config, form, "body");
+            const auto letters = form.value("current").toString();
             QString nextLetters;
             if (position == 0) nextLetters = form.value("ligatureWith").toString();
             if (position == 1) nextLetters = form.value("sharedFoldWithFinal").toString();
             program.forms.insert(id, {body, formDescription(config, form, "cuts"), bodyDescriptionKey(body),
-                                      nextLetters});
-            for (QChar letter : form.value("current").toString())
+                                      nextLetters, form.value("sharedFoldWithFinal").toString()});
+            if (body.value("shape") == "tooth-cluster")
+                for (QChar letter : letters)
+                    if (!program.toothClusterLetters.contains(letter)) program.toothClusterLetters += letter;
+            for (QChar letter : letters)
                 program.formsByPosition[position][letter].append(id);
             if (position != 1) continue;
             const auto recipe = terminalArmRecipe(config, form);
@@ -1347,6 +1379,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             if (rule.contains("lamBody") || rule.contains("lamCuts"))
                 return id + ": use body / cuts for declared forms";
             const auto declaredCuts = formDescription(config, rule, "cuts", &descriptionError);
+            const auto turnError = invalidTurnBoundaries(declaredCuts.value("turnBoundaries"), id, phase);
+            if (!turnError.isEmpty()) return turnError;
             const auto declaredBody = formDescription(config, rule, "body", &descriptionError);
             if (!descriptionError.isEmpty()) return descriptionError;
             if (rule.contains("body") != rule.contains("cuts") ||
@@ -1519,7 +1553,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                         if (key.key() != "turnAngle" && key.key() != "minTurnRun")
                             return id + ": cuts.baselineEntry supports turnAngle and minTurnRun";
                 }
-                QStringList policyKeys{"boundaries", "offsetUnit", "tightJoin", "baselineEntry"};
+                QStringList policyKeys{"boundaries", "offsetUnit", "tightJoin", "baselineEntry", "turnBoundaries"};
                 policyKeys += pair ? QStringList{"leftOffset", "rightOffset", "normalOffsetTolerance"} :
                                      QStringList{"flankMode", "flankOffset", "maxSectionWidth"};
                 for (auto key = declaredCuts.begin(); key != declaredCuts.end(); ++key)
@@ -1659,7 +1693,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     for (auto key = settings.begin(); key != settings.end(); ++key)
                         if (!QStringList{"boundaries", "forkOffset", "tightJoin", "counterJoin", "beforeFinal",
                                          "letters", "junction", "preserveEntryAfter", "route", "section", "exitRoutes",
-                                         "entryRoute", "placement", "entryTurnAngle", "shortExit"}.contains(key.key()))
+                                         "entryRoute", "placement", "entryTurnAngle", "shortExit", "turnBoundaries"}.contains(key.key()))
                             return id + ": unknown cuts setting " + key.key();
                 }
             }

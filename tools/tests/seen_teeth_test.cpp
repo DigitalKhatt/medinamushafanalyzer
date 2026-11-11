@@ -161,6 +161,54 @@ static void checkFoldedSheen(const QJsonObject& config) {
     }
 }
 
+static void checkFinalSeenLandmarkOwnership(const QJsonObject& config) {
+    QFile file("pages/page175.dat");
+    check(file.open(QIODevice::ReadOnly), "Missing final seen ownership fixture");
+    PageAnalysisResult analysis;
+    QDataStream stream(&file);
+    stream >> analysis.page;
+    QFile fontFile("input/font.dat");
+    check(fontFile.open(QIODevice::ReadOnly), "Missing native font");
+    QDataStream fontStream(&fontFile);
+    AFont font;
+    fontStream >> font;
+    analysis.resolveWordBoundaries(175, &font);
+    auto& word = analysis.page.lines[3].words[1];
+    if (word.wordResultInfo.subWords.empty()) analysis.detectSubWords(174, 3, 1, &font);
+    const auto& sub = word.wordResultInfo.subWords.front();
+    check(analysis.segmentSubword(174, 3, 1, 0, &font, true, &config),
+          "Final seen with a complete tooth cluster and bowl should match");
+    check(sub.baseGlyphs.size() == 3 && sub.joins.size() == 2 &&
+          !sub.kashidaPaths.back().isEmpty(), "Missing the connector before the final seen");
+
+    // Move the receiving cap past the first tooth. This is a complete
+    // partition of the original ink, but the connector now owns that tooth.
+    const auto shape = word.bodyShape(sub);
+    const auto ink = shape.transform.map(shape.path).translated(shape.pos);
+    const auto bounds = ink.boundingRect();
+    const double x = bounds.left() + 10.5115;
+    auto hits = FindInterections(ink, QLineF(x, bounds.top() - 1, x, bounds.bottom() + 1));
+    std::sort(hits.begin(), hits.end(), [](const auto& a, const auto& b) { return a.point.y() < b.point.y(); });
+    check(hits.size() == 2, "Missing the two contour intersections of the invalid receiving cap");
+    auto wrong = sub;
+    auto last = std::prev(wrong.joins.end());
+    auto join = *last;
+    join.topLeft = hits[0];
+    join.bottomLeft = hits[1];
+    join.fixedLeftBoundary = true;
+    wrong.joins.erase(last);
+    wrong.joins.insert(join);
+    auto final = wrong.letterDiagnostics.last().toObject();
+    final.insert("template", "seen-fina");
+    wrong.letterDiagnostics[2] = final;
+    check(assembleBodyPartition(word, wrong, config) && coversOriginalInk(word, wrong) &&
+          wrong.kashidaCuts.back().second == QLineF(hits[0].point, hits[1].point),
+          "The invalid receiving cap must still partition every source pixel");
+    check(!verifyBodyLandmarkOwnership(word, wrong, config) && !wrong.correct &&
+          wrong.letterDiagnostics.last().toObject().value("status") == "no-match",
+          "A complete partition with a first tooth in the connector was certified");
+}
+
 static void checkSeenTailOwnership(const QJsonObject& config) {
     struct Example {
         int page, line, word, subword;
@@ -224,11 +272,89 @@ static void checkSeenTailOwnership(const QJsonObject& config) {
     }
 }
 
+static void checkClusterAttachments(const QJsonObject& config) {
+    struct Example {
+        int page, line, word, subword, seen;
+        std::array<double, 3> tips;
+        bool connector;
+    };
+    const std::array<Example, 5> examples{{
+        {3, 5, 8, 2, 2, {31.6225, 35.6388, 38.5079}, true},
+        {115, 4, 4, 2, 3, {14.5569, 19.6289, 23.6858}, true},
+        {238, 7, 10, 1, 1, {6.4307, 10.7275, 13.6555}, false},
+        {244, 11, 9, 1, 1, {4.55777, 8.50743, 12.4836}, true},
+        {531, 8, 6, 3, 1, {9.5588, 14.5306, 18.5482}, false}
+    }};
+    QFile fontFile("input/font.dat");
+    check(fontFile.open(QIODevice::ReadOnly), "Missing native font");
+    QDataStream fontStream(&fontFile);
+    AFont font;
+    fontStream >> font;
+    for (const auto& e : examples) {
+        QFile file(QString("pages/page%1.dat").arg(e.page));
+        check(file.open(QIODevice::ReadOnly), "Missing third tooth attachment fixture");
+        PageAnalysisResult analysis;
+        QDataStream stream(&file);
+        stream >> analysis.page;
+        analysis.resolveWordBoundaries(e.page, &font);
+        auto& word = analysis.page.lines[e.line - 1].words[e.word - 1];
+        if (word.wordResultInfo.subWords.empty())
+            analysis.detectSubWords(e.page - 1, e.line - 1, e.word - 1, &font);
+        check(analysis.segmentSubword(e.page - 1, e.line - 1, e.word - 1, e.subword - 1, &font, true, &config),
+              "The third tooth attachment should assemble with a complete seen");
+        const auto& sub = word.wordResultInfo.subWords[e.subword - 1];
+        const auto shape = word.bodyShape(sub);
+        const auto ink = shape.transform.map(shape.path);
+        const auto body = shape.transform.map(sub.baseGlyphs[e.seen].path);
+        const auto curves = baseContourCurves(ink);
+        for (double t : e.tips) {
+            const auto point = curves[int(t)].pointAt(t - int(t)) + QPointF(0, .065);
+            check(ink.contains(point) && body.contains(point), "A tooth escaped the fitted cluster");
+        }
+        check(sub.kashidaPaths[e.seen].isEmpty() != e.connector, "The exit changed whether the join is shared");
+        if (e.page == 3) {
+            const auto& [sending, receiving] = sub.kashidaCuts[e.seen];
+            const auto origin = ink.boundingRect().topLeft() + shape.pos;
+            check(QLineF(sending.p2() - origin, QPointF(18.1471, 9.03938)).length() < .005 &&
+                  std::abs(receiving.center().x() - origin.x() - 13.32125) < .005,
+                  "The connector must start at the tooth's lower turn and end at the original heh attachment");
+        } else if (e.page == 115) {
+            const auto& [sending, receiving] = sub.kashidaCuts[e.seen];
+            check(sending.center().x() - receiving.center().x() > .7,
+                  "A hollow close to the receiving cut must leave room for the connector");
+        } else if (e.page == 244) {
+            const auto& [sending, receiving] = sub.kashidaCuts[e.seen];
+            const auto origin = ink.boundingRect().topLeft() + shape.pos;
+            check(QLineF(sending.p2() - origin, QPointF(18.9212, 6.86608)).length() < .005 &&
+                  std::abs(receiving.center().x() - origin.x() - 8.37916) < .005 &&
+                  sending.center().x() - receiving.center().x() > 10,
+                  "The third tooth's inward turn must preserve the long connector to reh");
+        }
+        checkPartition(shape.path, sub);
+    }
+
+    QFile file("pages/page189.dat");
+    check(file.open(QIODevice::ReadOnly), "Missing pen lift fixture");
+    PageAnalysisResult analysis;
+    QDataStream stream(&file);
+    stream >> analysis.page;
+    analysis.resolveWordBoundaries(189, &font);
+    auto& word = analysis.page.lines[14].words[0];
+    if (word.wordResultInfo.subWords.empty()) analysis.detectSubWords(188, 14, 0, &font);
+    check(analysis.segmentSubword(188, 14, 0, 2, &font, true, &config), "A medial seen can end at a pen lift");
+    const auto& sub = word.wordResultInfo.subWords[2];
+    check(sub.letterDiagnostics.at(2).toObject().value("template") == "seen-lifted-exit-medi" &&
+          sub.letterDiagnostics.at(3).toObject().value("boundaryKind") == "separate-contours" &&
+          coversOriginalInk(word, sub), "The pen lift must retain the two independently matched contours");
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
     const auto config = PageAnalysisResult::letterForms();
     checkFoldedSheen(config);
+    checkFinalSeenLandmarkOwnership(config);
+    checkClusterAttachments(config);
     checkSeenTailOwnership(config);
     {
         QFile file("pages/page230.dat");
@@ -464,6 +590,9 @@ int main(int argc, char** argv) {
     }
     check(sheen.boundingRect().top() > source.boundingRect().top() + 5,
           "The sheen body includes the tall lam ascender");
+    const auto& exit = sub.kashidaCuts[1].first;
+    check(QLineF(exit.p2() - source.boundingRect().topLeft(), QPointF(9.481, 12.881)).length() < .005,
+          "The medial sheen exit should meet the inward turn of the third tooth");
     checkPartition(shape.path, sub);
     const auto bodies = sub.baseGlyphs;
     const auto kashidas = sub.kashidaPaths;

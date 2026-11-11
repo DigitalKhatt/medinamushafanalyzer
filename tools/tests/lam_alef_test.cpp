@@ -369,14 +369,28 @@ static void checkSharedAlefJunctionPolicy() {
     QDataStream kafStream(&kafFile);
     kafStream >> kafPage.page;
     kafPage.resolveWordBoundaries(284, &font);
-    auto& ligature = kafPage.page.lines[3].words[3].wordResultInfo.subWords[0];
+    auto& kafWord = kafPage.page.lines[3].words[3];
+    auto& ligature = kafWord.wordResultInfo.subWords[0];
+    const auto retainsOuterArms = [&](const auto& result) {
+        if (result.baseGlyphs.size() != 3) return false;
+        const auto source = kafWord.bodyShape(result);
+        const auto bounds = [&](const QPainterPath& path) {
+            return source.transform.map(path).translated(source.pos).boundingRect();
+        };
+        const auto ink = bounds(source.path);
+        const auto kaf = bounds(result.baseGlyphs.front().path);
+        const auto alef = bounds(result.baseGlyphs.back().path);
+        return std::abs(kaf.right() - ink.right()) < 1e-6 &&
+            std::abs(alef.left() - ink.left()) < 1e-6 && alef.right() < ink.center().x() &&
+            coversOriginalInk(kafWord, result);
+    };
     check(kafPage.segmentSubword(283, 3, 3, 0, &font, true, &routePolicy), "Original diagonal ownership failed");
     const auto original = ligature;
     check(kafPage.segmentSubword(283, 3, 3, 0, &font, true, &config), "Junction policy crossed an earlier body");
-    check(ligature.baseGlyphs.size() == original.baseGlyphs.size() &&
-          ligature.kashidaPaths == original.kashidaPaths, "Unrelated diagonal changed the partition");
-    for (size_t i = 0; i < original.baseGlyphs.size(); ++i)
-        check(ligature.baseGlyphs[i].path == original.baseGlyphs[i].path, "Alef acquired another letter's diagonal");
+    check(retainsOuterArms(original) && retainsOuterArms(ligature), "The kaf and alef arms were swapped");
+    check(ligature.baseGlyphs.front().path == original.baseGlyphs.front().path &&
+          ligature.kashidaPaths == original.kashidaPaths && ligature.kashidaPaths.back().isEmpty(),
+          "The lam-alef seam moved an earlier cut or introduced a connector");
 }
 
 static void checkTerminalLamEntryPolicy() {

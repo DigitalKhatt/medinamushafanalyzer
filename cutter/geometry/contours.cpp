@@ -180,6 +180,68 @@ bool advanceOnContour(const QPainterPath& path, const PathExtrema& start,
     return false;
 }
 
+// Walk from an existing cap along one flank. A change from steep to shallow
+// ends a descender. Walking back from the connector finds the reverse turn.
+std::optional<Stretching> strokeFlankTurn(const SearchContext& context, const PathExtrema& start,
+        double stroke, int horizontal, bool descending, double angle, double minTravel) {
+    if (start.pathIndex != 0 || stroke <= .05) return {};
+    const auto curves = baseContourCurves(context.transformedPath);
+    const int count = static_cast<int>(curves.size());
+    const double slope = std::tan(angle * M_PI / 180);
+    const double maxTravel = 11 * stroke;
+    for (const int direction : {1, -1}) {
+        auto previous = start.point;
+        double walked = 0;
+        bool beforeTurn = false;
+        const auto begin = direction > 0 ? std::floor(start.time) : std::ceil(start.time) - 1;
+        bool stopped = false;
+        for (int n = 0; n < count && !stopped; ++n) {
+            const int index = int(begin) + direction * n;
+            const int curveIndex = (index % count + count) % count;
+            const auto& curve = curves[curveIndex];
+            const double a = n == 0 ? start.time - index : direction > 0 ? 0 : 1;
+            const double b = direction > 0 ? 1 : 0;
+            const double length = QLineF(curve.pt1(), curve.pt2()).length() +
+                QLineF(curve.pt2(), curve.pt3()).length() + QLineF(curve.pt3(), curve.pt4()).length();
+            const int samples = std::clamp(int(std::ceil(length * std::abs(a - b) / (.14 * stroke))), 4, 192);
+            for (int i = 1; i <= samples; ++i) {
+                const double t = a + (b - a) * i / samples;
+                const auto point = curve.pointAt(t);
+                const auto delta = point - previous;
+                const auto travel = point - start.point;
+                const double distance = std::hypot(delta.x(), delta.y());
+                if (distance < 1e-7) continue;
+                walked += distance;
+                previous = point;
+                const double x = horizontal * travel.x();
+                const double y = (descending ? 1 : -1) * travel.y();
+                if (walked > maxTravel || x < -.28 * stroke || y < -.28 * stroke) {
+                    stopped = true;
+                    break;
+                }
+                const double dx = horizontal * delta.x();
+                const double dy = (descending ? 1 : -1) * delta.y();
+                const bool steep = dy > slope * std::max(0., dx);
+                if (steep == descending) {
+                    beforeTurn = true;
+                    continue;
+                }
+                if (!beforeTurn || (descending ? y : x) < minTravel * stroke) {
+                    stopped = true;
+                    break;
+                }
+                if (dx <= 0 || (descending && dy < -.2 * distance)) continue;
+                const PathExtrema anchor{0, curveIndex + t, point, false, false};
+                Stretching cut{};
+                if (!contourNormalCut(context, anchor, direction > 0, false, cut) ||
+                    cut.referenceWidth < .48 * stroke || cut.referenceWidth > 2.8 * stroke) continue;
+                return cut;
+            }
+        }
+    }
+    return {};
+}
+
 // Find where the descending outer edge turns toward the right, then cut
 // along the inward normal at that point.
 bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
@@ -566,6 +628,12 @@ bool projectContourRoute(SearchContext& context, const QJsonObject& form,
     }
     if (form.value("normalCut").toBool() &&
         !strokeNormalCut(context, join, form.value("strokeOffsetX").toDouble())) return false;
+    if (const auto maxRatio = form.value("maxChordToRun"); maxRatio.isDouble()) {
+        // Measure the proposed cap against the horizontal run of the recognized contour.
+        const double run = std::abs(anchor.point.x() - origin->point.x());
+        const double chord = QLineF(join.topBaseLine.point, join.bottomBaseLine.point).length();
+        if (chord > maxRatio.toDouble() * run) return false;
+    }
     if (form.value("anchorSide") == "bottom") std::swap(join.topBaseLine, join.bottomBaseLine);
     const bool span = form.value("span").toBool() && !join.fixedRightBoundary;
     join.topRight = span ? topBefore : join.topBaseLine;

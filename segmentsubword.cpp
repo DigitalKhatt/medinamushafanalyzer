@@ -55,7 +55,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         return sub.correct;
     const auto& sourceConfig = draft ? *draft : letterForms();
     if (const auto ligature = segmentDeclaredLigature(word, sub, sourceConfig))
-        return *ligature;
+        return *ligature && (pageIndex < 0 || verifyBodyLandmarkOwnership(word, sub, sourceConfig));
     static thread_local QJsonObject previousConfig, compiledConfig;
     static thread_local QHash<QString, QString> compiledRetryParents;
     if (previousConfig != sourceConfig) {
@@ -84,6 +84,9 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         valid = resolveSubwordCutPlan(word, recognition, plan, requested);
         if (valid) applyTerminalJunction(word, plan.partition, requested);
     }
+    // A scaled or split recovery trial is only a proposal. Verify the
+    // assembled masks on the source artwork when returning a page result.
+    if (valid && pageIndex >= 0) valid = verifyBodyLandmarkOwnership(word, plan.partition, requested);
     sub = std::move(plan.partition);
     reportFinalRetry(sub, retryParents);
     return valid;

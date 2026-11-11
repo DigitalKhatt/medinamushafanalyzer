@@ -501,7 +501,7 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
     contact.setWidth(2 * settings.value("maxGap").toDouble(.8));
     if (!contact.createStroke(world(pieces[0].ink)).intersects(world(pieces[1].ink)))
         return false;
-    auto fit = [&](const Component& component, const QString& text) {
+    auto fit = [&](const Component& component, const QString& text, const QJsonObject& forms) {
         PageAnalysisResult analysis;
         analysis.page.lines.resize(1);
         analysis.page.lines.front().words.resize(1);
@@ -512,7 +512,7 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
         auto& local = localWord.wordResultInfo.subWords.emplace_back();
         local.paths = {0};
         local.text = text;
-        analysis.segmentSubword(-2, 0, 0, 0, nullptr, true, &config);
+        analysis.segmentSubword(-2, 0, 0, 0, nullptr, true, &forms);
         return std::move(local);
     };
     std::optional<WordResultInfo::SubWordInfo> accepted;
@@ -521,7 +521,26 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
         const bool separate = !exit.isEmpty() && !entry.isEmpty();
         if (!separate && !form.value("current").toString().contains(letters[slot])) continue;
         const int prefixSize = separate ? slot : slot + 1;
-        auto prefix = fit(pieces[0], letters.left(prefixSize)), suffix = fit(pieces[1], letters.mid(slot));
+        auto prefixForms = config;
+        if (separate) {
+            // This prefix ends at a physical pen lift within the word.
+            const auto allowed = exit.value("penLift").toObject().value("forms").toArray();
+            auto finals = config.value("final").toArray();
+            for (qsizetype i = 0; i < finals.size(); ++i) {
+                auto rule = finals[i].toObject();
+                if (!allowed.contains(rule.value("id")) ||
+                    formDescription(config, rule, "body").value("shape") != "tooth-cluster") continue;
+                auto cuts = formDescription(config, rule, "cuts");
+                auto cluster = cuts.value("cluster").toObject();
+                cluster.insert("_penLiftExit", true);
+                cuts.insert("cluster", cluster);
+                rule.insert("cuts", cuts);
+                finals[i] = rule;
+            }
+            prefixForms.insert("final", finals);
+        }
+        auto prefix = fit(pieces[0], letters.left(prefixSize), prefixForms);
+        auto suffix = fit(pieces[1], letters.mid(slot), config);
         if (!suffix.correct ||
             prefix.baseGlyphs.size() != size_t(prefixSize) || suffix.baseGlyphs.size() != size_t(letters.size() - slot) ||
             prefix.joins.size() != size_t(prefixSize - 1) || suffix.joins.size() + 1 != suffix.baseGlyphs.size() ||

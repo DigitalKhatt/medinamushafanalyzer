@@ -175,4 +175,196 @@ SubwordCutPlan makeSubwordCutPlan(WordResultInfo::SubWordInfo proposals, const Q
     return plan;
 }
 
+static bool leavesConnectorRoom(const Stretching& sending, const Stretching& receiving, double minimumGap) {
+    const auto chord = sending.bottomBaseLine.point - sending.topBaseLine.point;
+    const QPointF along(-chord.y(), chord.x());
+    const auto minimum = minimumGap * std::hypot(chord.x(), chord.y());
+    const auto gap = [&](const PathExtrema& point) {
+        return QPointF::dotProduct(point.point - sending.topBaseLine.point, along);
+    };
+    return gap(receiving.topBaseLine) > minimum && gap(receiving.bottomBaseLine) > minimum;
+}
+
+static std::optional<WordResultInfo::SubWordInfo> recutClusterExit(
+        const Word& word, const WordResultInfo::SubWordInfo& sub, int slot, const Stretching& boundary,
+        const std::optional<Stretching>& receiving, const QJsonObject& config) {
+    auto trial = sub;
+    const auto current = std::next(trial.joins.begin(), slot);
+    auto join = *current;
+    if (join.counterEntry.pathIndex > 0) return {};
+    join.topBaseLine = join.topRight = boundary.topBaseLine;
+    join.bottomBaseLine = join.bottomRight = boundary.bottomBaseLine;
+    join.topLeft = receiving ? receiving->topBaseLine : boundary.topBaseLine;
+    join.bottomLeft = receiving ? receiving->bottomBaseLine : boundary.bottomBaseLine;
+    join.referenceWidth = boundary.referenceWidth;
+    join.length = 0;
+    join.fixedRightBoundary = true;
+    join.fixedLeftBoundary = receiving.has_value();
+    join.kashidaOverrides.insert("enabled", receiving.has_value());
+    trial.joins.erase(current);
+    trial.joins.insert(join);
+    if (!assembleBodyPartition(word, trial, config) || trial.baseGlyphs.size() != sub.baseGlyphs.size() ||
+        trial.kashidaPaths.size() != sub.kashidaPaths.size() ||
+        trial.kashidaPaths[slot].isEmpty() == receiving.has_value()) return {};
+
+    // Moving a cap into an existing connector affects only the tooth body.
+    // Moving a shared seam may affect the neighbor at that seam as well.
+    for (size_t i = 0; i < sub.baseGlyphs.size(); ++i)
+        if (i != size_t(slot) && (receiving || i != size_t(slot + 1)) &&
+            trial.baseGlyphs[i].path != sub.baseGlyphs[i].path) return {};
+    for (size_t i = 0; i < sub.kashidaPaths.size(); ++i)
+        if (i != size_t(slot) && (trial.kashidaPaths[i] != sub.kashidaPaths[i] ||
+            trial.kashidaCuts[i] != sub.kashidaCuts[i])) return {};
+    if (receiving) {
+        const auto& [start, end] = trial.kashidaCuts[slot];
+        if (start != QLineF(boundary.topBaseLine.point, boundary.bottomBaseLine.point) ||
+            end != sub.kashidaCuts[slot].second) return {};
+    } else {
+        const auto shape = word.bodyShape(sub);
+        const auto& before = sub.baseGlyphs[slot + 1].path;
+        const auto& after = trial.baseGlyphs[slot + 1].path;
+        const auto oldBounds = shape.transform.map(before).boundingRect();
+        const auto newBounds = shape.transform.map(after).boundingRect();
+        if (toSubpaths(before).size() != toSubpaths(after).size() ||
+            std::abs(oldBounds.left() - newBounds.left()) > 1e-5 ||
+            std::abs(oldBounds.top() - newBounds.top()) > 1e-5 ||
+            std::abs(oldBounds.bottom() - newBounds.bottom()) > 1e-5) return {};
+    }
+    if (!coversOriginalInk(word, trial)) return {};
+    return trial;
+}
+
+bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& sub,
+                                 const QJsonObject& config) {
+    const auto letters = PageAnalysisResult::bodyLetters(sub.text);
+    if (letters.size() < 2) return true;
+    const auto& program = bodyCutProgram(config);
+    const auto isClusterLetter = [&](QChar ch) { return program.toothClusterLetters.contains(ch); };
+    if (std::none_of(letters.begin(), letters.end(), isClusterLetter)) return true;
+    if (sub.baseGlyphs.size() != size_t(letters.size()) || sub.letterDiagnostics.size() != letters.size()) {
+        sub.templateTrace.append("Landmark ownership rejected · missing assembled letter masks");
+        sub.correct = false;
+        return false;
+    }
+
+    const auto shape = word.bodyShape(sub);
+    const auto inPage = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
+    const double penWidth = config.value("strokeWidth").toDouble(1);
+    const double sharedTolerance = config.value("kashidaDefaults").toObject()
+        .value("sharedCutTolerance").toDouble(.25) * penWidth;
+    WordResultInfo::SubWordInfo geometryOnly{};
+    auto ink = inPage(shape.path);
+    ink.setFillRule(Qt::WindingFill);
+    OutlineSearchCache cache;
+    SearchContext source{.transformedPath = ink, .bbox = ink.boundingRect(), .subword = geometryOnly,
+                         .outlineCache = &cache};
+    const bool hasOutline = preparePassOutline(source, cache);
+    std::vector<std::vector<QBezier>> sourceCurves;
+    const bool alignedJoins = sub.joins.size() + 1 == size_t(letters.size()) &&
+        sub.kashidaPaths.size() == sub.joins.size() && sub.kashidaCuts.size() == sub.joins.size();
+    const auto actualCap = [&](int join, bool receiving) -> std::optional<Stretching> {
+        auto cap = *std::next(sub.joins.begin(), join);
+        if (!sub.kashidaPaths[join].isEmpty()) {
+            const auto& [right, left] = sub.kashidaCuts[join];
+            const auto& line = receiving ? left : right;
+            cap.topBaseLine = receiving ? cap.topLeft : cap.topRight;
+            cap.bottomBaseLine = receiving ? cap.bottomLeft : cap.bottomRight;
+            if (cap.topBaseLine.point != line.p1() || cap.bottomBaseLine.point != line.p2()) {
+                if (sourceCurves.empty())
+                    for (const auto& contour : source.subPaths) sourceCurves.push_back(baseContourCurves(contour));
+                cap.topBaseLine.point = line.p1();
+                cap.bottomBaseLine.point = line.p2();
+                if (!sourceLandmark(cap.topBaseLine, sourceCurves) || !sourceLandmark(cap.bottomBaseLine, sourceCurves))
+                    return {};
+            }
+        }
+        if (cap.topBaseLine.pathIndex != 0 || cap.bottomBaseLine.pathIndex != 0 ||
+            cap.topBaseLine.time == cap.bottomBaseLine.time) return {};
+        return cap;
+    };
+    for (int slot = 0; slot < letters.size(); ++slot) {
+        if (!isClusterLetter(letters[slot])) continue;
+        auto diagnostic = sub.letterDiagnostics[slot].toObject();
+        const auto id = diagnostic.value("template").toString();
+        const auto component = diagnostic.value("componentTemplate").toString();
+        const auto form = program.forms.constFind(component.isEmpty() ? id : component);
+        QString error = QStringLiteral("no tooth-cluster landmark evidence");
+        if (form != program.forms.cend() && form->body.value("shape") == "tooth-cluster") {
+            const auto mask = inPage(sub.baseGlyphs[slot].path);
+            if (!component.isEmpty()) {
+                // The pen lift ends the component inside the word.
+                // Verify the medial body's teeth on that original component.
+                int matches = 0;
+                for (const auto& part : recognizeSourceComponents(shape.path)) {
+                    SearchContext context{.transformedPath = inPage(part.ink), .subword = geometryOnly};
+                    if (readTerminalOutline(context) &&
+                        fitToothCluster(context, form->body, form->cuts, mask, false, penWidth, {}, false)
+                            .error.isEmpty()) ++matches;
+                }
+                error = matches == 1 ? QString{} : QStringLiteral("cannot verify a unique tooth cluster on the pen-lift component");
+            } else if (hasOutline) {
+                ToothClusterAttachment attachment;
+                const bool terminal = slot + 1 == letters.size();
+                if (alignedJoins) {
+                    if (slot > 0) attachment.entry = actualCap(slot - 1, true);
+                    if (!terminal) {
+                        attachment.exit = actualCap(slot, false);
+                        attachment.separateConnector = !sub.kashidaPaths[slot].isEmpty();
+                        if (attachment.separateConnector) attachment.receiving = actualCap(slot, true);
+                        if (slot + 2 == letters.size() && !hasTatweelBeforeFinal(sub.text)) {
+                            const auto& variants = program.formsByPosition[slot == 0 ? 0 : 1];
+                            for (const auto& variant : variants.value(letters[slot])) {
+                                const auto& candidate = program.forms.constFind(variant).value();
+                                if (!candidate.sharedFoldWithFinal.contains(letters.back())) continue;
+                                attachment.followingFold = attachment.separateConnector ? attachment.receiving : attachment.exit;
+                                break;
+                            }
+                        }
+                    }
+                    attachment.sameContour = (!slot || attachment.entry) && (terminal || attachment.exit);
+                }
+                attachment.requiresFold = !form->sharedFoldWithFinal.isEmpty();
+                attachment.canFitHollow = attachment.sameContour && attachment.exit && attachment.receiving &&
+                    diagnostic.value("cutPolicy") != "tooth-exit-walk" &&
+                    leavesConnectorRoom(*attachment.exit, *attachment.receiving, sharedTolerance);
+                auto fit = fitToothCluster(source, form->body, form->cuts, mask, terminal, penWidth, attachment, true);
+                error = fit.error;
+                if (!attachment.separateConnector || attachment.receiving) {
+                    for (const auto& option : fit.exits) {
+                        const auto& boundary = option.cut;
+                        if (option.atHollow && !leavesConnectorRoom(boundary, *attachment.receiving, sharedTolerance))
+                            continue;
+                        auto trial = recutClusterExit(word, sub, slot, boundary, attachment.receiving, config);
+                        if (!trial) continue;
+                        auto revised = attachment;
+                        revised.exit = boundary;
+                        if (!fitToothCluster(source, form->body, form->cuts, inPage(trial->baseGlyphs[slot].path),
+                                             terminal, penWidth, revised, false).error.isEmpty()) continue;
+                        trial->templateTrace.append(id + (option.atHollow ? " · exit at final tooth hollow"
+                                                                        : " · exit fitted after the third tooth"));
+                        InspectFormScope inspection(id);
+                        inspectCandidate(option.atHollow ? "Final tooth hollow" : "Third tooth exit", boundary);
+                        sub = std::move(*trial);
+                        error.clear();
+                        break;
+                    }
+                }
+            }
+        }
+        if (error.isEmpty()) continue;
+        InspectFormScope inspection(id);
+        inspectReason("Ownership", error);
+        diagnostic.insert("status", "no-match");
+        diagnostic.insert("template", "");
+        diagnostic.insert("ownershipRejection", error);
+        sub.letterDiagnostics[slot] = diagnostic;
+        if (std::none_of(sub.letterDiagnostics.begin(), sub.letterDiagnostics.end(), [&](const auto& entry) {
+                return entry.toObject().value("template") == id;
+            })) sub.matchedTemplates.removeAll(id);
+        sub.templateTrace.append(id + " · landmark ownership rejected · " + error);
+        sub.correct = false;
+    }
+    return sub.correct;
+}
+
 } // namespace MedinaCutter

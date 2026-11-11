@@ -427,6 +427,95 @@ static double inwardCornerAngle(const std::vector<QBezier>& curves, const PathEx
     return inwardTurnAngle(a, b, orientation);
 }
 
+// An entry projected through the outside of a counter can keep the hole
+// while losing the rounded foot. Use the source rim below the hole to
+// identify the foot and the inward shoulder where it meets the join.
+std::vector<Stretching> counterRimEntryCuts(SearchContext &context, const QRectF &counter,
+                                           const Stretching &entry) {
+    const QLineF original(entry.topBaseLine.point, entry.bottomBaseLine.point);
+    const auto &ink = context.transformedPath;
+    const double scale = counter.height();
+    if (scale <= 0 || std::abs(original.dy()) < 1e-8 || original.length() < 1.65 * scale ||
+        std::max(original.y1(), original.y2()) <= counter.bottom() ||
+        std::min(original.y1(), original.y2()) >= counter.center().y())
+        return {};
+
+    const auto side = getJoinTime(entry, context.orientation);
+    std::vector<PathExtrema> rim;
+    for (double depth : {.1, .25}) {
+        const double y = counter.bottom() + depth * scale;
+        if (y > std::max(original.y1(), original.y2())) continue;
+        const QPointF start(counter.center().x(), y);
+        if (!ink.contains(start)) continue;
+        auto hits = FindInterections(ink, QLineF(start, QPointF(counter.right() + 1.5 * scale, y)), true);
+        std::sort(hits.begin(), hits.end(), [](const auto &a, const auto &b) { return a.point.x() < b.point.x(); });
+        if (hits.empty() || hits.front().pathIndex != 0) continue;
+        const double cutX = original.x1() + original.dx() * (y - original.y1()) / original.dy();
+        if (hits.front().point.x() > cutX + .10 * scale && side.isStrictRight(hits.front().time))
+            rim.push_back(hits.front());
+    }
+    if (rim.empty()) return {};
+
+    const auto curves = baseContourCurves(ink);
+    const int count = static_cast<int>(curves.size());
+    if (!count) return {};
+    const double reach = .25 * scale;
+    struct Section {
+        double score;
+        Stretching cut;
+    };
+    std::vector<Section> candidates;
+    for (const auto &anchor : context.timeSorted) {
+        const auto p = anchor.point;
+        if (!side.isStrictRight(anchor.time) ||
+            p.x() < counter.right() - .2 * scale || p.x() > counter.right() + 1.45 * scale ||
+            p.y() < counter.top() - .55 * scale || p.y() > counter.bottom())
+            continue;
+        const bool sharpTurn = anchor.isSharp && inwardCornerAngle(curves, anchor, context.orientation) >= 25;
+        for (bool forward : {false, true}) {
+            auto end = anchor;
+            end.time += forward ? count : -count;
+            PathExtrema next, foot;
+            QPointF tangent;
+            if (!advanceOnContour(ink, anchor, end, forward, reach, next, tangent)) continue;
+            end.time = anchor.time + (forward ? -count : count);
+            if (!advanceOnContour(ink, anchor, end, !forward, reach, foot, tangent)) continue;
+            // One branch runs down the loop's rim. The other leaves the
+            // corner toward the incoming stroke.
+            const auto join = next.point - p;
+            const auto rimStep = foot.point - p;
+            if (rimStep.y() < .45 * reach ||
+                join.x() < -.15 * reach || join.y() > .45 * reach) continue;
+            const auto turn = forward ? inwardTurnAngle(-rimStep, join, context.orientation)
+                                      : inwardTurnAngle(-join, rimStep, context.orientation);
+            for (double sample : {0., reach}) {
+                if (sample == 0 ? !sharpTurn : turn < 25) continue;
+                // A short curve at a rounded foot can point along the rim
+                // at the corner itself. Sample the joining flank in that case.
+                Stretching cut{};
+                if (!contourNormalCut(context, anchor, forward, false, cut, true, sample)) continue;
+                std::swap(cut.topBaseLine, cut.bottomBaseLine);
+                if (cut.referenceWidth > std::min(1.65 * scale, .75 * original.length()) ||
+                    cut.referenceWidth < .2 * scale) continue;
+                orientSection(context, cut, rim.front().time, true);
+                if (!interiorChord(ink, cut.topBaseLine, cut.bottomBaseLine) ||
+                    !std::all_of(rim.begin(), rim.end(), [&](const auto &point) {
+                        return getJoinTime(cut, context.orientation).isStrictLeft(point.time);
+                    })) continue;
+                candidates.push_back({QLineF(p, counter.topRight()).length() + .35 * cut.referenceWidth +
+                    (anchor.isSharp ? 0. : .1 * scale), cut});
+                break;
+            }
+        }
+    }
+    std::stable_sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
+        return a.score < b.score;
+    });
+    std::vector<Stretching> result;
+    for (const auto &candidate : candidates) result.push_back(candidate.cut);
+    return result;
+}
+
 static double roundedInwardAngle(const QPainterPath& ink, const PathExtrema& point,
                                  int curveCount, double distance, Orientation orientation) {
     auto limit = point;
@@ -1365,8 +1454,18 @@ std::vector<LoopBodyEvidence> recognizeLoopBodies(const InkOutline &outline, con
     std::vector<LoopBodyEvidence> result;
     const auto tooth = body.value("exitTooth").toObject();
     const auto teeth = tooth.isEmpty() ? nullptr : recognizeLoopTeeth(outline, tooth);
-    for (const auto &hole : recognizeCounterHoles(outline))
-        result.push_back(recognizeLoopBody(outline, body, hole, teeth));
+    const auto pairs = body.value("counterPair") == "vertical" ? recognizeStackedPairs(outline, body) :
+        std::vector<StackedCounterPair>{};
+    for (const auto &hole : recognizeCounterHoles(outline)) {
+        auto loop = recognizeLoopBody(outline, body, hole, teeth);
+        if (loop.valid) {
+            const auto pair = std::find_if(pairs.begin(), pairs.end(), [&](const auto &candidate) {
+                return candidate.upper.united(candidate.lower) == loop.hole;
+            });
+            if (pair != pairs.end()) loop.stackedFeet = *pair;
+        }
+        result.push_back(std::move(loop));
+    }
     return result;
 }
 
@@ -1382,6 +1481,28 @@ static bool cutLoopExitCorner(SearchContext &context, const CounterCornerEvidenc
     cut.bottomBaseLine.point = reflection.map(cut.bottomBaseLine.point);
     return true;
 }
+
+static std::optional<Stretching> counterFootCut(const QPainterPath &ink, const StackedCounterPair &body,
+        const CounterFoot &foot, bool normalCut) {
+    const auto &corner = foot.anchor;
+    const auto p = corner.point;
+    QPointF normal = normalCut ? QPointF(foot.tangent.y(), -foot.tangent.x()) : QPointF(0, -1);
+    if (normal.y() > 0) normal = -normal;
+    const double reach = body.upper.united(body.lower).height() + 2 * body.lower.height();
+    const auto hits = FindInterections(ink, QLineF(p, p + normal * reach), true);
+    for (const auto &top : hits) {
+        if (top.pathIndex != 0 || top.point.y() >= p.y() || !interiorChord(ink, top, corner)) continue;
+        Stretching cut{};
+        cut.topBaseLine = top;
+        cut.bottomBaseLine = corner;
+        cut.referenceWidth = QLineF(top.point, p).length();
+        return cut;
+    }
+    return {};
+}
+
+static std::optional<Stretching> stackedPairExit(SearchContext &context, const StackedCounterPair &body,
+        const Stretching &right, const Stretching &inner, double width, double maxWidthRatio);
 
 std::optional<std::pair<Stretching, Stretching>>
 cutLoopBody(SearchContext &context, const LoopBodyEvidence &body, const QJsonObject &settings, bool needEntry) {
@@ -1473,6 +1594,19 @@ cutLoopBody(SearchContext &context, const LoopBodyEvidence &body, const QJsonObj
     } else {
         const auto pieces = cutRegions(ink, {}, {right, left}, context.orientation, true);
         if (pieces.size() != 3 || !pieces[1].path.boundingRect().adjusted(-1e-6, -1e-6, 1e-6, 1e-6).contains(hole)) return {};
+    }
+    // A vertical probe supplies the entry when a stacked pair has no
+    // usable corner there. Its exit can still follow the pair's own foot.
+    const double widthRatio = settings.value("maxExitWidthRatio").toDouble();
+    if (needEntry && widthRatio > 0 && body.stackedFeet) {
+        const auto &pair = *body.stackedFeet;
+        // A broad vertical entry can cross the whole loop. Measure the
+        // pen across the neck even when that cut cannot supply the entry.
+        double width = QLineF(right.topBaseLine.point, right.bottomBaseLine.point).length();
+        for (const auto &foot : pair.right)
+            if (auto neck = counterFootCut(ink, pair, foot, true))
+                width = std::min(width, neck->referenceWidth);
+        if (auto exit = stackedPairExit(context, pair, right, left, width, widthRatio)) left = *exit;
     }
     return std::pair{right, left};
 }
@@ -1581,14 +1715,14 @@ std::vector<StackedCounterPair> recognizeStackedPairs(const InkOutline &outline,
 // The inward corner can still be part of the foot, or its normal can run
 // up the upper loop. Follow its outgoing flank to the thin attachment.
 static std::optional<Stretching> stackedPairExit(SearchContext &context, const StackedCounterPair &body,
-        const Stretching &right, const Stretching &inner, double maxWidthRatio) {
-    const double width = right.referenceWidth;
+        const Stretching &right, const Stretching &inner, double width, double maxWidthRatio) {
+    const double innerWidth = QLineF(inner.topBaseLine.point, inner.bottomBaseLine.point).length();
     const double maxWidth = maxWidthRatio * width;
-    if (width <= 0 || (inner.referenceWidth <= maxWidth && inner.topBaseLine.point.y() >= body.upper.bottom()))
+    if (width <= 0 || (innerWidth <= maxWidth && inner.topBaseLine.point.y() >= body.upper.bottom()))
         return {};
     const auto &foot = inner.bottomBaseLine;
-    const auto at = context.timeSorted.find(foot);
-    if (at == context.timeSorted.end()) return {};
+    if (context.timeSorted.empty()) return {};
+    const auto at = context.timeSorted.lower_bound(foot);
     const auto outside = getJoinTime(inner, context.orientation);
     const auto exitTip = std::find_if(context.xSorted.rbegin(), context.xSorted.rend(), [&](const auto &point) {
         return outside.isStrictLeft(point.time);
@@ -1600,7 +1734,7 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
         Stretching cut{};
         if (!contourNormalCut(context, anchor, forward, false, cut, true)) return {};
         std::swap(cut.topBaseLine, cut.bottomBaseLine);
-        if (cut.referenceWidth > std::min(maxWidth, inner.referenceWidth) ||
+        if (cut.referenceWidth > std::min(maxWidth, innerWidth) ||
             cut.topBaseLine.point.y() < body.upper.bottom() || !outside.isStrictLeft(cut.topBaseLine.time) ||
             !getJoinTime(cut, context.orientation).isStrictLeft(exitTip->time)) return {};
         const auto pieces = cutRegions(context.transformedPath, {}, {right, cut}, context.orientation, true);
@@ -1617,13 +1751,19 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
     std::optional<Stretching> roundedExit;
     for (bool forward : {false, true}) {
         const auto step = forward ? &SearchContext::prev : &SearchContext::next;
-        auto point = at;
+        // The inner end of a projected cut can lie between two extrema.
+        // Start at that contour time, then walk toward the nearest landmark.
+        auto next = at;
+        if (at == context.timeSorted.end())
+            next = forward ? std::prev(at) : context.timeSorted.begin();
+        else if (forward || at->time == foot.time)
+            next = (context.*step)(at);
+        auto point = foot.point;
         double walked = 0;
-        while (walked < reach) {
-            const auto next = (context.*step)(point);
-            if (next == at || !outside.isStrictLeft(next->time) ||
+        for (size_t i = 0; i < context.timeSorted.size() && walked < reach; ++i) {
+            if (!outside.isStrictLeft(next->time) ||
                 next->point.x() > foot.point.x() + .1 * width) break;
-            walked += QLineF(point->point, next->point).length();
+            walked += QLineF(point, next->point).length();
             if (walked > reach) break;
             // A narrow section can occur on the foot before its outer
             // corner. Keep walking to a recognized corner on this flank.
@@ -1636,7 +1776,8 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
                     roundedExit = cut;
                 }
             }
-            point = next;
+            point = next->point;
+            next = (context.*step)(next);
         }
     }
     if (roundedExit) return roundedExit;
@@ -1663,14 +1804,12 @@ cutStackedPairs(SearchContext &context, const std::vector<StackedCounterPair> &b
     for (const auto &body : bodies) {
         const auto &upper = body.upper;
         const auto &lower = body.lower;
-        const double scale = lower.height();
         const auto cornerCut = [&](bool rightSide) -> std::optional<Stretching> {
             double closest = std::numeric_limits<double>::infinity();
             std::optional<Stretching> best;
             bool bestHasFoot = false;
             for (const auto &foot : rightSide ? body.right : body.left) {
-                const auto &corner = foot.anchor;
-                const auto p = corner.point, tangent = foot.tangent;
+                const auto p = foot.anchor.point;
                 const auto distance = foot.distance;
                 const bool hasFoot = foot.hasFoot;
                 if (best) {
@@ -1686,23 +1825,10 @@ cutStackedPairs(SearchContext &context, const std::vector<StackedCounterPair> &b
                             continue;
                     }
                 }
-                QPointF normal =
-                    policy.value("normalCut").toBool() ? QPointF(tangent.y(), -tangent.x()) : QPointF(0, -1);
-                if (normal.y() > 0)
-                    normal = -normal;
-                const double reach = upper.united(lower).height() + 2 * scale;
-                const auto hits = FindInterections(ink, QLineF(p, p + normal * reach), true);
-                for (const auto& top : hits) {
-                    if (top.pathIndex != 0 || top.point.y() >= p.y() || !interiorChord(ink, top, corner))
-                        continue;
-                    Stretching cut{};
-                    cut.topBaseLine = top;
-                    cut.bottomBaseLine = corner;
-                    cut.referenceWidth = QLineF(top.point, p).length();
+                if (auto cut = counterFootCut(ink, body, foot, policy.value("normalCut").toBool())) {
                     best = cut;
                     closest = distance;
                     bestHasFoot = hasFoot;
-                    break;
                 }
             }
             return best;
@@ -1712,7 +1838,7 @@ cutStackedPairs(SearchContext &context, const std::vector<StackedCounterPair> &b
         if (!right || !left || !Stretching::cmpbyx{}(*right, *left)) continue;
         const auto widthRatio = policy.value("maxExitWidthRatio").toDouble();
         if (widthRatio > 0) {
-            if (auto exit = stackedPairExit(context, body, *right, *left, widthRatio)) left = exit;
+            if (auto exit = stackedPairExit(context, body, *right, *left, right->referenceWidth, widthRatio)) left = exit;
         }
         const auto pieces = cutRegions(ink, {}, {*right, *left}, context.orientation, true);
         if (pieces.size() != 3 || !pieces[1].path.boundingRect().contains(upper) ||

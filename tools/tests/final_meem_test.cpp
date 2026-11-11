@@ -128,5 +128,27 @@ int main(int argc, char** argv) {
               QLineF(receiving.p2(), cut.bottomBaseLine.point).length() < 1e-5,
               "The assembled cut clipped the stepped rim");
     }
+    QFile rounded("pages/page30.dat"), fontFile("input/font.dat");
+    check(rounded.open(QIODevice::ReadOnly) && fontFile.open(QIODevice::ReadOnly),
+          "Rounded final meem fixture missing");
+    AFont font;
+    PageAnalysisResult roundedPage;
+    QDataStream roundedInput(&rounded), fontInput(&fontFile);
+    roundedInput >> roundedPage.page;
+    fontInput >> font;
+    roundedPage.resolveWordBoundaries(30, &font);
+    auto& roundedWord = roundedPage.page.lines[0].words[3];
+    auto& roundedSub = roundedWord.wordResultInfo.subWords[4];
+    check(roundedPage.segmentSubword(29, 0, 3, 4, &font, true) && roundedSub.baseGlyphs.size() == 2,
+          "Rounded final meem remains partial");
+    const auto roundedShape = roundedWord.bodyShape(roundedSub);
+    const auto sourceBounds = roundedShape.transform.map(roundedShape.path).translated(roundedShape.pos).boundingRect();
+    const auto roundedBody = roundedShape.transform.map(roundedSub.baseGlyphs.back().path).translated(roundedShape.pos);
+    const auto& attachment = *roundedSub.joins.begin();
+    const QLineF receiving = roundedSub.kashidaPaths.front().isEmpty()
+        ? QLineF(attachment.topBaseLine.point, attachment.bottomBaseLine.point) : roundedSub.kashidaCuts.front().second;
+    check(receiving.length() < 1.5 && roundedBody.contains(sourceBounds.topLeft() + QPointF(7.55, 8.2)) &&
+          toSubpaths(roundedBody).size() == 2 && coversOriginalInk(roundedWord, roundedSub),
+          "The cut through the rounded foot must move to the incoming stroke");
     qInfo("Final meem passed: own valley/corner 4.7975/16, retained loop/counter/tail, no lam ascender, independence from neighboring landmarks, scale/translation invariance, four bodies/three spans and deterministic masks.");
 }

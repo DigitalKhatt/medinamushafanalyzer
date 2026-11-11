@@ -32,17 +32,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         return false;
     }
 	const auto baseText = bodyLetters(subWord.text);
-    const auto text = QStringView(subWord.text);
-    bool hasFinalTatweel = false, pastFinal = false;
-    for (auto it = text.rbegin(); it != text.rend(); ++it) {
-        const auto ch = *it;
-        if (ch.isMark()) continue;
-        if (pastFinal) {
-            hasFinalTatweel = ch == QChar(0x0640);
-            break;
-        }
-        if (ch != QChar(0x0640)) pastFinal = true;
-    }
+    const bool hasFinalTatweel = hasTatweelBeforeFinal(subWord.text);
 
 	const auto shape = word.bodyShape(subWord);
 
@@ -1282,6 +1272,11 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             diagnostic.insert("bodyForm", "lam-fork");
             diagnostic.insert("cutPolicy", "lam-fork-flanks");
             diagnostic.insert("boundaryKind", "lam-fork");
+        }
+        if (status == "matched" && seenRetry && seenRetry->slot == letter && seenRetry->mode == SeenExitMode::AlongContour) {
+            const auto rule = preparedRules.constraints.value(bodyTemplateIds[letter]);
+            if (hasSeenBody(rule) && seenRetry->supports(seenSettings(rule)))
+                diagnostic.insert("cutPolicy", "tooth-exit-walk");
         }
         if (status != "matched") subWord.templateTrace.append(QString("%1 %2 · %3")
             .arg(position, baseText.mid(letter, 1), status));

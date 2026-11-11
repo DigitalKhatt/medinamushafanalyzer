@@ -141,14 +141,18 @@ cutCrestedLoops(SearchContext &context, const std::vector<CrestedLoopBody> &bodi
 
 // A contour may record several landmarks along a single rising or falling flank.
 std::optional<PathExtrema> contourFlank(SearchContext& context, timesortedtype::iterator anchor,
-                                               bool previous, const QJsonObject& bounds) {
+                                               bool previous, const QJsonObject& bounds, double stepTolerance) {
     const auto advance = previous ? &SearchContext::prev : &SearchContext::next;
     auto current = anchor;
     QPointF direction;
     for (size_t step = 0; step < context.timeSorted.size(); ++step) {
         const auto next = (context.*advance)(current);
+        if (stepTolerance > 0 && QLineF(anchor->point, next->point).length() <= stepTolerance) {
+            current = next;
+            continue;
+        }
         const auto delta = next->point - current->point;
-        if (step == 0) direction = delta;
+        if (step == 0 || (stepTolerance > 0 && direction.isNull())) direction = delta;
         else if (delta.x() * direction.x() < -1e-8 || delta.y() * direction.y() < -1e-8) return {};
         if (matchesOffset(bounds, next->point - anchor->point)) return *next;
         if (!bounds.value("accumulate").toBool()) return {};
@@ -159,13 +163,16 @@ std::optional<PathExtrema> contourFlank(SearchContext& context, timesortedtype::
 
 // A stacked tooth can have a valid cut across its cap while the descending
 // stroke below it is still inside the hah mask. Its true shared boundary is
-// the horizontal chord at the sharp junction with the top of the hah head.
+// the chord at the sharp junction with the top of the hah head.
 std::optional<Stretching> stackedAttachment(SearchContext& context, const QJsonObject& settings,
                                                    const QRectF& cap, const QPainterPath& head,
                                                    const Stretching& incoming, const Stretching& outgoing,
                                                    bool clippedCap) {
     const auto headFlank = settings.value("headFlank").toObject();
     const auto risingFlank = settings.value("risingFlank").toObject();
+    if (headFlank.isEmpty() || risingFlank.isEmpty()) return {};
+    const double stepTolerance = clippedCap ?
+        .125 * QLineF(incoming.topBaseLine.point, incoming.bottomBaseLine.point).length() : 0;
     const auto between = [&](const PathExtrema& point) {
         return getJoinTime(incoming, context.orientation).isLeft(point.time) &&
                getJoinTime(outgoing, context.orientation).isStrictRight(point.time);
@@ -176,24 +183,30 @@ std::optional<Stretching> stackedAttachment(SearchContext& context, const QJsonO
     };
     std::optional<Stretching> candidate;
     for (auto at = context.timeSorted.begin(); at != context.timeSorted.end(); ++at) {
-        if (!at->isSharp || !at->isX || !between(*at)) continue;
-        if (!(contourFlank(context, at, true, headFlank) && contourFlank(context, at, false, risingFlank)) &&
-            !(contourFlank(context, at, false, headFlank) && contourFlank(context, at, true, risingFlank))) continue;
+        if (!at->isSharp || (!at->isX && !clippedCap) || !between(*at)) continue;
+        const auto follows = [&](bool forward, const QJsonObject& flank) {
+            return contourFlank(context, at, forward, flank, stepTolerance).has_value();
+        };
+        if (!(follows(true, headFlank) && follows(false, risingFlank)) &&
+            !(follows(false, headFlank) && follows(true, risingFlank))) continue;
         auto opposite = horizontalOpposite(context, *at, true);
         bool foundFromOpposite = false;
         if (!opposite && clippedCap) {
-            // At a cusp an intersection can be reported from only one end.
+            // At a cusp the horizontal ray can miss the facing corner.
+            // Check the actual chord when the two corners are nearly level.
+            double nearest = std::numeric_limits<double>::infinity();
             for (const auto& edge : context.timeSorted) {
-                if (!edge.isSharp || edge.point.x() >= at->point.x() ||
-                    std::abs(edge.point.y() - at->point.y()) > .05 || !between(edge)) continue;
-                const auto hit = horizontalOpposite(context, edge, false);
-                if (!hit || QLineF(hit->point, at->point).length() > .05) continue;
-                if (opposite) return {};
+                const auto delta = at->point - edge.point;
+                if (!edge.isSharp || delta.x() <= 0 || delta.x() >= nearest ||
+                    std::abs(delta.y()) > .15 * delta.x() || !between(edge) ||
+                    !interiorChord(context.transformedPath, edge, *at)) continue;
                 opposite = edge;
+                nearest = delta.x();
                 foundFromOpposite = true;
             }
         }
-        if (!opposite || (!atIncoming(*at) &&
+        if (!opposite || (clippedCap && !interiorChord(context.transformedPath, *opposite, *at)) ||
+            (!atIncoming(*at) &&
             (!between(*opposite) || !head.contains((opposite->point + at->point) / 2)))) continue;
         Stretching shared{};
         shared.topBaseLine = shared.topLeft = shared.topRight = *opposite;
@@ -202,23 +215,22 @@ std::optional<Stretching> stackedAttachment(SearchContext& context, const QJsonO
             // An intrinsic initial-body cut can already reach this junction
             // from a rounded lower flank. Keep the established horizontal
             // attachment instead of treating that small overshoot as a new body.
-            if (atIncoming(*at) && cap.bottom() - at->point.y() <=
-                QLineF(opposite->point, at->point).length()) {
-                shared.fixedRightBoundary = shared.fixedLeftBoundary = true;
-                shared.kashidaOverrides.insert("enabled", false);
-                if (candidate) return {};
-                candidate = shared;
-                continue;
-            }
             // The first walk can clip a speck off the hah lip below the real junction.
             // Only disregard that cap if its entire extent is under one local stroke.
-            const double extent = std::hypot(cap.width(), cap.height());
-            auto normal = shared;
-            if (extent >= QLineF(opposite->point, at->point).length() ||
-                (!foundFromOpposite && (!strokeNormalCut(context, normal) ||
+            const double width = QLineF(opposite->point, at->point).length();
+            if (!atIncoming(*at) || cap.bottom() - at->point.y() > width) {
+                const double extent = std::hypot(cap.width(), cap.height());
+                auto normal = shared;
+                if (extent >= width || (!foundFromOpposite && (!strokeNormalCut(context, normal) ||
                     extent >= QLineF(normal.topBaseLine.point, normal.bottomBaseLine.point).length()))) continue;
+            }
         }
-        if (candidate) return {};
+        if (candidate) {
+            // Short contour steps can record the same attachment more than once.
+            if (stepTolerance > 0 && QLineF(candidate->topBaseLine.point, opposite->point).length() <= stepTolerance &&
+                QLineF(candidate->bottomBaseLine.point, at->point).length() <= stepTolerance) continue;
+            return {};
+        }
         shared.fixedRightBoundary = shared.fixedLeftBoundary = true;
         shared.kashidaOverrides.insert("enabled", false);
         candidate = shared;

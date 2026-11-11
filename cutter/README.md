@@ -20,12 +20,29 @@ verifies the fork from the uncut ink and proposes cuts.
 [attachment_policy.cpp](forms/lam/attachment_policy.cpp) applies the chosen
 fork or ligature policy.
 
+After assembly and recovery, a tooth-cluster body must own three upper tips
+and the two intervening valleys from the uncut outline. Final clusters must
+own the connected bowl. A pen lift inside the word can end the medial
+cluster on its own contour. The medial `cuts.cluster.exitAtHollow` policy
+uses the inward turn just past the lower bulge of the third tooth. The cut
+follows the normal at that turn and meets the tooth's descending upper flank.
+Assembly checks clearance for the connector and verifies the tooth landmarks,
+the neighboring body and the ink partition before accepting the cut. A cut
+recovered by walking the configured distance along the contour keeps that offset.
+
 The `initial`, `medial` and `final` arrays set the priority within each pass.
 An initial form with `sharedFoldWithFinal` takes its turn in the initial array
 and uses the first matching final boundary for the declared adjacent letters.
 `sharedFoldForm` can name the specific final template supplying the cut.
 `onUnresolved` reserves a form for extended recovery. `onIncomplete` enables
 it on a retry within that pass.
+
+`cuts.turnBoundaries` can place a boundary at the turn on the same contour
+flank. Set `left` or `right` to `trim` to move a cut off a long connector
+and back toward the body. The incoming policies `descender` and `stem`
+follow a clipped stroke to its turn. `stem-foot` trims a long horizontal
+run from a final stem. Assembly checks the other cap and keeps the
+recognized tooth tips and the ink partition intact.
 
 `ligatures` takes priority for two-letter subwords without an explicit tatweel.
 Each entry selects the letters and names the initial and final templates.

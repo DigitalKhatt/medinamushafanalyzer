@@ -179,7 +179,6 @@
       "body": {
         "shape": "tooth-cluster",
         "cluster": {
-          "minLastPitch": 5,
           "maxLastPitch": 8,
           "convexTips": true
         }
@@ -348,6 +347,9 @@
         }
       },
       "cuts": {
+        "turnBoundaries": {
+          "left": "trim"
+        },
         "inherit": "lam-medi",
         "boundaries": {
           "right": "free",
@@ -640,6 +642,9 @@
         }
       },
       "cuts": {
+        "turnBoundaries": {
+          "left": "trim"
+        },
         "route": {
           "bottomProbe": "normal"
         },
@@ -1684,7 +1689,8 @@
         "cluster": {
           "retryBendOffset": 0.5,
           "rightOffset": 0.5,
-          "maxExitBendDistance": 2
+          "maxExitBendDistance": 2,
+          "exitAtHollow": true
         },
         "boundaries": {
           "right": "tooth-entry",
@@ -1902,6 +1908,10 @@
         "allowFlatBend": true
       },
       "cuts": {
+        "turnBoundaries": {
+          "left": "trim",
+          "right": "trim"
+        },
         "boundaries": {
           "left": "tooth-normal",
           "right": "tooth-normal"
@@ -2979,9 +2989,11 @@
         }
       },
       "cuts": {
+        "preserveEntryRim": true,
         "loop": {
           "sideOffset": 0.06,
-          "normalCut": false
+          "normalCut": false,
+          "maxExitWidthRatio": 1.6
         },
         "boundaries": {
           "left": "loop-exit",
@@ -3039,6 +3051,9 @@
         "counters": 0
       },
       "cuts": {
+        "turnBoundaries": {
+          "right": "descender"
+        },
         "routes": {
           "right": {
             "bottomProbe": "down",
@@ -3071,9 +3086,13 @@
         }
       },
       "cuts": {
+        "turnBoundaries": {
+          "left": "trim"
+        },
         "cluster": {
           "maxExitBendDistance": 2,
           "exitBendFirst": true,
+          "exitAtHollow": true,
           "exitOffset": 0.45,
           "rightOffset": 0.5,
           "entryCornerOptional": true
@@ -3135,6 +3154,9 @@
         "counters": 0
       },
       "cuts": {
+        "turnBoundaries": {
+          "right": "descender"
+        },
         "routes": {
           "right": {
             "bottomProbe": "normal",
@@ -3223,6 +3245,9 @@
         "counters": 0
       },
       "cuts": {
+        "turnBoundaries": {
+          "right": "descender"
+        },
         "blade": {
           "margin": 0.5
         },
@@ -3320,6 +3345,7 @@
         "counters": 1
       },
       "cuts": {
+        "preserveEntryRim": true,
         "loop": {
           "sideOffset": 0.35,
           "normalCut": true,
@@ -4299,6 +4325,7 @@
         }
       },
       "cuts": {
+        "preserveEntryRim": true,
         "counter": {
           "offset": 0.5,
           "baselineOffset": 0.3,
@@ -4318,6 +4345,9 @@
       "tryNext": true,
       "body": {
         "shape": "profile-neck",
+        "features": {
+          "maxWidthToHeight": 1.8
+        },
         "neck": {
           "lookback": 4,
           "previousOffset": 1,
@@ -4413,6 +4443,9 @@
         "stem": {}
       },
       "cuts": {
+        "turnBoundaries": {
+          "right": "stem"
+        },
         "stem": {
           "turnAngle": 45,
           "stemWidthLimit": 1.7
@@ -4737,7 +4770,8 @@
       },
       "cuts": {
         "route": {
-          "bottomProbe": "normal"
+          "bottomProbe": "normal",
+          "maxChordToRun": 0.65
         },
         "boundaries": {
           "right": "contour-route",
@@ -4912,6 +4946,9 @@
         "counters": 0
       },
       "cuts": {
+        "turnBoundaries": {
+          "right": "stem-foot"
+        },
         "route": {
           "bottomProbe": "normal"
         },
@@ -5399,6 +5436,7 @@
         "counters": 1
       },
       "cuts": {
+        "preserveEntryRim": true,
         "counter": {},
         "boundaries": {
           "right": "counter-neck",
@@ -5439,6 +5477,7 @@
         }
       },
       "cuts": {
+        "preserveEntryRim": true,
         "outline": {
           "entry": {
             "x": [
