@@ -1578,6 +1578,84 @@ std::vector<StackedCounterPair> recognizeStackedPairs(const InkOutline &outline,
     return results;
 }
 
+// The inward corner can still be part of the foot, or its normal can run
+// up the upper loop. Follow its outgoing flank to the thin attachment.
+static std::optional<Stretching> stackedPairExit(SearchContext &context, const StackedCounterPair &body,
+        const Stretching &right, const Stretching &inner, double maxWidthRatio) {
+    const double width = right.referenceWidth;
+    const double maxWidth = maxWidthRatio * width;
+    if (width <= 0 || (inner.referenceWidth <= maxWidth && inner.topBaseLine.point.y() >= body.upper.bottom()))
+        return {};
+    const auto &foot = inner.bottomBaseLine;
+    const auto at = context.timeSorted.find(foot);
+    if (at == context.timeSorted.end()) return {};
+    const auto outside = getJoinTime(inner, context.orientation);
+    const auto exitTip = std::find_if(context.xSorted.rbegin(), context.xSorted.rend(), [&](const auto &point) {
+        return outside.isStrictLeft(point.time);
+    });
+    if (exitTip == context.xSorted.rend()) return {};
+    const double reach = 2.5 * width;
+    const auto section = [&](const PathExtrema &anchor, bool forward) -> std::optional<Stretching> {
+        if (anchor.point.x() >= foot.point.x() || !outside.isStrictLeft(anchor.time)) return {};
+        Stretching cut{};
+        if (!contourNormalCut(context, anchor, forward, false, cut, true)) return {};
+        std::swap(cut.topBaseLine, cut.bottomBaseLine);
+        if (cut.referenceWidth > std::min(maxWidth, inner.referenceWidth) ||
+            cut.topBaseLine.point.y() < body.upper.bottom() || !outside.isStrictLeft(cut.topBaseLine.time) ||
+            !getJoinTime(cut, context.orientation).isStrictLeft(exitTip->time)) return {};
+        const auto pieces = cutRegions(context.transformedPath, {}, {right, cut}, context.orientation, true);
+        if (pieces.size() != 3) return {};
+        const auto contours = toSubpaths(pieces[1].path);
+        const auto retains = [&](const QRectF &counter) {
+            return std::any_of(contours.begin(), contours.end(), [&](const auto &outline) {
+                return outline.boundingRect() == counter;
+            });
+        };
+        if (!retains(body.upper) || !retains(body.lower)) return {};
+        return cut;
+    };
+    std::optional<Stretching> roundedExit;
+    for (bool forward : {false, true}) {
+        const auto step = forward ? &SearchContext::prev : &SearchContext::next;
+        auto point = at;
+        double walked = 0;
+        while (walked < reach) {
+            const auto next = (context.*step)(point);
+            if (next == at || !outside.isStrictLeft(next->time) ||
+                next->point.x() > foot.point.x() + .1 * width) break;
+            walked += QLineF(point->point, next->point).length();
+            if (walked > reach) break;
+            // A narrow section can occur on the foot before its outer
+            // corner. Keep walking to a recognized corner on this flank.
+            const bool footCorner = std::any_of(body.left.begin(), body.left.end(), [&](const auto &corner) {
+                return corner.anchor.time == next->time;
+            });
+            if (footCorner || !roundedExit) {
+                if (auto cut = section(*next, forward)) {
+                    if (footCorner) return cut;
+                    roundedExit = cut;
+                }
+            }
+            point = next;
+        }
+    }
+    if (roundedExit) return roundedExit;
+    // A smooth heel can reach the joining stroke between recorded extrema.
+    const auto curves = baseContourCurves(context.transformedPath).size();
+    for (double distance = .25 * width; distance <= reach; distance += .25 * width) {
+        for (bool forward : {false, true}) {
+            auto limit = foot;
+            limit.time += forward ? double(curves) : -double(curves);
+            PathExtrema point;
+            QPointF tangent;
+            if (advanceOnContour(context.transformedPath, foot, limit, forward, distance, point, tangent)) {
+                if (auto cut = section(point, forward)) return cut;
+            }
+        }
+    }
+    return {};
+}
+
 std::vector<std::pair<Stretching, Stretching>>
 cutStackedPairs(SearchContext &context, const std::vector<StackedCounterPair> &bodies, const QJsonObject &policy) {
     const auto &ink = context.transformedPath;
@@ -1629,8 +1707,13 @@ cutStackedPairs(SearchContext &context, const std::vector<StackedCounterPair> &b
             }
             return best;
         };
-        const auto right = cornerCut(true), left = cornerCut(false);
+        const auto right = cornerCut(true);
+        auto left = cornerCut(false);
         if (!right || !left || !Stretching::cmpbyx{}(*right, *left)) continue;
+        const auto widthRatio = policy.value("maxExitWidthRatio").toDouble();
+        if (widthRatio > 0) {
+            if (auto exit = stackedPairExit(context, body, *right, *left, widthRatio)) left = exit;
+        }
         const auto pieces = cutRegions(ink, {}, {*right, *left}, context.orientation, true);
         if (pieces.size() != 3 || !pieces[1].path.boundingRect().contains(upper) ||
             !pieces[1].path.boundingRect().contains(lower)) continue;

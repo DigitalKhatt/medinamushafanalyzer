@@ -571,6 +571,7 @@
           ]
         },
         "features": {
+          "minWidthToHeight": 0.16,
           "maxWidthToHeight": 0.6
         }
       },
@@ -607,6 +608,7 @@
         },
         "features": {
           "minHeight": 3,
+          "minWidthToHeight": 0.2,
           "maxWidthToHeight": 0.6
         }
       },
@@ -2002,7 +2004,8 @@
       },
       "cuts": {
         "pair": {
-          "normalCut": true
+          "normalCut": true,
+          "maxExitWidthRatio": 1.6
         },
         "boundaries": {
           "right": "pair-neck",
@@ -4187,6 +4190,7 @@
       "tightJoin": true,
       "returningStroke": true,
       "terminalAttachment": true,
+      "retainBodyFeatures": true,
       "onFinalRetry": true,
       "body": {
         "shape": "tooth-cluster",
@@ -4216,6 +4220,7 @@
       "tightJoin": true,
       "returningStroke": true,
       "terminalAttachment": true,
+      "retainBodyFeatures": true,
       "onFinalRetry": true,
       "body": {
         "shape": "tooth-cluster",

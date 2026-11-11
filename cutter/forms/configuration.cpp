@@ -617,6 +617,13 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         ((shape == "crested-loop" || shape == "open-head") && phase != "medial") ||
         ((shape == "bowl-turn" || shape == "bowl-neck") && phase != "final"))
         return id + ": shape does not support this letter position";
+    if (shape == "stacked-counters") {
+        const auto pair = cuts.value("pair").toObject();
+        const auto ratio = pair.value("maxExitWidthRatio");
+        if (!ratio.isUndefined() && (!ratio.isDouble() || !std::isfinite(ratio.toDouble()) ||
+                                    ratio.toDouble() <= 0 || !pair.value("normalCut").toBool()))
+            return id + ": maxExitWidthRatio needs a positive ratio and a normal cut";
+    }
     if (shape == "contour-route") {
         const auto route = body.value("route").toObject(), policy = cuts.value("route").toObject();
         if (route.contains("shoulder") || policy.contains("range")) {

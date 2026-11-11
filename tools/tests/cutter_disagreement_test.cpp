@@ -71,6 +71,12 @@ int main(int argc, char** argv) {
         {{102, 2, 7, 1}, 3, {188.85, 114.9}}, // The final reh's upper hook.
         {{407, 11, 7, 1}, 3, {100.95, 357.3}}, // Reh hook after the tah loop.
         {{479, 13, 6, 1}, 2, {181.8, 412.8}}, // Broad zay hook after jim.
+        {{211, 14, 6, 1}, 1, {140.5274, 438.4375}}, // Base of the initial yeh tooth.
+        {{233, 2, 9, 1}, 2, {71.9043, 116.8979}}, // Upright of the medial hamza seat.
+        {{233, 2, 9, 1}, 3, {67.2169, 118.5853}}, // First tooth of the final seen.
+        {{43, 3, 8, 1}, 3, {52.7798, 144.6459}}, // Outer foot of medial heh.
+        {{105, 10, 1, 2}, 3, {262.0241, 331.3826}}, // Rounded foot of medial heh.
+        {{461, 4, 8, 3}, 2, {56.9047, 168.0818}}, // Upper loop rim of medial heh.
     };
     auto locations = controls.value("locations").toArray();
     for (const auto& witness : restored)
