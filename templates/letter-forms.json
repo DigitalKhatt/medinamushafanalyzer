@@ -1558,7 +1558,8 @@
         "shape": "counter-loop",
         "loop": {
           "entryCorner": {
-            "maxDistance": 1.5
+            "maxDistance": 1.5,
+            "minRoundedAngle": 60
           },
           "exitCorner": {
             "maxDistance": 1.5

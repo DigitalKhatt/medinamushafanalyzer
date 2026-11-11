@@ -1384,10 +1384,12 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 if (!distance.isUndefined() && (!distance.isDouble() ||
                     !std::isfinite(distance.toDouble()) || distance.toDouble() <= 0))
                     return id + ": " + side + ".maxDistance must be positive, in counter heights";
-                const auto stepAngle = corner.value("minStepAngle");
-                if (!stepAngle.isUndefined() && (!placement.isUndefined() || !stepAngle.isDouble() ||
-                    !(stepAngle.toDouble() > 0 && stepAngle.toDouble() < 180)))
-                    return id + ": " + side + ".minStepAngle needs a lower corner and an angle between 0 and 180";
+                for (const auto* key : {"minStepAngle", "minRoundedAngle"}) {
+                    const auto angle = corner.value(key);
+                    if (!angle.isUndefined() && (!placement.isUndefined() || !angle.isDouble() ||
+                        !(angle.toDouble() > 0 && angle.toDouble() < 180)))
+                        return id + ": " + side + "." + key + " needs a lower corner and an angle between 0 and 180";
+                }
                 const auto sampleValley = corner.value("sampleValley");
                 if (!sampleValley.isUndefined() && (!placement.isUndefined() || !sampleValley.isBool()))
                     return id + ": " + side + ".sampleValley needs a boolean and a lower corner";

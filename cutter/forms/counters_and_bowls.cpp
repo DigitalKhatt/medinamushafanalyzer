@@ -837,12 +837,16 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
         return result;
     const int count = static_cast<int>(curves.size());
     const double minStepAngle = settings.value("minStepAngle").toDouble();
+    const double minRoundedAngle = settings.value("minRoundedAngle").toDouble();
     const bool sampleValley = settings.value("sampleValley").toBool();
     for (auto at = geometry.timeSorted.begin(); at != geometry.timeSorted.end(); ++at) {
         const auto p = at->point;
         const double distance =
             QLineF(p, result.upper || result.top ? counter.topRight() : counter.bottomRight()).length();
-        if ((!at->isSharp && !(result.top && at->isY)) || distance >= result.maxDistance)
+        if (distance >= result.maxDistance)
+            continue;
+        const bool rounded = minRoundedAngle > 0 && !at->isSharp && at->isY && p.y() >= counter.bottom();
+        if (!at->isSharp && !(result.top && at->isY) && !rounded)
             continue;
         CounterCornerBody body{*at, {}, distance, {}};
         if (result.paired) {
@@ -868,9 +872,10 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
             if (p.x() < counter.center().x() || p.y() > result.upperLimit) continue;
         } else {
             if (p.x() <= counter.right() || p.y() < counter.center().y()) continue;
-            if (p.y() >= geometry.prev(at)->point.y() || p.y() >= geometry.next(at)->point.y()) {
-                const bool step = minStepAngle > 0 && inwardCornerAngle(curves, *at, outline.orientation) >= minStepAngle;
-                if (!step && !sampleValley) continue;
+            if (rounded || p.y() >= geometry.prev(at)->point.y() || p.y() >= geometry.next(at)->point.y()) {
+                const bool step = !rounded && minStepAngle > 0 &&
+                    inwardCornerAngle(curves, *at, outline.orientation) >= minStepAngle;
+                if (!step && !sampleValley && !rounded) continue;
                 // Measure both flanks near the corner. Distant extrema can hide a valley or a short step.
                 const bool forward = outline.orientation == Orientation::CounterClockwise;
                 const double sample = .25 * counter.height();
@@ -883,9 +888,13 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
                 if (!advanceOnContour(outline.ink, *at, limit, forward, sample, join, tangent)) continue;
                 const auto drop = rim.point - p;
                 const auto run = join.point - p;
-                const bool valley = sampleValley && drop.x() < 0 && drop.y() > 1e-8 && run.x() > 0 && run.y() > 1e-8;
-                const bool flatStep = step && drop.y() > std::abs(drop.x()) && run.x() > std::abs(run.y());
-                if (!valley && !flatStep) continue;
+                const bool valley = !rounded && sampleValley && drop.x() < 0 && drop.y() > 1e-8 &&
+                    run.x() > 0 && run.y() > 1e-8;
+                const bool flatStep = drop.y() > std::abs(drop.x()) && run.x() > std::abs(run.y());
+                // A rounded shoulder must separate the steep rim from the flatter join.
+                const bool roundedStep = rounded && flatStep && drop.x() < 0 && run.y() >= -1e-8 &&
+                    inwardTurnAngle(-drop, run, Orientation::CounterClockwise) >= minRoundedAngle;
+                if (!valley && !(step && flatStep) && !roundedStep) continue;
                 body.tangent = run;
                 body.sampled = true;
                 result.corners.push_back(std::move(body));

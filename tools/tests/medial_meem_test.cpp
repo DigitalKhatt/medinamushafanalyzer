@@ -73,6 +73,7 @@ int main(int argc, char** argv) {
     for (const auto& bad : QJsonArray{QJsonObject{{"maxDistance", 0}}, QJsonObject{{"required", "yes"}},
             QJsonObject{{"normalCut", 1}}, QJsonObject{{"placement", "sideways"}},
             QJsonObject{{"placement", "right-corner-pair"}}, QJsonObject{{"maxCounterY", .5}},
+            QJsonObject{{"minRoundedAngle", 0}}, QJsonObject{{"placement", "upper"}, {"minRoundedAngle", 60}},
             QJsonObject{{"placement", "upper"}, {"maxCounterY", .6}}}) {
         auto invalid = config, rule = ordinary;
         const auto key = bad.toObject().contains("normalCut") || bad.toObject().contains("required") ? "cuts" : "body";
@@ -87,6 +88,7 @@ int main(int argc, char** argv) {
         bool suspended;
         double rightCorner, leftCorner;
         bool steppedEntry = false;
+        bool roundedEntry = false;
     };
     const Fixture fixtures[] = {
         {1, 2, 3, 3, 1, 1, true, 24, 20},
@@ -97,6 +99,7 @@ int main(int argc, char** argv) {
         {6, 15, 4, 1, 2, 2, true, 24, 22},
         {7, 7, 1, 1, 1, 1, false, 11, 8},
         {8, 8, 7, 1, 2, 2, true, 32, 29},
+        {16, 7, 7, 1, 2, 1, false, 37, -1, false, true},
         {182, 4, 3, 2, 2, 1, false, 44, 41, true},
         {230, 11, 3, 1, 2, 1, true, 16, 13}
     };
@@ -121,21 +124,40 @@ int main(int argc, char** argv) {
         const auto pair = locate(context, hole);
         check(bool(pair), "Intrinsic meem pair not found");
         check((f.rightCorner < 0 || pair->first.bottomBaseLine.time == f.rightCorner) &&
-            pair->second.bottomBaseLine.time == f.leftCorner, "Meem cuts missed its own attachment corners");
+            (f.leftCorner < 0 || pair->second.bottomBaseLine.time == f.leftCorner),
+            "Meem cuts missed its own attachment corners");
         const auto curves = baseContourCurves(ink);
         const auto normalAtCorner = [&](const Stretching& cut, bool incoming) {
             const int index = static_cast<int>(std::lround(cut.bottomBaseLine.time)) % curves.size();
             const auto& previous = curves[(index + curves.size() - 1) % curves.size()];
             const auto& next = curves[index];
             const auto a = previous.pt3() - previous.pt4(), b = next.pt2() - next.pt1();
-            const auto tangent = (incoming ? a.x() > b.x() : a.x() < b.x()) ? a : b;
+            auto tangent = (incoming ? a.x() > b.x() : a.x() < b.x()) ? a : b;
+            if (incoming && f.roundedEntry) {
+                const auto& shoulder = cut.bottomBaseLine;
+                const bool forward = context.orientation == Orientation::CounterClockwise;
+                auto limit = shoulder;
+                limit.time += forward ? double(curves.size()) : -double(curves.size());
+                PathExtrema join;
+                check(advanceOnContour(ink, shoulder, limit, forward, .25 * hole.height(), join, tangent),
+                    "Rounded shoulder does not lead into the join");
+                tangent = join.point - shoulder.point;
+            }
             const auto chord = cut.topBaseLine.point - cut.bottomBaseLine.point;
             const double scale = std::hypot(tangent.x(), tangent.y()) * std::hypot(chord.x(), chord.y());
             check(scale > 0 && std::abs(QPointF::dotProduct(tangent, chord)) < 1e-5 * scale,
                 "Meem neck cut is not normal to its attachment stroke");
         };
         if (f.rightCorner >= 0) normalAtCorner(pair->first, true);
-        normalAtCorner(pair->second, false);
+        if (f.leftCorner >= 0) normalAtCorner(pair->second, false);
+        if (f.roundedEntry) {
+            auto sharpOnly = settings, corner = settings.value("entryCorner").toObject();
+            corner.remove("minRoundedAngle");
+            sharpOnly.insert("entryCorner", corner);
+            const auto old = medialLoopBoundaries(context, sharpOnly, hole.center().x() - .01, hole.center().x() + .01);
+            check(old && old->first.bottomBaseLine.point.x() < pair->first.bottomBaseLine.point.x() &&
+                same(old->second, pair->second), "Rounded shoulder should keep the rim without moving the exit");
+        }
         const auto pieces = cutRegions(ink, {}, {pair->first, pair->second}, context.orientation, true);
         check(pieces.size() == 3, "Meem cuts cross");
         const auto contours = toSubpaths(pieces[1].path);
