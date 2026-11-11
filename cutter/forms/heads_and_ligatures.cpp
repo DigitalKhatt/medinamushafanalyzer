@@ -282,7 +282,6 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
     const auto side = getJoinTime(cut, ctx.orientation);
     const auto& upper = cut.topBaseLine;
     const auto& lower = cut.bottomBaseLine;
-    if (upper.point.y() > lower.point.y() + 1e-5) return {};
     const bool upperIncreases = (upper.time < lower.time) == side.startAtLeft;
     const auto firstAfter = [&](const PathExtrema& point, bool increases) {
         if (increases) return ctx.prev(ctx.timeSorted.lower_bound(point));
@@ -307,10 +306,14 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
     // A short cut across two inner corners can sit below a broad hook.
     // The first turn beyond the crest then lines up with the lower corner
     // even though the crest itself is farther to the left.
-    const bool alignedShoulder = allowOblique && upper.isSharp && lower.isSharp &&
-        QLineF(upper.point, lower.point).length() < .1 * depth &&
+    const bool shortCornerSeam = allowOblique && upper.isSharp && lower.isSharp &&
+        QLineF(upper.point, lower.point).length() < .1 * depth;
+    const bool alignedShoulder = shortCornerSeam &&
         std::abs(point->point.x() - lower.point.x()) < .08 * depth;
-    if (depth <= 0 || rise < .27 * depth ||
+    // The contour endpoints at a thin, oblique corner seam can be slightly
+    // reversed in page y. Their contour order still identifies both flanks.
+    if (depth <= 0 || rise < (shortCornerSeam ? .25 : .27) * depth ||
+        (!shortCornerSeam && upper.point.y() > lower.point.y() + 1e-5) ||
         (std::abs(crest.point.x() - lower.point.x()) > .24 * depth && !alignedShoulder)) return {};
 
     std::optional<Stretching> best;

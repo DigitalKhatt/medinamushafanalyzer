@@ -517,6 +517,12 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
             return id + ": minConnectorWidths must be positive";
         cutKeys << "minConnectorWidths";
     }
+    if (const auto angle = cuts.value("initialToothTurnAngle"); !angle.isUndefined()) {
+        if (phase != "initial" || shape != "contour-route" || !angle.isDouble() ||
+            !(angle.toDouble() > 0 && angle.toDouble() < 90))
+            return id + ": initialToothTurnAngle needs an initial contour route and an angle between 0 and 90 degrees";
+        cutKeys << "initialToothTurnAngle";
+    }
     if (shape == "rising-return") {
         bodyKeys << "entryRecoveryRoute";
         cutKeys << "entryRecoveryRoute";
@@ -1095,7 +1101,7 @@ const BodyCutProgram& bodyCutProgram(const QJsonObject& config) {
             const auto letters = form.value("current").toString();
             QString nextLetters;
             if (position == 0) nextLetters = form.value("ligatureWith").toString();
-            if (position == 1) nextLetters = form.value("sharedFoldWithFinal").toString();
+            if (position == 1) nextLetters = medialFinalLetters(form);
             program.forms.insert(id, {body, formDescription(config, form, "cuts"), bodyDescriptionKey(body),
                                       nextLetters, form.value("sharedFoldWithFinal").toString()});
             if (body.value("shape") == "tooth-cluster")
@@ -1287,6 +1293,10 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 if (rule.contains(key) && !rule.value(key).isBool()) return id + ": " + key + " must be true or false";
             if (rule.contains("sharedEntry") && QString(phase) != "medial")
                 return id + ": sharedEntry belongs to a medial ligature form";
+            if (rule.contains("followedByFinal") && (QString(phase) != "medial" ||
+                !rule.value("followedByFinal").isString() || rule.value("followedByFinal").toString().isEmpty() ||
+                rule.contains("sharedFoldWithFinal")))
+                return id + ": followedByFinal needs final letters on a medial form";
             if (rule.contains("sharedBoundary") && QString(phase) != "final")
                 return id + ": sharedBoundary belongs to a final ligature form";
             if (rule.contains("sharedBoundaryWith") && (QString(phase) != "final" ||

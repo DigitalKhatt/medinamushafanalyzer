@@ -49,6 +49,17 @@ follow a clipped stroke to its turn. `stem-foot` trims a long horizontal
 run from a final stem. Assembly checks the other cap and keeps the
 recognized tooth tips and the ink partition intact.
 
+For an initial tooth, `cuts.initialToothTurnAngle` sets the angle in degrees
+where its descending flank becomes a connector. The cutter places the exit
+normal to the flank if the ink between that exit and the next letter's entry
+forms a distinct stroke.
+
+Ordinary medial teeth use local stroke offsets around their tip and inner
+bend. The lower flank can supply the stroke width for those offsets.
+`followedByFinal` limits the raised-entry cut policies to a final nūn, rāʾ
+or zāy. The upright tooth has its own measured tip-to-bend range and turn
+policy.
+
 `ligatures` takes priority for two-letter subwords without an explicit tatweel.
 Each entry selects the letters and names the initial and final templates.
 Optional `body` and `cuts` settings apply only in that ligature. The final

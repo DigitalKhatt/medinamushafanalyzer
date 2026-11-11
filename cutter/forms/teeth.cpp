@@ -1265,7 +1265,9 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
             const auto& inner = pair.bend;
             const auto& local = pair.localSection;
             const double localWidth = QLineF(local.topBaseLine.point, local.bottomBaseLine.point).length();
-            auto rightTurn = footEntry;
+            // The lower flank can supply a reliable width measurement without
+            // also being the cut. Only a baseline-entry policy uses that section.
+            auto rightTurn = settings.contains("baselineEntry") ? footEntry : std::nullopt;
             if (!rightTurn && evidence.requiredEntry) {
                 // An inclined entry can end at a corner whose vertical misses
                 // the underside. Measure the tooth at its own opposite flank
@@ -1349,8 +1351,13 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
                 return pieces.size() == 2 && pieces[0].path.contains(tip + .05 * (inner.point - tip)) &&
                     pieces[0].path.contains(tip + .95 * (inner.point - tip));
             };
-            if (!normalLeft || (!bothSides && !onFlank(left.topBaseLine, leftFlank)) || !ownsTooth(left)) {
-                normalLeft = false;
+            normalLeft = normalLeft && (bothSides || onFlank(left.topBaseLine, leftFlank)) && ownsTooth(left);
+            const bool remote = bothSides && normalLeft &&
+                QLineF(inner.point, left.bottomBaseLine.point).length() > 1.5 * stroke;
+            if (!normalLeft || remote) {
+                // A projection can reach the far side of a sloping join.
+                // Walk the underside from this tooth's bend for a local normal.
+                bool walked = false;
                 const auto start = context.timeSorted.find(inner);
                 for (auto advance : {&SearchContext::next, &SearchContext::prev}) {
                     auto end = adjacent(start, advance);
@@ -1363,7 +1370,8 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
                             if (contourNormalCut(context, anchor, advance == &SearchContext::prev, false, proposal)) {
                                 std::swap(proposal.topBaseLine, proposal.bottomBaseLine);
                                 if ((bothSides || onFlank(proposal.topBaseLine, leftFlank)) && ownsTooth(proposal)) {
-                                    left = proposal; normalLeft = true;
+                                    left = proposal;
+                                    walked = true;
                                 }
                             }
                             break;
@@ -1372,8 +1380,9 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
                         if (next->point.x() >= end->point.x()) break;
                         end = next;
                     }
-                    if (normalLeft) break;
+                    if (walked) break;
                 }
+                normalLeft |= walked;
             }
             if (!normalLeft) {
                 inspectReason("Cuts", "No left normal at this offset keeps the tooth on its own flank.");

@@ -5,6 +5,59 @@ using namespace MedinaCutter;
 
 static void check(bool passed, const char* message) { if (!passed) qFatal("%s", message); }
 
+static void checkInitialToothExits(const QJsonObject& config) {
+    auto control = config;
+    auto initial = control.value("initial").toArray();
+    for (qsizetype i = 0; i < initial.size(); ++i) {
+        auto form = initial[i].toObject();
+        auto cuts = form.value("cuts").toObject();
+        if (!cuts.contains("initialToothTurnAngle")) continue;
+        cuts.remove("initialToothTurnAngle");
+        form.insert("cuts", cuts);
+        initial[i] = form;
+    }
+    control.insert("initial", initial);
+
+    QFile fontFile("input/font.dat");
+    check(fontFile.open(QIODevice::ReadOnly), "Missing native font");
+    QDataStream fontStream(&fontFile);
+    AFont font;
+    fontStream >> font;
+    PageAnalysisResult::initQuranText();
+    for (const auto [number, line, wordIndex, subword] :
+         {std::tuple{33, 8, 9, 0}, std::tuple{211, 13, 5, 0}, std::tuple{287, 5, 7, 1},
+          std::tuple{304, 3, 8, 0}, std::tuple{353, 7, 3, 1}, std::tuple{568, 14, 7, 0}}) {
+        QFile file(QString("pages/page%1.dat").arg(number));
+        check(file.open(QIODevice::ReadOnly), "Missing initial tooth fixture");
+        PageAnalysisResult analysis;
+        QDataStream stream(&file);
+        stream >> analysis.page;
+        analysis.resolveWordBoundaries(number, &font);
+        auto& word = analysis.page.lines[line].words[wordIndex];
+        if (word.wordResultInfo.subWords.empty()) analysis.detectSubWords(number - 1, line, wordIndex, &font);
+        const auto& sub = word.wordResultInfo.subWords[subword];
+        check(analysis.segmentSubword(number - 1, line, wordIndex, subword, &font, true, &control),
+              "The control must still segment the initial tooth");
+        const auto prior = sub;
+        const auto& seam = *prior.joins.begin();
+        const auto entry = prior.kashidaPaths.front().isEmpty()
+            ? QLineF(seam.topBaseLine.point, seam.bottomBaseLine.point) : prior.kashidaCuts.front().second;
+        const auto oldExit = prior.kashidaPaths.front().isEmpty() ? entry : prior.kashidaCuts.front().first;
+
+        check(analysis.segmentSubword(number - 1, line, wordIndex, subword, &font, true, &config) &&
+              !sub.kashidaPaths.front().isEmpty() && coversOriginalInk(word, sub),
+              "The initial tooth must end in a separate, valid connector");
+        const auto& [exit, receiving] = sub.kashidaCuts.front();
+        check(exit.center().x() - oldExit.center().x() > .75 && receiving == entry,
+              "The exit must move toward the tooth while keeping the receiving cut");
+        for (size_t i = 1; i < sub.baseGlyphs.size(); ++i)
+            check(sub.baseGlyphs[i].path == prior.baseGlyphs[i].path, "An initial cut changed another letter body");
+        for (size_t i = 1; i < sub.kashidaPaths.size(); ++i)
+            check(sub.kashidaPaths[i] == prior.kashidaPaths[i] && sub.kashidaCuts[i] == prior.kashidaCuts[i],
+                  "An initial cut changed a later connector");
+    }
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv); Q_INIT_RESOURCE(application);
     QFile file("pages/page13.dat");
@@ -93,5 +146,6 @@ int main(int argc, char** argv) {
           sub.letterDiagnostics[0].toObject().value("status")=="no-template" &&
           (sub.kashidaPaths.empty() || sub.kashidaPaths[0].isEmpty()),
           "First kashida was emitted without a matched initial body");
+    checkInitialToothExits(config);
     qInfo("Tooth ownership passed: initial stroke retained, closed-loop tooth rejected, final counter retained, correct fallback, no pre-initial kashida, ink conservation and determinism.");
 }

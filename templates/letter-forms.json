@@ -548,6 +548,7 @@
         }
       },
       "cuts": {
+        "initialToothTurnAngle": 20,
         "route": {
           "bottomProbe": "down"
         },
@@ -580,6 +581,7 @@
         }
       },
       "cuts": {
+        "initialToothTurnAngle": 20,
         "route": {
           "bottomProbe": "down"
         },
@@ -617,6 +619,7 @@
         }
       },
       "cuts": {
+        "initialToothTurnAngle": 20,
         "route": {
           "bottomProbe": "normal"
         },
@@ -644,6 +647,7 @@
         }
       },
       "cuts": {
+        "initialToothTurnAngle": 20,
         "turnBoundaries": {
           "left": "trim"
         },
@@ -1897,6 +1901,24 @@
       }
     },
     {
+      "id": "beh-raised-entry-medi",
+      "current": "بتثنيئى",
+      "followedByFinal": "نرز",
+      "body": {
+        "inherit": "beh-tooth-medi",
+        "baselineEntry": {
+          "minRise": 2.5,
+          "required": true
+        }
+      },
+      "cuts": {
+        "inherit": "beh-tooth-medi",
+        "baselineEntry": {
+          "turnAngle": 45
+        }
+      }
+    },
+    {
       "id": "beh-tooth-medi",
       "current": "بتثنيئى",
       "body": {
@@ -1923,10 +1945,6 @@
         "offsetUnit": "local-stroke",
         "leftOffset": 0.45,
         "rightOffset": 0.5,
-        "baselineEntry": {
-          "turnAngle": 45,
-          "minTurnRun": 4
-        },
         "tightJoin": "shared-boundary"
       }
     },
@@ -1943,8 +1961,25 @@
         "maxWidth": 5.5
       },
       "cuts": {
-        "inherit": "beh-tooth-medi",
-        "baselineEntry": false
+        "inherit": "beh-tooth-medi"
+      }
+    },
+    {
+      "id": "beh-raised-bend-medi",
+      "current": "بتثنيئى",
+      "followedByFinal": "نرز",
+      "recoveryStage": 1,
+      "body": {
+        "inherit": "beh-bent-medi",
+        "baselineEntry": {
+          "minRise": 2.25
+        }
+      },
+      "cuts": {
+        "inherit": "beh-bent-medi",
+        "baselineEntry": {
+          "turnAngle": 45
+        }
       }
     },
     {
@@ -1953,9 +1988,6 @@
       "recoveryStage": 1,
       "body": {
         "shape": "tooth-bend",
-        "baselineEntry": {
-          "minRise": 2.25
-        },
         "minBendTurn": 0.12,
         "minPairDistance": 0.6,
         "maxPairDistance": 4
@@ -1969,9 +2001,6 @@
         "flankMode": "contour-normal",
         "flankOffset": 0.5,
         "maxSectionWidth": 2.5,
-        "baselineEntry": {
-          "turnAngle": 45
-        },
         "tightJoin": "shared-boundary"
       }
     },

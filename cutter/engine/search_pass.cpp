@@ -231,7 +231,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     };
     const auto medialForms = config.value("medial").toArray();
     const auto matchesBody = [&](const QJsonObject& form, int letter) {
-        const auto final = form.value("sharedFoldWithFinal").toString();
+        const auto final = medialFinalLetters(form);
         return form.value("current").toString().contains(baseText[letter]) &&
             (final.isEmpty() || hasFollowingLetter(baseText, letter, final, true));
     };
@@ -519,7 +519,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     if (recoverTeeth && toothPairDescription(toothSettings) && toothSettings.value("baselineEntry").isObject()) {
                         const auto entry = toothSettings.value("baselineEntry").toObject();
                         const auto policy = toothPlacementSettings(form).value("baselineEntry").toObject();
-                        for (auto& body : bodies) extendToothToBaseline(context, body, entry, policy);
+                        if (!policy.isEmpty())
+                            for (auto& body : bodies) extendToothToBaseline(context, body, entry, policy);
                     }
                     teethByForm.insert(id, std::move(bodies));
                 }
@@ -959,8 +960,15 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     // A shared exit must still describe the already matched
                     // final body; a medial candidate cannot take its counter
                     // and leave only the tail under the final letter's name.
-                    if (letter + 1 == lastIndex && !finalBoundary && !outgoing.fixedLeftBoundary &&
-                        !preservesBody(bodyTemplateIds[lastIndex], left, false)) continue;
+                    if (letter + 1 == lastIndex && !finalBoundary && !outgoing.fixedLeftBoundary) {
+                        if (!preservesBody(bodyTemplateIds[lastIndex], left, false)) continue;
+                        const auto& saved = nextBoundaries[letter];
+                        if (medial.tooth && saved) {
+                            const auto side = getJoinTime(saved->cut, context.orientation);
+                            if (!side.isStrictRight(medial.tooth->tip.time) ||
+                                !side.isStrictRight(medial.tooth->bend.time)) continue;
+                        }
+                    }
                     // First prefer an intrinsic lam route that composes with
                     // the final body's own cut. A partial route remains useful
                     // if none of the alternatives can complete that boundary.

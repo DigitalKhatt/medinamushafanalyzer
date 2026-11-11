@@ -775,9 +775,21 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                     incoming.fixedRightBoundary = true;
                     incoming.fixedLeftBoundary = ribbon;
                     incoming.kashidaOverrides.insert("enabled", ribbon);
-                    if (replace(last - 1, *boundary, {}, message + " and preceding tooth restored", [&] {
-                            return restoredHook() && tooth.retainedBy(world(sub.baseGlyphs[last - 1].path));
+                    const auto hookAndTooth = [&] {
+                        return restoredHook() && tooth.retainedBy(world(sub.baseGlyphs[last - 1].path));
+                    };
+                    auto exit = tooth.left;
+                    orientSection(outline, exit, outline.xSorted.rbegin()->time, true);
+                    const auto end = chord(exit), startOfReh = chord(*boundary);
+                    const bool separate = cutPrecedes(exit, *boundary, outline.orientation) &&
+                        QLineF(end.center(), startOfReh.center()).length() >= .75 * std::max(end.length(), startOfReh.length());
+                    const auto restored = message + " and preceding tooth restored";
+                    if (separate && replace(last - 1, exit, boundary, restored, [&] {
+                            const auto connector = world(sub.kashidaPaths.back());
+                            return hookAndTooth() && toSubpaths(connector).size() == 1 &&
+                                followsOneStroke(connector, end, startOfReh);
                         }, incoming)) break;
+                    if (replace(last - 1, *boundary, {}, restored, hookAndTooth, incoming)) break;
                 }
             }
         }

@@ -1213,6 +1213,10 @@ inline bool hasFollowingLetter(QStringView letters, int slot, QStringView allowe
     return next < letters.size() && (!mustBeFinal || next + 1 == letters.size()) && allowed.contains(letters[next]);
 }
 
+inline QString medialFinalLetters(const QJsonObject& form) {
+    return form.value("followedByFinal").toString(form.value("sharedFoldWithFinal").toString());
+}
+
 inline bool hasTatweelBeforeFinal(QStringView text) {
     bool pastFinal = false;
     for (auto it = text.rbegin(); it != text.rend(); ++it) {
@@ -1260,6 +1264,8 @@ SubwordCutPlan makeSubwordCutPlan(WordResultInfo::SubWordInfo proposals, const Q
 
 bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& sub,
                                  const QJsonObject& config, bool penLiftAtEnd = false);
+
+void applyInitialToothExit(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 
 std::optional<ReturnSeamBody> recognizeRisingReturn(const InkOutline &outline, const QJsonObject &spec);
 

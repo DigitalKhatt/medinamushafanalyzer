@@ -41,10 +41,11 @@ struct ExpectedTooth {
     const char* form;
     double tip;
     double bend;
+    double maxWidth = INFINITY;
 };
 
 static void checkAssignedTeeth(int page, int line, int wordIndex, int subIndex,
-                               std::initializer_list<ExpectedTooth> teeth) {
+                               std::initializer_list<ExpectedTooth> teeth, double minFinalHeight = 0) {
     QFile file(QString("pages/page%1.dat").arg(page));
     check(file.open(QIODevice::ReadOnly), "Cannot open medial-tooth fixture");
     PageAnalysisResult analysis;
@@ -55,6 +56,8 @@ static void checkAssignedTeeth(int page, int line, int wordIndex, int subIndex,
     check(analysis.segmentSubword(page - 1, line - 1, wordIndex - 1, subIndex - 1, nullptr, true),
           "Medial-tooth fixture did not complete");
     const auto shape = word.bodyShape(sub);
+    check(shape.transform.map(sub.baseGlyphs.back().path).boundingRect().height() >= minFinalHeight,
+          "The final letter lost its entry crest");
     const auto curves = baseContourCurves(shape.path);
     const auto point = [&](double time) {
         const int index = static_cast<int>(time);
@@ -64,6 +67,8 @@ static void checkAssignedTeeth(int page, int line, int wordIndex, int subIndex,
         const size_t i = tooth.body - 1;
         check(sub.letterDiagnostics.at(i).toObject().value("template") == tooth.form,
               "The wrong form claimed a tooth");
+        check(shape.transform.map(sub.baseGlyphs[i].path).boundingRect().width() <= tooth.maxWidth,
+              "The tooth absorbed a connecting stroke");
         const QLineF chord(point(tooth.tip), point(tooth.bend));
         for (double t : {.05, .5, .95}) {
             const auto sample = chord.pointAt(t);
@@ -227,7 +232,7 @@ int main(int argc, char** argv) {
                                      {2, "beh-upright-medi", 33.450564, 18},
                                      {3, "beh-tooth-medi", 38.640274, 17}});
     checkAssignedTeeth(259, 11, 8, 1, {{2, "beh-tooth-medi", 6.38515, 24.52536}});
-    checkAssignedTeeth(394, 13, 3, 3, {{2, "beh-tooth-medi", 20.99892, 12.81770}});
+    checkAssignedTeeth(394, 13, 3, 3, {{2, "beh-raised-entry-medi", 20.99892, 12.81770}});
     checkAssignedTeeth(30, 10, 4, 2, {{2, "beh-tooth-medi", 37.387855, 23.527899},
                                       {3, "beh-upright-medi", 40.104188, 21}});
     checkAssignedTeeth(419, 2, 2, 2, {{2, "beh-upright-medi", 4.4929052, 47}});
@@ -241,15 +246,21 @@ int main(int argc, char** argv) {
                                        {5, "beh-tooth-medi", 45.3686336, 17.5371011}});
     // Exact native landmarks distinguish the tooth from the neighboring terminal,
     // including when an earlier, geometrically valid initial cut takes too much ink.
-    checkAssignedTeeth(33, 14, 4, 1, {{2, "beh-bent-medi", 14.5638, 7}});
+    checkAssignedTeeth(33, 14, 4, 1, {{2, "beh-raised-bend-medi", 14.5638, 7}});
     // On this rendering the crown and the inclined shaft both belong to yeh.
     // The second section crosses the shaft below the old crown-only cut.
-    checkAssignedTeeth(54, 1, 8, 1, {{2, "beh-tooth-medi", 25.18, 11},
-                                      {2, "beh-tooth-medi", 23, 11.5}});
+    checkAssignedTeeth(54, 1, 8, 1, {{2, "beh-raised-entry-medi", 25.18, 11},
+                                      {2, "beh-raised-entry-medi", 23, 11.5}});
     checkAssignedTeeth(157, 10, 4, 2, {{3, "beh-shoulder-medi", 27, 9.02764}});
     checkAssignedTeeth(174, 6, 6, 2, {{2, "beh-hook-medi", 23.3074, 10},
                                       {3, "beh-tooth-medi", 30.3424, 6.51222}});
     checkAssignedTeeth(220, 12, 1, 1, {{3, "beh-tooth-medi", 32.4267, 15.5179}});
     checkAssignedTeeth(235, 12, 7, 1, {{3, "beh-tooth-medi", 9, 43}});
+    // A raised entry ends at its turn. A short tooth ends near the bend
+    // even when the neighbouring stroke continues to descend or rise.
+    checkAssignedTeeth(166, 6, 3, 2, {{4, "beh-raised-entry-medi", 7.36867, 17, 3}});
+    checkAssignedTeeth(253, 2, 10, 1, {{3, "beh-bent-medi", 12.4395, 37.501, 3}});
+    checkAssignedTeeth(171, 13, 8, 2, {{2, "beh-tooth-medi", 29.6692, 19, 3.5}});
+    checkAssignedTeeth(102, 2, 7, 1, {{2, "beh-raised-bend-medi", 19.4095, 9, 3.5}}, 5.5);
     qInfo("Medial tooth passed: own contour/scale, stroke normals, independent text/joins, affine invariance, smooth-body abstention, two kashidas, no final template, nine prior matches, and rounded hamza-seat/dhal ownership.");
 }

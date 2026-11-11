@@ -220,8 +220,8 @@ static bool preserveUnchangedOutline(const QPainterPath& original, QPainterPath&
     return true;
 }
 
-static std::optional<WordResultInfo::SubWordInfo> recutClusterJoin(
-        const Word& word, const WordResultInfo::SubWordInfo& sub, int slot, int clusterSlot,
+static std::optional<WordResultInfo::SubWordInfo> recutBodyJoin(
+        const Word& word, const WordResultInfo::SubWordInfo& sub, int slot, int bodySlot,
         const Stretching& sending, const std::optional<Stretching>& receiving, const QJsonObject& config) {
     auto trial = sub;
     const auto current = std::next(trial.joins.begin(), slot);
@@ -245,13 +245,13 @@ static std::optional<WordResultInfo::SubWordInfo> recutClusterJoin(
 
     // Keep the other cap of an existing connector and all unrelated regions
     // intact. A shared seam can also move the edge of its immediate neighbor.
-    const bool atEntry = slot < clusterSlot;
+    const bool atEntry = slot < bodySlot;
     const int neighbor = atEntry ? slot : slot + 1;
     const auto unchanged = [&](const QPainterPath& original, QPainterPath& rebuilt) {
         return atEntry ? preserveUnchangedOutline(original, rebuilt) : original == rebuilt;
     };
     for (size_t i = 0; i < sub.baseGlyphs.size(); ++i)
-        if (i != size_t(clusterSlot) && (receiving || i != size_t(neighbor)) &&
+        if (i != size_t(bodySlot) && (receiving || i != size_t(neighbor)) &&
             !unchanged(sub.baseGlyphs[i].path, trial.baseGlyphs[i].path)) return {};
     for (size_t i = 0; i < sub.kashidaPaths.size(); ++i)
         if (i != size_t(slot) && (!unchanged(sub.kashidaPaths[i], trial.kashidaPaths[i]) ||
@@ -289,6 +289,86 @@ static std::optional<WordResultInfo::SubWordInfo> recutClusterJoin(
     return trial;
 }
 
+static std::optional<Stretching> assembledJoinCap(const WordResultInfo::SubWordInfo& sub, int join,
+        bool receiving, const SearchContext& source, std::vector<std::vector<QBezier>>& sourceCurves) {
+    auto cap = *std::next(sub.joins.begin(), join);
+    if (!sub.kashidaPaths[join].isEmpty()) {
+        const auto& [right, left] = sub.kashidaCuts[join];
+        const auto& line = receiving ? left : right;
+        cap.topBaseLine = receiving ? cap.topLeft : cap.topRight;
+        cap.bottomBaseLine = receiving ? cap.bottomLeft : cap.bottomRight;
+        if (cap.topBaseLine.point != line.p1() || cap.bottomBaseLine.point != line.p2()) {
+            if (sourceCurves.empty())
+                for (const auto& contour : source.subPaths) sourceCurves.push_back(baseContourCurves(contour));
+            cap.topBaseLine.point = line.p1();
+            cap.bottomBaseLine.point = line.p2();
+            if (!sourceLandmark(cap.topBaseLine, sourceCurves) || !sourceLandmark(cap.bottomBaseLine, sourceCurves))
+                return {};
+        }
+    }
+    if (cap.topBaseLine.pathIndex != 0 || cap.bottomBaseLine.pathIndex != 0 ||
+        cap.topBaseLine.time == cap.bottomBaseLine.time) return {};
+    return cap;
+}
+
+void applyInitialToothExit(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+    if (sub.letterDiagnostics.isEmpty() || sub.joins.empty() || sub.kashidaPaths.empty() ||
+        sub.kashidaCuts.empty() || sub.joins.begin()->counterEntry.pathIndex > 0) return;
+    const auto id = sub.letterDiagnostics.first().toObject().value("template").toString();
+    const auto& forms = bodyCutProgram(config).forms;
+    const auto form = forms.constFind(id);
+    if (form == forms.cend()) return;
+    const double angle = form->cuts.value("initialToothTurnAngle").toDouble();
+    if (angle <= 0) return;
+    const auto kashida = config.value("kashidaDefaults").toObject();
+    if (!kashida.value("enabled").toBool(true)) return;
+    const double penWidth = config.value("strokeWidth").toDouble(1);
+    const double clearance = penWidth * kashida.value("sharedCutTolerance").toDouble(.25);
+    const double minSpanWidths = kashida.value("minSpanToStrokeRatio").toDouble(.75);
+    const auto shape = word.bodyShape(sub);
+    const auto inPage = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
+    WordResultInfo::SubWordInfo geometryOnly{};
+    SearchContext source{.transformedPath = inPage(shape.path), .subword = geometryOnly};
+    if (!readTerminalOutline(source)) return;
+    std::vector<std::vector<QBezier>> curves;
+    const auto sending = assembledJoinCap(sub, 0, false, source, curves);
+    const auto receiving = assembledJoinCap(sub, 0, true, source, curves);
+    if (!sending || !receiving) return;
+    const auto chord = [](const Stretching& cut) { return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point); };
+    const auto oldEnd = chord(*sending), nextStart = chord(*receiving);
+    if (oldEnd.length() < .25 * penWidth || oldEnd.length() > 2.7 * penWidth) return;
+
+    const auto side = getJoinTime(*sending, source.orientation);
+    const auto crest = std::find_if(source.ySorted.rbegin(), source.ySorted.rend(),
+        [&](const auto& point) { return side.isStrictRight(point.time); });
+    const auto outer = source.xSorted.begin();
+    if (crest == source.ySorted.rend() || !side.isStrictRight(outer->time)) return;
+    for (const auto& start : {*crest, *outer}) {
+        auto boundary = strokeFlankTurn(source, start, penWidth, -1, true, angle, .5);
+        if (!boundary) continue;
+        if (boundary->topBaseLine.point.y() > boundary->bottomBaseLine.point.y())
+            std::swap(boundary->topBaseLine, boundary->bottomBaseLine);
+        const auto end = chord(*boundary);
+        const auto span = end.center() - nextStart.center();
+        const auto bodySide = getJoinTime(*boundary, source.orientation);
+        if (!bodySide.isStrictRight(crest->time) || !bodySide.isStrictRight(outer->time) ||
+            !cutPrecedes(*boundary, *sending, source.orientation) ||
+            end.center().x() - oldEnd.center().x() < minSpanWidths * end.length() ||
+            span.x() < minSpanWidths * std::max(end.length(), nextStart.length()) ||
+            std::abs(span.y()) > .6 * span.x() || !leavesEntryClearance(*boundary, *receiving, source.orientation, clearance))
+            continue;
+        auto trial = recutBodyJoin(word, sub, 0, 0, *boundary, receiving, config);
+        if (!trial) continue;
+        const auto ribbon = inPage(trial->kashidaPaths.front());
+        if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, end, nextStart)) continue;
+        InspectFormScope inspection(id);
+        inspectCandidate("Initial tooth exit", *boundary);
+        trial->templateTrace.append(id + " · exit at the tooth foot");
+        sub = std::move(*trial);
+        return;
+    }
+}
+
 bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& sub,
                                  const QJsonObject& config, bool penLiftAtEnd) {
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
@@ -317,25 +397,8 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
     std::vector<std::vector<QBezier>> sourceCurves;
     const bool alignedJoins = sub.joins.size() + 1 == size_t(letters.size()) &&
         sub.kashidaPaths.size() == sub.joins.size() && sub.kashidaCuts.size() == sub.joins.size();
-    const auto actualCap = [&](int join, bool receiving) -> std::optional<Stretching> {
-        auto cap = *std::next(sub.joins.begin(), join);
-        if (!sub.kashidaPaths[join].isEmpty()) {
-            const auto& [right, left] = sub.kashidaCuts[join];
-            const auto& line = receiving ? left : right;
-            cap.topBaseLine = receiving ? cap.topLeft : cap.topRight;
-            cap.bottomBaseLine = receiving ? cap.bottomLeft : cap.bottomRight;
-            if (cap.topBaseLine.point != line.p1() || cap.bottomBaseLine.point != line.p2()) {
-                if (sourceCurves.empty())
-                    for (const auto& contour : source.subPaths) sourceCurves.push_back(baseContourCurves(contour));
-                cap.topBaseLine.point = line.p1();
-                cap.bottomBaseLine.point = line.p2();
-                if (!sourceLandmark(cap.topBaseLine, sourceCurves) || !sourceLandmark(cap.bottomBaseLine, sourceCurves))
-                    return {};
-            }
-        }
-        if (cap.topBaseLine.pathIndex != 0 || cap.bottomBaseLine.pathIndex != 0 ||
-            cap.topBaseLine.time == cap.bottomBaseLine.time) return {};
-        return cap;
+    const auto actualCap = [&](int join, bool receiving) {
+        return assembledJoinCap(sub, join, receiving, source, sourceCurves);
     };
     for (int slot = 0; slot < letters.size(); ++slot) {
         if (!isClusterLetter(letters[slot])) continue;
@@ -421,7 +484,7 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                                                          : sharedTolerance;
                         if (!leavesConnectorRoom(boundary, *receiving, gap)) return false;
                     }
-                    auto trial = recutClusterJoin(word, sub, slot, slot, boundary, receiving, config);
+                    auto trial = recutBodyJoin(word, sub, slot, slot, boundary, receiving, config);
                     if (!trial) return false;
                     if (openConnector) {
                         const auto ribbon = inPage(trial->kashidaPaths[slot]);
@@ -464,7 +527,7 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                     if (fits) {
                         auto revised = attachment;
                         revised.entry = boundary;
-                        auto trial = recutClusterJoin(word, sub, slot - 1, slot, connector ? *sending : boundary,
+                        auto trial = recutBodyJoin(word, sub, slot - 1, slot, connector ? *sending : boundary,
                             connector ? fit.entry : std::nullopt, config);
                         if (trial) accept(std::move(*trial), revised, boundary, "First tooth junction",
                                           "entry at first tooth junction");
