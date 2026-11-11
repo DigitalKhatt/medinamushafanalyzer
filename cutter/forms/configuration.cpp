@@ -55,6 +55,9 @@ QString invalidWalkSettings(const QJsonObject& route, const QString& location) {
     static const QStringList probes{"down", "up", "left", "right", "below", "normal", "corner", "walk-stroke-up", "down-stroke", "walk-stroke-normal"};
     if (route.contains("bottomProbe") && !probes.contains(route.value("bottomProbe").toString()))
         return location + ": unsupported contour-walk bottomProbe";
+    if (route.contains("trimExitToNormal") && (!route.value("trimExitToNormal").isBool() ||
+        route.value("bottomProbe") != "down"))
+        return location + ": trimExitToNormal requires a down probe and a boolean value";
     if (route.contains("penWidth")) {
         const auto width = route.value("penWidth");
         const auto probe = route.value("bottomProbe").toString();
@@ -126,13 +129,14 @@ QString invalidWalkSettings(const QJsonObject& route, const QString& location) {
             const auto step = value.toObject();
             if (step.contains("immediate") && !step.value("immediate").isBool())
                 return location + ": immediate must be a boolean on a contour step";
-            for (const auto* endpoint : {"start", "end"}) {
+            for (const auto* endpoint : {"start", "end", "stopAt"}) {
                 if (!step.contains(endpoint)) continue;
                 if (!step.value(endpoint).isObject()) return location + ": step landmark must be an object";
                 const auto features = step.value(endpoint).toObject();
                 for (auto feature = features.begin(); feature != features.end(); ++feature)
-                    if (!QStringList{"sharp", "xExtremum", "yExtremum", "xMinimum"}.contains(feature.key()) || !feature.value().isBool())
-                        return location + ": landmark features must be sharp, xExtremum, yExtremum or xMinimum booleans";
+                    if (!QStringList{"sharp", "xExtremum", "yExtremum", "xMinimum", "xMaximum"}.contains(feature.key()) ||
+                        !feature.value().isBool())
+                        return location + ": contour landmark features must be supported boolean flags";
             }
         }
     }
@@ -489,6 +493,12 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     if (shape == "contour-route") {
         bodyKeys << "tail";
         cutKeys << "tail" << "recoveryTail";
+        if (phase == "initial" && cuts.contains("minConnectorWidths")) {
+            const auto length = cuts.value("minConnectorWidths");
+            if (!length.isDouble() || !std::isfinite(length.toDouble()) || length.toDouble() <= 0)
+                return id + ": minConnectorWidths must be positive";
+            cutKeys << "minConnectorWidths";
+        }
     }
     if (shape == "rising-return") {
         bodyKeys << "entryRecoveryRoute";
@@ -579,7 +589,7 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         if (form.contains(old))
             return id + ": declared geometry belongs in body / cuts, not " + old;
     const QStringList projectionKeys{
-        "normalNeck", "normalValley",  "normalCut",        "offset",         "baselineOffset", "sideOffset", "entryBelowCounter",
+        "normalNeck", "normalValley", "normalCut", "trimExitToNormal", "offset", "baselineOffset", "sideOffset", "entryBelowCounter",
         "required",   "strokeOffsetX", "bottomProbe",      "oppositeCorner", "normalOffset", "normalOffsetTolerance",
         "penWidth",   "strokeSource",  "walkNormalOffset", "anchorSide",     "visibleFrom",  "maxProjectionInset"};
     const auto checkBody = [&](auto &&self, const QJsonObject &value, bool anchor = false) -> bool {

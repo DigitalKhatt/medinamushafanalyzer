@@ -174,6 +174,37 @@ int main(int argc,char** argv) {
                   "Initial meem cut is not normal to the two stroke flanks");
         }
     }
+    struct AinJoin {
+        int page, line, word, subword;
+        int stackedCorner = -1;
+    };
+    for (const auto& at : {AinJoin{16,7,7,1}, AinJoin{202,10,7,1}, AinJoin{359,10,5,1},
+                           AinJoin{544,15,11,1}, AinJoin{208,3,9,1,13}, AinJoin{453,15,8,1,31}}) {
+        PageAnalysisResult sample;
+        QDataStream stream(read(QString("pages/page%1.dat").arg(at.page)));
+        stream >> sample.page;
+        sample.resolveWordBoundaries(at.page, &font);
+        check(sample.segmentSubword(at.page-1, at.line-1, at.word-1, at.subword-1, &font, true),
+              "Initial ain fixture remains partial");
+        const auto& word = sample.page.lines[at.line-1].words[at.word-1];
+        const auto& sub = word.wordResultInfo.subWords.at(at.subword-1);
+        check(sub.letterDiagnostics.first().toObject().value("template") == "ain-init" &&
+              coversOriginalInk(word, sub), "Initial ain lost its body or source ink");
+        const auto shape = word.bodyShape(sub);
+        if (at.stackedCorner >= 0) {
+            const auto curves = baseContourCurves(shape.transform.map(shape.path).translated(shape.pos));
+            const auto& join = *sub.joins.begin();
+            check(sub.kashidaPaths.front().isEmpty() &&
+                  sub.letterDiagnostics.at(1).toObject().value("entryTemplate") == "hah-stacked-medi" &&
+                  std::abs(join.topBaseLine.point.y() - join.bottomBaseLine.point.y()) < 1e-5 &&
+                  QLineF(join.bottomBaseLine.point, curves.at(at.stackedCorner).pt1()).length() < 1e-5,
+                  "Stacked ain must share the horizontal cut at the hah attachment");
+        } else {
+            const auto box = shape.transform.map(sub.baseGlyphs.front().path).boundingRect();
+            check(!sub.kashidaPaths.front().isEmpty() && box.width() < 1.2 * box.height(),
+                  "Initial ain absorbed the stroke after its rim");
+        }
+    }
     auto invalid=config;auto finals=invalid["final"].toArray();auto f=finals.last().toObject();
     f.insert("sharedBoundary","yes");finals[finals.size()-1]=f;invalid.insert("final",finals);
     check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(),"Malformed shared boundary accepted");

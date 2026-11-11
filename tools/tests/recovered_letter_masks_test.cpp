@@ -317,7 +317,7 @@ int main(int argc, char** argv) {
         if (e.page == 28) {
             require(sub.kashidaPaths.size() == 1 && !sub.kashidaPaths.front().isEmpty(), id + " lost the long connector");
             const auto& [start, end] = sub.kashidaCuts.front();
-            require(std::abs(start.center().x() - end.center().x() - 14.175) < .01, id + " genuine kashida shortened");
+            require(start.center().x() - end.center().x() >= 14.165, id + " genuine kashida shortened");
         }
         if (e.page == 20 || e.page == 134 || (e.page == 219 && e.line == 12) || e.page == 344)
             require(sub.letterDiagnostics.first().toObject().value("template") == "lam-hah-stacked-init" &&

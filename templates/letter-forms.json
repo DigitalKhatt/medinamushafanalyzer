@@ -231,7 +231,11 @@
               "direction": "right",
               "minY": 0,
               "end": {
-                "sharp": true
+                "xMaximum": true
+              },
+              "stopAt": {
+                "sharp": true,
+                "xExtremum": false
               }
             }
           ],
@@ -239,8 +243,10 @@
         }
       },
       "cuts": {
+        "minConnectorWidths": 1.1,
         "route": {
-          "bottomProbe": "down"
+          "bottomProbe": "down",
+          "trimExitToNormal": true
         },
         "boundaries": {
           "right": "free",
@@ -2387,7 +2393,7 @@
       "id": "hah-stacked-medi",
       "current": "جحخ",
       "upperAttachment": {
-        "letters": "بتثنيىئم",
+        "letters": "بتثنيىئمعغ",
         "headFlank": {
           "minX": 3,
           "minY": 0,

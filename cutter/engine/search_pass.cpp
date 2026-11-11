@@ -351,7 +351,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             sharedBoundary(primaryForm)};
         if (!side.isEmpty()) {
             const auto otherSide = side == "next" ? QStringLiteral("current") : QStringLiteral("next");
-            context.pairedStrokeWidth = QLineF(primary.topBaseLine.point, primary.bottomBaseLine.point).length();
+            context.pairedStrokeWidth = primaryForm.value("trimExitToNormal").toBool() && primary.referenceWidth > 0
+                ? primary.referenceWidth : QLineF(primary.topBaseLine.point, primary.bottomBaseLine.point).length();
             const auto& pairingRules = boundaryRules;
             for (const auto& value : pairingRules) {
                 const auto rule = value.toObject();
@@ -370,6 +371,24 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         if (preserveReadingOrder) context.res.readingOrder=index;
             subWord.joins.insert(context.res);
     }
+
+    const double minInitialConnector = preparedRules.constraints.value(bodyTemplateIds[0])
+        .value("cuts").toObject().value("minConnectorWidths").toDouble();
+    const auto retainsInitialConnector = [&](const Stretching& exit, const Stretching& entry) {
+        if (minInitialConnector <= 0 || !cutPrecedes(exit, entry, context.orientation)) return false;
+        const QLineF sending(exit.topBaseLine.point, exit.bottomBaseLine.point);
+        const QLineF receiving(entry.topBaseLine.point, entry.bottomBaseLine.point);
+        const auto advance = sending.center() - receiving.center();
+        const double width = std::max(sending.length(), receiving.length());
+        // Both sections must cross a visible, low connecting stroke. A
+        // near-horizontal cap belongs to a descending stacked attachment.
+        if (advance.x() < minInitialConnector * width || std::abs(advance.y()) > .6 * advance.x() ||
+            std::abs(sending.dy()) < .7 * sending.length() ||
+            std::abs(receiving.dy()) < .7 * receiving.length()) return false;
+        const auto pieces = cutRegions(context.transformedPath, {}, {exit, entry}, context.orientation, true);
+        return pieces.size() == 3 && toSubpaths(pieces[1].path).size() == 1 &&
+               followsOneStroke(pieces[1].path, sending, receiving);
+    };
 
     // A join can carry one cut from each neighboring letter body.
     // Keep the original single-rule result when the pair cannot form a valid span.
@@ -400,6 +419,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 sharesCornerJunction(pair.primaryIsNext ? bodyTemplateIds[lastIndex] : pair.templateId, right, left);
             if ((pair.ligature || atJunction || (pair.tightJoin &&
                 ((gap <= 0 && -gap <= chord(right).length()) || closeInterleaved))) &&
+                (index != 0 || !retainsInitialConnector(right, left)) &&
                 (index == 0 || before(cuts[index - 1], left)) &&
                 (index + 1 == cuts.size() || before(left, cuts[index + 1])) &&
                 interiorChord(ink, left.topBaseLine, left.bottomBaseLine)) {
@@ -701,6 +721,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     sharedJoins |= form.value("reclaimEntry").toBool() && !before(incoming,right);
                     sharedJoins |= form.value("sharedEntry").toBool() &&
                         (teeth.isEmpty() || !before(incoming, right));
+                    if (sharedJoins && letter == 1 && retainsInitialConnector(incoming, right))
+                        sharedJoins = false;
                     if (medial.tooth && !bodyTemplateIds[letter - 1].isEmpty()) {
                         const auto side = getJoinTime(incoming, context.orientation);
                         // An initial or medial form may itself end in a tooth
