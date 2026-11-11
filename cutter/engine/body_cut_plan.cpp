@@ -218,7 +218,7 @@ static std::optional<WordResultInfo::SubWordInfo> recutClusterExit(
     if (receiving) {
         const auto& [start, end] = trial.kashidaCuts[slot];
         if (start != QLineF(boundary.topBaseLine.point, boundary.bottomBaseLine.point) ||
-            end != sub.kashidaCuts[slot].second) return {};
+            end != QLineF(receiving->topBaseLine.point, receiving->bottomBaseLine.point)) return {};
     } else {
         const auto shape = word.bodyShape(sub);
         const auto& before = sub.baseGlyphs[slot + 1].path;
@@ -305,12 +305,14 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
             } else if (hasOutline) {
                 ToothClusterAttachment attachment;
                 const bool terminal = slot + 1 == letters.size();
+                const double minConnectorWidths = slot == 0 ? form->cuts.value("minConnectorWidths").toDouble() : 0;
                 if (alignedJoins) {
                     if (slot > 0) attachment.entry = actualCap(slot - 1, true);
                     if (!terminal) {
                         attachment.exit = actualCap(slot, false);
                         attachment.separateConnector = !sub.kashidaPaths[slot].isEmpty();
                         if (attachment.separateConnector) attachment.receiving = actualCap(slot, true);
+                        else if (minConnectorWidths > 0) attachment.receiving = attachment.exit;
                         if (slot + 2 == letters.size() && !hasTatweelBeforeFinal(sub.text)) {
                             const auto& variants = program.formsByPosition[slot == 0 ? 0 : 1];
                             for (const auto& variant : variants.value(letters[slot])) {
@@ -326,28 +328,41 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                 attachment.requiresFold = !form->sharedFoldWithFinal.isEmpty();
                 attachment.canFitHollow = attachment.sameContour && attachment.exit && attachment.receiving &&
                     diagnostic.value("cutPolicy") != "tooth-exit-walk" &&
-                    leavesConnectorRoom(*attachment.exit, *attachment.receiving, sharedTolerance);
+                    (!attachment.separateConnector || leavesConnectorRoom(*attachment.exit, *attachment.receiving, sharedTolerance));
                 auto fit = fitToothCluster(source, form->body, form->cuts, mask, terminal, penWidth, attachment, true);
                 error = fit.error;
-                if (!attachment.separateConnector || attachment.receiving) {
-                    for (const auto& option : fit.exits) {
-                        const auto& boundary = option.cut;
-                        if (option.atHollow && !leavesConnectorRoom(boundary, *attachment.receiving, sharedTolerance))
-                            continue;
-                        auto trial = recutClusterExit(word, sub, slot, boundary, attachment.receiving, config);
-                        if (!trial) continue;
-                        auto revised = attachment;
-                        revised.exit = boundary;
-                        if (!fitToothCluster(source, form->body, form->cuts, inPage(trial->baseGlyphs[slot].path),
-                                             terminal, penWidth, revised, false).error.isEmpty()) continue;
-                        trial->templateTrace.append(id + (option.atHollow ? " · exit at final tooth hollow"
-                                                                        : " · exit fitted after the third tooth"));
-                        InspectFormScope inspection(id);
-                        inspectCandidate(option.atHollow ? "Final tooth hollow" : "Third tooth exit", boundary);
-                        sub = std::move(*trial);
-                        error.clear();
-                        break;
+                for (const auto& option : fit.exits) {
+                    const auto& boundary = option.cut;
+                    const bool openConnector = option.atHollow && !attachment.separateConnector;
+                    const auto receiving = attachment.separateConnector || openConnector
+                        ? attachment.receiving : std::nullopt;
+                    if ((attachment.separateConnector || openConnector) && !receiving) continue;
+                    if (option.atHollow) {
+                        const double width = QLineF(receiving->topBaseLine.point, receiving->bottomBaseLine.point).length();
+                        const double gap = openConnector ? minConnectorWidths * std::max({penWidth, boundary.referenceWidth, width})
+                                                         : sharedTolerance;
+                        if (!leavesConnectorRoom(boundary, *receiving, gap)) continue;
                     }
+                    auto trial = recutClusterExit(word, sub, slot, boundary, receiving, config);
+                    if (!trial) continue;
+                    if (openConnector) {
+                        const auto ribbon = inPage(trial->kashidaPaths[slot]);
+                        const auto& [sending, entry] = trial->kashidaCuts[slot];
+                        if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, sending, entry)) continue;
+                    }
+                    auto revised = attachment;
+                    revised.exit = boundary;
+                    revised.receiving = receiving;
+                    revised.separateConnector = receiving.has_value();
+                    if (!fitToothCluster(source, form->body, form->cuts, inPage(trial->baseGlyphs[slot].path),
+                                         terminal, penWidth, revised, false).error.isEmpty()) continue;
+                    trial->templateTrace.append(id + (option.atHollow ? " · exit at final tooth hollow"
+                                                                    : " · exit fitted after the third tooth"));
+                    InspectFormScope inspection(id);
+                    inspectCandidate(option.atHollow ? "Final tooth hollow" : "Third tooth exit", boundary);
+                    sub = std::move(*trial);
+                    error.clear();
+                    break;
                 }
             }
         }

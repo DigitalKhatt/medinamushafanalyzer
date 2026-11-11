@@ -23,12 +23,14 @@ fork or ligature policy.
 After assembly and recovery, a tooth-cluster body must own three upper tips
 and the two intervening valleys from the uncut outline. Final clusters must
 own the connected bowl. A pen lift inside the word can end the medial
-cluster on its own contour. The medial `cuts.cluster.exitAtHollow` policy
+cluster on its own contour. The `cuts.cluster.exitAtHollow` policy
 uses the inward turn just past the lower bulge of the third tooth. The cut
 follows the normal at that turn and meets the tooth's descending upper flank.
 Assembly checks clearance for the connector and verifies the tooth landmarks,
 the neighboring body and the ink partition before accepting the cut. A cut
 recovered by walking the configured distance along the contour keeps that offset.
+An initial cluster can keep a separate connector when the ink between its cut
+and the next letter follows one stroke and meets `cuts.minConnectorWidths`.
 
 The `initial`, `medial` and `final` arrays set the priority within each pass.
 An initial form with `sharedFoldWithFinal` takes its turn in the initial array

@@ -206,8 +206,10 @@
         }
       },
       "cuts": {
+        "minConnectorWidths": 2,
         "cluster": {
-          "retryBendOffset": 0.5
+          "retryBendOffset": 0.5,
+          "exitAtHollow": true
         },
         "boundaries": {
           "right": "free",

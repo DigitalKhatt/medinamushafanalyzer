@@ -363,8 +363,10 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             subWord.joins.insert(context.res);
     }
 
-    const double minInitialConnector = preparedRules.constraints.value(bodyTemplateIds[0])
-        .value("cuts").toObject().value("minConnectorWidths").toDouble();
+    const auto initialCuts = preparedRules.constraints.value(bodyTemplateIds[0]).value("cuts").toObject();
+    // The hollow policy checks the connector after assembling the other bodies.
+    const double minInitialConnector = initialCuts.value("cluster").toObject().value("exitAtHollow").toBool()
+        ? 0 : initialCuts.value("minConnectorWidths").toDouble();
     const auto retainsInitialConnector = [&](const Stretching& exit, const Stretching& entry) {
         if (minInitialConnector <= 0 || !cutPrecedes(exit, entry, context.orientation)) return false;
         const QLineF sending(exit.topBaseLine.point, exit.bottomBaseLine.point);

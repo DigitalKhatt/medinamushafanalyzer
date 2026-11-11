@@ -510,13 +510,12 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
             return id + ": preserveEntryRim requires an incoming counter boundary and a boolean";
         cutKeys << "preserveEntryRim";
     }
-    if (shape == "contour-route") {
-        if (phase == "initial" && cuts.contains("minConnectorWidths")) {
-            const auto length = cuts.value("minConnectorWidths");
-            if (!length.isDouble() || !std::isfinite(length.toDouble()) || length.toDouble() <= 0)
-                return id + ": minConnectorWidths must be positive";
-            cutKeys << "minConnectorWidths";
-        }
+    if (phase == "initial" && (shape == "contour-route" || shape == "tooth-cluster") &&
+        cuts.contains("minConnectorWidths")) {
+        const auto length = cuts.value("minConnectorWidths");
+        if (!length.isDouble() || !std::isfinite(length.toDouble()) || length.toDouble() <= 0)
+            return id + ": minConnectorWidths must be positive";
+        cutKeys << "minConnectorWidths";
     }
     if (shape == "rising-return") {
         bodyKeys << "entryRecoveryRoute";
@@ -841,8 +840,8 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
                              "exitDrop", "retryBendOffset", "terminalBowl", "roundedEntry", "exitAtHollow"}
                      .contains(it.key()))
                 return id + ": unknown tooth-cluster cut setting " + it.key();
-        if (policy.contains("exitAtHollow") && (phase != "medial" || !policy.value("exitAtHollow").isBool()))
-            return id + ": exitAtHollow must be a boolean on a medial tooth cluster";
+        if (policy.contains("exitAtHollow") && (phase == "final" || !policy.value("exitAtHollow").isBool()))
+            return id + ": exitAtHollow must be a boolean on a tooth cluster with an exit cut";
     }
     if (shape == "profile-neck") {
         if (phase == "medial")

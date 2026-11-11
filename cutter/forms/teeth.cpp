@@ -391,12 +391,14 @@ ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body,
         } else accepted = &cluster;
     }
     if (accepted) {
-        if (!proposeExit || !attachment.separateConnector || !attachment.exit) return {};
+        if (!proposeExit || !attachment.exit) return {};
         const auto hollow = attachment.canFitHollow && cutSettings.value("exitAtHollow").toBool()
             ? clusterExitAtHollow(context, *accepted, *attachment.exit, *attachment.receiving,
                                   penWidth, cutSettings) : std::nullopt;
         if (hollow && toothCutLine(*hollow) == toothCutLine(*attachment.exit)) return {};
-        auto exits = nearerConnectorExits(context, *accepted, *attachment.exit, penWidth, clusterSettings, cutSettings);
+        auto exits = attachment.separateConnector
+            ? nearerConnectorExits(context, *accepted, *attachment.exit, penWidth, clusterSettings, cutSettings)
+            : std::vector<ToothClusterExit>{};
         if (hollow) exits.insert(exits.begin(), {*hollow, true});
         return {{}, std::move(exits)};
     }

@@ -278,11 +278,13 @@ static void checkClusterAttachments(const QJsonObject& config) {
         std::array<double, 3> tips;
         bool connector;
     };
-    const std::array<Example, 5> examples{{
+    const std::array<Example, 7> examples{{
         {3, 5, 8, 2, 2, {31.6225, 35.6388, 38.5079}, true},
+        {39, 1, 5, 3, 0, {21.5734, 26.6657, 30.7143}, true},
         {115, 4, 4, 2, 3, {14.5569, 19.6289, 23.6858}, true},
         {238, 7, 10, 1, 1, {6.4307, 10.7275, 13.6555}, false},
         {244, 11, 9, 1, 1, {4.55777, 8.50743, 12.4836}, true},
+        {480, 13, 3, 3, 0, {21.4082, 28.592, 31.6273}, true},
         {531, 8, 6, 3, 1, {9.5588, 14.5306, 18.5482}, false}
     }};
     QFile fontFile("input/font.dat");
@@ -318,6 +320,11 @@ static void checkClusterAttachments(const QJsonObject& config) {
             check(QLineF(sending.p2() - origin, QPointF(18.1471, 9.03938)).length() < .005 &&
                   std::abs(receiving.center().x() - origin.x() - 13.32125) < .005,
                   "The connector must start at the tooth's lower turn and end at the original heh attachment");
+        } else if (e.page == 39 || e.page == 480) {
+            const auto& [sending, receiving] = sub.kashidaCuts[e.seen];
+            const auto hollow = curves[e.page == 39 ? 18 : 17].pt1() + shape.pos;
+            check(QLineF(sending.p2(), hollow).length() < .005 && sending.center().x() - receiving.center().x() > 5,
+                  "An initial seen must leave the connector at its third tooth's inward turn");
         } else if (e.page == 115) {
             const auto& [sending, receiving] = sub.kashidaCuts[e.seen];
             check(sending.center().x() - receiving.center().x() > .7,
