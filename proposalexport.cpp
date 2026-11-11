@@ -613,17 +613,7 @@ QString catalogParts(const QJsonObject& cut, const QJsonObject& source, const QS
     auto add = [&](const QJsonObject& geometry, QJsonObject part) {
         const auto scaled = toRaster.map(letterSegmentationPath(geometry));
         coverage.append(sourceInkCoverage(scaled, crop));
-        auto outline = catalogOutline(scaled);
-        if (part.value("role") == "kashida") {
-            QJsonArray contours;
-            for (const auto& poly : scaled.toSubpathPolygons()) {
-                QJsonArray points;
-                for (const auto& p : poly) points.append(QJsonArray{p.x(),p.y()});
-                contours.append(points);
-            }
-            outline.insert("contours",contours);
-        }
-        part.insert("outline",outline);
+        part.insert("outline",catalogOutline(scaled));
         parts.append(part);
     };
     for (int i = 0; i < bodies.size(); ++i) {
