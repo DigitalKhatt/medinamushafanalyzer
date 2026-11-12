@@ -527,6 +527,15 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         bodyKeys << "entryRecoveryRoute";
         cutKeys << "entryRecoveryRoute";
     }
+    if (cuts.contains("shoulderEntry")) {
+        const auto shoulder = cuts.value("shoulderEntry").toObject();
+        const auto depth = shoulder.value("maxWidthToDepth"), shift = shoulder.value("maxShiftWidths");
+        if (phase != "final" || (shape != "contour-route" && shape != "rising-return") ||
+            shoulder.size() != 2 || !depth.isDouble() || !(depth.toDouble() > 0 && depth.toDouble() < 1) ||
+            !shift.isDouble() || !std::isfinite(shift.toDouble()) || shift.toDouble() <= 0)
+            return id + ": shoulderEntry requires a final contour route or return and valid width and shift limits";
+        cutKeys << "shoulderEntry";
+    }
     if (shape == "upright-stem")
         cutKeys << "recoveryShaft";
     if (shape == "tail-branch")

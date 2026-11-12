@@ -418,6 +418,25 @@ std::optional<ContourRouteEvidence> recognizeContourRoute(SearchContext& context
         join.topBaseLine, topBefore, topEnd, join.topEndpointTolerance};
 }
 
+bool projectUpwardCut(const SearchContext& context, PathExtrema bottom, Stretching& cut) {
+    const auto& ink = context.transformedPath;
+    const auto hits = FindInterections(ink,
+        QLineF(bottom.point, QPointF(bottom.point.x(), context.bbox.top() - 1)), true);
+    std::optional<PathExtrema> top;
+    double distance = context.bbox.height() + 1;
+    for (const auto& hit : hits) {
+        const double rise = bottom.point.y() - hit.point.y();
+        if (rise <= 1e-5 || rise >= distance || !interiorChord(ink, hit, bottom)) continue;
+        top = hit;
+        distance = rise;
+    }
+    if (!top) return false;
+    cut.topBaseLine = *top;
+    cut.bottomBaseLine = bottom;
+    cut.fixedRightBoundary = true;
+    return true;
+}
+
 bool projectContourRoute(SearchContext& context, const QJsonObject& form,
         const ContourRouteEvidence& evidence, std::optional<ForkRefinement>* fork) {
     const auto& [start, origin, forward, topDirection, anchor, topBefore, topEnd, tolerance] = evidence;
@@ -489,21 +508,7 @@ bool projectContourRoute(SearchContext& context, const QJsonObject& form,
                               form.value("topUseStepEnd").toBool(), join)) return false;
         join.fixedRightBoundary = true;
     } else if (probeMode == "up") {
-        const auto bottom = join.topBaseLine;
-        const auto hits = FindInterections(context.transformedPath,
-            QLineF(bottom.point, QPointF(bottom.point.x(), context.bbox.top() - 1)), true);
-        std::optional<PathExtrema> top;
-        double distance = context.bbox.height() + 1;
-        for (const auto& hit : hits) {
-            const double rise = bottom.point.y() - hit.point.y();
-            if (rise <= 1e-5 || rise >= distance || !interiorChord(context.transformedPath, hit, bottom)) continue;
-            top = hit;
-            distance = rise;
-        }
-        if (!top) return false;
-        join.topBaseLine = *top;
-        join.bottomBaseLine = bottom;
-        join.fixedRightBoundary = true;
+        if (!projectUpwardCut(context, join.topBaseLine, join)) return false;
     } else if (probeMode == "below") {
         const auto anchor = join.topBaseLine;
         const auto hits = FindInterections(context.transformedPath,

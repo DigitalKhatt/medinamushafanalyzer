@@ -250,9 +250,37 @@ bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subwor
     return true;
 }
 
-// A terminal contour may supply a sharper seam after its attachment is known.
-// Commit it only if the same bodies and connector topology can be assembled.
-void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+// An oblique cut at the lower shoulder can leave the upper stroke outside the
+// body. Project from the selected form's own shoulder on the uncut outline.
+static bool projectTerminalShoulder(SearchContext& context, const QJsonObject& form,
+        const QJsonObject& policy, Stretching current, double bodyFloor) {
+    const auto& tip = *context.xSorted.rbegin();
+    context.nextIter = std::next(context.xSorted.begin());
+    if (!declaredSharedBoundary(context, form)) return false;
+    orientSection(context, context.res, tip.time, true);
+    const auto shoulder = context.res.bottomBaseLine;
+    if (shoulder.pathIndex != 0 || !shoulder.isSharp ||
+        !projectUpwardCut(context, shoulder, context.res) || context.res.topBaseLine.pathIndex != 0)
+        return false;
+    orientSection(context, context.res, tip.time, true);
+    orientSection(context, current, tip.time, true);
+    const auto& cut = context.res;
+    const QLineF section(cut.topBaseLine.point, cut.bottomBaseLine.point);
+    const double depth = bodyFloor - section.p1().y();
+    const double reach = policy.value("maxShiftWidths").toDouble() * section.length();
+    const auto side = getJoinTime(cut, context.orientation);
+    // Expand only a clipped entry of this bowl. Both ends of the old section
+    // must be nearby and inside the final body with the new cut.
+    return section.dy() > 0 && section.length() <= policy.value("maxWidthToDepth").toDouble() * depth &&
+        side.isStrictLeft(tip.time) && side.isLeft(current.topBaseLine.time) && side.isLeft(current.bottomBaseLine.time) &&
+        cut.topBaseLine.point.y() < current.topBaseLine.point.y() - 1e-5 &&
+        QLineF(section.p1(), current.topBaseLine.point).length() <= reach &&
+        QLineF(section.p2(), current.bottomBaseLine.point).length() <= reach;
+}
+
+// Assemble the terminal form's own cut while preserving the earlier joins.
+void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub,
+        const QJsonObject& config, TerminalEntryPolicy policy) {
     const auto last = sub.joins.size();
     if (!last || sub.baseGlyphs.size() != last + 1 || sub.kashidaPaths.size() != last ||
         sub.kashidaCuts.size() != last || sub.letterDiagnostics.size() != int(last + 1)) return;
@@ -261,18 +289,26 @@ void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub, c
     const auto& forms = bodyCutProgram(config).forms;
     const auto selected = forms.constFind(id);
     if (selected == forms.cend()) return;
-    const auto policy = selected->cuts.value("junction").toObject();
-    if (policy.isEmpty()) return;
+    const bool atShoulder = policy == TerminalEntryPolicy::LowerShoulder;
+    const auto settings = selected->cuts.value(atShoulder ? "shoulderEntry" : "junction").toObject();
+    if (settings.isEmpty()) return;
 
     auto join = *sub.joins.rbegin();
     if (join.counterEntry.pathIndex > 0) return;
     const auto shape = word.bodyShape(sub);
-    SearchContext context{.transformedPath = shape.transform.map(shape.path).translated(shape.pos), .subword = sub};
+    const auto inPage = [&](const QPainterPath& path) {
+        return shape.transform.map(path).translated(shape.pos);
+    };
+    SearchContext context{.transformedPath = inPage(shape.path), .subword = sub};
     if (!readTerminalOutline(context)) return;
-    const auto form = namedLetterForm(config, id);
+    const auto form = bodyConstraintForm(config, namedLetterForm(config, id));
     InspectFormScope inspection(form, context.transformedPath);
     context.res = join;
     const bool connector = !sub.kashidaPaths.back().isEmpty();
+    // Two contour corners can define the actual shared seam of a ligature.
+    // Projecting past it would take the upper stroke of the preceding body.
+    if (atShoulder && !connector && form.value("sharedBoundary").toBool() &&
+        join.topBaseLine.isSharp && join.bottomBaseLine.isSharp) return;
     if (connector) {
         const auto& [sending, receiving] = sub.kashidaCuts.back();
         const std::vector<std::vector<QBezier>> outer{baseContourCurves(context.transformedPath)};
@@ -287,10 +323,20 @@ void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub, c
             !useEndpoint(context.res.topBaseLine, receiving.p1()) ||
             !useEndpoint(context.res.bottomBaseLine, receiving.p2())) return;
     }
-    if (!refineContourJunction(context, policy) ||
-        !matchesBoundaryBody(context, bodyConstraintForm(config, form), context.res, false)) return;
-    if (connector) {
-        if (!cutPrecedes(join, context.res, context.orientation)) return;
+    if (atShoulder) {
+        const double floor = inPage(sub.baseGlyphs.back().path).boundingRect().bottom();
+        if (!projectTerminalShoulder(context, form, settings, context.res, floor)) return;
+    } else if (!refineContourJunction(context, settings)) return;
+    if (!matchesBoundaryBody(context, form, context.res, false)) return;
+    const bool separate = connector && cutPrecedes(join, context.res, context.orientation);
+    if (connector && !separate) {
+        if (!atShoulder) return;
+        // Overlapping caps can share the shoulder only at the same attachment.
+        const QLineF sending(join.topBaseLine.point, join.bottomBaseLine.point);
+        const QLineF receiving(context.res.topBaseLine.point, context.res.bottomBaseLine.point);
+        if (QLineF(sending.center(), receiving.center()).length() > receiving.length()) return;
+    }
+    if (separate) {
         join.topLeft = context.res.topBaseLine;
         join.bottomLeft = context.res.bottomBaseLine;
     } else {
@@ -300,24 +346,39 @@ void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub, c
     join.topRight = join.topBaseLine;
     join.bottomRight = join.bottomBaseLine;
     join.fixedRightBoundary = true;
-    join.fixedLeftBoundary = connector;
+    join.fixedLeftBoundary = separate;
     join.length = 0;
-    join.kashidaOverrides.insert("enabled", connector);
+    join.kashidaOverrides.insert("enabled", separate);
     auto trial = sub;
     trial.joins.erase(std::prev(trial.joins.end()));
     trial.joins.insert(join);
     if (!assembleBodyPartition(word, trial, config) || trial.baseGlyphs.size() != sub.baseGlyphs.size() ||
-        trial.kashidaPaths.size() != last || trial.kashidaPaths.back().isEmpty() == connector) return;
-    for (size_t i = 0; i < last - size_t(!connector); ++i)
-        if (trial.baseGlyphs[i].path != sub.baseGlyphs[i].path) return;
+        trial.kashidaPaths.size() != last || trial.kashidaPaths.back().isEmpty() == separate) return;
+    const auto unchanged = [&](const QPainterPath& original, QPainterPath& rebuilt) {
+        return atShoulder ? preserveUnchangedOutline(original, rebuilt) : original == rebuilt;
+    };
+    for (size_t i = 0; i < last - size_t(!separate); ++i)
+        if (!unchanged(sub.baseGlyphs[i].path, trial.baseGlyphs[i].path)) return;
     for (size_t i = 0; i + 1 < last; ++i)
-        if (trial.kashidaPaths[i] != sub.kashidaPaths[i] || trial.kashidaCuts[i] != sub.kashidaCuts[i]) return;
-    if (connector && trial.kashidaCuts.back().first != sub.kashidaCuts.back().first) return;
+        if (!unchanged(sub.kashidaPaths[i], trial.kashidaPaths[i]) || trial.kashidaCuts[i] != sub.kashidaCuts[i]) return;
+    if (separate && trial.kashidaCuts.back().first != sub.kashidaCuts.back().first) return;
+    if (atShoulder && !separate) {
+        const auto before = inPage(sub.baseGlyphs[last - 1].path);
+        const auto after = inPage(trial.baseGlyphs[last - 1].path);
+        if (toSubpaths(before).size() != toSubpaths(after).size() ||
+            std::abs(before.boundingRect().top() - after.boundingRect().top()) > 1e-5 ||
+            std::abs(before.boundingRect().right() - after.boundingRect().right()) > 1e-5) return;
+        const auto previous = sub.letterDiagnostics[last - 1].toObject();
+        const auto previousForm = forms.constFind(previous.value("template").toString());
+        if (previousForm != forms.cend() && previousForm->body.value("shape") == "tooth-cluster" &&
+            !fitToothCluster(context, previousForm->body, previousForm->cuts, after, false,
+                config.value("strokeWidth").toDouble(1), {.exit = context.res, .sameContour = true}, false).error.isEmpty()) return;
+    }
     if (!coversOriginalInk(word, trial)) return;
-    diagnostic.insert("junctionPolicy", "inward-corners");
+    diagnostic.insert("junctionPolicy", atShoulder ? "lower-shoulder" : "inward-corners");
     trial.letterDiagnostics[trial.letterDiagnostics.size() - 1] = diagnostic;
-    trial.templateTrace.append(id + " · terminal cut at contour junction");
-    inspectCandidate("Terminal contour junction", context.res);
+    trial.templateTrace.append(id + (atShoulder ? " · terminal cut from lower shoulder" : " · terminal cut at contour junction"));
+    inspectCandidate(atShoulder ? "Terminal lower shoulder" : "Terminal contour junction", context.res);
     sub = std::move(trial);
 }
 

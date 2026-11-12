@@ -595,6 +595,8 @@ std::optional<ContourRouteEvidence> recognizeContourRoute(SearchContext& context
 bool projectContourRoute(SearchContext& context, const QJsonObject& form,
         const ContourRouteEvidence& evidence, std::optional<ForkRefinement>* fork = nullptr);
 
+bool projectUpwardCut(const SearchContext& context, PathExtrema bottom, Stretching& cut);
+
 bool searchContourWalk(SearchContext& context, const PathExtrema* crest = nullptr,
                               bool reverseTop = false, bool anchorOnly = false,
                               std::optional<ForkRefinement>* fork = nullptr);
@@ -1092,7 +1094,10 @@ bool connectorContainsLeadingStroke(const QVector<PathExtrema>& extrema,
 bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subword,
                                   const QJsonObject& config);
 
-void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
+enum class TerminalEntryPolicy { InwardCorners, LowerShoulder };
+void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub,
+        const QJsonObject& config, TerminalEntryPolicy policy);
+bool preserveUnchangedOutline(const QPainterPath& original, QPainterPath& rebuilt);
 
 // Start halfway down the visible terminal shaft. Its cap can have the same
 // tangent as the turn at its foot, but only the foot retains this shaft.

@@ -3999,6 +3999,10 @@
         "return": {
           "maxChord": 1.5
         },
+        "shoulderEntry": {
+          "maxWidthToDepth": 0.34,
+          "maxShiftWidths": 1.5
+        },
         "boundaries": {
           "left": "free",
           "right": "return-seam"
@@ -4035,6 +4039,10 @@
       "cuts": {
         "route": {
           "bottomProbe": "up"
+        },
+        "shoulderEntry": {
+          "maxWidthToDepth": 0.34,
+          "maxShiftWidths": 1.5
         },
         "boundaries": {
           "right": "contour-route",
@@ -4811,6 +4819,10 @@
         "route": {
           "bottomProbe": "normal",
           "anchorSide": "bottom"
+        },
+        "shoulderEntry": {
+          "maxWidthToDepth": 0.34,
+          "maxShiftWidths": 1.5
         },
         "boundaries": {
           "right": "contour-route",

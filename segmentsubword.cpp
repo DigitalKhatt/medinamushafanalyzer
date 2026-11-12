@@ -84,7 +84,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
                 recognition = recognizeSubwordBodies(word, plan.partition, requested);
         }
         valid = resolveSubwordCutPlan(word, recognition, plan, requested);
-        if (valid) applyTerminalJunction(word, plan.partition, requested);
+        if (valid) applyTerminalJunction(word, plan.partition, requested, TerminalEntryPolicy::InwardCorners);
         if (valid && ligature != LigatureMatch::SeparateConnector)
             applySharedReturnEntry(word, plan.partition, requested);
     }
@@ -92,7 +92,10 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     // assembled masks on the source artwork when returning a page result.
     if (valid && pageIndex >= 0) {
         valid = verifyBodyLandmarkOwnership(word, plan.partition, requested);
-        if (valid) applyInitialToothExit(word, plan.partition, requested);
+        if (valid) {
+            applyTerminalJunction(word, plan.partition, requested, TerminalEntryPolicy::LowerShoulder);
+            applyInitialToothExit(word, plan.partition, requested);
+        }
     }
     sub = std::move(plan.partition);
     reportFinalRetry(sub, retryParents);

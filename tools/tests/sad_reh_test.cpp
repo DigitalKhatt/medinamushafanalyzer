@@ -29,6 +29,66 @@ static bool same(const Stretching& expected, const Stretching& actual, const QTr
         QLineF(mapping.map(expected.bottomBaseLine.point), actual.bottomBaseLine.point).length() < 1e-4;
 }
 
+static void checkFinalRehShoulders(const QJsonObject& config) {
+    PageAnalysisResult::initQuranText();
+    QFile fontFile("input/font.dat");
+    check(fontFile.open(QIODevice::ReadOnly), "Missing native font");
+    AFont font;
+    QDataStream fontStream(&fontFile);
+    fontStream >> font;
+    auto withoutShoulder = config;
+    auto finals = config.value("final").toArray();
+    for (qsizetype i = 0; i < finals.size(); ++i) {
+        auto form = finals.at(i).toObject();
+        auto cuts = form.value("cuts").toObject();
+        if (!cuts.contains("shoulderEntry")) continue;
+        cuts.remove("shoulderEntry");
+        form.insert("cuts", cuts);
+        finals.replace(i, form);
+    }
+    withoutShoulder.insert("final", finals);
+    struct Fixture { int page, line, word, subword, shoulder; bool connector; };
+    const Fixture fixtures[] = {
+        {395, 8, 8, 1, 26, true}, {412, 3, 10, 2, 21, false}, {428, 4, 5, 2, 24, true},
+        {465, 12, 5, 2, 43, false}, {485, 10, 7, 1, 21, false}, {578, 2, 9, 2, 22, false},
+        {587, 15, 5, 1, 26, true}
+    };
+    for (const auto& at : fixtures) {
+        QFile file(QString("pages/page%1.dat").arg(at.page));
+        check(file.open(QIODevice::ReadOnly), "Missing final reh shoulder fixture");
+        PageAnalysisResult sample;
+        QDataStream stream(&file);
+        stream >> sample.page;
+        sample.resolveWordBoundaries(at.page, &font);
+        auto& word = sample.page.lines[at.line - 1].words[at.word - 1];
+        if (word.wordResultInfo.subWords.empty())
+            sample.detectSubWords(at.page - 1, at.line - 1, at.word - 1, &font);
+        const auto segment = [&](const QJsonObject& rules) {
+            return sample.segmentSubword(at.page - 1, at.line - 1, at.word - 1, at.subword - 1, &font, true, &rules);
+        };
+        const auto& sub = word.wordResultInfo.subWords[at.subword - 1];
+        check(segment(withoutShoulder), "Missing original final reh partition");
+        const auto before = sub;
+        if (!segment(config) || sub.joins.empty()) qFatal("Page %d: final reh did not match", at.page);
+        const auto final = *sub.joins.rbegin();
+        const auto lower = at.connector ? final.bottomLeft : final.bottomBaseLine;
+        const auto upper = at.connector ? final.topLeft : final.topBaseLine;
+        if (sub.kashidaPaths.back().isEmpty() == at.connector || std::abs(lower.time - at.shoulder) > 1e-6 ||
+            std::abs(upper.point.x() - lower.point.x()) > 1e-6 || upper.point.y() >= lower.point.y())
+            qFatal("Page %d: wrong reh shoulder or connector topology", at.page);
+        check(coversOriginalInk(word, sub), "Reh shoulder cut lost or overlapped ink");
+        for (size_t i = 0; i + 1 < sub.kashidaPaths.size(); ++i)
+            check(sub.kashidaPaths[i] == before.kashidaPaths[i] && sub.kashidaCuts[i] == before.kashidaCuts[i],
+                  "Reh shoulder cut changed an earlier join");
+        if (at.connector)
+            check(sub.kashidaCuts.back().first == before.kashidaCuts.back().first,
+                  "Reh shoulder cut moved the sending edge of its connector");
+        if (at.page == 395)
+            check(sub.baseGlyphs.back().path == before.baseGlyphs.back().path && sub.kashidaCuts == before.kashidaCuts,
+                  "The reference reh already starts at its shoulder");
+    }
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
@@ -226,4 +286,6 @@ int main(int argc, char** argv) {
           "Assembly replaced the corrected sad exit");
     qInfo("Sad/reh passed: fixed corners 2/17, retained tooth 8.55/19, two kashidas, complete reh ownership, independent geometry, affine invariance, missing-counter rejection and eight complete reh controls.");
     qInfo("Page 600 sad passed: open hah ownership, entry corners 31/6, intact counters/teeth, independent geometry, affine invariance, both complete examples and looped kha control.");
+    checkFinalRehShoulders(config);
+    qInfo("Final reh cuts retain the lower shoulder and the upper stroke while preserving genuine connectors.");
 }

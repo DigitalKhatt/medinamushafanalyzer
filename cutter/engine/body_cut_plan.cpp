@@ -203,7 +203,7 @@ static bool leavesEntryClearance(const Stretching& sending, const Stretching& re
                      distance(end.p1(), start), distance(end.p2(), start)}) > minimumGap;
 }
 
-static bool preserveUnchangedOutline(const QPainterPath& original, QPainterPath& rebuilt) {
+bool preserveUnchangedOutline(const QPainterPath& original, QPainterPath& rebuilt) {
     // Projecting an unchanged cap back onto the source can round its curve
     // time. Keep the original outline when its Bézier data agrees to within
     // that rounding error, and reject any actual change to the outline.
