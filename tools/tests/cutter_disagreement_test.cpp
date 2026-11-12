@@ -78,9 +78,24 @@ int main(int argc, char** argv) {
         {{105, 10, 1, 2}, 3, {262.0241, 331.3826}}, // Rounded foot of medial heh.
         {{461, 4, 8, 3}, 2, {56.9047, 168.0818}}, // Upper loop rim of medial heh.
     };
+    struct ConnectorWitness {
+        QJsonArray address;
+        int join;
+        QPointF point;
+    };
+    const ConnectorWitness connectors[] = {
+        {{171, 14, 9, 2}, 0, {73.33, 438.22}}, // The short yeh leaves a connector on its right.
+        {{278, 1, 2, 1}, 0, {315.00, 90.14}}, // The connector stops before the second teh.
+        {{293, 7, 2, 2}, 2, {228.10, 253.11}}, // The connector from seen into noon.
+        {{293, 7, 2, 2}, 3, {224.25, 253.31}}, // The connector from noon into final yeh.
+        {{282, 3, 8, 2}, 1, {121.77, 144.61}}, // The shared lam–hah entry leaves the final connector intact.
+        {{328, 9, 8, 2}, 1, {107.52, 305.65}},
+    };
     auto locations = controls.value("locations").toArray();
     for (const auto& witness : restored)
         locations.append(witness.address);
+    for (const auto& witness : connectors)
+        if (!locations.contains(witness.address)) locations.prepend(witness.address);
     locations.append(QJsonArray{92, 12, 2, 3});
     locations.append(QJsonArray{5, 1, 5, 2});
     locations.append(QJsonArray{19, 12, 6, 3});
@@ -125,6 +140,8 @@ int main(int argc, char** argv) {
         };
         for (const auto& witness : restored)
             if (a == witness.address) owns(witness.owner, witness.point);
+        for (const auto& witness : connectors)
+            if (a == witness.address) joinsWith(witness.join, witness.point);
         if (a == QJsonArray{102, 2, 7, 1}) owns(2, {191.4, 112.5});
         if (a == QJsonArray{5, 1, 5, 2}) {
             owns(3, {137.5, 90.0}); // The outgoing bend belongs to the medial lam.

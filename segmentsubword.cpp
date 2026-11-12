@@ -330,7 +330,8 @@ bool PageAnalysisResult::segmentWithRecovery(int pageIndex, int lineIndex, int w
         return true;
     }
     const auto checks = extended.value("recoveryChecks").toObject();
-    if (confirmCounterOutlines(word, sub, requested, checks) || recoverSharedTerminal(word, sub, requested, checks))
+    if (recoverStackedEntry(word, sub, requested, checks) ||
+        confirmCounterOutlines(word, sub, requested, checks) || recoverSharedTerminal(word, sub, requested, checks))
         return true;
     sub = std::move(original);
     if (confirmCounterOutlines(word, sub, requested, checks) || recoverSharedTerminal(word, sub, requested, checks) ||

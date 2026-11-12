@@ -1221,6 +1221,7 @@ std::vector<ToothBodyEvidence> recognizeToothBodies(
 std::vector<ToothBody> cutToothBodies(SearchContext& context,
         const std::vector<ToothBodyEvidence>& bodies, const QJsonObject& settings, bool bothSides) {
     const auto& ink = context.transformedPath;
+    const double rightOffset = settings.value("rightOffset").toDouble(.5);
     std::vector<ToothBody> results;
     const auto adjacent = [&](auto point, auto advance) {
         auto next = (context.*advance)(point);
@@ -1320,7 +1321,7 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
             if (!foundLeft) continue;
             bool haveRightSection = true;
             if (rightTurn) right = *rightTurn;
-            if (bothSides && !rightTurn && (!medialChordAt(context, tip.x() + settings.value("rightOffset").toDouble(0.5) * stroke,
+            if (bothSides && !rightTurn && (!medialChordAt(context, tip.x() + rightOffset * stroke,
                                inner.point.y(), 2 * stroke, right, true) || !onFlank(right.topBaseLine, rightFlank))) {
                 bool found = false;
                 for (const auto& top : hits) {
@@ -1392,18 +1393,23 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
             if (!bothSides) rightOptions.push_back(right);
             else if (rightTurn) rightOptions.push_back(*rightTurn);
             else {
+                // An upper probe can project far into the connector. Only
+                // keep it if the lower endpoint stays close to this bend.
+                const auto addRightProbe = [&](const Stretching& cut) {
+                    if (QLineF(inner.point, cut.bottomBaseLine.point).length() <= (rightOffset + 1) * stroke)
+                        rightOptions.push_back(cut);
+                };
                 auto candidate = right;
-                if (haveRightSection && strokeNormalCut(context, candidate)) rightOptions.push_back(candidate);
+                if (haveRightSection && strokeNormalCut(context, candidate)) addRightProbe(candidate);
                 for (int step = 1; step <= 4; ++step) {
-                    if (!medialChordAt(context, tip.x() + (settings.value("rightOffset").toDouble(.5) + .25 * step) * stroke,
+                    if (!medialChordAt(context, tip.x() + (rightOffset + .25 * step) * stroke,
                             inner.point.y(), 3 * stroke, candidate, true) ||
                         !onFlank(candidate.topBaseLine, rightFlank) || !strokeNormalCut(context, candidate) ||
                         !onFlank(candidate.topBaseLine, rightFlank)) continue;
-                    rightOptions.push_back(candidate);
+                    addRightProbe(candidate);
                 }
-                // On a narrow or overhanging shoulder a vertical probe can
-                // miss the stroke. Walk the underside from the inner bend
-                // toward the right, and project its normal onto this flank.
+                // Walk from the inner bend for a local right normal when the
+                // upper probe misses the shoulder or reaches too far.
                 const auto start = context.timeSorted.find(inner);
                 for (auto advance : {&SearchContext::prev, &SearchContext::next}) {
                     auto end = start;
@@ -1413,7 +1419,7 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
                         end = next;
                         PathExtrema anchor{}; QPointF tangent;
                         if (!advanceOnContour(ink, inner, *end, advance == &SearchContext::prev,
-                                settings.value("rightOffset").toDouble(.5) * stroke, anchor, tangent)) continue;
+                                rightOffset * stroke, anchor, tangent)) continue;
                         Stretching normal{};
                         if (contourNormalCut(context, anchor, advance == &SearchContext::prev, false, normal)) {
                             const auto& upper = normal.bottomBaseLine;

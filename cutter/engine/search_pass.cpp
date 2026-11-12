@@ -1008,12 +1008,10 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     outgoing.referenceWidth = left.referenceWidth;
                     outgoing.fixedRightBoundary = true;
                     outgoing.length = 0;
-                    // Sharing this body's entry does not make its exit shared.
-                    // Keep the two independent endpoints when the transcript
-                    // explicitly includes this connector. The ink between the
-                    // endpoints still has to pass the contour checks.
-                    const bool markedSpan = hasFinalTatweel && outgoing.fixedLeftBoundary;
-                    if (sharedJoins && !forkedLam && !finalBoundary && !markedSpan && letter + 1 == lastIndex)
+                    // A shared entry only determines the incoming join. Keep
+                    // the final body's independently matched receiving edge.
+                    if (sharedJoins && !forkedLam && !finalBoundary && !outgoing.fixedLeftBoundary &&
+                        letter + 1 == lastIndex)
                         outgoing.kashidaOverrides.insert("enabled", false);
                     if (!finalTemplate.isEmpty()) {
                         bodyTemplateIds[lastIndex] = finalTemplate;

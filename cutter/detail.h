@@ -1660,6 +1660,9 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
 bool stableTemplateCuts(const Word& word, WordResultInfo::SubWordInfo& sub, QJsonObject config,
                                const QJsonArray& shapeFrames = {});
 
+bool recoverStackedEntry(const Word& word, WordResultInfo::SubWordInfo& sub,
+                         const QJsonObject& config, const QJsonObject& checks);
+
 bool recoverSharedTerminal(const Word& word, WordResultInfo::SubWordInfo& sub,
                               const QJsonObject& config, const QJsonObject& checks);
 

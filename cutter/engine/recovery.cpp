@@ -856,6 +856,37 @@ static void removeUnresolvedSlots(QStringList& trace, const QJsonArray& slotsBef
     }
 }
 
+bool recoverStackedEntry(const Word& word, WordResultInfo::SubWordInfo& sub,
+                         const QJsonObject& config, const QJsonObject& checks) {
+    if (sub.joins.empty() || sub.letterDiagnostics.size() != sub.joins.size() + 1 ||
+        std::any_of(sub.letterDiagnostics.cbegin(), sub.letterDiagnostics.cend(),
+                    [](const auto& slot) { return slot.toObject().value("status") != "matched"; })) return false;
+    auto seam = *sub.joins.begin();
+    if (!seam.fixedLeftBoundary) return false;
+    auto receiving = seam;
+    receiving.topBaseLine = seam.topLeft;
+    receiving.bottomBaseLine = seam.bottomLeft;
+    if (!connectorContainsLeadingStroke(sub.extrema, seam, receiving, sub.basePathOrientation)) return false;
+    const auto initial = namedLetterForm(config, sub.letterDiagnostics.first().toObject().value("template").toString());
+    if (!initial.value("tightJoin").toBool() || !initial.contains("ligatureWith")) return false;
+
+    // The initial ligature already supplied a seam. The other end of the
+    // proposed connector would enclose its stacked head. Share that seam
+    // and keep the independently matched cuts for the remaining letters.
+    auto trial = sub;
+    seam.length = 0;
+    seam.fixedLeftBoundary = false;
+    seam.kashidaOverrides.insert("enabled", false);
+    trial.joins.erase(trial.joins.begin());
+    trial.joins.insert(seam);
+    if (!assembleBodyPartition(word, trial, config) || !plausibleRecoveredBodies(word, trial, checks) ||
+        !coversOriginalInk(word, trial)) return false;
+    trial.templateTrace.append("Stacked entry shares the initial seam");
+    trial.correct = true;
+    sub = std::move(trial);
+    return true;
+}
+
 // Rebuild the last two masks together at the terminal letter's own attachment.
 // The approach to the shared turn stays in the head stacked above it.
 bool recoverSharedTerminal(const Word& word, WordResultInfo::SubWordInfo& sub,
