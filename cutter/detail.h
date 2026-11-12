@@ -1275,10 +1275,11 @@ std::optional<ReturnSeamBody> recognizeRisingReturn(const InkOutline &outline, c
 std::optional<QLineF> singleHorizontalStroke(const QPainterPath& body, const QRectF& bounds, double y);
 
 // Measure each attachment from the loop's own counter. A cut is eligible only
-// when the resulting body contains this entire counter and the required tail.
+// when the resulting body contains this entire counter and its visible crown.
 struct RimBodyEvidence {
     CounterHole counter;
     std::vector<PathExtrema> anchors;
+    std::optional<double> crownTime;
 };
 
 std::vector<RimBodyEvidence> recognizeRimBodies(const InkOutline &outline);

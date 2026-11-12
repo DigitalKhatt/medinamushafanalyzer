@@ -1890,13 +1890,39 @@ std::optional<QLineF> singleHorizontalStroke(const QPainterPath& body, const QRe
     return result;
 }
 
+static std::optional<double> counterCrown(const InkOutline &outline, const CounterHole &counter) {
+    const auto &box = counter.box;
+    const auto &hole = outline.contours[counter.index];
+    std::optional<double> crown;
+    double highest = box.top();
+    for (auto it = outline.time.begin(); it != outline.time.end(); ++it) {
+        const auto &point = it->point;
+        if (point.x() <= box.left() || point.x() >= box.right() || point.y() >= highest ||
+            box.top() - point.y() > 1.7 * box.height()) continue;
+        const auto before = it == outline.time.begin() ? std::prev(outline.time.end()) : std::prev(it);
+        const auto after = std::next(it) == outline.time.end() ? outline.time.begin() : std::next(it);
+        if (point.y() >= before->point.y() || point.y() >= after->point.y()) continue;
+        const auto hits = FindInterections(hole, QLineF(point, {point.x(), box.bottom()}), true);
+        const auto roof = std::min_element(hits.begin(), hits.end(), [](const auto &a, const auto &b) {
+            return a.point.y() < b.point.y();
+        });
+        if (roof == hits.end() || !interiorInkSegment(outline.ink, point, roof->point)) continue;
+        // A vertical path through solid ink links this exterior crest to
+        // the counter. Its contour position belongs to the same body.
+        crown = it->time;
+        highest = point.y();
+    }
+    return crown;
+}
+
 std::vector<RimBodyEvidence> recognizeRimBodies(const InkOutline &outline) {
     std::vector<RimBodyEvidence> result;
     for (size_t i = 1; i < outline.contours.size(); ++i) {
         const auto box = outline.contours[i].boundingRect();
         if (box.height() < .12 || box.width() < .12 || !outline.contours[0].contains(outline.contours[i]))
             continue;
-        RimBodyEvidence body{{i, box}, {}};
+        const CounterHole counter{i, box};
+        RimBodyEvidence body{counter, {}, counterCrown(outline, counter)};
         for (const auto &p : outline.time)
             if (p.isSharp || p.isX || p.isY)
                 body.anchors.push_back(p);
@@ -1998,6 +2024,11 @@ cutRimBodies(SearchContext &ctx, const std::vector<RimBodyEvidence> &bodies, con
                 const auto time = getJoinTime(a.cut, ctx.orientation);
                 if (!time.isStrictLeft(b.cut.topBaseLine.time) || !time.isStrictLeft(b.cut.bottomBaseLine.time))
                     continue;
+                if (evidence.crownTime && (!time.isLeft(*evidence.crownTime) ||
+                    !getJoinTime(b.cut, ctx.orientation).isRight(*evidence.crownTime))) {
+                    inspectReason("Body", "Cut separates the outer crown from its counter.");
+                    continue;
+                }
                 const auto bodies = cutRegions(ink, {}, {a.cut, b.cut}, ctx.orientation, true);
                 if (bodies.size() != 3 || !bodyFit(bodies[1].path))
                     continue;

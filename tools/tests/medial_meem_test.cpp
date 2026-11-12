@@ -57,6 +57,61 @@ static void partition(const QPainterPath& source, const WordResultInfo::SubWordI
         "Meem boundaries lost or duplicated ink");
 }
 
+static void checkToothBeforeMeem(const QJsonObject& config) {
+    QFile fontFile("input/font.dat");
+    check(fontFile.open(QIODevice::ReadOnly), "Missing native font");
+    AFont font;
+    QDataStream fontStream(&fontFile); fontStream >> font;
+    PageAnalysisResult::initQuranText();
+    QFile pageFile("pages/page260.dat");
+    check(pageFile.open(QIODevice::ReadOnly), "Missing medial meem fixture");
+    PageAnalysisResult analysis;
+    QDataStream pageStream(&pageFile); pageStream >> analysis.page;
+    analysis.resolveWordBoundaries(260, &font);
+    auto& word = analysis.page.lines[0].words[4];
+    auto& sub = word.wordResultInfo.subWords[1];
+    check(analysis.segmentSubword(259, 0, 4, 1, &font, true, &config), "Could not recover the actual tooth and full meem");
+
+    const auto shape = word.bodyShape(sub);
+    const auto world = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
+    const auto ink = world(shape.path);
+    WordResultInfo::SubWordInfo dummy;
+    const auto context = geometry(ink, dummy);
+    const auto at = [&](double time) {
+        const auto point = std::find_if(context.timeSorted.begin(), context.timeSorted.end(), [&](const auto& p) {
+            return std::abs(p.time - time) < 1e-4;
+        });
+        check(point != context.timeSorted.end(), "Missing reviewed meem landmark");
+        return point->point;
+    };
+    const QLineF rim(at(10.6196), at(26));
+    check(sub.kashidaCuts.size() >= 2 && QLineF(sub.kashidaCuts[1].second.p2(), rim.p2()).length() < 1e-5,
+        "Meem entry moved off its inward turn");
+    const auto meem = world(sub.baseGlyphs[2].path);
+    const auto contours = toSubpaths(meem);
+    check(contours.size() == 2 && contours[1] == context.subPaths[1], "Meem lost its original counter");
+    for (double fraction : {.05, .5, .95}) {
+        const auto sample = rim.pointAt(fraction);
+        check(ink.contains(sample) && meem.contains(sample), "Meem lost the wall between its crown and inward turn");
+        for (size_t slot = 0; slot < sub.baseGlyphs.size(); ++slot)
+            if (slot != 2) check(!world(sub.baseGlyphs[slot].path).contains(sample), "Another letter owns the meem rim");
+        for (const auto& connector : sub.kashidaPaths)
+            check(!world(connector).contains(sample), "A connector owns part of the meem rim");
+    }
+
+    auto withoutBentTooth = config;
+    QJsonArray medial;
+    for (const auto& value : config.value("medial").toArray()) {
+        const auto form = resolvedBodyForm(config, value.toObject());
+        if (!hasToothBody(form) || form.value("id") == "beh-tooth-medi") medial.append(value);
+    }
+    withoutBentTooth.insert("medial", medial);
+    withoutBentTooth.remove("unresolvedShapeFrames");
+    check(!analysis.segmentSubword(259, 0, 4, 1, &font, true, &withoutBentTooth) && !sub.correct &&
+        sub.letterDiagnostics.at(2).toObject().value("status") == "no-match",
+        "The false tooth and partial meem were accepted without a compatible tooth form");
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv); Q_INIT_RESOURCE(application);
     auto config = PageAnalysisResult::letterForms();
@@ -228,5 +283,6 @@ int main(int argc, char** argv) {
     check(noonSub.matchedTemplates.contains("noon-fina") && noonSub.baseGlyphs.size() == 6,
         "A partial lam route suppressed a compatible final boundary");
     partition(noonWord.paths[noonSub.paths.front()].path, noonSub);
+    checkToothBeforeMeem(config);
     qInfo("Medial meem corners, hanging ligatures, independence and ink conservation passed");
 }
