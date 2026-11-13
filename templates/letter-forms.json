@@ -6168,6 +6168,7 @@
     },
     {
       "id": "yeh-fina",
+      "fixedAnchors": true,
       "current": "يئى",
       "tryNext": true,
       "tightJoin": true,
