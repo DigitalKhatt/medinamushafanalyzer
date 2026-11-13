@@ -416,6 +416,7 @@
     },
     {
       "id": "ain-round-init",
+      "fixedAnchors": true,
       "current": "عغ",
       "tryNext": true,
       "onIncomplete": true,
