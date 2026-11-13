@@ -22,7 +22,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 shape == "suspended-loop" || shape == "counter-neck" :
                 position == 1 ? toothDescription(body) || shape == "stacked-counters" :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
-                shape == "counter-neck" || shape == "counter-shoulder";
+                shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn";
             if (!supported)
                 return id + ": this body does not supply fixed anchors for its position";
             for (const auto letter : form.value("current").toString())
@@ -107,6 +107,11 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             if (!cutTailBranches(source, {tail.tip, tail.curveCount, {branch}}, settings, entry)) continue;
             result.push_back({.formId = id, .entry = entry, .landmarks = {tail.tip, branch.corner}});
         }
+    } else if (shape == "bowl-turn") {
+        const auto evidence = recognizedSharedShape(source, body);
+        if (evidence->bowlTurn && declaredSharedBoundary(source, form) &&
+            matchesBoundaryBody(source, form, source.res, false))
+            result.push_back({.formId = id, .entry = source.res, .landmarks = {evidence->bowlTurn->tip}});
     } else if (shape == "counter-neck" || shape == "counter-shoulder") {
         const auto evidence = recognizedSharedShape(source, body);
         if (!evidence->boundaryCounter || !declaredSharedBoundary(source, form)) return result;
