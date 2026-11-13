@@ -3705,6 +3705,7 @@
     },
     {
       "id": "hah-flat-medi",
+      "fixedAnchors": true,
       "current": "جحخ",
       "tightJoin": true,
       "body": {
