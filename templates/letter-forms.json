@@ -2674,6 +2674,7 @@
     },
     {
       "id": "meem-medi",
+      "fixedAnchors": true,
       "current": "م",
       "tightJoin": true,
       "body": {
