@@ -778,6 +778,7 @@
     },
     {
       "id": "beh-shallow-step-init",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "tryNext": true,
       "retryOnPartial": true,
