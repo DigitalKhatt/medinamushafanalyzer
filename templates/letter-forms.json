@@ -6237,6 +6237,7 @@
     },
     {
       "id": "waw-fina",
+      "fixedAnchors": true,
       "current": "وؤ",
       "tryNext": true,
       "ownsLeftTip": true,
