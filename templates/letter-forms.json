@@ -5029,6 +5029,7 @@
     },
     {
       "id": "hah-returning-wedge-medi",
+      "fixedAnchors": true,
       "current": "جحخ",
       "body": {
         "shape": "paired-route",
