@@ -204,6 +204,12 @@ before assembly. A hanging mīm recognizes its own upper entry and exit
 corners and keeps its counter, regardless of the preceding letter. When
 a rim entry meets the sending section at a tight join, assembly can use
 the rim as the shared seam if both bodies retain their landmarks and counters.
+Medial sīn and shīn use the first tooth junction for entry and the inward
+hollow beyond the third tooth for exit. Each candidate must retain all
+three tips and both valleys on one counter-free contour. The two
+neighboring cuts must meet the anchors or leave enough room for genuine
+connectors. Folded returns and candidates without both anchors continue
+through the existing cutter.
 Medial lām traces both sides of its shaft to the fork and projects the
 two configured contour walks. When there is no room, both normals can
 start at the fork tip. The declared folded return can share final yeh's

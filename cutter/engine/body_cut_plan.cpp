@@ -185,7 +185,7 @@ static QLineF sectionLine(const Stretching& cut) {
     return {cut.topBaseLine.point, cut.bottomBaseLine.point};
 }
 
-static bool leavesEntryClearance(const Stretching& sending, const Stretching& receiving,
+bool leavesEntryClearance(const Stretching& sending, const Stretching& receiving,
                                  Orientation orientation, double minimumGap) {
     if (!cutPrecedes(sending, receiving, orientation)) return false;
     const auto start = sectionLine(sending), end = sectionLine(receiving);

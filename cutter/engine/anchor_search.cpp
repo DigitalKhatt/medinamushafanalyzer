@@ -74,7 +74,7 @@ bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot
 
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
         const SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
-        double tightTolerance) {
+        double tightTolerance, double minWidthRatio) {
     Subword trial{};
     trial.text = sub.text;
     trial.paths = sub.paths;
@@ -96,13 +96,21 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         const bool sharesRim = receiving.sharesRimEntry &&
             (!orderedSections(exit, entry, source.orientation) ||
              QLineF(sectionLine(exit).center(), sectionLine(entry).center()).length() <= tightTolerance);
-        if (sharesRim || (slot + 1 == bodies.size() &&
+        if (sharesRim || (receiving.sharesJunctionEntry && !orderedSections(exit, entry, source.orientation)) ||
+            (slot + 1 == bodies.size() &&
                          (sharesFinalFold || sharesTightEntry(sending, receiving, tightTolerance)))) {
             if (!retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &entry, source.orientation))
                 return {};
             exit = entry;
         }
         const bool shared = sameSection(exit, entry) || sharesIncomingSection(exit, receiving, source.orientation);
+        if (shared && ((receiving.keepsEntryJunction && !sameSection(exit, entry)) ||
+                       (sending.keepsExitHollow && !sameSection(exit, *sending.exit)))) return {};
+        if (!shared && (sending.keepsExitHollow || receiving.keepsEntryJunction)) {
+            const auto a = sectionLine(exit).length(), b = sectionLine(entry).length();
+            if (std::min(a, b) < minWidthRatio * std::max(a, b) ||
+                !leavesEntryClearance(exit, entry, source.orientation, tightTolerance)) return {};
+        }
         if (!shared && bodies[slot]->retainsCounterRim) {
             // The saved rim geometry uses the sending cap's source curve
             // parameter. Rebind it without moving either endpoint.
@@ -187,8 +195,9 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
 
     std::vector<const AnchoredBody*> selected;
     selected.reserve(forms.size());
-    const double tightTolerance = penWidth * config.value("kashidaDefaults").toObject()
-        .value("sharedCutTolerance").toDouble(.25);
+    const auto connector = config.value("kashidaDefaults").toObject();
+    const double tightTolerance = penWidth * connector.value("sharedCutTolerance").toDouble(.25);
+    const double minWidthRatio = connector.value("minTrackWidthRatio").toDouble(.65);
     std::map<QString, std::optional<Stretching>> folds;
     const auto sharesFinalFold = [&]() {
         const auto& sending = *selected[selected.size() - 2];
@@ -211,7 +220,8 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
     };
     const auto search = [&](auto&& self, size_t slot) -> std::optional<Subword> {
         if (slot == forms.size()) {
-            auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(), tightTolerance);
+            auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(),
+                                      tightTolerance, minWidthRatio);
             if (partition && accept && !accept(*partition)) return {};
             return partition;
         }
@@ -225,7 +235,8 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
                     if (body.stemFootCandidate && !sending.sharesIncoming) continue;
                     if (!sameSection(exit, *body.entry) &&
                         !orderedSections(exit, *body.entry, source.orientation) &&
-                        !sharesIncomingSection(exit, body, source.orientation) && !body.sharesRimEntry) {
+                        !sharesIncomingSection(exit, body, source.orientation) && !body.sharesRimEntry &&
+                        !body.sharesJunctionEntry) {
                         // An overlapping fork can still fit the terminal
                         // bowl through the existing attachment policy.
                         if (sending.preservesTerminalBody && terminal &&

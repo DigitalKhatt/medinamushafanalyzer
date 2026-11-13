@@ -665,6 +665,9 @@ std::vector<ToothClusterBody> recognizeToothClusters(const InkOutline &outline, 
 
 std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
                                                  double penWidth);
+std::optional<std::pair<Stretching, Stretching>> medialClusterAnchors(SearchContext& context,
+        const ToothClusterBody& cluster, const std::vector<ToothClusterBody>& clusters,
+        const QJsonObject& settings, const QJsonObject& cuts, double penWidth);
 
 struct ToothClusterAttachment {
     std::optional<Stretching> entry, exit, receiving;
@@ -1263,6 +1266,9 @@ struct AnchoredBody {
     QVector<size_t> counters;
     bool retainsCounterRim = false;
     bool sharesRimEntry = false;
+    bool sharesJunctionEntry = false;
+    bool keepsEntryJunction = false;
+    bool keepsExitHollow = false;
     bool sharesIncoming = false;
     QString tightEntryAfter;
     bool preservesTerminalBody = false;
@@ -1682,6 +1688,8 @@ bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub)
 
 enum class ConnectorEndpointMatch { FirstWithinTolerance, NearestVertex };
 
+bool leavesEntryClearance(const Stretching& sending, const Stretching& receiving,
+                          Orientation orientation, double minimumGap);
 bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLineF& left,
                       ConnectorEndpointMatch match = ConnectorEndpointMatch::FirstWithinTolerance);
 

@@ -291,9 +291,12 @@ static void checkSeenEntryAndExit(const QJsonObject& config) {
         check(QLineF(entry.p1(), curves[upper].pt1()).length() < 1e-5 &&
               QLineF(entry.p2(), curves[20].pt1()).length() < 1e-5,
               "The seen entry must meet the first tooth at its two opposing corners");
-        if (p == 5)
+        if (p == 5) {
+            check(sub.templateTrace.value(0).startsWith("Fixed anchors"),
+                  "The first tooth junction and final hollow must work in fixed anchor search");
             check(QLineF(sub.kashidaCuts[1].first.p2(), curves[17].pt1()).length() < 1e-5,
                   "The seen exit must reach the hollow beyond the third tooth");
+        }
         checkPartition(shape.path, sub);
     }
 }

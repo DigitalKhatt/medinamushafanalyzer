@@ -349,14 +349,13 @@ static std::optional<Stretching> clusterExitAtBend(SearchContext& context, const
 }
 
 static std::optional<Stretching> clusterExitAtHollow(SearchContext& context, const ToothClusterBody& cluster,
-        const Stretching& receiving, double penWidth, const QJsonObject& cutSettings) {
+        double penWidth, double maxWidth, const QJsonObject& cutSettings) {
     const auto& tip = cluster.turns.back();
     const double reach = cutSettings.value("maxExitBendDistance").toDouble(2) * meanToothPitch(cluster);
-    const double maxWidth = 2 * std::max(penWidth, toothCutLine(receiving).length());
     Stretching cut{};
     if (!seenExitBendCut(context, tip, cluster.advancePrevious, reach, cut, 0, maxWidth) ||
         cut.topBaseLine.pathIndex != 0 ||
-        !keepsClusterAtExit(cluster, cut, context.orientation) || !cutPrecedes(cut, receiving, context.orientation))
+        !keepsClusterAtExit(cluster, cut, context.orientation))
         return {};
 
     // The inward turn follows the lower bulge of this tooth. A hollow on a
@@ -376,6 +375,30 @@ static std::optional<Stretching> clusterExitAtHollow(SearchContext& context, con
         std::abs(bulge->point.x() - tip.point.x()) > stroke) return {};
 
     return cut;
+}
+
+std::optional<std::pair<Stretching, Stretching>> medialClusterAnchors(SearchContext& context,
+        const ToothClusterBody& cluster, const std::vector<ToothClusterBody>& clusters,
+        const QJsonObject& settings, const QJsonObject& cuts, double penWidth) {
+    if (!followsUpperFlank(context, cluster)) return {};
+    const auto entry = clusterEntryAtJunction(context, cluster, penWidth);
+    if (!entry) return {};
+    const auto exit = clusterExitAtHollow(context, cluster, penWidth, 2 * std::max(penWidth, entry->referenceWidth), cuts);
+    if (!exit || !cutPrecedes(*entry, *exit, context.orientation)) return {};
+    const auto sections = cutRegions(context.transformedPath, {}, {*entry, *exit}, context.orientation, true);
+    if (sections.size() != 3 || toSubpaths(sections[1].path).size() != 1) return {};
+    const auto first = getJoinTime(*entry, context.orientation);
+    const auto last = getJoinTime(*exit, context.orientation);
+    const double rise = settings.value("minToothRise").toDouble(.55);
+    for (const auto& other : clusters) {
+        if (!followsUpperFlank(context, other) ||
+            !std::all_of(other.turns.begin(), other.turns.end(), [&](const auto& turn) {
+                return first.isStrictLeft(turn.time) && last.isStrictRight(turn.time);
+            })) continue;
+        for (const auto i : {0, 2, 4})
+            if (distinctToothTips(context, other.turns[i], cluster.turns[i], penWidth, rise)) return {};
+    }
+    return std::pair{*entry, *exit};
 }
 
 static std::vector<ToothClusterExit> nearerConnectorExits(SearchContext& context, const ToothClusterBody& cluster,
@@ -487,8 +510,10 @@ ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body,
         if (attachment.sameContour && attachment.entry && cutSettings.value("entryAtJunction").toBool())
             fit.entry = clusterEntryAtJunction(context, *accepted, penWidth);
         if (!attachment.exit) return fit;
-        const auto hollow = attachment.canFitHollow && cutSettings.value("exitAtHollow").toBool()
-            ? clusterExitAtHollow(context, *accepted, *attachment.receiving, penWidth, cutSettings) : std::nullopt;
+        auto hollow = attachment.canFitHollow && cutSettings.value("exitAtHollow").toBool()
+            ? clusterExitAtHollow(context, *accepted, penWidth,
+                2 * std::max(penWidth, toothCutLine(*attachment.receiving).length()), cutSettings) : std::nullopt;
+        if (hollow && !cutPrecedes(*hollow, *attachment.receiving, context.orientation)) hollow.reset();
         if (hollow && QLineF(hollow->topBaseLine.point, attachment.exit->topBaseLine.point).length() < 1e-4 &&
             QLineF(hollow->bottomBaseLine.point, attachment.exit->bottomBaseLine.point).length() < 1e-4) return fit;
         if (attachment.separateConnector)

@@ -22,7 +22,9 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 shape == "profile-neck" :
                 position == 1 ? toothDescription(body) || shape == "stacked-counters" || shape == "counter-loop" ||
                 shape == "open-head" || shape == "crested-loop" || shape == "paired-route" ||
-                shape == "forked-stem" :
+                shape == "forked-stem" || (shape == "tooth-cluster" &&
+                    form.value("cuts").toObject().value("cluster").toObject().value("entryAtJunction").toBool() &&
+                    form.value("cuts").toObject().value("cluster").toObject().value("exitAtHollow").toBool()) :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn" ||
                 shape == "upright-stem";
@@ -188,6 +190,19 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 result.push_back({.formId = id, .entry = entry, .exit = exit, .landmarks = {candidate.anchor}});
             }
         }
+    } else if (shape == "tooth-cluster") {
+        const auto evidence = recognizedSharedShape(source, body);
+        const auto policy = cuts.value("cluster").toObject();
+        for (const auto& cluster : evidence->clusters)
+            if (const auto sections = medialClusterAnchors(source, cluster, evidence->clusters,
+                                                          body.value("cluster").toObject(), policy, penWidth))
+                result.push_back({.formId = id, .entry = sections->first, .exit = sections->second,
+                                  .landmarks = {cluster.turns.begin(), cluster.turns.end()},
+                                  .sharesJunctionEntry = form.value("sharedEntry").toBool(),
+                                  .keepsEntryJunction = true, .keepsExitHollow = true});
+        std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
+            return a.landmarks.front().point.x() > b.landmarks.front().point.x();
+        });
     } else if (toothDescription(body)) {
         auto teeth = declaredToothBoundaries(source, form);
         // Keep the established reading order among placements of one form.

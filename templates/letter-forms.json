@@ -2805,6 +2805,7 @@
     },
     {
       "id": "seen-medi",
+      "fixedAnchors": true,
       "current": "سش",
       "body": {
         "shape": "tooth-cluster",
@@ -4265,6 +4266,7 @@
     },
     {
       "id": "seen-compact-medi",
+      "fixedAnchors": true,
       "current": "سش",
       "tightJoin": true,
       "sharedEntry": true,
