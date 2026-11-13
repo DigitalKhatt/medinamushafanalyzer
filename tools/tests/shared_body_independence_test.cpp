@@ -38,12 +38,9 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         points(e.initialNeck->valleys);
         points(e.initialNeck->normalAnchors);
     }
-    out << bool(e.terminalCounter);
-    if (e.terminalCounter)
-        hole(*e.terminalCounter);
-    out << bool(e.terminalContour);
-    if (e.terminalContour)
-        hole(*e.terminalContour);
+    out << bool(e.boundaryCounter);
+    if (e.boundaryCounter)
+        hole(*e.boundaryCounter);
     corner(e.terminalNeck);
     points(e.shoulders);
     out << bool(e.bridge);

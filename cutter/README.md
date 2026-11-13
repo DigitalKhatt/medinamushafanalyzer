@@ -98,6 +98,14 @@ rightmost outward turn in the lower half of the outline when another
 stroke extends farther right above it. The usual route and body checks
 still apply.
 
+Final mīm and other counter forms project their entry with the same corner
+and counter-relative probe used by medial loops. A terminal neck keeps
+the source counter and the free end. A form with `cuts.entryRim` can also
+offer a section at the turn where the lower rim meets the incoming stroke.
+`minRiseWidths` measures the proposed entry's vertical span in global stroke
+widths. `maxSlope` limits its horizontal run divided by its rise. Assembly
+checks that both adjacent bodies retain their source counters.
+
 Open heads use sections under their own two lips. When an intersection is
 missing, the section probe brackets the crossing on the same Bézier curve.
 If a preceding cut coincides with the exit of an independently recognized

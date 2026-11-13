@@ -333,10 +333,11 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             queueTurn(slot, true, cap, connector);
         }
         ++slot;
-        if (std::abs(cap.dy()) < 2.5 * penWidth || std::abs(cap.dx()) > .15 * std::abs(cap.dy()) ||
-            join.counterEntry.pathIndex > 0) continue;
+        if (join.counterEntry.pathIndex > 0) continue;
         const auto form = program.forms.constFind(templateId(slot));
-        if (form != program.forms.cend() && form->cuts.value("preserveEntryRim").toBool())
+        const auto rim = form == program.forms.cend() ? QJsonObject{} : form->cuts.value("entryRim").toObject();
+        if (!rim.isEmpty() && std::abs(cap.dy()) >= rim.value("minRiseWidths").toDouble() * penWidth &&
+            std::abs(cap.dx()) <= rim.value("maxSlope").toDouble() * std::abs(cap.dy()))
             clippedCounterEntries.push_back(slot);
     }
     const auto reorient = terminalCuts.value("reorientEntry").toObject();
@@ -392,64 +393,13 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         cut.bottomBaseLine = cut.bottomLeft;
         return cut;
     };
-    const auto replace = [&](int slot, Stretching right, const std::optional<Stretching>& left,
-                             const QString& message, const auto& accepts,
+    const auto replace = [&](int slot, const Stretching& right, const std::optional<Stretching>& left,
+                             const QString& trace, const auto& accepts,
                              const std::optional<Stretching>& incoming = std::nullopt) {
-        if (!interiorChord(outline.transformedPath, right.topBaseLine, right.bottomBaseLine) ||
-            (left && !interiorChord(outline.transformedPath, left->topBaseLine, left->bottomBaseLine))) return false;
-        auto previous = sub;
-        right.length = 0;
-        right.fixedRightBoundary = true;
-        right.fixedLeftBoundary = left.has_value();
-        right.topRight = right.topBaseLine;
-        right.bottomRight = right.bottomBaseLine;
-        right.topLeft = left ? left->topBaseLine : right.topBaseLine;
-        right.bottomLeft = left ? left->bottomBaseLine : right.bottomBaseLine;
-        right.kashidaOverrides.insert("enabled", left.has_value());
-        sub.joins.clear();
-        int i = 0;
-        for (auto cut : previous.joins) {
-            if (i == slot) cut = right;
-            else if (incoming && i == slot - 1) cut = *incoming;
-            cut.readingOrder = i++;
-            sub.joins.insert(cut);
-        }
-        bool valid = cutSubword(line, wordIndex, subIndex, config) &&
-            sub.baseGlyphs.size() == previous.baseGlyphs.size() && sub.kashidaPaths.size() == previous.kashidaPaths.size() &&
-            sub.kashidaPaths[slot].isEmpty() == !left && accepts();
-        for (size_t j = 0; valid && j < sub.baseGlyphs.size(); ++j)
-            if (j != size_t(slot) && j != size_t(slot + 1) && !(incoming && j + 1 == size_t(slot)))
-                valid = sub.baseGlyphs[j].path == previous.baseGlyphs[j].path;
-        for (size_t j = 0; valid && j < sub.kashidaPaths.size(); ++j)
-            if (incoming && j + 1 == size_t(slot)) {
-                valid = sub.kashidaPaths[j].isEmpty() == previous.kashidaPaths[j].isEmpty();
-                if (valid && !sub.kashidaPaths[j].isEmpty())
-                    valid = sub.kashidaCuts[j].first == previous.kashidaCuts[j].first &&
-                        sub.baseGlyphs[j].path == previous.baseGlyphs[j].path;
-            } else if (j != size_t(slot)) valid = sub.kashidaPaths[j] == previous.kashidaPaths[j];
-        if (!valid || !coversOriginalInk(word, sub)) {
-            sub = std::move(previous);
-            return false;
-        }
-        sub.templateTrace.append(message);
-        return true;
+        return replaceLocalJoin(word, sub, config, outline.transformedPath, slot, right, left, trace, accepts, incoming);
     };
-
     std::vector<std::vector<QBezier>> outer;
-    const auto assembledCaps = [&](int index) -> std::optional<std::pair<Stretching, Stretching>> {
-        const auto cut = *std::next(sub.joins.begin(), index);
-        if (sub.kashidaPaths[index].isEmpty()) return std::pair{cut, cut};
-        if (outer.empty()) outer.push_back(baseContourCurves(outline.subPaths.front()));
-        auto sending = cut, receiving = entry(cut);
-        const auto remap = [&](Stretching& cap, const QLineF& line) {
-            cap.topBaseLine.point = line.p1();
-            cap.bottomBaseLine.point = line.p2();
-            return sourceLandmark(cap.topBaseLine, outer) && sourceLandmark(cap.bottomBaseLine, outer);
-        };
-        const auto& [right, left] = sub.kashidaCuts[index];
-        if (!remap(sending, right) || !remap(receiving, left)) return {};
-        return std::pair{sending, receiving};
-    };
+    const auto assembledCaps = [&](int index) { return fittedJoinCaps(sub, index, outline, outer); };
 
     if (!turnCuts.empty()) {
         const auto chord = [](const Stretching& cap) {
@@ -519,8 +469,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                 if (!cutPrecedes(right, left, outline.orientation) ||
                     !cutPrecedes(movesEarlier ? *boundary : current,
                                  movesEarlier ? current : *boundary, outline.orientation)) continue;
-                if (replace(request.join, right, left, id + " · cut at the stroke turn", [&] {
-                        const auto updated = world(sub.baseGlyphs[owner].path);
+                if (replace(request.join, right, left, id + " · cut at the stroke turn", [&](const auto& trial) {
+                        const auto updated = world(trial.baseGlyphs[owner].path);
                         return toSubpaths(updated).size() == contourCount &&
                             std::abs(updated.boundingRect().top() - bounds.top()) < 1e-5;
                     })) {
@@ -531,45 +481,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         }
     }
 
-    if (!clippedCounterEntries.empty()) {
-        const auto holes = recognizeCounterHoles(inkOutline(outline));
-        const auto retainedHoles = [&](const QPainterPath &body) {
-            const auto contours = toSubpaths(body);
-            std::vector<QPainterPath> owned;
-            for (const auto &hole : holes)
-                if (std::find(contours.begin(), contours.end(), outline.subPaths[hole.index]) != contours.end())
-                    owned.push_back(outline.subPaths[hole.index]);
-            return owned;
-        };
-        for (const int letter : clippedCounterEntries) {
-            const int joinIndex = letter - 1;
-            const bool connector = !sub.kashidaPaths[joinIndex].isEmpty();
-            const auto caps = assembledCaps(joinIndex);
-            if (!caps) continue;
-            const auto& [sending, receiving] = *caps;
-            const auto following = retainedHoles(world(sub.baseGlyphs[letter].path));
-            if (following.empty()) continue;
-            const auto previous = retainedHoles(world(sub.baseGlyphs[joinIndex].path));
-            const auto lowest = std::max_element(following.begin(), following.end(), [](const auto &a, const auto &b) {
-                return a.boundingRect().bottom() < b.boundingRect().bottom();
-            });
-            for (const auto &cut : counterRimEntryCuts(outline, lowest->boundingRect(), receiving)) {
-                const bool keepConnector = connector && cutPrecedes(sending, cut, outline.orientation);
-                const auto retainsCounters = [&] {
-                    return retainedHoles(world(sub.baseGlyphs[letter].path)) == following &&
-                        retainedHoles(world(sub.baseGlyphs[joinIndex].path)) == previous;
-                };
-                const auto id = templateId(letter);
-                if (replace(joinIndex, keepConnector ? sending : cut,
-                            keepConnector ? std::optional<Stretching>{cut} : std::nullopt,
-                            id + " · incoming counter rim retained", retainsCounters)) {
-                    recordBoundaryTemplate(sub, letter, true, id);
-                    if (!keepConnector) recordBoundaryTemplate(sub, joinIndex, false, id);
-                    break;
-                }
-            }
-        }
-    }
+    placeCounterRimEntries(word, sub, config, outline, clippedCounterEntries);
 
     if (clippedKafDescent) {
         // The upper elbow and the start of the head both make narrow
@@ -589,8 +501,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             }
             orientSection(outline, *boundary, outline.ySorted.rbegin()->time, false);
             const auto id = outline.form.value("id").toString();
-            if (replace(0, *boundary, {}, id + " · descending stroke retained in kaf", [&] {
-                const auto repaired = world(sub.baseGlyphs.front().path).boundingRect();
+            if (replace(0, *boundary, {}, id + " · descending stroke retained in kaf", [&](const auto& trial) {
+                const auto repaired = world(trial.baseGlyphs.front().path).boundingRect();
                 return repaired.height() > 1.45 * first.height() &&
                     std::abs(repaired.top() - first.top()) < 1e-5;
             })) {
@@ -610,8 +522,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             if (!cut || QLineF(cut->topBaseLine.point, cut->bottomBaseLine.point).length() > .6 * terminalChord.length())
                 continue;
             orientSection(outline, *cut, outline.xSorted.rbegin()->time, true);
-            if (replace(last - 1, *cut, {}, terminal + " · narrow shoulder retained", [&] {
-                    const auto repaired = world(sub.baseGlyphs.back().path).boundingRect();
+            if (replace(last - 1, *cut, {}, terminal + " · narrow shoulder retained", [&](const auto& trial) {
+                    const auto repaired = world(trial.baseGlyphs.back().path).boundingRect();
                     return repaired.right() < tail.right() && std::abs(repaired.left() - tail.left()) < 1e-5 &&
                         std::abs(repaired.top() - tail.top()) < 1e-5;
                 })) {
@@ -630,10 +542,10 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         const auto lip = outline.xSorted.begin()->point;
         const auto stem = program.forms.constFind(stackedExit)->body.value("stem").toObject();
         const double pen = stem.value("penWidth").toDouble(.5);
-        const auto shaftRestored = [&] {
-            const auto repaired = world(sub.baseGlyphs.front().path).boundingRect();
+        const auto shaftRestored = [&](const auto& trial) {
+            const auto repaired = world(trial.baseGlyphs.front().path).boundingRect();
             if (repaired.width() > shaftAspect * repaired.height() || repaired.width() >= first.width()) return false;
-            const auto head = world(sub.baseGlyphs[1].path);
+            const auto head = world(trial.baseGlyphs[1].path);
             for (double depth : {.5, 1.0}) {
                 const double x = lip.x() - depth * pen;
                 auto crossings = FindInterections(outline.transformedPath,
@@ -685,8 +597,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             boundary = walk("initial", boundaryId);
         }
         if (boundary) {
-            const auto restoresBody = [&] {
-                const auto repaired = world(sub.baseGlyphs.front().path).boundingRect();
+            const auto restoresBody = [&](const auto& trial) {
+                const auto repaired = world(trial.baseGlyphs.front().path).boundingRect();
                 return clippedStem ? repaired.height() >= minHeightGain * first.height() :
                     repaired.width() >= std::max(.45, 1.5 * first.width()) && repaired.height() >= 1.2;
             };
@@ -701,8 +613,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
     if (clippedEntry) {
         auto seam = entry(*sub.joins.rbegin());
         orientSection(outline, seam, outline.xSorted.rbegin()->time, true);
-        const auto restoresBody = [&] {
-            const auto repaired = world(sub.baseGlyphs.back().path).boundingRect();
+        const auto restoresBody = [&](const auto& trial) {
+            const auto repaired = world(trial.baseGlyphs.back().path).boundingRect();
             return repaired.left() <= outline.bbox.left() + 1e-5 &&
                 repaired.width() >= reorient.value("minWidth").toDouble() &&
                 repaired.height() >= reorient.value("minHeight").toDouble();
@@ -735,8 +647,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         }
         if (boundary) {
             const auto right = last == 1 ? walk("initial", initial) : std::optional<Stretching>{join};
-            if (right && replace(last - 1, *right, boundary, terminal + " · raised entry restored", [&] {
-                    return world(sub.baseGlyphs.back().path).boundingRect().top() < tail.top() - .3;
+            if (right && replace(last - 1, *right, boundary, terminal + " · raised entry restored", [&](const auto& trial) {
+                    return world(trial.baseGlyphs.back().path).boundingRect().top() < tail.top() - .3;
                 })) {
                 recordBoundaryTemplate(sub, last, true, terminal);
                 if (last == 1) recordBoundaryTemplate(sub, 0, false, initial);
@@ -760,8 +672,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         if (limit) orientSection(outline, *limit, outline.xSorted.rbegin()->time, true);
         const auto boundary = cutAfterEntryCrest(outline, seam, limit ? &*limit : nullptr, true);
         if (boundary) {
-            const auto restoredHook = [&] {
-                return world(sub.baseGlyphs.back().path).boundingRect().top() < tail.top() - .2 * tail.height();
+            const auto restoredHook = [&](const auto& trial) {
+                return world(trial.baseGlyphs.back().path).boundingRect().top() < tail.top() - .2 * tail.height();
             };
             const auto message = terminal + " · upper hook retained in final body";
             const auto chord = [](const Stretching& cut) { return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point); };
@@ -798,8 +710,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                     incoming.fixedRightBoundary = true;
                     incoming.fixedLeftBoundary = ribbon;
                     incoming.kashidaOverrides.insert("enabled", ribbon);
-                    const auto hookAndTooth = [&] {
-                        return restoredHook() && tooth.retainedBy(world(sub.baseGlyphs[last - 1].path));
+                    const auto hookAndTooth = [&](const auto& trial) {
+                        return restoredHook(trial) && tooth.retainedBy(world(trial.baseGlyphs[last - 1].path));
                     };
                     auto exit = tooth.left;
                     orientSection(outline, exit, outline.xSorted.rbegin()->time, true);
@@ -807,9 +719,9 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                     const bool separate = cutPrecedes(exit, *boundary, outline.orientation) &&
                         QLineF(end.center(), startOfReh.center()).length() >= .75 * std::max(end.length(), startOfReh.length());
                     const auto restored = message + " and preceding tooth restored";
-                    if (separate && replace(last - 1, exit, boundary, restored, [&] {
-                            const auto connector = world(sub.kashidaPaths.back());
-                            return hookAndTooth() && toSubpaths(connector).size() == 1 &&
+                    if (separate && replace(last - 1, exit, boundary, restored, [&](const auto& trial) {
+                            const auto connector = world(trial.kashidaPaths.back());
+                            return hookAndTooth(trial) && toSubpaths(connector).size() == 1 &&
                                 followsOneStroke(connector, end, startOfReh);
                         }, incoming)) {
                         recordAssembledForm(sub, last - 1, toothId);
@@ -837,8 +749,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         const QJsonObject parallel{{"minRun", rail}, {"minGap", .25}};
         const QString id = "kaf-elbow-init";
         if (const auto cut = walk("initial", id))
-            if (replace(0, *cut, entry(*sub.joins.begin()), id + " · lower return retained in kaf", [&] {
-                return containsHeadLips(world(sub.baseGlyphs.front().path), parallel);
+            if (replace(0, *cut, entry(*sub.joins.begin()), id + " · lower return retained in kaf", [&](const auto& trial) {
+                return containsHeadLips(world(trial.baseGlyphs.front().path), parallel);
             })) recordBoundaryTemplate(sub, 0, false, id);
     }
 
@@ -855,8 +767,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         };
         const auto sending = readCap(rightCap), receiving = readCap(leftCap);
         const auto boundary = sending && receiving ? restoreNoonBowlEntry(outline, *receiving, *sending) : std::nullopt;
-        if (boundary && replace(last - 1, *sending, boundary, terminal + " · outer bowl retained", [&] {
-                const auto repaired = world(sub.baseGlyphs.back().path).boundingRect();
+        if (boundary && replace(last - 1, *sending, boundary, terminal + " · outer bowl retained", [&](const auto& trial) {
+                const auto repaired = world(trial.baseGlyphs.back().path).boundingRect();
                 return repaired.right() > tail.right() && repaired.left() <= tail.left() + 1e-5 &&
                     repaired.bottom() >= tail.bottom() - 1e-5;
             })) recordBoundaryTemplate(sub, last, true, terminal);

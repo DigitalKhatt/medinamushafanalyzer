@@ -12,6 +12,7 @@
 #include <private/qbezier_p.h>
 #include <array>
 #include <cstdlib>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -747,8 +748,10 @@ std::vector<CounterHole> recognizeCounterHoles(const InkOutline &outline);
 std::vector<Stretching> counterRimEntryCuts(SearchContext &context, const QRectF &counter,
                                            const Stretching &entry);
 
-bool cutFinalCounterBody(SearchContext &context, const QRectF &counter, const CounterCornerEvidence &entry,
-                                const QJsonObject &bounds);
+bool projectCounterEntry(SearchContext& context, const CounterCornerEvidence& entry,
+        const QJsonObject& policy, double x, double y, Stretching& cut,
+        const CounterCornerEvidence* lowerEntry = nullptr,
+        double minY = -std::numeric_limits<double>::infinity());
 
 // The initial loop ends at the inward corner below and to the left of its
 // counter. Locate that corner from the loop itself, independent of the next letter.
@@ -758,7 +761,7 @@ struct InitialCounterBody {
 };
 
 std::optional<InitialCounterBody> recognizeInitialCounterBody(const InkOutline &outline,
-                                                                     const QJsonObject &settings);
+        const std::vector<CounterHole>& holes, const QJsonObject& settings);
 
 bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &body, const QJsonObject &settings);
 
@@ -1269,6 +1272,18 @@ bool assembleToothClusterCuts(const Word& word, WordResultInfo::SubWordInfo& sub
 
 bool finalizeBodyCuts(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 
+void placeCounterRimEntries(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
+                            SearchContext& source, const std::vector<int>& bodySlots);
+
+std::optional<std::pair<Stretching, Stretching>> fittedJoinCaps(
+        const WordResultInfo::SubWordInfo& sub, int index, const SearchContext& source,
+        std::vector<std::vector<QBezier>>& outer);
+
+bool replaceLocalJoin(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
+        const QPainterPath& ink, int slot, Stretching sending, const std::optional<Stretching>& receiving, const QString& trace,
+        const std::function<bool(const WordResultInfo::SubWordInfo&)>& retainsBodies,
+        const std::optional<Stretching>& previousJoin = {});
+
 void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 
 std::optional<ReturnSeamBody> recognizeRisingReturn(const InkOutline &outline, const QJsonObject &spec);
@@ -1296,9 +1311,6 @@ bool cutTerminalStemFork(SearchContext& context, const QJsonObject& settings, St
 
 std::vector<PathExtrema> recognizeLoopShoulders(const InkOutline &outline, const QRectF &hole,
                                                        const QJsonObject &body);
-
-bool cutLoopShoulder(SearchContext &ctx, const QRectF &hole, const std::vector<PathExtrema> &anchors,
-                            const QJsonObject &settings, double witness, bool final, Stretching &best);
 
 std::vector<Stretching> loopShoulderCuts(SearchContext& context, const QRectF& hole,
         const std::vector<PathExtrema>& anchors, const QJsonObject& settings, double witness, bool final);
@@ -1521,7 +1533,7 @@ struct SharedShapeEvidence {
     QPainterPath source;
     std::vector<CounterHole> holes;
     std::optional<InitialCounterBody> initialNeck;
-    std::optional<CounterHole> terminalCounter, terminalContour;
+    std::optional<CounterHole> boundaryCounter;
     CounterCornerEvidence terminalNeck;
     std::vector<PathExtrema> shoulders;
     std::optional<LoopBridgeBody> bridge;

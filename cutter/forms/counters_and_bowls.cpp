@@ -1106,35 +1106,25 @@ std::vector<CounterHole> recognizeCounterHoles(const InkOutline &outline) {
     return result;
 }
 
-bool cutFinalCounterBody(SearchContext &context, const QRectF &counter, const CounterCornerEvidence &entry,
-                                const QJsonObject &bounds) {
-    const auto& ink = context.transformedPath;
-    const double offset = bounds.value("offset").toDouble() * counter.height();
-    const double x = counter.right() + offset;
-    const double y = counter.bottom() + bounds.value("baselineOffset").toDouble() * counter.height();
-    Stretching cut{};
-    if (!cutCounterCorners(context, entry, bounds.value("entryCorner").toObject(), bounds.value("normalCut").toBool(),
-                           cut)) {
-        if (bounds.value("entryCorner").toObject().value("required").toBool()) return false;
-        if (!medialChordAt(context, x, y, counter.height() * 2, cut))
-            return false;
-        if (bounds.value("normalCut").toBool() && !strokeNormalCut(context, cut)) return false;
+// Project across the stroke at a recognized counter corner, or at the
+// template's counter-relative probe when the corner is optional.
+bool projectCounterEntry(SearchContext& context, const CounterCornerEvidence& entry,
+        const QJsonObject& policy, double x, double y, Stretching& cut,
+        const CounterCornerEvidence* lowerEntry, double minY) {
+    const auto corner = policy.value("entryCorner").toObject();
+    const bool normal = policy.value("normalCut").toBool();
+    if (!cutCounterCorners(context, entry, corner, normal, cut) &&
+        (!lowerEntry || !cutCounterCorners(context, *lowerEntry, corner, normal, cut))) {
+        if (corner.value("required").toBool() ||
+            !medialChordAt(context, x, y, entry.counter.height() * 2, cut, false, minY) ||
+            (normal && !strokeNormalCut(context, cut))) return false;
     }
-    const auto pieces = cutRegions(ink, {}, {cut}, context.orientation, true);
-    if (pieces.size() != 2) return false;
-    const auto body = pieces[1].path.boundingRect().adjusted(-1e-6, -1e-6, 1e-6, 1e-6);
-    if (!body.contains(counter) || !body.contains(std::prev(context.xSorted.end())->point) ||
-        body.contains(context.xSorted.begin()->point))
-        return false;
-    context.res = cut;
-    context.res.topLeft = context.res.topRight = cut.topBaseLine;
-    context.res.bottomLeft = context.res.bottomRight = cut.bottomBaseLine;
+    if (std::min(cut.topBaseLine.point.y(), cut.bottomBaseLine.point.y()) < minY) return false;
     return true;
 }
 
 std::optional<InitialCounterBody> recognizeInitialCounterBody(const InkOutline &outline,
-                                                                     const QJsonObject &settings) {
-    const auto holes = recognizeCounterHoles(outline);
+        const std::vector<CounterHole>& holes, const QJsonObject& settings) {
     if (holes.empty())
         return {};
     const auto found = std::max_element(holes.begin(), holes.end(), [](const auto &a, const auto &b) {
@@ -1527,13 +1517,15 @@ projectLoopBody(SearchContext& context, const LoopBodyEvidence& body, const QJso
     Stretching right{}, left{};
     const auto entryWalk = settings.value("entryWalk").toObject();
     const auto exitTooth = settings.value("exitTooth").toObject();
-    bool anchoredRight = false;
+    const double entryMinY = settings.value("entryBelowCounter").toBool() ? hole.bottom() :
+        -std::numeric_limits<double>::infinity();
     if (needEntry && !entryWalk.isEmpty()) {
         const auto originalForm = context.form;
         const auto originalResult = context.res;
         const auto originalNext = context.nextIter;
         context.form = entryWalk;
         double nearest = hole.height() * 2;
+        bool found = false;
         for (const auto &entry : body.entryRoutes) {
             if (entry.gap >= nearest)
                 continue;
@@ -1542,23 +1534,14 @@ projectLoopBody(SearchContext& context, const LoopBodyEvidence& body, const QJso
                 continue;
             right = context.res;
             nearest = entry.gap;
-            anchoredRight = true;
+            found = true;
         }
         context.form = originalForm;
         context.res = originalResult;
         context.nextIter = originalNext;
-        if (!anchoredRight) return {};
-    } else if (needEntry) {
-        const auto entryCorner = settings.value("entryCorner").toObject();
-        const bool normalCut = settings.value("normalCut").toBool();
-        anchoredRight = cutCounterCorners(context, body.entry, entryCorner, normalCut, right) ||
-            (body.lowerEntry && cutCounterCorners(context, *body.lowerEntry, entryCorner, normalCut, right));
-        if (!anchoredRight && entryCorner.value("required").toBool()) return {};
-    }
-    const double entryMinY = settings.value("entryBelowCounter").toBool() ? hole.bottom() :
-        -std::numeric_limits<double>::infinity();
-    if (needEntry && !anchoredRight &&
-        !medialChordAt(context, hole.right() + offset, y, hole.height() * 2, right, false, entryMinY)) return {};
+        if (!found || std::min(right.topBaseLine.point.y(), right.bottomBaseLine.point.y()) < entryMinY) return {};
+    } else if (needEntry && !projectCounterEntry(context, body.entry, settings, hole.right() + offset, y,
+                   right, body.lowerEntry ? &*body.lowerEntry : nullptr, entryMinY)) return {};
     const bool anchoredLeft = floorExit.isEmpty() && exitTooth.isEmpty() && cutLoopExitCorner(context, body.exit, settings, left);
     if (!anchoredLeft && settings.value("exitCorner").toObject().value("required").toBool()) return {};
     if (!floorExit.isEmpty()) {
@@ -1587,10 +1570,7 @@ projectLoopBody(SearchContext& context, const LoopBodyEvidence& body, const QJso
         }
         if (!found) return {};
     } else if (!anchoredLeft && !medialChordAt(context, hole.left() - offset, y, hole.height() * 2, left)) return {};
-    if (settings.value("normalCut").toBool() &&
-        ((needEntry && !anchoredRight && !strokeNormalCut(context, right)) ||
-         (!anchoredLeft && !strokeNormalCut(context, left)))) return {};
-    if (needEntry && std::min(right.topBaseLine.point.y(), right.bottomBaseLine.point.y()) < entryMinY) return {};
+    if (settings.value("normalCut").toBool() && !anchoredLeft && !strokeNormalCut(context, left)) return {};
     if (!floorExit.isEmpty()) {
         const QLineF entry(right.topBaseLine.point, right.bottomBaseLine.point);
         const QLineF exit(left.topBaseLine.point, left.bottomBaseLine.point);
@@ -2260,14 +2240,6 @@ std::vector<Stretching> loopShoulderCuts(SearchContext& ctx, const QRectF& hole,
     result.reserve(ranked.size());
     for (auto& [_, cut] : ranked) result.push_back(std::move(cut));
     return result;
-}
-
-bool cutLoopShoulder(SearchContext& ctx, const QRectF& hole, const std::vector<PathExtrema>& anchors,
-        const QJsonObject& settings, double witness, bool final, Stretching& best) {
-    auto candidates = loopShoulderCuts(ctx, hole, anchors, settings, witness, final);
-    if (candidates.empty()) return false;
-    best = std::move(candidates.front());
-    return true;
 }
 
 std::optional<LoopBridgeBody> recognizeLoopBridge(const InkOutline &outline) {

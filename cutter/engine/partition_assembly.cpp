@@ -274,6 +274,48 @@ bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subwor
     return true;
 }
 
+bool replaceLocalJoin(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
+        const QPainterPath& ink, int slot, Stretching sending, const std::optional<Stretching>& receiving,
+        const QString& trace, const std::function<bool(const WordResultInfo::SubWordInfo&)>& retainsBodies,
+        const std::optional<Stretching>& previousJoin) {
+    if (!interiorChord(ink, sending.topBaseLine, sending.bottomBaseLine) ||
+        (receiving && !interiorChord(ink, receiving->topBaseLine, receiving->bottomBaseLine))) return false;
+    auto trial = sub;
+    sending.length = 0;
+    sending.fixedRightBoundary = true;
+    sending.fixedLeftBoundary = receiving.has_value();
+    sending.topRight = sending.topBaseLine;
+    sending.bottomRight = sending.bottomBaseLine;
+    sending.topLeft = receiving ? receiving->topBaseLine : sending.topBaseLine;
+    sending.bottomLeft = receiving ? receiving->bottomBaseLine : sending.bottomBaseLine;
+    sending.kashidaOverrides.insert("enabled", receiving.has_value());
+    trial.joins.clear();
+    int i = 0;
+    for (auto cut : sub.joins) {
+        if (i == slot) cut = sending;
+        else if (previousJoin && i == slot - 1) cut = *previousJoin;
+        cut.readingOrder = i++;
+        trial.joins.insert(cut);
+    }
+    if (!assembleBodyPartition(word, trial, config) || trial.baseGlyphs.size() != sub.baseGlyphs.size() ||
+        trial.kashidaPaths.size() != sub.kashidaPaths.size() ||
+        trial.kashidaPaths[slot].isEmpty() == receiving.has_value() || !retainsBodies(trial)) return false;
+    for (size_t j = 0; j < sub.baseGlyphs.size(); ++j)
+        if (j != size_t(slot) && j != size_t(slot + 1) && !(previousJoin && j + 1 == size_t(slot)) &&
+            trial.baseGlyphs[j].path != sub.baseGlyphs[j].path) return false;
+    for (size_t j = 0; j < sub.kashidaPaths.size(); ++j) {
+        if (previousJoin && j + 1 == size_t(slot)) {
+            if (trial.kashidaPaths[j].isEmpty() != sub.kashidaPaths[j].isEmpty()) return false;
+            if (!trial.kashidaPaths[j].isEmpty() && (trial.kashidaCuts[j].first != sub.kashidaCuts[j].first ||
+                trial.baseGlyphs[j].path != sub.baseGlyphs[j].path)) return false;
+        } else if (j != size_t(slot) && trial.kashidaPaths[j] != sub.kashidaPaths[j]) return false;
+    }
+    if (!coversOriginalInk(word, trial)) return false;
+    trial.templateTrace.append(trace);
+    sub = std::move(trial);
+    return true;
+}
+
 static bool matchAssembledBody(SearchContext& source, const Apath& shape, const QJsonObject& config,
         WordResultInfo::SubWordInfo& trial, int slot, const QString& exitTemplate = {}) {
     const auto diagnostic = trial.letterDiagnostics[slot].toObject();

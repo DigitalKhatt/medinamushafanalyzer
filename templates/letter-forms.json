@@ -4138,7 +4138,10 @@
         }
       },
       "cuts": {
-        "preserveEntryRim": true,
+        "entryRim": {
+          "minRiseWidths": 2.5,
+          "maxSlope": 0.15
+        },
         "loop": {
           "sideOffset": 0.06,
           "normalCut": false,
@@ -4517,7 +4520,10 @@
         "counters": 1
       },
       "cuts": {
-        "preserveEntryRim": true,
+        "entryRim": {
+          "minRiseWidths": 2.5,
+          "maxSlope": 0.15
+        },
         "loop": {
           "sideOffset": 0.35,
           "normalCut": true,
@@ -6432,7 +6438,10 @@
         }
       },
       "cuts": {
-        "preserveEntryRim": true,
+        "entryRim": {
+          "minRiseWidths": 2.5,
+          "maxSlope": 0.15
+        },
         "counter": {
           "offset": 0.5,
           "baselineOffset": 0.3,
@@ -7573,7 +7582,10 @@
         "counters": 1
       },
       "cuts": {
-        "preserveEntryRim": true,
+        "entryRim": {
+          "minRiseWidths": 2.5,
+          "maxSlope": 0.15
+        },
         "counter": {},
         "boundaries": {
           "right": "counter-neck",
@@ -7614,7 +7626,10 @@
         }
       },
       "cuts": {
-        "preserveEntryRim": true,
+        "entryRim": {
+          "minRiseWidths": 2.5,
+          "maxSlope": 0.15
+        },
         "outline": {
           "entry": {
             "x": [

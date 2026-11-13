@@ -229,8 +229,8 @@ static bool placeBodyBoundary(const Word& word, WordResultInfo::SubWordInfo& sub
     auto trial = sub;
     const auto current = std::next(trial.joins.begin(), slot);
     const auto original = *current;
+    if (original.counterEntry.pathIndex > 0) return false;
     auto join = original;
-    if (join.counterEntry.pathIndex > 0) return false;
     join.topBaseLine = join.topRight = sending.topBaseLine;
     join.bottomBaseLine = join.bottomRight = sending.bottomBaseLine;
     join.topLeft = receiving ? receiving->topBaseLine : sending.topBaseLine;
@@ -320,6 +320,68 @@ static std::optional<Stretching> assembledJoinCap(const WordResultInfo::SubWordI
     if (cap.topBaseLine.pathIndex != 0 || cap.bottomBaseLine.pathIndex != 0 ||
         cap.topBaseLine.time == cap.bottomBaseLine.time) return {};
     return cap;
+}
+
+std::optional<std::pair<Stretching, Stretching>> fittedJoinCaps(
+        const WordResultInfo::SubWordInfo& sub, int index, const SearchContext& source,
+        std::vector<std::vector<QBezier>>& outer) {
+    const auto cut = *std::next(sub.joins.begin(), index);
+    if (sub.kashidaPaths[index].isEmpty()) return std::pair{cut, cut};
+    if (outer.empty()) outer.push_back(baseContourCurves(source.subPaths.front()));
+    auto sending = cut, receiving = cut;
+    receiving.topBaseLine = cut.topLeft;
+    receiving.bottomBaseLine = cut.bottomLeft;
+    const auto remap = [&](Stretching& cap, const QLineF& line) {
+        cap.topBaseLine.point = line.p1();
+        cap.bottomBaseLine.point = line.p2();
+        return sourceLandmark(cap.topBaseLine, outer) && sourceLandmark(cap.bottomBaseLine, outer);
+    };
+    const auto& [right, left] = sub.kashidaCuts[index];
+    if (!remap(sending, right) || !remap(receiving, left)) return {};
+    return std::pair{sending, receiving};
+}
+
+void placeCounterRimEntries(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
+                            SearchContext& source, const std::vector<int>& bodySlots) {
+    if (bodySlots.empty()) return;
+    const auto shape = word.bodyShape(sub);
+    const auto holes = recognizeCounterHoles(inkOutline(source));
+    const auto owned = [&](const QPainterPath& path) {
+        const auto contours = toSubpaths(shape.transform.map(path).translated(shape.pos));
+        std::vector<const CounterHole*> result;
+        for (const auto& hole : holes)
+            if (contours.contains(source.subPaths[hole.index])) result.push_back(&hole);
+        return result;
+    };
+    std::vector<std::vector<QBezier>> curves;
+    for (const int owner : bodySlots) {
+        const int join = owner - 1;
+        const auto caps = fittedJoinCaps(sub, join, source, curves);
+        if (!caps) continue;
+        const auto& [outgoing, incoming] = *caps;
+        const auto following = owned(sub.baseGlyphs[owner].path);
+        if (following.empty()) continue;
+        const auto previous = owned(sub.baseGlyphs[join].path);
+        const auto rim = *std::max_element(following.begin(), following.end(), [](const auto* a, const auto* b) {
+            return a->box.bottom() < b->box.bottom();
+        });
+        const auto id = sub.letterDiagnostics[owner].toObject().value("template").toString();
+        for (const auto& section : counterRimEntryCuts(source, rim->box, incoming)) {
+            const bool separate = !sub.kashidaPaths[join].isEmpty() && cutPrecedes(outgoing, section, source.orientation);
+            if (replaceLocalJoin(word, sub, config, source.transformedPath, join, separate ? outgoing : section,
+                    separate ? std::optional{section} : std::nullopt, id + " · incoming counter rim retained",
+                    [&](const auto& trial) {
+                        return owned(trial.baseGlyphs[owner].path) == following &&
+                            owned(trial.baseGlyphs[join].path) == previous;
+                    })) {
+                InspectFormScope inspection(id);
+                inspectCandidate("Incoming counter rim", section);
+                recordBoundaryTemplate(sub, owner, true, id);
+                if (!separate) recordBoundaryTemplate(sub, join, false, id);
+                break;
+            }
+        }
+    }
 }
 
 static void shareFoldedStemReturn(const Word& word, WordResultInfo::SubWordInfo& sub,

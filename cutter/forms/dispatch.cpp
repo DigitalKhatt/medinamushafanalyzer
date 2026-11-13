@@ -80,8 +80,7 @@ bool matchesBoundaryBody(SearchContext& context, const QJsonObject& rule,
     };
     const auto features = rule.value("bodyFeatures").toObject();
     const auto shape = rule.value("body").toObject().value("shape");
-    const bool finalCounter = !initial && (rule.value("method") == "final-counter" || shape == "counter-neck" ||
-                                           shape == "counter-shoulder" || shape == "counter-bridge");
+    const bool finalCounter = !initial && (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge");
     const bool protectOpening = initial && !initialLips.isEmpty();
     const bool protectTail = !initial && rule.value("ownsLeftTip").toBool();
     if (!initial && shape == "open-bowl") {
@@ -99,21 +98,22 @@ bool matchesBoundaryBody(SearchContext& context, const QJsonObject& rule,
         return reject("cut separates the terminal tail");
     if (protectOpening && !containsHeadLips(pieces[0].path, initialLips))
         return reject("cut separates the lips of the initial head");
-    if (finalCounter) {
-        // Recheck the actual hole, not only its bounding box, when another
-        // template proposes replacing this final body's boundary.
-        const QPainterPath* counter = nullptr;
-        for (size_t i = 1; i < context.subPaths.size(); ++i) {
-            const auto& hole = context.subPaths[i];
-            if (context.transformedPath.contains(hole.boundingRect().center())) continue;
-            if (!counter || hole.boundingRect().center().x() < counter->boundingRect().center().x()) counter = &hole;
-        }
-        const auto contours = toSubpaths(pieces[1].path);
-        if (!counter || std::none_of(contours.begin(), contours.end(), [&](const auto& p) { return p == *counter; }))
-            return reject("body counter ownership rejected");
-    }
     const auto bounds = pieces[initial ? 0 : 1].path.boundingRect();
     if (bounds.isEmpty()) return false;
+    if (finalCounter) {
+        const auto evidence = recognizedSharedShape(context, rule.value("body").toObject());
+        const auto& holes = evidence->holes;
+        const auto counter = std::min_element(holes.begin(), holes.end(), [](const auto& a, const auto& b) {
+            return a.box.center().x() < b.box.center().x();
+        });
+        if (counter == holes.end() || !toSubpaths(pieces[1].path).contains(context.subPaths[counter->index]))
+            return reject("body counter ownership rejected");
+        const auto extent = bounds.adjusted(-1e-6, -1e-6, 1e-6, 1e-6);
+        const auto entry = rule.value("cuts").toObject().value("boundaries").toObject().value("right");
+        if (shape == "counter-neck" && entry == "counter-neck" &&
+            (!extent.contains(context.xSorted.rbegin()->point) || extent.contains(context.xSorted.begin()->point)))
+            return reject("cut separates the free end or takes the initial stroke");
+    }
     if (features.contains("minWidthToHeight") &&
         bounds.width() < features.value("minWidthToHeight").toDouble() * bounds.height()) return false;
     if (features.contains("maxWidthToHeight") &&
@@ -227,28 +227,27 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
         result.rims = recognizeRimBodies(outline);
     else if (shape == "counter-outline")
         result.outlines = recognizeCounterOutlines(outline, body);
-    else if (shape == "counter-neck") {
-        const auto spec = body.value("counter").toObject();
+    if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
         result.holes = recognizeCounterHoles(outline);
-        result.initialNeck = recognizeInitialCounterBody(outline, spec);
-        for (const auto &hole : result.holes)
-            if (!result.terminalCounter || hole.box.center().x() < result.terminalCounter->box.center().x())
-                result.terminalCounter = hole;
-        if (result.terminalCounter)
-            result.terminalNeck =
-                recognizeCounterCorners(outline, result.terminalCounter->box, spec.value("entryCorner").toObject());
-        if (body.contains("junction"))
-            result.bowlTurn = recognizeBowlTurn(outline, body.value("junction").toObject());
-    } else if (shape == "counter-shoulder") {
         for (size_t i = 1; i < outline.contours.size(); ++i) {
             CounterHole hole{i, outline.contours[i].boundingRect()};
-            if (!result.terminalContour || hole.box.center().x() < result.terminalContour->box.center().x())
-                result.terminalContour = hole;
+            if (shape != "counter-shoulder" && std::none_of(result.holes.begin(), result.holes.end(),
+                    [&](const auto& valid) { return valid.index == i; })) continue;
+            if (!result.boundaryCounter || hole.box.center().x() < result.boundaryCounter->box.center().x())
+                result.boundaryCounter = hole;
         }
-        if (result.terminalContour)
-            result.shoulders =
-                recognizeLoopShoulders(outline, result.terminalContour->box, body.value("shoulder").toObject());
-    } else if (shape == "counter-bridge")
+    }
+    if (shape == "counter-neck") {
+        const auto spec = body.value("counter").toObject();
+        result.initialNeck = recognizeInitialCounterBody(outline, result.holes, spec);
+        if (result.boundaryCounter)
+            result.terminalNeck =
+                recognizeCounterCorners(outline, result.boundaryCounter->box, spec.value("entryCorner").toObject());
+        if (body.contains("junction"))
+            result.bowlTurn = recognizeBowlTurn(outline, body.value("junction").toObject());
+    } else if (shape == "counter-shoulder" && result.boundaryCounter)
+        result.shoulders = recognizeLoopShoulders(outline, result.boundaryCounter->box, body.value("shoulder").toObject());
+    else if (shape == "counter-bridge")
         result.bridge = recognizeLoopBridge(outline);
     return result;
 }
@@ -439,6 +438,12 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
             inspectLandmark("Left route anchor", route.left->anchor);
     }
     corner(evidence.terminalNeck);
+    if (evidence.boundaryCounter) {
+        PathExtrema counter{};
+        counter.pathIndex = int(evidence.boundaryCounter->index);
+        counter.point = evidence.boundaryCounter->box.center();
+        inspectLandmark("Body counter", counter);
+    }
     for (const auto &loop : evidence.loops) {
         for (const auto &entry : loop.entryRoutes) {
             inspectLandmark("Loop crest", entry.crest);
@@ -664,20 +669,31 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
     } else if (shape == "bowl-turn")
         found = evidence->bowlTurn && cutBowlTurn(context, *evidence->bowlTurn, cuts);
     else if (shape == "counter-neck") {
-        const auto settings = shapeSettings(form, "counter");
         const auto boundary = cuts.value("boundaries").toObject().value("right");
         if (boundary == "free")
-            found = evidence->initialNeck && cutInitialCounterBody(context, *evidence->initialNeck, settings);
+            found = evidence->initialNeck && cutInitialCounterBody(context, *evidence->initialNeck, shapeSettings(form, "counter"));
         else if (boundary == "corner-junction" && evidence->bowlTurn && evidence->bowlTurn->junction)
             found = cutBowlTurn(context, *evidence->bowlTurn, cuts);
-        else
-            found = evidence->terminalCounter &&
-                    cutFinalCounterBody(context, evidence->terminalCounter->box, evidence->terminalNeck, settings);
-    } else if (shape == "counter-shoulder")
-        found = evidence->terminalContour && cutLoopShoulder(context, evidence->terminalContour->box,
-                                                             evidence->shoulders, shapeSettings(form, "shoulder"),
-                                                             std::prev(context.xSorted.end())->time, true, context.res);
-    else if (shape == "counter-bridge")
+        else if (evidence->boundaryCounter) {
+            const auto& box = evidence->boundaryCounter->box;
+            const auto policy = cuts.value("counter").toObject();
+            const double offset = policy.value("offset").toDouble() * box.height();
+            const double x = box.right() + offset;
+            const double y = box.bottom() + policy.value("baselineOffset").toDouble() * box.height();
+            context.res = {};
+            found = projectCounterEntry(context, evidence->terminalNeck, policy, x, y, context.res);
+            if (found) {
+                context.res.topLeft = context.res.topRight = context.res.topBaseLine;
+                context.res.bottomLeft = context.res.bottomRight = context.res.bottomBaseLine;
+                found = matchesBoundaryBody(context, form, context.res, false);
+            }
+        }
+    } else if (shape == "counter-shoulder" && evidence->boundaryCounter) {
+        const auto shoulders = loopShoulderCuts(context, evidence->boundaryCounter->box,
+            evidence->shoulders, shapeSettings(form, "shoulder"), context.xSorted.rbegin()->time, true);
+        found = !shoulders.empty();
+        if (found) context.res = shoulders.front();
+    } else if (shape == "counter-bridge")
         found =
             evidence->bridge && cutLoopBridge(context, *evidence->bridge, cuts.value("bridge").toObject(), context.res);
     else if (shape == "counter-loop") {

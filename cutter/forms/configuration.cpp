@@ -430,12 +430,6 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
         form = withOverrides(form, shapeSettings(form, "route"));
     if (shape == "profile-neck" && form.value("cuts").toObject().value("boundaries").toObject().value("left") == "free")
         form.insert("start", "left");
-    if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
-        form.insert("counter", shapeSettings(form, "counter"));
-        for (const auto *field : {"shoulder", "bridge"})
-            if (body.contains(field) || form.value("cuts").toObject().contains(field))
-                form.insert(field, shapeSettings(form, field));
-    }
     if (shape == "counter-loop" || shape == "counter-rim")
         form.insert("loopBoundaries", loopSettings(form));
     if (shape == "paired-route")
@@ -776,11 +770,12 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
                 phase != "final" || !positive(policy.value("walkWidths"))))
             return id + ": invalid stem geometry or boundary for this position";
     }
-    if (cuts.contains("preserveEntryRim")) {
+    if (cuts.contains("entryRim")) {
+        const auto rim = cuts.value("entryRim").toObject();
         if (phase == "initial" || !QStringList{"counter-neck", "counter-outline", "counter-loop"}.contains(shape) ||
-            !cuts.value("preserveEntryRim").isBool())
-            return id + ": preserveEntryRim requires an incoming counter boundary and a boolean";
-        cutKeys << "preserveEntryRim";
+            rim.size() != 2 || !positive(rim.value("minRiseWidths")) || !positive(rim.value("maxSlope")))
+            return id + ": entryRim requires a counter entry and positive minRiseWidths and maxSlope";
+        cutKeys << "entryRim";
     }
     if (phase == "initial" && (shape == "contour-route" || shape == "tooth-cluster") &&
         cuts.contains("minConnectorWidths")) {
@@ -893,6 +888,8 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         bodyKeys << "shoulder";
         cutKeys << "shoulder" << "bridge";
     }
+    if (shape == "counter-bridge" && (phase != "final" || !positive(cuts.value("bridge").toObject().value("maxWidth"))))
+        return id + ": a final counter bridge needs a positive maximum width in counter heights";
     const auto normalValley = cuts.value("counter").toObject().value("normalValley");
     if (!normalValley.isUndefined() && (shape != "counter-neck" || phase != "initial" || !normalValley.isBool()))
         return id + ": normalValley must be a boolean on an initial counter-neck cut";
@@ -1343,8 +1340,6 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString &ph
         form.insert("method", "qaf");
     else if (shape == "profile-neck")
         form.insert("method", phase == "initial" ? "kaf" : "waw");
-    else if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge")
-        form.insert("method", phase == "initial" ? "initial-counter" : "final-counter");
     else if (shape == "counter-loop" && phase == "initial")
         form.insert("method", "initial-loop-body");
     return form;
@@ -1745,9 +1740,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             if (rule.contains("stemFoot") && (method != "bowl-fork" || !rule.value("stemFoot").isBool() ||
                                               (rule.contains("penWidth") && !positive(rule.value("penWidth")))))
                 return id + ": stemFoot requires a bowl fork and a positive pen width";
-            if (rule.contains("bridge") &&
-                (method != "final-counter" || !positive(rule.value("bridge").toObject().value("maxWidth"))))
-                return id + ": a final counter bridge needs a positive maximum width in counter heights";
             const auto neckWalk = rule.value("head").toObject().value("neckWalk");
             if (!neckWalk.isUndefined()) {
                 if (method != "initial-loop-head" || !neckWalk.isObject() || neckWalk.toObject().value("top").toArray().isEmpty())
@@ -1755,9 +1747,11 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 problem = invalidWalkSettings(neckWalk.toObject(), id + ".head.neckWalk");
                 if (!problem.isEmpty()) return problem;
             }
-            for (const auto* owner : {"counter", "loopBoundaries"}) {
+            for (const auto& settings : {mergeShapeSettings(sharedBody.value("counter").toObject(),
+                    formDescription(config, entry.toObject(), "cuts").value("counter").toObject()),
+                    loopSettings(rule)}) {
               for (const auto* side : {"entryCorner", "exitCorner"}) {
-                const auto cornerValue = rule.value(owner).toObject().value(side);
+                const auto cornerValue = settings.value(side);
                 if (!cornerValue.isUndefined() && !cornerValue.isObject())
                     return id + ": " + side + " must be an object";
                 const auto corner = cornerValue.toObject();
@@ -1975,14 +1969,15 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                      !rule.value("left").toObject().value("walk").toArray().isEmpty());
                 if (!feature || rule.contains("method")) return id + ": a medial form must define both body boundaries";
             } else {
-                static const QStringList initialMethods{"enclosed-head","walk","descending-stem", "initial-counter", "initial-loop-head", "initial-loop-body", "heh-initial-counters", "kaf", "kaf-zigzag", "hah", "counter-ligature"};
+                static const QStringList initialMethods{"enclosed-head","walk","descending-stem", "initial-loop-head", "initial-loop-body", "heh-initial-counters", "kaf", "kaf-zigzag", "hah", "counter-ligature"};
                 static const QStringList finalMethods{"rising-tail", "folded-bowl", "bowl-fork",
                                                       "tail-entry",  "walk",        "qaf",
                                                       "alef-stem",   "stem-entry",
-                                                      "waw",         "sad-tah",     "final-counter"};
+                                                      "waw",         "sad-tah"};
                 const auto shape = sharedBody.value("shape");
                 if (declaredBody.isEmpty() && shape != "component-arm" && shape != "tapered-arm" && shape != "open-bowl" &&
-                    shape != "terminal-fork" && shape != "tooth-cluster" &&
+                    shape != "terminal-fork" && shape != "tooth-cluster" && shape != "counter-neck" &&
+                    shape != "counter-shoulder" && shape != "counter-bridge" &&
                     !(QString(phase) == "initial" ? initialMethods : finalMethods).contains(method))
                     return id + ": an explicit body method for this position is required; generic join rules are unsupported";
             }
