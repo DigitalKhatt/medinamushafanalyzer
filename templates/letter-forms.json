@@ -1416,6 +1416,7 @@
     },
     {
       "id": "tah-init",
+      "fixedAnchors": true,
       "current": "طظ",
       "body": {
         "shape": "counter-loop",
