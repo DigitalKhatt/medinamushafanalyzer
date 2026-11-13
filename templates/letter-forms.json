@@ -3127,6 +3127,7 @@
     },
     {
       "id": "beh-shoulder-medi",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "recoveryStage": 2,
       "body": {
