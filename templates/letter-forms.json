@@ -4654,6 +4654,7 @@
     },
     {
       "id": "tah-loop-corner-medi",
+      "fixedAnchors": true,
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
