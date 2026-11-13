@@ -1665,6 +1665,7 @@
     },
     {
       "id": "ain-returning-cup-init",
+      "fixedAnchors": true,
       "current": "عغ",
       "tryNext": true,
       "onUnresolved": true,
