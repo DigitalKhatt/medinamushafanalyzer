@@ -263,6 +263,7 @@
     },
     {
       "id": "qaf-init",
+      "fixedAnchors": true,
       "current": "ق",
       "tryNext": true,
       "body": {
