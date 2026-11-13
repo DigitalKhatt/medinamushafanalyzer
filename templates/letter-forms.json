@@ -376,6 +376,7 @@
     },
     {
       "id": "ain-init",
+      "fixedAnchors": true,
       "current": "عغ",
       "retryWithVariants": true,
       "body": {
