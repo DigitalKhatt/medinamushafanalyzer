@@ -4711,6 +4711,7 @@
     },
     {
       "id": "meem-upper-neck-medi",
+      "fixedAnchors": true,
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
