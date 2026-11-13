@@ -1120,6 +1120,7 @@
     },
     {
       "id": "kaf-init",
+      "fixedAnchors": true,
       "current": "ك",
       "tryNext": true,
       "retryOnPartial": true,
