@@ -1146,6 +1146,7 @@
     },
     {
       "id": "hah-open-init",
+      "fixedAnchors": true,
       "current": "جحخ",
       "tryNext": true,
       "body": {
