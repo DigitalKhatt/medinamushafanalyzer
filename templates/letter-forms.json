@@ -3180,6 +3180,7 @@
     },
     {
       "id": "feh-loop-medi",
+      "fixedAnchors": true,
       "current": "فق",
       "body": {
         "shape": "counter-loop",
