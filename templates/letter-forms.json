@@ -1592,6 +1592,7 @@
     },
     {
       "id": "tah-loop-corner-init",
+      "fixedAnchors": true,
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
