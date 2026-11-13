@@ -699,8 +699,15 @@ bool seenTeethBoundaries(SearchContext &context, const QJsonObject &form, double
                                 std::array<PathExtrema, 3> *matchedTips = nullptr,
                                 const SeenExitRetry *retry = nullptr);
 
+struct CounterHole {
+    size_t index;
+    QRectF box;
+};
+
+std::vector<CounterHole> recognizeCounterHoles(const InkOutline &outline);
+
 struct HorizontalCounterPair {
-    QRectF right, left;
+    CounterHole right, left;
     double height;
 };
 
@@ -738,13 +745,6 @@ bool counterEntryCorner(SearchContext &context, const QRectF &counter, const QJs
 // The outgoing neck is the reflected version of the same intrinsic corner
 // feature. Reflection preserves Bezier times, so the resulting cut still
 // addresses the original contour. No neighboring boundary supplies its anchor.
-struct CounterHole {
-    size_t index;
-    QRectF box;
-};
-
-std::vector<CounterHole> recognizeCounterHoles(const InkOutline &outline);
-
 std::vector<Stretching> counterRimEntryCuts(SearchContext &context, const QRectF &counter,
                                            const Stretching &entry);
 
@@ -1259,7 +1259,7 @@ struct AnchoredBody {
     std::optional<Stretching> entry, exit;
     QVector<PathExtrema> landmarks;
     QVector<QPointF> samples;
-    std::optional<size_t> counter;
+    QVector<size_t> counters;
     bool retainsCounterRim = false;
 };
 
@@ -1672,7 +1672,10 @@ void appendMedialWalks(SearchContext& context, const QJsonObject& form,
 
 bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub);
 
-bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLineF& left);
+enum class ConnectorEndpointMatch { FirstWithinTolerance, NearestVertex };
+
+bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLineF& left,
+                      ConnectorEndpointMatch match = ConnectorEndpointMatch::FirstWithinTolerance);
 
 std::map<int, QLineF> missingHeadInk(const Word& word, const WordResultInfo::SubWordInfo& sub,
                                             const QString& letters, const QJsonObject& settings);

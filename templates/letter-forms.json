@@ -310,6 +310,7 @@
     },
     {
       "id": "heh-init",
+      "fixedAnchors": true,
       "current": "ه",
       "tryNext": true,
       "retryOnPartial": true,

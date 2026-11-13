@@ -779,7 +779,8 @@ bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub)
 // Compare the two sides by arc length. A short bent connector can lie well
 // outside its straight endpoint chord while both sides still follow the same
 // thin stroke. A tooth or head produces a long unmatched excursion instead.
-bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLineF& left) {
+bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLineF& left,
+                      ConnectorEndpointMatch match) {
     auto curves = baseContourCurves(ribbon);
     if (curves.size() < 3)
         return false;
@@ -791,12 +792,19 @@ bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLi
     const int n = int(curves.size());
     std::array<int, 4> role{-1, -1, -1, -1};
     const std::array<QPointF, 4> end{right.p1(), right.p2(), left.p1(), left.p2()};
-    for (int k = 0; k < 4; ++k)
-        for (int i = 0; i < n; ++i)
-            if (QLineF(end[k], curves[i].pt1()).length() < .002) {
+    // Fixed sections can be closer together than the tolerance. Use the
+    // nearest vertices for these sections and preserve the existing default.
+    for (int k = 0; k < 4; ++k) {
+        double nearest = .002;
+        for (int i = 0; i < n; ++i) {
+            const double distance = QLineF(end[k], curves[i].pt1()).length();
+            if (distance < nearest) {
                 role[k] = i;
-                break;
+                if (match == ConnectorEndpointMatch::FirstWithinTolerance) break;
+                nearest = distance;
             }
+        }
+    }
     if (std::any_of(role.begin(), role.end(), [](int r) { return r < 0; }))
         return false;
     std::array<std::vector<QPointF>, 2> points;

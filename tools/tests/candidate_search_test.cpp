@@ -114,7 +114,8 @@ static void checkFixedAnchors(const QJsonObject& config) {
     struct Fixture { int page, line, word, subword; };
     for (const auto& f : {Fixture{2, 7, 1, 3}, Fixture{2, 6, 1, 2}, Fixture{151, 3, 5, 2},
                           Fixture{167, 15, 5, 2}, Fixture{411, 7, 9, 3}, Fixture{116, 4, 9, 1},
-                          Fixture{128, 10, 1, 2}, Fixture{287, 5, 2, 1}}) {
+                          Fixture{128, 10, 1, 2}, Fixture{287, 5, 2, 1}, Fixture{158, 12, 2, 3},
+                          Fixture{278, 5, 9, 3}, Fixture{286, 11, 10, 4}, Fixture{409, 8, 10, 4}}) {
         QFile pageFile(QString("pages/page%1.dat").arg(f.page));
         check(pageFile.open(QIODevice::ReadOnly), "Missing fixed anchor fixture");
         PageAnalysisResult analysis;

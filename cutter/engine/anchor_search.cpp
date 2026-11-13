@@ -101,7 +101,12 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         const auto mask = inPage(regions[region].path);
         if (mask.boundingRect().isEmpty() || std::any_of(body.samples.begin(), body.samples.end(),
                 [&](const auto& point) { return !mask.contains(point); })) return {};
-        if (body.counter && !toSubpaths(mask).contains(source.subPaths[*body.counter])) return {};
+        if (!body.counters.isEmpty()) {
+            const auto contours = toSubpaths(mask);
+            if (std::any_of(body.counters.begin(), body.counters.end(), [&](size_t counter) {
+                    return !contours.contains(source.subPaths[counter]);
+                })) return {};
+        }
         trial.baseGlyphs.push_back(std::move(regions[region++]));
         bodyForms.append(body.formId);
         trial.letterDiagnostics.append(QJsonObject{{"letterIndex", int(slot + 1)}, {"character", letters.mid(int(slot), 1)},
@@ -112,7 +117,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         const auto& [right, left] = trial.kashidaCuts[slot];
         auto& connector = regions[region++].path;
         if (connector.boundingRect().isEmpty() || toSubpaths(connector).size() != 1 ||
-            !followsOneStroke(inPage(connector), right, left)) return {};
+            !followsOneStroke(inPage(connector), right, left, ConnectorEndpointMatch::NearestVertex)) return {};
         trial.kashidaPaths[slot] = std::move(connector);
     }
     if (!coversOriginalInk(word, trial)) return {};

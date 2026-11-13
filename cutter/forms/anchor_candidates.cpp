@@ -18,7 +18,8 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto form = bodyConstraintForm(config, declaration);
             const auto body = form.value("body").toObject();
             const auto shape = body.value("shape");
-            const bool supported = position == 0 ? shape == "contour-route" : position == 1 ? toothDescription(body) :
+            const bool supported = position == 0 ? shape == "contour-route" || shape == "horizontal-counters" :
+                position == 1 ? toothDescription(body) :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder";
             if (!supported)
@@ -46,6 +47,14 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()}});
             else
                 result.push_back({.formId = id, .entry = source.res, .landmarks = {*source.xSorted.rbegin()}});
+        }
+    } else if (shape == "horizontal-counters") {
+        const auto evidence = recognizedSharedShape(source, body);
+        if (evidence->horizontalPair && declaredSharedBoundary(source, form) &&
+            matchesBoundaryBody(source, form, source.res, true)) {
+            const auto& pair = *evidence->horizontalPair;
+            result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()},
+                              .counters = {pair.right.index, pair.left.index}});
         }
     } else if (toothDescription(body)) {
         auto teeth = declaredToothBoundaries(source, form);
@@ -91,7 +100,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         const auto add = [&](const Stretching& boundary, bool retainsRim) {
             if (matchesBoundaryBody(source, form, boundary, false))
                 result.push_back({.formId = id, .entry = boundary, .landmarks = {*source.xSorted.rbegin()},
-                                  .counter = counter.index, .retainsCounterRim = retainsRim});
+                                  .counters = {counter.index}, .retainsCounterRim = retainsRim});
         };
         if (needsCounterRim(section, rim, penWidth))
             for (const auto& boundary : counterRimEntryCuts(source, counter.box, entry))

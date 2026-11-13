@@ -156,8 +156,11 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         out << h.height;
     }
     out << bool(e.horizontalPair);
-    if (e.horizontalPair)
-        out << e.horizontalPair->right << e.horizontalPair->left << e.horizontalPair->height;
+    if (e.horizontalPair) {
+        hole(e.horizontalPair->right);
+        hole(e.horizontalPair->left);
+        out << e.horizontalPair->height;
+    }
     out << quint64(e.stackedPairs.size());
     for (const auto &pair : e.stackedPairs) {
         out << pair.upper << pair.lower;

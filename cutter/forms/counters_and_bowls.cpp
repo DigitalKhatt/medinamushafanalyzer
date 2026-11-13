@@ -883,31 +883,25 @@ bool cutLayeredHead(SearchContext &context, const LayeredHeadBody &body, const Q
 }
 
 std::optional<HorizontalCounterPair> recognizeHorizontalPair(const InkOutline &outline) {
-    const auto &ink = outline.ink;
-    std::vector<QRectF> counters;
-    for (size_t i = 1; i < outline.contours.size(); ++i) {
-        const auto hole = outline.contours[i].boundingRect();
-        if (hole.width() > 0 && hole.height() > 0 && !ink.contains(hole.center()))
-            counters.push_back(hole);
-    }
+    auto counters = recognizeCounterHoles(outline);
     if (counters.size() < 2)
         return std::nullopt;
     std::sort(counters.begin(), counters.end(), [](const auto& a, const auto& b) {
-        return a.center().x() > b.center().x();
+        return a.box.center().x() > b.box.center().x();
     });
-    const auto& right = counters[0];
-    const auto& left = counters[1];
+    const auto& right = counters[0].box;
+    const auto& left = counters[1].box;
     const double height = (right.height() + left.height()) / 2;
     if (right.left() - left.right() > height ||
         std::min(right.bottom(), left.bottom()) <= std::max(right.top(), left.top()))
         return std::nullopt;
 
-    return HorizontalCounterPair{right, left, height};
+    return HorizontalCounterPair{counters[0], counters[1], height};
 }
 
 bool cutHorizontalPair(SearchContext &context, const HorizontalCounterPair &body, const QJsonObject &policy) {
-    const auto &right = body.right;
-    const auto &left = body.left;
+    const auto &right = body.right.box;
+    const auto &left = body.left.box;
     const double height = body.height;
     const double x = left.left() - height * policy.value("counterOffset").toDouble(0.35);
     const double y = std::max(right.bottom(), left.bottom()) + height * policy.value("baselineOffset").toDouble(0.6);
