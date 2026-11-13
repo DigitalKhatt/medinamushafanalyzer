@@ -2,6 +2,7 @@
 
 #include <QJsonObject>
 #include <QPainterPath>
+#include <functional>
 
 class PageAnalysisResult;
 struct AFont;
@@ -11,8 +12,9 @@ struct AFont;
 QJsonObject letterSearchProfile();
 
 // Build native cuts for export directly, without writing an intermediate GUI cache.
+using CatalogCutCheck = std::function<bool(const QString&, const QJsonObject&)>;
 QJsonObject generateLetterSegmentation(const PageAnalysisResult& source, int pageNumber, AFont& font,
-                                       const QJsonObject* requestedSubwords = nullptr);
+                                       const QJsonObject* requestedSubwords = nullptr, const CatalogCutCheck& check = {});
 
 // The same page-coordinate vector data is used for the overlay and JSON export.
 QJsonObject loadLetterSegmentation(const PageAnalysisResult& source, int pageNumber,

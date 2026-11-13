@@ -776,7 +776,15 @@ int segmentCatalogPage(const QString& request, const QString& output) {
             return 0;
         }
         auto requested = input.value("subwords").toObject();
-        const auto segmented = generateLetterSegmentation(page, number, font, &requested);
+        QHash<QString, QJsonArray> acceptedParts;
+        const auto segmented = generateLetterSegmentation(page, number, font, &requested,
+            [&](const QString& key, const QJsonObject& cut) {
+                QJsonArray parts;
+                if (!catalogParts(cut, requested.value(key).toObject(), size, toRaster, parts).isEmpty())
+                    return false;
+                acceptedParts.insert(key, std::move(parts));
+                return true;
+            });
         elapsed("segmentation");
         QJsonObject results, paths;
         QHash<QString,QPainterPath> originals;
@@ -806,8 +814,11 @@ int segmentCatalogPage(const QString& request, const QString& output) {
             const auto& paths = page.page.lines[line-1].words[word-1].wordResultInfo.subWords[sub-1].paths;
             const auto pathId = paths.empty() ? QString() : QString("l%1-w%2-p%3").arg(line).arg(word).arg(paths.front());
             QJsonArray parts;
-            const auto reason = paths.empty() || pathId != item.value("bodyPath").toString() ? QString("source-path")
-                : catalogParts(cut, item, size, toRaster, parts);
+            QString reason;
+            if (paths.empty() || pathId != item.value("bodyPath").toString()) reason = "source-path";
+            else if (auto accepted = acceptedParts.find(key); accepted != acceptedParts.end())
+                parts = std::move(accepted.value());
+            else reason = catalogParts(cut, item, size, toRaster, parts);
             const auto status = !reason.isEmpty() ? reason : QString("template");
             QJsonObject result{{"status",status}};
             if (reason.isEmpty()) result.insert("parts",parts);

@@ -135,6 +135,17 @@ static void checkFixedAnchors(const QJsonObject& config) {
         check(sameAnchoredPartition(actual, expected), "Fixed anchors changed the letter or connector geometry");
         check(!actual.templateTrace.isEmpty() && actual.templateTrace.front().startsWith("Fixed anchors"),
               "The fixed anchor fixture fell back to the original cutter");
+        if (f.page == 2 && f.line == 7) {
+            int rejected = 0;
+            const AnchorPartitionCheck reject = [&](const auto&) { ++rejected; return false; };
+            check(analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1,
+                                          &font, true, &config, reject),
+                  "Rejecting an anchored partition lost the original cutter result");
+            const auto& restored = word.wordResultInfo.subWords[f.subword - 1];
+            check(rejected > 0 && sameAnchoredPartition(restored, expected) &&
+                  !restored.templateTrace.value(0).startsWith("Fixed anchors"),
+                  "A rejected fixed-anchor partition survived validation");
+        }
     }
     checkRecoveryPriority(legacy, font);
 }

@@ -328,6 +328,8 @@ struct Word {
 	}
 };
 
+using AnchorPartitionCheck = std::function<bool(const WordResultInfo::SubWordInfo&)>;
+
 struct ALine {
 	QVector<Word> words;
 	int type;
@@ -495,7 +497,8 @@ struct PageAnalysisResult {
 	// Letters with body slots in the connected outline; keep the source text intact.
 	static QString bodyLetters(const QString& text);
 	bool segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-	                    bool refresh = false, const QJsonObject* draft = nullptr);
+	                    bool refresh = false, const QJsonObject* draft = nullptr,
+	                    const AnchorPartitionCheck& acceptAnchors = {});
 
 
 private:

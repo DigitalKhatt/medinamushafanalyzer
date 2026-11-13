@@ -57,7 +57,7 @@ static const QJsonObject& primaryLetterForms(const QJsonObject& config) {
 }
 
 bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                                        bool refresh, const QJsonObject* draft) {
+                                        bool refresh, const QJsonObject* draft, const AnchorPartitionCheck& acceptAnchors) {
     CutGeometryMemoScope geometryMemo;
     resolveCompoundBody(pageIndex, lineIndex, wordIndex);
     auto& word = page.lines[lineIndex].words[wordIndex];
@@ -84,7 +84,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
             const auto finals = finalRetryCandidates(sourceConfig.value("final").toArray(), compiledRetryParents);
             if (!compiledRetryParents.isEmpty()) compiledConfig.insert("final", finals);
         }
-        auto anchored = pageIndex >= 0 ? segmentWithAnchors(word, sub, sourceConfig, anchorForms) : std::nullopt;
+        auto anchored = pageIndex >= 0 ? segmentWithAnchors(word, sub, sourceConfig, anchorForms, acceptAnchors) : std::nullopt;
         if (anchored && (!cutGeometryMemo->profiling || !qEnvironmentVariableIsSet("MEDINA_COMPARE_ANCHORS"))) {
             sub = std::move(*anchored);
             return true;

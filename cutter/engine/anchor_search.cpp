@@ -142,7 +142,8 @@ bool applies(const QJsonObject& form, const QString& letters, int slot) {
 }
 
 std::optional<Subword> searchSequence(const Word& word, const Subword& sub, const Apath& shape,
-        SearchContext& source, const QString& letters, const FormChoices& forms, double penWidth) {
+        SearchContext& source, const QString& letters, const FormChoices& forms, double penWidth,
+        const AnchorPartitionCheck& accept) {
     std::map<QString, std::vector<AnchoredBody>> candidates;
     // Keep each candidate at its original contour sections across backtracking.
     const auto bodiesFor = [&](const QJsonObject& form, size_t slot) -> const std::vector<AnchoredBody>& {
@@ -157,7 +158,11 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
     std::vector<const AnchoredBody*> selected;
     selected.reserve(forms.size());
     const auto search = [&](auto&& self, size_t slot) -> std::optional<Subword> {
-        if (slot == forms.size()) return assemble(word, sub, shape, source, letters, selected);
+        if (slot == forms.size()) {
+            auto partition = assemble(word, sub, shape, source, letters, selected);
+            if (partition && accept && !accept(*partition)) return {};
+            return partition;
+        }
         for (const auto& form : *forms[slot]) {
             if (!applies(form, letters, int(slot))) continue;
             for (const auto& body : bodiesFor(form, slot)) {
@@ -180,7 +185,7 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
 } // namespace
 
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, const Subword& sub,
-        const QJsonObject& config, const AnchorForms& forms) {
+        const QJsonObject& config, const AnchorForms& forms, const AnchorPartitionCheck& accept) {
     if (forms.front().isEmpty() || forms.back().isEmpty() || sub.paths.empty() || sub.paths.front() < 0 ||
         sub.paths.front() >= int(word.paths.size()) || sub.secondaryBodyPath >= 0 ||
         sub.text.contains(QChar(0x0640))) return {};
@@ -209,7 +214,7 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
     SearchContext source{.transformedPath = ink, .bbox = ink.boundingRect(),
                          .subword = geometryOnly, .outlineCache = &cache};
     if (!preparePassOutline(source, cache)) return {};
-    auto result = searchSequence(word, sub, shape, source, letters, choices, config.value("strokeWidth").toDouble(1));
+    auto result = searchSequence(word, sub, shape, source, letters, choices, config.value("strokeWidth").toDouble(1), accept);
     if (result && cutGeometryMemo && cutGeometryMemo->profiling) cutGeometryMemo->anchorSearch = "matched";
     return result;
 }

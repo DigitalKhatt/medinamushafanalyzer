@@ -1270,7 +1270,8 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms);
 std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
                                          double penWidth);
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
-        const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorForms& forms);
+        const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorForms& forms,
+        const AnchorPartitionCheck& accept);
 bool sameAnchoredPartition(const WordResultInfo::SubWordInfo& a, const WordResultInfo::SubWordInfo& b);
 
 bool assembleToothClusterCuts(const Word& word, WordResultInfo::SubWordInfo& sub,

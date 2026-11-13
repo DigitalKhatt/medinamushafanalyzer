@@ -206,7 +206,9 @@ outline and backtracks over compatible bodies. Their entry and exit sections
 stay fixed. Coincident sections share a seam. A template with
 `cuts.tightJoin: "shared-boundary"` can use the sending section when the two
 proposed sections overlap and the shared cut retains the receiving body's
-landmarks and ink. A separate connector must enclose a single stroke. If no
+landmarks and ink. A separate connector must enclose a single stroke. Catalog
+export also checks that every letter owns source pixels. A rejected partition
+returns control to the same search with the original anchor candidates. If no
 complete partition fits, the existing cutter handles the subword.
 
 Use the following command from the project root to compare each fixed anchor

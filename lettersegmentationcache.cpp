@@ -72,8 +72,76 @@ static QJsonObject segmentationMetadata(const PageAnalysisResult& source, int pa
             {"templateConfig", PageAnalysisResult::letterForms()}, {"fontSha256", fontHash}};
 }
 
+static QJsonObject encodeSubword(const Word& word, const WordResultInfo::SubWordInfo& sub,
+                                 int line, int wordIndex, int subword, bool complete) {
+    QJsonObject entry{{"line", line}, {"word", wordIndex},
+        {"subword", subword}, {"text", sub.text}, {"complete", complete},
+        {"templates", QJsonArray::fromStringList(sub.matchedTemplates)},
+        {"trace", QJsonArray::fromStringList(sub.templateTrace)},
+        {"letters", sub.letterDiagnostics}};
+    QJsonArray bodies, joins;
+    if (!sub.paths.empty() && sub.paths.front() >= 0 && sub.paths.front() < word.paths.size()) {
+        const auto shape = word.bodyShape(sub);
+        const auto inPage = [&](const QPainterPath& path) {
+            auto mapped = shape.transform.map(path);
+            mapped.translate(shape.pos);
+            return mapped;
+        };
+        const auto bounds = inPage(shape.path).boundingRect();
+        entry.insert("bounds", QJsonArray{bounds.x(), bounds.y(), bounds.width(), bounds.height()});
+        const auto letters = PageAnalysisResult::bodyLetters(sub.text);
+        for (size_t bodyIndex = 0; bodyIndex < sub.baseGlyphs.size(); ++bodyIndex) {
+            auto body = encodePath(inPage(sub.baseGlyphs[bodyIndex].path));
+            if (complete && sub.baseGlyphs.size() == static_cast<size_t>(letters.size())) {
+                body.insert("letter", letters.mid(static_cast<int>(bodyIndex), 1));
+                body.insert("labelSource", "template");
+            }
+            bodies.append(body);
+        }
+        size_t joinIndex = 0;
+        int afterBody = 1;
+        const auto appendPenLifts = [&]() {
+            while (afterBody < sub.letterDiagnostics.size() &&
+                   sub.letterDiagnostics[afterBody].toObject().value("boundaryKind") == "separate-contours") {
+                joins.append(QJsonObject{{"afterBody", afterBody++}, {"boundaryKind", "separate-contours"},
+                                         {"endpoints", QJsonArray{}}});
+            }
+        };
+        for (const auto& join : sub.joins) {
+            appendPenLifts();
+            QJsonObject cut{{"afterBody", afterBody++}, {"anchor", QJsonArray{point(join.topBaseLine.point), point(join.bottomBaseLine.point)}}};
+            if (join.counterEntry.pathIndex > 0) {
+                QJsonArray segments;
+                for (const auto& segment : join.cutSegments())
+                    segments.append(QJsonArray{point(segment.p1()), point(segment.p2())});
+                cut.insert("anchor", segments.first());
+                cut.insert("endpoints", segments);
+                if (!join.counterBendWeights.isNull()) cut.insert("entryBridgeSegmentCount",2);
+                cut.insert("boundaryKind", "shared-counter-ligature");
+                cut.insert("landmarks", QJsonArray{
+                    QJsonArray{join.topBaseLine.pathIndex, join.topBaseLine.time, join.counterEntry.pathIndex, join.counterEntry.time},
+                    QJsonArray{join.counterExit.pathIndex, join.counterExit.time, join.bottomBaseLine.pathIndex, join.bottomBaseLine.time}
+                });
+            }
+            if (joinIndex < sub.kashidaPaths.size() && !sub.kashidaPaths[joinIndex].isEmpty()) {
+                const auto& ends = sub.kashidaCuts[joinIndex];
+                cut.insert("kashida", encodePath(inPage(sub.kashidaPaths[joinIndex])));
+                cut.insert("endpoints", QJsonArray{QJsonArray{point(ends.first.p1()), point(ends.first.p2())},
+                                                   QJsonArray{point(ends.second.p1()), point(ends.second.p2())}});
+            }
+            joins.append(cut);
+            ++joinIndex;
+        }
+        appendPenLifts();
+    }
+    entry.insert("bodies", bodies);
+    entry.insert("joins", joins);
+    return entry;
+}
+
 static QJsonObject segmentPage(const PageAnalysisResult& source, int pageNumber, AFont& font, QJsonObject result,
-                               const QJsonObject* requestedSubwords = nullptr) {
+                               const QJsonObject* requestedSubwords = nullptr,
+                               const CatalogCutCheck& check = {}) {
     PageAnalysisResult analysis;
     analysis.page = source.page;
     QJsonArray subwords;
@@ -88,80 +156,21 @@ static QJsonObject segmentPage(const PageAnalysisResult& source, int pageNumber,
                 analysis.detectSubWords(pageNumber - 1, lineIndex, wordIndex, &font);
             const auto& results = word.wordResultInfo.subWords;
             for (size_t index = 0; index < results.size(); ++index) {
-                if (requestedSubwords && !requestedSubwords->contains(
-                        QString("l%1-w%2-s%3").arg(lineIndex+1).arg(wordIndex+1).arg(index+1))) continue;
+                const auto key = QString("l%1-w%2-s%3").arg(lineIndex+1).arg(wordIndex+1).arg(index+1);
+                if (requestedSubwords && !requestedSubwords->contains(key)) continue;
                 QElapsedTimer timer;
                 if (profiling) timer.start();
+                const auto accept = check ? AnchorPartitionCheck{[&](const auto& candidate) {
+                    return check(key, encodeSubword(word, candidate, lineIndex + 1, wordIndex + 1, int(index + 1), true));
+                }} : AnchorPartitionCheck{};
                 const bool complete = analysis.segmentSubword(pageNumber - 1, lineIndex, wordIndex,
-                                                              static_cast<int>(index), &font, true);
+                                                              int(index), &font, true, nullptr, accept);
                 if (profiling) profile.append(QJsonObject{
                     {"id",QString("page%1:l%2-w%3-s%4").arg(pageNumber,3,10,QChar('0'))
                         .arg(lineIndex+1).arg(wordIndex+1).arg(index+1)},
                     {"milliseconds",timer.nsecsElapsed()/1e6}, {"search",letterSearchProfile()}});
                 const auto& sub = results[index];
-                QJsonObject entry{{"line", lineIndex + 1}, {"word", wordIndex + 1},
-                    {"subword", static_cast<int>(index + 1)}, {"text", sub.text}, {"complete", complete},
-                    {"templates", QJsonArray::fromStringList(sub.matchedTemplates)},
-                    {"trace", QJsonArray::fromStringList(sub.templateTrace)},
-                    {"letters", sub.letterDiagnostics}};
-                QJsonArray bodies, joins;
-                if (!sub.paths.empty() && sub.paths.front() >= 0 && sub.paths.front() < word.paths.size()) {
-                    const auto shape = word.bodyShape(sub);
-                    const auto inPage = [&](const QPainterPath& path) {
-                        auto mapped = shape.transform.map(path);
-                        mapped.translate(shape.pos);
-                        return mapped;
-                    };
-                    const auto bounds = inPage(shape.path).boundingRect();
-                    entry.insert("bounds", QJsonArray{bounds.x(), bounds.y(), bounds.width(), bounds.height()});
-                    const auto letters = PageAnalysisResult::bodyLetters(sub.text);
-                    for (size_t bodyIndex = 0; bodyIndex < sub.baseGlyphs.size(); ++bodyIndex) {
-                        auto body = encodePath(inPage(sub.baseGlyphs[bodyIndex].path));
-                        if (complete && sub.baseGlyphs.size() == static_cast<size_t>(letters.size())) {
-                            body.insert("letter", letters.mid(static_cast<int>(bodyIndex), 1));
-                            body.insert("labelSource", "template");
-                        }
-                        bodies.append(body);
-                    }
-                    size_t joinIndex = 0;
-                    int afterBody = 1;
-                    const auto appendPenLifts = [&]() {
-                        while (afterBody < sub.letterDiagnostics.size() &&
-                               sub.letterDiagnostics[afterBody].toObject().value("boundaryKind") == "separate-contours") {
-                            joins.append(QJsonObject{{"afterBody", afterBody++}, {"boundaryKind", "separate-contours"},
-                                                     {"endpoints", QJsonArray{}}});
-                        }
-                    };
-                    for (const auto& join : sub.joins) {
-                        appendPenLifts();
-                        QJsonObject cut{{"afterBody", afterBody++}, {"anchor", QJsonArray{point(join.topBaseLine.point), point(join.bottomBaseLine.point)}}};
-                        if (join.counterEntry.pathIndex > 0) {
-                            QJsonArray segments;
-                            for (const auto& segment : join.cutSegments())
-                                segments.append(QJsonArray{point(segment.p1()), point(segment.p2())});
-                            cut.insert("anchor", segments.first());
-                            cut.insert("endpoints", segments);
-                            if (!join.counterBendWeights.isNull()) cut.insert("entryBridgeSegmentCount",2);
-                            cut.insert("boundaryKind", "shared-counter-ligature");
-                            cut.insert("landmarks", QJsonArray{
-                                QJsonArray{join.topBaseLine.pathIndex, join.topBaseLine.time, join.counterEntry.pathIndex, join.counterEntry.time},
-                                QJsonArray{join.counterExit.pathIndex, join.counterExit.time, join.bottomBaseLine.pathIndex, join.bottomBaseLine.time}
-                            });
-                        }
-                        if (joinIndex < sub.kashidaPaths.size() && !sub.kashidaPaths[joinIndex].isEmpty()) {
-                            const auto& ends = sub.kashidaCuts[joinIndex];
-                            cut.insert("kashida", encodePath(inPage(sub.kashidaPaths[joinIndex])));
-                            cut.insert("endpoints", QJsonArray{QJsonArray{point(ends.first.p1()), point(ends.first.p2())},
-                                                               QJsonArray{point(ends.second.p1()), point(ends.second.p2())}});
-                        }
-                        joins.append(cut);
-                        ++joinIndex;
-                    }
-                    appendPenLifts();
-                }
-                entry.insert("bodies", bodies);
-                entry.insert("joins", joins);
-                subwords.append(entry);
+                subwords.append(encodeSubword(word, sub, lineIndex + 1, wordIndex + 1, int(index + 1), complete));
             }
         }
     }
@@ -171,8 +180,9 @@ static QJsonObject segmentPage(const PageAnalysisResult& source, int pageNumber,
 }
 
 QJsonObject generateLetterSegmentation(const PageAnalysisResult& source, int pageNumber, AFont& font,
-                                       const QJsonObject* requestedSubwords) {
-    return segmentPage(source, pageNumber, font, segmentationMetadata(source, pageNumber, font), requestedSubwords);
+                                       const QJsonObject* requestedSubwords, const CatalogCutCheck& check) {
+    return segmentPage(source, pageNumber, font, segmentationMetadata(source, pageNumber, font),
+                       requestedSubwords, check);
 }
 
 QJsonObject loadLetterSegmentation(const PageAnalysisResult& source, int pageNumber,
