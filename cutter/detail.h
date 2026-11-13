@@ -1259,10 +1259,11 @@ struct AnchoredBody {
     QVector<QPointF> samples;
 };
 
-using AnchorSequences = std::vector<std::vector<QJsonObject>>;
+using AnchorSequence = std::vector<std::vector<QJsonObject>>;
+using AnchorSequences = std::vector<AnchorSequence>;
 
 QString compileAnchorSequences(const QJsonObject& config, AnchorSequences& sequences);
-std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& config, const QJsonObject& form);
+std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form);
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
         const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorSequences& sequences);
 bool sameAnchoredPartition(const WordResultInfo::SubWordInfo& a, const WordResultInfo::SubWordInfo& b);

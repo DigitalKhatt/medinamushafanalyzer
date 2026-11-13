@@ -2,7 +2,11 @@
   "version": 2,
   "strokeWidth": 1,
   "anchorSearch": [
-    ["lam-init", "beh-tooth-medi", "kaf-bowl-fina"]
+    [
+      ["lam-init", "lam-normal-init"],
+      ["beh-tooth-medi", "beh-bent-medi"],
+      ["kaf-bowl-fina", "kaf-return-fina"]
+    ]
   ],
   "joinDefaults": {
     "lookback": 4,

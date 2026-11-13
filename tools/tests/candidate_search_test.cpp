@@ -81,40 +81,46 @@ static void checkRecoveryPriority(const QJsonObject& config, AFont& font) {
 }
 
 static void checkFixedAnchorSequence(const QJsonObject& config) {
-    auto draft = config;
-    draft.insert("anchorSearch", QJsonArray{QJsonArray{"lam-init", "beh-tooth-medi", "kaf-bowl-fina"}});
-    check(PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Valid anchor sequence was rejected");
-    auto invalid = draft;
+    auto single = config;
+    single.insert("anchorSearch", QJsonArray{QJsonArray{"lam-init", "beh-tooth-medi", "kaf-bowl-fina"}});
+    check(PageAnalysisResult::prepareLetterForms(single).isEmpty(), "Valid anchor sequence was rejected");
+    auto invalid = config;
     invalid.insert("anchorSearch", QJsonArray{QJsonArray{"lam-init", "kaf-bowl-fina", "beh-tooth-medi"}});
     check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Anchor sequence accepted a form in the wrong position");
-    auto legacy = draft;
+    invalid = config;
+    invalid.insert("anchorSearch", QJsonArray{QJsonArray{"lam-init", QJsonArray{}, "kaf-bowl-fina"}});
+    check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Anchor sequence accepted an empty position");
+    auto legacy = config;
     legacy.remove("anchorSearch");
 
-    QFile fontFile("input/font.dat"), pageFile("pages/page2.dat");
-    check(fontFile.open(QIODevice::ReadOnly) && pageFile.open(QIODevice::ReadOnly), "Missing anchor sequence fixtures");
+    QFile fontFile("input/font.dat");
+    check(fontFile.open(QIODevice::ReadOnly), "Missing anchor sequence font");
     AFont font;
     QDataStream fontStream(&fontFile); fontStream >> font;
     PageAnalysisResult::initQuranText();
-    PageAnalysisResult analysis;
-    QDataStream pageStream(&pageFile); pageStream >> analysis.page;
-    analysis.resolveWordBoundaries(2, &font);
 
-    struct Fixture { int line, word, subword; bool anchored; };
-    for (const auto& f : {Fixture{7, 1, 3, true}, Fixture{6, 1, 2, false}}) {
+    struct Fixture { int page, line, word, subword; bool singleFormMatch; };
+    for (const auto& f : {Fixture{2, 7, 1, 3, true}, Fixture{2, 6, 1, 2, false},
+                          Fixture{151, 3, 5, 2, false}, Fixture{167, 15, 5, 2, false},
+                          Fixture{411, 7, 9, 3, false}}) {
+        QFile pageFile(QString("pages/page%1.dat").arg(f.page));
+        check(pageFile.open(QIODevice::ReadOnly), "Missing anchor sequence fixture");
+        PageAnalysisResult analysis;
+        QDataStream pageStream(&pageFile); pageStream >> analysis.page;
+        analysis.resolveWordBoundaries(f.page, &font);
         auto& word = analysis.page.lines[f.line - 1].words[f.word - 1];
         const auto segment = [&](const QJsonObject& forms) {
-            return analysis.segmentSubword(1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &forms);
+            return analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &forms);
         };
         check(segment(legacy), "Missing original partition for anchor search fixture");
         const auto expected = word.wordResultInfo.subWords[f.subword - 1];
-        if (!f.anchored)
-            check(expected.letterDiagnostics.last().toObject().value("template") == "kaf-return-fina",
-                  "Deferred final form was not reached");
-        check(segment(draft), "Anchor search lost a complete partition");
-        const auto& actual = word.wordResultInfo.subWords[f.subword - 1];
-        check(sameAnchoredPartition(actual, expected), "Anchor search changed the letter or connector geometry");
-        const bool usedAnchors = !actual.templateTrace.isEmpty() && actual.templateTrace.front().startsWith("Fixed anchors");
-        check(usedAnchors == f.anchored, "Anchor search did not select the expected path");
+        for (const auto* forms : std::array<const QJsonObject*, 2>{&single, &config}) {
+            check(segment(*forms), "Anchor search lost a complete partition");
+            const auto& actual = word.wordResultInfo.subWords[f.subword - 1];
+            check(sameAnchoredPartition(actual, expected), "Anchor search changed the letter or connector geometry");
+            const bool usedAnchors = !actual.templateTrace.isEmpty() && actual.templateTrace.front().startsWith("Fixed anchors");
+            check(usedAnchors == (forms == &config || f.singleFormMatch), "Anchor search did not select the expected path");
+        }
     }
     checkRecoveryPriority(legacy, font);
 }

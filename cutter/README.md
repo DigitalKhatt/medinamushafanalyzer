@@ -192,14 +192,17 @@ sources and headers.
 
 ## Fixed anchor search
 
-`anchorSearch` lists sequences of migrated templates in reading order. The
-first sequence covers initial lām, one medial senna and final kāf. The
-transcript selects the sequence. Each form proposes sections on the uncut
-outline, with the landmarks and ink it must retain.
-[The search](engine/anchor_search.cpp) tries compatible body candidates and
-partitions the ink at their fixed sections. Coincident sections share a seam.
-Distinct sections must enclose a single connecting stroke. If no complete
-partition fits, the existing cutter handles the subword.
+`anchorSearch` lists sequences of migrated templates in reading order. A
+position can name one template or list variants in priority order. The current
+sequence covers initial lām, medial senna and final kāf, including the normal
+lām exit, bent senna and returning kāf. The transcript selects eligible
+templates for each position. Each form proposes sections on the uncut outline,
+with the landmarks and ink it must retain.
+[The search](engine/anchor_search.cpp) builds each form's candidates once per
+outline and backtracks over compatible bodies. Their entry and exit sections
+stay fixed. Coincident sections share a seam. Distinct sections must enclose a
+single connecting stroke. If no complete partition fits, the existing cutter
+handles the subword.
 
 Use the following command from the project root to compare each fixed anchor
 partition with the original cutter and check the exported geometry against

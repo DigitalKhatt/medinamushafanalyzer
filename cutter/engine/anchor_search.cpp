@@ -108,46 +108,46 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
     return trial;
 }
 
+bool applies(const QJsonObject& form, const QString& letters, int slot) {
+    if (!form.value("current").toString().contains(letters[slot]) ||
+        !form.value("kashida").toObject().isEmpty() || form.contains("sharedFoldWithFinal")) return false;
+    const auto following = slot == 0 ? form.value("ligatureWith").toString() : medialFinalLetters(form);
+    return following.isEmpty() || hasFollowingLetter(letters, slot, following, slot > 0);
+}
+
 std::optional<Subword> searchSequence(const Word& word, const Subword& sub, const Apath& shape,
-        SearchContext& source, const QString& letters, const QJsonObject& config, const std::vector<QJsonObject>& forms) {
-    std::vector<std::vector<AnchoredBody>> choices;
-    choices.reserve(forms.size());
-    for (size_t slot = 0; slot < forms.size(); ++slot) {
-        auto candidates = anchoredBodies(source, config, forms[slot]);
-        std::erase_if(candidates, [&](const auto& body) { return !fitsBody(body, source, slot, forms.size()); });
-        if (candidates.empty()) return {};
-        choices.push_back(std::move(candidates));
-    }
+        SearchContext& source, const QString& letters, const AnchorSequence& forms,
+        std::map<QString, std::vector<AnchoredBody>>& candidates) {
+    // Keep each candidate at its original contour sections across backtracking.
+    const auto bodiesFor = [&](const QJsonObject& form, size_t slot) -> const std::vector<AnchoredBody>& {
+        auto [saved, inserted] = candidates.try_emplace(form.value("id").toString());
+        if (inserted) {
+            saved->second = anchoredBodies(source, form);
+            std::erase_if(saved->second, [&](const auto& body) { return !fitsBody(body, source, slot, forms.size()); });
+        }
+        return saved->second;
+    };
 
     std::vector<const AnchoredBody*> selected;
-    selected.reserve(choices.size());
+    selected.reserve(forms.size());
     const auto search = [&](auto&& self, size_t slot) -> std::optional<Subword> {
-        if (slot == choices.size()) return assemble(word, sub, shape, source, letters, selected);
-        for (const auto& body : choices[slot]) {
-            if (slot) {
-                const auto& exit = *selected.back()->exit;
-                if (!sameSection(exit, *body.entry) && !orderedSections(exit, *body.entry, source.orientation))
-                    continue;
+        if (slot == forms.size()) return assemble(word, sub, shape, source, letters, selected);
+        for (const auto& form : forms[slot]) {
+            if (!applies(form, letters, int(slot))) continue;
+            for (const auto& body : bodiesFor(form, slot)) {
+                if (slot) {
+                    const auto& exit = *selected.back()->exit;
+                    if (!sameSection(exit, *body.entry) && !orderedSections(exit, *body.entry, source.orientation))
+                        continue;
+                }
+                selected.push_back(&body);
+                if (auto complete = self(self, slot + 1)) return complete;
+                selected.pop_back();
             }
-            selected.push_back(&body);
-            if (auto complete = self(self, slot + 1)) return complete;
-            selected.pop_back();
         }
         return {};
     };
     return search(search, 0);
-}
-
-bool applies(const std::vector<QJsonObject>& forms, const QString& letters) {
-    if (forms.size() != size_t(letters.size())) return false;
-    for (size_t slot = 0; slot < forms.size(); ++slot) {
-        const auto& form = forms[slot];
-        if (!form.value("current").toString().contains(letters[int(slot)]) ||
-            !form.value("kashida").toObject().isEmpty() || form.contains("sharedFoldWithFinal")) return false;
-        const auto following = slot == 0 ? form.value("ligatureWith").toString() : medialFinalLetters(form);
-        if (!following.isEmpty() && !hasFollowingLetter(letters, int(slot), following, slot > 0)) return false;
-    }
-    return true;
 }
 
 } // namespace
@@ -158,9 +158,15 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
         sub.paths.front() >= int(word.paths.size()) || sub.secondaryBodyPath >= 0 ||
         sub.text.contains(QChar(0x0640))) return {};
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
-    const auto first = std::find_if(sequences.begin(), sequences.end(), [&](const auto& forms) {
-        return applies(forms, letters);
-    });
+    const auto applicable = [&](const AnchorSequence& forms) {
+        if (forms.size() != size_t(letters.size())) return false;
+        for (int slot = 0; slot < letters.size(); ++slot)
+            if (std::none_of(forms[slot].begin(), forms[slot].end(), [&](const auto& form) {
+                    return applies(form, letters, slot);
+                })) return false;
+        return true;
+    };
+    const auto first = std::find_if(sequences.begin(), sequences.end(), applicable);
     if (first == sequences.end()) return {};
     const auto settings = config.value("kashidaDefaults").toObject();
     if (!settings.value("enabled").toBool(true) || settings.value("trackingEnabled").toBool() ||
@@ -175,9 +181,10 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
     SearchContext source{.transformedPath = ink, .bbox = ink.boundingRect(),
                          .subword = geometryOnly, .outlineCache = &cache};
     if (!preparePassOutline(source, cache)) return {};
+    std::map<QString, std::vector<AnchoredBody>> candidates;
     for (auto sequence = first; sequence != sequences.end(); ++sequence) {
-        if (sequence != first && !applies(*sequence, letters)) continue;
-        if (auto complete = searchSequence(word, sub, shape, source, letters, config, *sequence)) {
+        if (sequence != first && !applicable(*sequence)) continue;
+        if (auto complete = searchSequence(word, sub, shape, source, letters, *sequence, candidates)) {
             if (cutGeometryMemo && cutGeometryMemo->profiling) cutGeometryMemo->anchorSearch = "matched";
             return complete;
         }
