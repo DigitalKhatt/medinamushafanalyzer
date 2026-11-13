@@ -178,6 +178,10 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
         result.descendingShaft = recognizeDescendingShaft(outline);
     } else if (shape == "layered-head")
         result.layeredHead = recognizeLayeredHeads(outline, body);
+    else if (shape == "descending-stem")
+        result.descendingStemSection = recognizeDescendingStemSection(outline, body.value("stem").toObject());
+    else if (hasStemFlanks(body))
+        result.medialStem = recognizeMedialStems(outline, body);
     else if (shape == "counter-attachment")
         result.attachment = recognizeCounterAttachments(outline, body.value("attachment").toObject());
     else if (shape == "forked-bowl")
@@ -332,6 +336,11 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
         inspectLandmark("Stem foot", stem.limit);
         inspectLandmark("Bowl edge", stem.bowlEdge);
     }
+    if (evidence.descendingStemSection) {
+        inspectLandmark("Stem exit", evidence.descendingStemSection->topBaseLine);
+        inspectLandmark("Opposite edge", evidence.descendingStemSection->bottomBaseLine);
+    }
+    if (evidence.medialStem) inspectStemEvidence(*evidence.medialStem);
     for (const auto &fork : evidence.bowlForks) {
         inspectLandmark("Fork upper", fork.upper);
         inspectLandmark("Fork lower", fork.lower);
@@ -520,8 +529,13 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
                 cutCounterAttachments(context, *evidence->attachment, shapeSettings(form, "attachment"));
     else if (shape == "forked-bowl")
         found = cutBowlForks(context, evidence->bowlForks, shapeSettings(form, "fork"), context.res);
+    else if (shape == "descending-stem") {
+        found = evidence->descendingStemSection.has_value();
+        if (found) context.res = *evidence->descendingStemSection;
+    } else if (shape == "terminal-fork")
+        found = cutTerminalStemFork(context, shapeSettings(form, "stem"), context.res);
     else if (shape == "stemmed-bowl")
-        found = cutTerminalStemBodies(context, evidence->terminalStems, cuts.value("stem").toObject(),
+        found = cutTerminalStemBodies(context, evidence->terminalStems, shapeSettings(form, "stem"),
                                       cuts.value("stem").toObject());
     else if (shape == "tail-branch")
         found = evidence->tail && cutTailBranches(context, *evidence->tail, shapeSettings(form, "tail"), context.res);
@@ -661,9 +675,7 @@ bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
                                                      context, rule, seenRetry, recoverTeeth);
                                              })
                          : declaredSharedBoundary(context, rule, seenRetry, recoverTeeth, finalFold, routeSearch);
-    } else if (rule.contains("body"))
-        found = declaredLamBoundary(context, config, rule);
-    else
+    } else
         qWarning() << "Unknown letter body:" << rule.value("id");
     if (found && recoverTeeth && terminal &&
         (rule.value("body").toObject().value("shape") == "upright-stem" ||
@@ -708,6 +720,16 @@ bool hasIntrinsicMedialBody(const QJsonObject& config, const QJsonObject& form) 
         !openHeadSettings(form).isEmpty() || !pairedCounterSettings(form).isEmpty() ||
         !toothRecognitionSettings(form).isEmpty() || !loopHeadSettings(form).isEmpty() ||
         (form.value("sharedEntry").toBool() && !form.value("seenTeeth").toObject().isEmpty());
+}
+
+std::vector<MedialCandidate> declaredStemBoundaries(SearchContext& context, const QJsonObject& config,
+        const QJsonObject& form, const Stretching& incoming, const QPointF& entry, const QPointF& exit,
+        double stroke, bool open, bool recoverTeeth, bool allowFork, const std::optional<Stretching>& sharedExit) {
+    const auto body = formDescription(config, form, "body");
+    if (!hasStemFlanks(body)) return {};
+    const auto evidence = recognizedSharedShape(context, body);
+    return stemBoundaryCandidates(context, config, form, *evidence->medialStem, incoming, entry, exit,
+                                  stroke, open, recoverTeeth, allowFork, sharedExit);
 }
 
 // Collect template proposals before resolving the following body's boundary.

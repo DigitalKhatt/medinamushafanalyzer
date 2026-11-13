@@ -94,9 +94,8 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         const auto retryParents = compiledRetryParents;
         auto recognition = recognizeSubwordBodies(word, sub, requested);
 
-        // The shared collector combines declared lām candidates with the existing
-        // matchers for other letters. Lām never enters their method dispatcher.
-        // Resolve the declared policies before committing the partition.
+        // Collect the templates' boundary proposals, then apply their shared
+        // attachment policies before committing the partition.
         const bool proposed = collectLegacyCutProposals(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested);
         auto plan = makeSubwordCutPlan(std::move(sub), requested);
         bool valid = proposed;

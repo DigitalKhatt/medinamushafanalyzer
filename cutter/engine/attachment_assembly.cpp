@@ -1,12 +1,12 @@
-#include "../../detail.h"
+#include "../detail.h"
 
 using namespace MedinaCutter;
 
 namespace MedinaCutter {
 
-// A terminal lam needs only its incoming fork flank. Its bowl, lower return,
-// and any shared alef seam are body topology, not a second cut to shorten.
-static bool resolveLamForkEntry(const Word& word, const LamBodyRecognition& recognition,
+// A terminal body can place its incoming cut at its own fork while
+// retaining the bowl, lower return and any shared terminal seam.
+static bool placeForkEntry(const Word& word, const StemAttachmentEvidence& recognition,
         SearchContext& context, WordResultInfo::SubWordInfo& sub, int slot,
         const QJsonObject& bodySpec, const QJsonObject& policy, const QJsonObject& config) {
     const auto old = sub;
@@ -27,17 +27,17 @@ static bool resolveLamForkEntry(const Word& word, const LamBodyRecognition& reco
     const bool hasExit = slot < int(joins.size());
     // Assign the recognized shaft to this transcript slot. The crest and fork
     // come from uncut ink; no landmark of the preceding letter defines them.
-    std::vector<std::pair<double, const LamForkBody*>> candidates;
-    for (size_t index = 0; index < recognition.lamBodies.forks.size(); ++index) {
-        const auto& body = recognition.lamBodies.forks[index];
+    std::vector<std::pair<double, const StemFork*>> candidates;
+    for (size_t index = 0; index < recognition.forkEvidence.forks.size(); ++index) {
+        const auto& body = recognition.forkEvidence.forks[index];
         if (!body.isConcave(context.orientation) || (!body.fork && !body.folded()) ||
             !entrySide.isStrictLeft(body.tip.time) ||
             (hasExit && !getJoinTime(joins[slot], context.orientation).isStrictRight(body.tip.time))) continue;
         double score = std::numeric_limits<double>::infinity();
-        for (size_t i = 0; i < recognition.lamBodies.crests.size(); ++i) {
+        for (size_t i = 0; i < recognition.forkEvidence.crests.size(); ++i) {
             if (!recognition.shaftForks.empty() &&
                 std::ranges::find(recognition.shaftForks[i], index) == recognition.shaftForks[i].end()) continue;
-            const auto& crest = recognition.lamBodies.crests[i];
+            const auto& crest = recognition.forkEvidence.crests[i];
             const double rise = body.tip.point.y() - crest.point.y();
             const double lean = std::abs(body.tip.point.x() - crest.point.x());
             if (same(crest.point.y(), bounds.top()) && entrySide.isStrictLeft(crest.time) &&
@@ -66,7 +66,7 @@ static bool resolveLamForkEntry(const Word& word, const LamBodyRecognition& reco
             sub.joins.insert(cuts[j]);
         }
         bool valid = assembleBodyPartition(word, sub, config);
-        // A detached alef has no chord in the connected partition.
+        // A detached terminal has no chord in the connected partition.
         if (valid && old.baseGlyphs.size() == joins.size() + 2 && sub.baseGlyphs.size() == joins.size() + 1)
             sub.baseGlyphs.push_back(old.baseGlyphs.back());
         valid = valid && sub.baseGlyphs.size() == old.baseGlyphs.size() &&
@@ -95,7 +95,7 @@ static bool resolveLamForkEntry(const Word& word, const LamBodyRecognition& reco
     for (double distance : {policy.value("forkOffset").toDouble(), 0.}) {
         if (distance == 0 && policy.value("tightJoin") != "tip-normal") continue;
         for (const auto& [score, body] : candidates) {
-            const auto cut = cutLamForkFlank(context, body->tip, std::nullopt, body->rightForward, 1, distance);
+            const auto cut = cutForkFlank(context, body->tip, std::nullopt, body->rightForward, 1, distance);
             if (!cut || !apply(*cut)) continue;
             auto diagnostic = sub.letterDiagnostics[slot].toObject();
             diagnostic.insert("bodyForm", hasExit ? "lam-terminal-return" : "lam-terminal-bowl");
@@ -104,7 +104,7 @@ static bool resolveLamForkEntry(const Word& word, const LamBodyRecognition& reco
             diagnostic.insert("entryWalk", distance);
             sub.letterDiagnostics[slot] = diagnostic;
             recordBoundaryTemplate(sub, slot, true, diagnostic.value("template").toString());
-            sub.templateTrace.append("lam · incoming cut from its own fork; terminal return retained");
+            sub.templateTrace.append(diagnostic.value("template").toString() + " · incoming cut from its own fork");
             return true;
         }
     }
@@ -121,36 +121,30 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (letters.size() < 2 || plan.bodies.empty() ||
         sub.letterDiagnostics.size() != letters.size() || sub.baseGlyphs.size() != size_t(letters.size())) return true;
-    // A lam-alef has one shared interface. The lam body includes the return
-    // below its stem; it has no independent outgoing attachment to shorten.
-    // Place its interface at the intrinsic arm attachment when that policy is
-    // enabled. Recognition by a different route must not bypass the junction.
-    // Otherwise reuse the proposed boundary. Initial lam-alef uses this too.
+    // The terminal body supplies the shared boundary. A returning stem
+    // keeps the ink below its shaft, up to the receiving arm or fold.
     const bool detachedFinal = sub.letterDiagnostics.last().toObject().value("boundaryKind") == "separate-contours";
     const int connectedCount = letters.size() - int(detachedFinal);
     const auto returnBody = std::find_if(plan.bodies.begin(), plan.bodies.end(), [](const auto& body) {
-        return body.attachment == BodyAttachmentPolicy::SharedAlefReturn ||
-            body.attachment == BodyAttachmentPolicy::SeparateAlefReturn;
+        return body.attachment == BodyAttachmentPolicy::SharedReturn ||
+            body.attachment == BodyAttachmentPolicy::DetachedReturn;
     });
     if (returnBody != plan.bodies.end()) {
         InspectFormScope inspection(returnBody->formId);
-        const auto* recognized = recognizedLamBody(recognition, returnBody->body);
-        if (!recognized) return true;
-        const auto& attachment = recognized->alefAttachment;
-        if (attachment) {
-            inspectLandmark("Alef junction", attachment->first);
-            inspectLandmark("Alef junction", attachment->second);
+        const auto junctionPolicy = returnBody->cuts.value("junction").toObject();
+        const auto sourceTemplate = junctionPolicy.value("template").toString();
+        const auto attachment = recognition.terminalJunctions.constFind(sourceTemplate);
+        const bool hasAttachment = attachment != recognition.terminalJunctions.cend();
+        if (hasAttachment) {
+            inspectLandmark("Terminal junction", attachment->topBaseLine);
+            inspectLandmark("Terminal junction", attachment->bottomBaseLine);
         }
-        const auto& lam = returnBody->cuts;
-        const int terminalLam = returnBody->letterIndex;
+        const int returnSlot = returnBody->letterIndex;
         const auto old = sub;
-        const bool separate = returnBody->attachment == BodyAttachmentPolicy::SeparateAlefReturn;
-        bool junction = !separate && lam.value("junction") == "inward-corners" &&
-            attachment.has_value();
+        const bool separate = returnBody->attachment == BodyAttachmentPolicy::DetachedReturn;
+        bool junction = !separate && junctionPolicy.value("at") == "inward-corners" && hasAttachment;
         if (junction && sub.joins.size() > 1) {
-            Stretching seamCandidate{};
-            seamCandidate.topBaseLine = attachment->first;
-            seamCandidate.bottomBaseLine = attachment->second;
+            const auto& seamCandidate = attachment.value();
             auto entry = *std::prev(sub.joins.end(), 2);
             entry.topBaseLine = entry.topLeft;
             entry.bottomBaseLine = entry.bottomLeft;
@@ -165,18 +159,20 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
             return a.pathIndex == b.pathIndex && std::abs(a.time - b.time) < 1e-8;
         };
         const bool moveJunction = junction && !sub.joins.empty() &&
-            !(sameLandmark(sub.joins.rbegin()->topLeft, attachment->first) &&
-              sameLandmark(sub.joins.rbegin()->bottomLeft, attachment->second));
+            !(sameLandmark(sub.joins.rbegin()->topLeft, attachment->topBaseLine) &&
+              sameLandmark(sub.joins.rbegin()->bottomLeft, attachment->bottomBaseLine));
+        const bool hasConnector = sub.kashidaPaths.size() == sub.joins.size() &&
+            !sub.kashidaPaths.empty() && !sub.kashidaPaths.back().isEmpty();
         // A body already ending at these landmarks needs no new assembly.
         // In particular, keep exact recovered contours and earlier connectors.
         if (!separate && sub.joins.size() + 1 == sub.baseGlyphs.size() &&
             sub.kashidaPaths.size() == sub.joins.size() &&
-            (moveJunction || !sub.kashidaPaths.back().isEmpty())) {
+            (moveJunction || hasConnector)) {
             auto seam = *sub.joins.rbegin();
             seam.topBaseLine = seam.topRight = seam.topLeft = junction ?
-                attachment->first : seam.topLeft;
+                attachment->topBaseLine : seam.topLeft;
             seam.bottomBaseLine = seam.bottomRight = seam.bottomLeft = junction ?
-                attachment->second : seam.bottomLeft;
+                attachment->bottomBaseLine : seam.bottomLeft;
             seam.fixedRightBoundary = true;
             seam.fixedLeftBoundary = false;
             seam.length = 0;
@@ -187,34 +183,36 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
                 sub.baseGlyphs.size() == old.baseGlyphs.size() &&
                 sub.kashidaPaths.size() == old.kashidaPaths.size() && sub.kashidaPaths.back().isEmpty();
             for (size_t j = 0; valid && j < old.baseGlyphs.size(); ++j)
-                if (j != size_t(terminalLam) && (!junction || j + 1 < old.baseGlyphs.size()))
+                if (j != size_t(returnSlot) && (!junction || j + 1 < old.baseGlyphs.size()))
                     valid = sub.baseGlyphs[j].path == old.baseGlyphs[j].path;
             for (size_t j = 0; valid && j + 1 < old.kashidaPaths.size(); ++j)
                 valid = sub.kashidaPaths[j] == old.kashidaPaths[j] && sub.kashidaCuts[j] == old.kashidaCuts[j];
             if (!valid || !coversOriginalInk(word, sub)) {
                 sub = old;
                 sub.correct = false;
-                auto diagnostic = sub.letterDiagnostics[terminalLam].toObject();
+                auto diagnostic = sub.letterDiagnostics[returnSlot].toObject();
                 diagnostic.insert("status", "no-match");
-                sub.letterDiagnostics[terminalLam] = diagnostic;
-                sub.templateTrace.append("lam-alef · shared-return policy failed ink ownership");
+                sub.letterDiagnostics[returnSlot] = diagnostic;
+                sub.templateTrace.append(returnBody->formId + " · shared-return policy failed ink ownership");
                 return false;
             }
-            const auto receiver = sub.letterDiagnostics.last().toObject();
-            const auto source = junction ? returnBody->body.value("alefArm").toString() :
-                receiver.value("entryTemplate").toString(receiver.value("template").toString());
-            recordBoundaryTemplate(sub, terminalLam, false, source);
-            recordBoundaryTemplate(sub, terminalLam + 1, true, source);
         }
-        auto diagnostic = sub.letterDiagnostics[terminalLam].toObject();
+        if (junction || (!separate && hasConnector)) {
+            const auto receiver = sub.letterDiagnostics.last().toObject();
+            const auto source = junction ? sourceTemplate :
+                receiver.value("entryTemplate").toString(receiver.value("template").toString());
+            recordBoundaryTemplate(sub, returnSlot, false, source);
+            recordBoundaryTemplate(sub, returnSlot + 1, true, source);
+        }
+        auto diagnostic = sub.letterDiagnostics[returnSlot].toObject();
         diagnostic.insert("bodyForm", "lam-terminal-return");
         diagnostic.insert("cutPolicy", separate ? "separate-contours" : "lam-alef-shared");
         if (junction) diagnostic.insert("junctionPolicy", "inward-corners");
         diagnostic.remove("boundaryKind");
-        sub.letterDiagnostics[terminalLam] = diagnostic;
-        sub.templateTrace.append(separate ? "lam-alef · return retained, separate alef outline" :
-            junction ? "lam-alef · shared boundary at intrinsic attachment corners, lower return retained" :
-            "lam-alef · lower return retained, shared boundary without kashida");
+        sub.letterDiagnostics[returnSlot] = diagnostic;
+        sub.templateTrace.append(returnBody->formId + (separate ? " · return retained, separate terminal outline" :
+            junction ? " · shared boundary at intrinsic attachment corners, lower return retained" :
+            " · lower return retained, shared boundary without kashida"));
     }
     if (connectedCount < 2 || sub.joins.size() + 1 != size_t(connectedCount) ||
         sub.kashidaPaths.size() != sub.joins.size()) return true;
@@ -240,20 +238,20 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
 
     for (const auto& bodyRequest : plan.bodies) {
         InspectFormScope inspection(bodyRequest.formId);
-        if (bodyRequest.attachment == BodyAttachmentPolicy::SharedAlefReturn ||
-            bodyRequest.attachment == BodyAttachmentPolicy::SeparateAlefReturn) continue;
+        if (bodyRequest.attachment == BodyAttachmentPolicy::SharedReturn ||
+            bodyRequest.attachment == BodyAttachmentPolicy::DetachedReturn) continue;
         const int i = bodyRequest.letterIndex;
-        const auto& lam = bodyRequest.cuts;
-        const auto& lamBody = bodyRequest.body;
-        const auto* recognized = recognizedLamBody(recognition, lamBody);
-        const double offset = lam.value("forkOffset").toDouble();
+        const auto& policy = bodyRequest.cuts;
+        const auto& bodySpec = bodyRequest.body;
+        const auto* recognized = recognizedStemAttachment(recognition, bodySpec);
+        const double offset = policy.value("forkOffset").toDouble();
         if (!recognized || offset <= 0) continue;
-        if (inspectingForm) for (const auto& crest : recognized->lamBodies.crests) inspectLandmark("Stem crest", crest);
-        if (inspectingForm) for (const auto& fork : recognized->lamBodies.forks)
+        if (inspectingForm) for (const auto& crest : recognized->forkEvidence.crests) inspectLandmark("Stem crest", crest);
+        if (inspectingForm) for (const auto& fork : recognized->forkEvidence.forks)
             if (fork.isConcave(context.orientation) && (fork.fork || fork.folded())) inspectLandmark("Fork", fork.tip);
         if (bodyRequest.attachment == BodyAttachmentPolicy::ForkEntry) {
             if (i > 0 && i < connectedCount)
-                resolveLamForkEntry(word, *recognized, context, sub, i, lamBody, lam, config);
+                placeForkEntry(word, *recognized, context, sub, i, bodySpec, policy, config);
             continue;
         }
         if (i < 1 || i + 1 >= connectedCount) continue;
@@ -267,7 +265,7 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
         const auto& exit = joins[i];
         const bool sharedCounter = previous.counterEntry.pathIndex > 0;
         if (exit.counterEntry.pathIndex > 0 || (sharedCounter &&
-            (lam.value("counterJoin") != "preserve-entry" ||
+            (policy.value("counterJoin") != "preserve-entry" ||
              previous.counterEntry.pathIndex != previous.counterExit.pathIndex ||
              !old.kashidaPaths[i - 1].isEmpty()))) continue;
         auto next = exit;
@@ -319,7 +317,7 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
             }
             if (sharedCounter) {
                 // Both bridges belong to the shared ligature interface.
-                // Preserve that entire entry and shorten only the lam exit.
+                // Preserve that entire entry and shorten only the outgoing flank.
                 cuts[i - 1] = previous;
             }
             sub.joins.clear();
@@ -343,8 +341,8 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
                 const auto body = mapped(sub.baseGlyphs[i].path);
                 const auto box = body.boundingRect();
                 valid = std::abs(box.top() - bounds.top()) < 1e-5 &&
-                    box.height() >= lamBody.value("minRise").toDouble() * stroke &&
-                    box.width() <= lamBody.value("maxWidthToHeight").toDouble() * box.height() &&
+                    box.height() >= bodySpec.value("minRise").toDouble() * stroke &&
+                    box.width() <= bodySpec.value("maxWidthToHeight").toDouble() * box.height() &&
                     toSubpaths(body).size() == toSubpaths(old.baseGlyphs[i].path).size();
             }
             for (size_t j = 0; valid && j < old.baseGlyphs.size(); ++j) {
@@ -405,9 +403,9 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
             // the fork. Keep that valid boundary while shortening the other
             // side, rather than rejecting both independent proposals.
             const auto retainNearBoundary = [&] {
-                return (lamAnchorWithinWalk(context, tip, existingRight, rightForward, offset) &&
+                return (forkAnchorWithinWalk(context, tip, existingRight, rightForward, offset) &&
                         apply(existingRight, left, previous, next)) ||
-                    (lamAnchorWithinWalk(context, tip, existingLeft, !rightForward, offset) &&
+                    (forkAnchorWithinWalk(context, tip, existingLeft, !rightForward, offset) &&
                         apply(right, existingLeft, previous, next));
             };
             const bool sending = !before(previous, right);
@@ -435,7 +433,7 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
                 }
             }
             if (receiving && i + 2 == letters.size()) {
-                const auto alternative = lam.value("overlappingExit").toObject();
+                const auto alternative = policy.value("overlappingExit").toObject();
                 const auto id = alternative.value("finalTemplate").toString();
                 const auto rule = bodyConstraintForm(config, namedLetterForm(config, id));
                 if (rule.value("current").toString().contains(letters.back()) &&
@@ -453,11 +451,11 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
 
         // Assign the pre-recognized body to this shaft/slot. A thin adjacent
         // connector does not limit the height of its intrinsic fork geometry.
-        const auto& recognizedBodies = recognized->lamBodies.forks;
+        const auto& recognizedBodies = recognized->forkEvidence.forks;
         const auto rightFlank = [&](const PathExtrema& tip, std::optional<PathExtrema> end,
                                     bool forward, double distance) -> std::optional<Stretching> {
             if (sharedCounter) return previous;
-            return cutLamForkFlank(context, tip, end, forward, 1, distance);
+            return cutForkFlank(context, tip, end, forward, 1, distance);
         };
         const auto refine = [&] {
             std::vector<std::pair<Stretching, Stretching>> tipFallbacks;
@@ -469,7 +467,7 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
                 if (!recognized->shaftForks.empty()) {
                     bool ownsFork = false;
                     for (size_t j = 0; j < recognized->shaftForks.size(); ++j) {
-                        const auto& crest = recognized->lamBodies.crests[j];
+                        const auto& crest = recognized->forkEvidence.crests[j];
                         // The true cap can lie above the sampled crest on a
                         // flat or slanted nib. Use membership in this body.
                         if (!bounds.adjusted(-.01, -.01, .01, .01).contains(crest.point)) continue;
@@ -483,7 +481,7 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
                 }
                 if (!body.isConcave(context.orientation)) continue;
                 const auto* tip = &body.tip;
-                if (tip->point.y() - bounds.top() < lamBody.value("minRise").toDouble() * stroke ||
+                if (tip->point.y() - bounds.top() < bodySpec.value("minRise").toDouble() * stroke ||
                     tip->point.y() > bounds.bottom() + stroke ||
                     tip->point.x() < bounds.left() - stroke || tip->point.x() > bounds.right() + stroke) continue;
                 if (!getJoinTime(previous, context.orientation).isStrictLeft(tip->time) ||
@@ -493,18 +491,18 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
                 if (!fork && !folded) continue;
                 const bool rightForward = body.rightForward;
                 auto right = rightFlank(*tip, std::nullopt, rightForward, offset);
-                auto left = cutLamForkFlank(context, *tip, std::nullopt, !rightForward, -1, offset);
-                if (!right && lamAnchorWithinWalk(context, *tip, existingRight, rightForward, offset)) right = existingRight;
-                if (!left && lamAnchorWithinWalk(context, *tip, existingLeft, !rightForward, offset)) left = existingLeft;
+                auto left = cutForkFlank(context, *tip, std::nullopt, !rightForward, -1, offset);
+                if (!right && forkAnchorWithinWalk(context, *tip, existingRight, rightForward, offset)) right = existingRight;
+                if (!left && forkAnchorWithinWalk(context, *tip, existingLeft, !rightForward, offset)) left = existingLeft;
                 if (right && left && (refined = placeHalfWalk(*right, *left, *tip, rightForward))) break;
                 const auto tipRight = rightFlank(*tip, previous.bottomBaseLine, rightForward, 0);
-                const auto tipLeft = cutLamForkFlank(context, *tip, next.bottomBaseLine, !rightForward, -1, 0);
+                const auto tipLeft = cutForkFlank(context, *tip, next.bottomBaseLine, !rightForward, -1, 0);
                 if (tipRight && tipLeft) tipFallbacks.emplace_back(*tipRight, *tipLeft);
                 if (folded && right && std::abs(chord(exit).center().x() - tip->point.x()) <= 2 * stroke &&
                     old.kashidaCuts[i - 1].second.center().x() - tip->point.x() >= 2.5 * stroke)
                     foldedEntries.push_back(*right);
             }
-            if (!refined && lam.value("tightJoin") == "tip-normal") for (const auto& [right, left] : tipFallbacks)
+            if (!refined && policy.value("tightJoin") == "tip-normal") for (const auto& [right, left] : tipFallbacks)
                 if ((refined = applyFallback(right, left))) break;
             if (!refined) {
                 // A folded foot can already have a local exit even if its left

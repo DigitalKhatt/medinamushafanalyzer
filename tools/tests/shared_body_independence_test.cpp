@@ -391,7 +391,6 @@ int main(int argc, char **argv) {
             }
             check(!form.contains("method") && !form.value("cuts").toObject().isEmpty() &&
                       (sharedShapeDescription(form.value("body").toObject()) ||
-                       lamDescription(form.value("body").toObject()) ||
                        toothDescription(form.value("body").toObject())),
                   "A geometric form was not migrated to body/cuts");
             if (!sharedShapeDescription(form.value("body").toObject()))

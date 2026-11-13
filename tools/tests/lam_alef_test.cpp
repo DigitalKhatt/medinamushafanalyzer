@@ -6,9 +6,9 @@ using namespace MedinaCutter;
 
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 
-static const LamBodyRecognition& bodyEvidence(const SubwordBodyRecognition& recognition, const QJsonObject& config) {
+static const StemAttachmentEvidence& bodyEvidence(const SubwordBodyRecognition& recognition, const QJsonObject& config) {
     const auto body = formDescription(config, namedLetterForm(config, "lam-medi"), "body");
-    const auto* found = recognizedLamBody(recognition, body);
+    const auto* found = recognizedStemAttachment(recognition, body);
     check(found != nullptr, "Missing declared lam body evidence");
     return *found;
 }
@@ -81,7 +81,8 @@ static void checkDeclaredLamRoutes() {
     invalid.insert("method", "walk");
     invalid.insert("top", body.value("top"));
     invalid.insert("bottomProbe", "down");
-    check(!declaredLamBoundary(context, config, invalid), "Failed lām declaration fell back to a legacy walk");
+    check(!declaredSharedBoundary(context, resolvedBodyForm(config, invalid)),
+          "Failed lām declaration fell back to a legacy walk");
 }
 
 static void checkBodyRecognitionSeparation() {
@@ -102,21 +103,17 @@ static void checkBodyRecognitionSeparation() {
     analysis.resolveCompoundBody(295, 14, 3);
     const auto config = PageAnalysisResult::letterForms();
     const auto evidence = recognizeSubwordBodies(word, sub, config);
-    check(evidence.valid && !bodyEvidence(evidence, config).lamBodies.forks.empty() && !bodyEvidence(evidence, config).lamBodies.crests.empty(),
+    check(evidence.valid && !bodyEvidence(evidence, config).forkEvidence.forks.empty() && !bodyEvidence(evidence, config).forkEvidence.crests.empty(),
           "Uncut ink did not produce reusable lam body evidence");
 
     const auto hasProfile = [&](const SubwordBodyRecognition& recognized, const char* id) {
-        return recognizedLamBody(recognized, formDescription(config, namedLetterForm(config, id), "body")) != nullptr;
+        return recognizedStemAttachment(recognized, formDescription(config, namedLetterForm(config, id), "body")) != nullptr;
     };
     auto initialLam = sub;
     initialLam.text = QStringLiteral("لَهُمْ");
     const auto initialEvidence = recognizeSubwordBodies(word, initialLam, config);
-    check(hasProfile(initialEvidence, "lam-init") && !hasProfile(initialEvidence, "lam-medi") &&
-          !hasProfile(initialEvidence, "lam-bowl-fina") && !hasProfile(initialEvidence, "lam-hah-stacked-init"),
-          "Initial lām admitted a template for another position or neighbor");
-    initialLam.text = QStringLiteral("لَحَمَ");
-    check(hasProfile(recognizeSubwordBodies(word, initialLam, config), "lam-hah-stacked-init"),
-          "An adjacent hah did not enable the stacked lām ligature");
+    check(!hasProfile(initialEvidence, "lam-medi") && !hasProfile(initialEvidence, "lam-bowl-fina"),
+          "Initial lām admitted an attachment profile for another position");
 
     // Changing every lam cut option must not change body recognition. Nor may
     // leftover masks or joins from a previous preview affect its landmarks.
@@ -133,11 +130,11 @@ static void checkBodyRecognitionSeparation() {
     contaminated.baseGlyphs = {{QStringLiteral("wrong preview"), QPainterPath{}}};
     contaminated.joins.insert(Stretching{});
     const auto repeated = recognizeSubwordBodies(word, contaminated, changed);
-    check(repeated.source == evidence.source && bodyEvidence(repeated, config).lamBodies.crests.size() == bodyEvidence(evidence, config).lamBodies.crests.size() &&
-          bodyEvidence(repeated, config).lamBodies.forks.size() == bodyEvidence(evidence, config).lamBodies.forks.size(), "Cuts changed body evidence");
-    for (size_t i = 0; i < bodyEvidence(evidence, config).lamBodies.forks.size(); ++i) {
-        const auto& a = bodyEvidence(evidence, config).lamBodies.forks[i];
-        const auto& b = bodyEvidence(repeated, config).lamBodies.forks[i];
+    check(repeated.source == evidence.source && bodyEvidence(repeated, config).forkEvidence.crests.size() == bodyEvidence(evidence, config).forkEvidence.crests.size() &&
+          bodyEvidence(repeated, config).forkEvidence.forks.size() == bodyEvidence(evidence, config).forkEvidence.forks.size(), "Cuts changed body evidence");
+    for (size_t i = 0; i < bodyEvidence(evidence, config).forkEvidence.forks.size(); ++i) {
+        const auto& a = bodyEvidence(evidence, config).forkEvidence.forks[i];
+        const auto& b = bodyEvidence(repeated, config).forkEvidence.forks[i];
         check(a.tip.point == b.tip.point && a.tip.time == b.tip.time &&
               a.forwardFlank == b.forwardFlank && a.backwardFlank == b.backwardFlank &&
               a.rightForward == b.rightForward && a.fork == b.fork && a.positiveTurn == b.positiveTurn,
@@ -322,9 +319,9 @@ static void checkSharedAlefJunctionPolicy() {
     auto forms = routePolicy.value("medial").toArray();
     for (int i = 0; i < forms.size(); ++i) {
         auto form = forms[i].toObject();
-        if (form.value("id") != "lam-medi") continue;
         auto cuts = form.value("cuts").toObject();
         auto terminal = cuts.value("beforeFinal").toObject();
+        if (terminal.value("junction").toObject().value("template") != "alef-tapered-arm-fina") continue;
         terminal.remove("junction");
         cuts.insert("beforeFinal", terminal);
         form.insert("cuts", cuts);
@@ -332,17 +329,19 @@ static void checkSharedAlefJunctionPolicy() {
     }
     routePolicy.insert("medial", forms);
     const auto evidence = recognizeSubwordBodies(word, sub, config);
-    check(bodyEvidence(evidence, config).alefAttachment.has_value() && bodyEvidence(evidence, config).alefAttachment->first.time == 5 &&
-          bodyEvidence(evidence, config).alefAttachment->second.time == 13, "Uncut alef junction was not recognized");
+    const auto receiver = QStringLiteral("alef-tapered-arm-fina");
+    const auto seam = evidence.terminalJunctions.constFind(receiver);
+    check(seam != evidence.terminalJunctions.cend() && seam->topBaseLine.time == 5 &&
+          seam->bottomBaseLine.time == 13, "The receiving arm did not supply its own junction");
     auto separated = sub;
     separated.text = PageAnalysisResult::bodyLetters(sub.text);
     separated.text.insert(separated.text.size() - 1, QChar(0x0628));
     const auto separatedEvidence = recognizeSubwordBodies(word, separated, config);
-    check(!bodyEvidence(separatedEvidence, config).alefAttachment, "A nonadjacent alef triggered arm recognition");
+    check(!separatedEvidence.terminalJunctions.contains(receiver), "A nonadjacent alef triggered arm recognition");
     const auto otherPolicy = recognizeSubwordBodies(word, sub, routePolicy);
-    check(bodyEvidence(otherPolicy, config).alefAttachment && bodyEvidence(otherPolicy, config).alefAttachment->first.point == bodyEvidence(evidence, config).alefAttachment->first.point &&
-          bodyEvidence(otherPolicy, config).alefAttachment->second.point == bodyEvidence(evidence, config).alefAttachment->second.point,
-          "Changing the junction policy changed body recognition");
+    check(!otherPolicy.terminalJunctions.contains(receiver), "A disabled shared cut still produced a junction proposal");
+    check(otherPolicy.stemProfiles.keys() == evidence.stemProfiles.keys(),
+          "Disabling a shared cut changed the recognized stem profiles");
     check(analysis.segmentSubword(443, 12, 5, 1, &font, true, &routePolicy), "Original return-arm route failed");
     const auto old = sub;
     check(std::abs(old.joins.rbegin()->bottomBaseLine.time - 12.924620117624805) < 1e-7,
@@ -350,8 +349,10 @@ static void checkSharedAlefJunctionPolicy() {
     check(analysis.segmentSubword(443, 12, 5, 1, &font, true, &config), "Shared junction policy left a partial body");
     const auto& cut = *sub.joins.rbegin();
     check(cut.topBaseLine.time == 5 && cut.bottomBaseLine.time == 13 &&
-          sub.matchedTemplates.contains("alef-return-fina") &&
-          sub.letterDiagnostics[1].toObject().value("junctionPolicy") == "inward-corners",
+          sub.matchedTemplates.contains(receiver) &&
+          sub.letterDiagnostics[1].toObject().value("junctionPolicy") == "inward-corners" &&
+          sub.letterDiagnostics[1].toObject().value("exitTemplate") == receiver &&
+          sub.letterDiagnostics[2].toObject().value("entryTemplate") == receiver,
           "The return-arm recognition route bypassed the shared junction policy");
     check(sub.baseGlyphs[0].path == old.baseGlyphs[0].path && sub.kashidaPaths[0] == old.kashidaPaths[0] &&
           sub.kashidaCuts[0] == old.kashidaCuts[0] && sub.kashidaPaths.back().isEmpty() && coversOriginalInk(word, sub),
@@ -483,7 +484,7 @@ static void checkTerminalLamEntryPolicy() {
             check(PageAnalysisResult::prepareLetterForms(custom).isEmpty(), "Independent final policy override rejected");
             const auto evidence = recognizeSubwordBodies(word, sub, config);
             const auto sameBody = recognizeSubwordBodies(word, sub, custom);
-            check(evidence.lamProfiles.keys() == sameBody.lamProfiles.keys(), "A final cut override changed recognized bodies");
+            check(evidence.stemProfiles.keys() == sameBody.stemProfiles.keys(), "A final cut override changed recognized bodies");
             check(a.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.sub - 1, &font, true, &custom),
                   "Renamed declarative final lam became partial");
             check(sub.letterDiagnostics[f.lam].toObject().value("template") == "renamed-terminal-lam" &&

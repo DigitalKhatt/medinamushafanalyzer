@@ -10,7 +10,7 @@ QString compileAnchorSequences(const QJsonObject& config, AnchorSequences& seque
 
     AnchorSequences compiled;
     const std::array positions{"initial", "medial", "final"};
-    const std::array shapes{"contour-stem", "tooth-pair", "stemmed-bowl"};
+    const std::array shapes{"contour-route", "tooth-pair", "stemmed-bowl"};
     for (const auto& entry : declared.toArray()) {
         const auto ids = entry.toArray();
         if (ids.size() < 2) return "Each anchorSearch sequence needs an initial and a final template";
@@ -41,8 +41,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     std::vector<AnchoredBody> result;
     source.res = {};
     source.nextIter = std::next(source.xSorted.begin());
-    if (shape == "contour-stem") {
-        if (declaredLamBoundary(source, config, form) && matchesBoundaryBody(source, form, source.res, true))
+    if (shape == "contour-route") {
+        if (declaredSharedBoundary(source, form) && matchesBoundaryBody(source, form, source.res, true))
             result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()}});
     } else if (shape == "tooth-pair") {
         for (const auto& tooth : declaredToothBoundaries(source, form)) {
@@ -59,7 +59,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         });
         const auto policy = cuts.value("stem").toObject();
         for (const auto& stem : stems) {
-            if (!cutTerminalStemBodies(source, {stem}, policy, policy)) continue;
+            if (!cutTerminalStemBodies(source, {stem}, shapeSettings(form, "stem"), policy)) continue;
             result.push_back({.formId = id, .entry = source.res, .landmarks = {stem.crest, stem.bowlEdge},
                 .samples = {stem.sample, stem.bowlBottom - QPointF(0, .01 * stem.stroke)}});
         }

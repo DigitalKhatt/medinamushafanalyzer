@@ -81,25 +81,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         }
     }
 
-    // Discover medial lām bodies before even the initial boundary is tried.
-    // A failed preceding letter must not hide their evidence. Transcript
-    // selectors limit which descriptions need evaluating, never their shape
-    // search; the fixed-outline cache also serves every subsequent retry.
-    if (baseText.size() > 2) {
-        const auto medialText = QStringView(baseText).mid(1, baseText.size() - 2);
-        for (const auto& value : config.value("medial").toArray()) {
-            const auto form = value.toObject();
-            const auto current = form.value("current").toString();
-            if (std::none_of(medialText.begin(), medialText.end(), [&](QChar ch) { return current.contains(ch); }))
-                continue;
-            const auto body = formDescription(config, form, "body");
-            if (body.value("shape") != "forked-stem" && body.value("shape") != "turning-shaft") continue;
-            const auto evidence = recognizedMedialLamBodies(context, body);
-            InspectFormScope inspection(form, context.transformedPath);
-            inspectLamBodyEvidence(*evidence);
-        }
-    }
-
 	context.nextIter = context.xSorted.size() != 0 ? std::next(context.xSorted.begin()) : context.xSorted.end();
 
 	int lastIndex = baseText.length() - 1;
@@ -113,8 +94,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     QString initialSharedBoundaryTemplate;
     QVector<int> sharedEntries;
     QMap<int, ToothBody> ownedTeeth;
-    QMap<int, PathExtrema> ownedLamCrests;
-    QMap<int, PathExtrema> matchedLamForks;
+    QMap<int, PathExtrema> ownedStemCrests;
+    QMap<int, PathExtrema> matchedStemForks;
     QMap<int, PathExtrema> ownedOpenHeads;
     QVector<bool> bodyAttempted(baseText.size(), false);
     const auto applies = [&](const QJsonObject& rule, int index) {
@@ -630,13 +611,13 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 if (deferred && tooth.isEmpty()) continue;
                 if (medial.tooth)
                     candidates.push_back({*medial.tooth->right, medial.tooth->left});
-                const auto lamBody = formDescription(config, form, "body");
-                const bool forkedLam = lamBody.value("shape") == "forked-stem";
+                const auto body = formDescription(config, form, "body");
+                const bool forkedStem = body.value("shape") == "forked-stem";
                 const bool foldedFinal = form.contains("sharedFoldWithFinal");
                 std::optional<BodyBoundary> sharedExit;
                 if (!bridge.isEmpty() && !candidates.empty() && letter + 1 == lastIndex)
                     sharedExit = BodyBoundary{candidates.front().left, form.value("id").toString(), true};
-                if ((forkedLam || foldedFinal) && letter + 1 == lastIndex) {
+                if ((forkedStem || foldedFinal) && letter + 1 == lastIndex) {
                     const auto& saved = nextBoundaries[letter];
                     if (saved && (foldedFinal || saved->ligature)) sharedExit = saved;
                     else {
@@ -672,11 +653,10 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     for (const auto &[right, left] : proposals)
                         candidates.emplace_back(right, left);
                 }
-                if (lamDescription(form.value("body").toObject())) {
-                    const auto evidence = recognizedMedialLamBodies(context, lamBody);
-                    const auto declarations = assembleMedialLamCuts(context, config, form, *evidence, incoming,
+                if (hasStemFlanks(body)) {
+                    const auto declarations = declaredStemBoundaries(context, config, form, incoming,
                         entry, exit, stroke, open, recoverTeeth, pageIndex >= 0,
-                        sharedExit ? std::optional<Stretching>{sharedExit->cut} : std::nullopt);
+                        sharedExit ? std::optional{sharedExit->cut} : std::nullopt);
                     candidates.insert(candidates.end(), declarations.begin(), declarations.end());
                 }
                 const auto teeth = form.value("seenTeeth").toObject();
@@ -697,7 +677,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                         if (!intrinsic || letter == 1 || before(cuts[letter - 2], right))
                             candidates.emplace_back(right, left);
                 }
-                const bool allowWalk = !internalBody && !forkedLam && teeth.isEmpty();
+                const bool allowWalk = !internalBody && !forkedStem && teeth.isEmpty();
                 appendMedialWalks(context, form, entry, exit, stroke, open, allowWalk, candidates);
                 const auto sharedCorner = form.value("cuts").toObject().value("sharedEntryCorner").toObject();
                 std::optional<BodyBoundary> initialCorner;
@@ -725,10 +705,10 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     }
                 }
                 bool matched = false;
-                const bool preferFinalBoundary = forkedLam && letter + 1 == lastIndex &&
+                const bool preferFinalBoundary = forkedStem && letter + 1 == lastIndex &&
                     !outgoing.fixedLeftBoundary;
                 for (int pass = 0; pass < (preferFinalBoundary ? 2 : 1) && !matched; ++pass) {
-                for (auto [right, left, sharedJoins, hollowCuts, lamCrest, lamFork] : candidates) {
+                for (auto [right, left, sharedJoins, hollowCuts, stemCrest, stemFork] : candidates) {
                     if (form.contains("bodyCounters")) {
                         const auto pieces = cutRegions(context.transformedPath, {}, {right, left}, context.orientation, true);
                         if (pieces.size() != 3 || static_cast<int>(toSubpaths(pieces[1].path).size()) - 1 !=
@@ -792,8 +772,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                             // Keep the recognized shaft and its fork on the receiving side.
                             // The initial route supplies the entire shared section.
                             const auto receiving = getJoinTime(seam, context.orientation);
-                            if ((lamCrest && !receiving.isStrictLeft(lamCrest->time)) ||
-                                (lamFork && !receiving.isLeft(lamFork->time))) continue;
+                            if ((stemCrest && !receiving.isStrictLeft(stemCrest->time)) ||
+                                (stemFork && !receiving.isLeft(stemFork->time))) continue;
                             right = seam;
                             usesInitialCorner = true;
                         }
@@ -811,14 +791,14 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     if (sharedJoins && !teeth.isEmpty() && ownedOpenHeads.contains(letter - 1) &&
                         !getJoinTime(right, context.orientation).isStrictRight(ownedOpenHeads[letter - 1].time))
                         continue;
-                    // A close shared seam may still cut around the whole lam
+                    // A close shared seam may still cut around the whole stem
                     // shaft and give its crest to the following letter.
-                    const auto previousLam = ownedLamCrests.constFind(letter - 1);
-                    if (sharedJoins && previousLam != ownedLamCrests.cend() &&
-                        !getJoinTime(right, context.orientation).isStrictRight(previousLam->time)) continue;
+                    const auto previousStem = ownedStemCrests.constFind(letter - 1);
+                    if (sharedJoins && previousStem != ownedStemCrests.cend() &&
+                        !getJoinTime(right, context.orientation).isStrictRight(previousStem->time)) continue;
                     if (sharedJoins && letter == 1 && !usesInitialCorner && !preservesBody(bodyTemplateIds[0], right, true)) continue;
                     if ((!sharedJoins && !before(incoming, right)) || !before(right, left) ||
-                        (!open && !nextBody && !internalBody && !forkedLam && std::abs(center(left).x() - exit.x()) > 2 * stroke) ||
+                        (!open && !nextBody && !internalBody && !forkedStem && std::abs(center(left).x() - exit.x()) > 2 * stroke) ||
                         (letter + 1 < static_cast<int>(cuts.size()) && !before(left, cuts[letter + 1]))) continue;
 
                     if (form.value("pairedCounters").toBool()) {
@@ -1013,7 +993,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                                 !side.isStrictRight(medial.tooth->bend.time)) continue;
                         }
                     }
-                    // First prefer an intrinsic lam route that composes with
+                    // First prefer an intrinsic stem route that composes with
                     // the final body's own cut. A partial route remains useful
                     // if none of the alternatives can complete that boundary.
                     if (((preferFinalBoundary && pass == 0) || medial.requireFinal) &&
@@ -1059,7 +1039,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     outgoing.length = 0;
                     // A shared entry only determines the incoming join. Keep
                     // the final body's independently matched receiving edge.
-                    if (sharedJoins && !forkedLam && !finalBoundary && !outgoing.fixedLeftBoundary &&
+                    if (sharedJoins && !forkedStem && !finalBoundary && !outgoing.fixedLeftBoundary &&
                         letter + 1 == lastIndex)
                         outgoing.kashidaOverrides.insert("enabled", false);
                     if (!finalTemplate.isEmpty()) {
@@ -1082,8 +1062,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     const auto id = form.value("id").toString();
                     bodyTemplateIds[letter] = id;
                     if (medial.tooth) ownedTeeth.insert(letter, *medial.tooth);
-                    if (lamCrest) ownedLamCrests.insert(letter, *lamCrest);
-                    if (lamFork) matchedLamForks.insert(letter, *lamFork);
+                    if (stemCrest) ownedStemCrests.insert(letter, *stemCrest);
+                    if (stemFork) matchedStemForks.insert(letter, *stemFork);
                     if (!openHead.isEmpty()) {
                         const auto entrySide = getJoinTime(right, context.orientation);
                         const auto exitSide = getJoinTime(left, context.orientation);
@@ -1098,7 +1078,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                         sharedEntries.append(letter);
                         subWord.templateTrace.append(id + " · shared incoming ligature cut");
                     }
-                    subWord.templateTrace.append(id + (lamFork ? " · medial fork boundaries matched" :
+                    subWord.templateTrace.append(id + (stemFork ? " · medial fork boundaries matched" :
                         " · medial body boundaries matched"));
                     if (deferred) resolvedFinalJoin = true;
                     if (open) pendingMedialJoin = false;
@@ -1241,7 +1221,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     // reconciled and connectors have been cut out.
     const auto visibleFinal = visibleFinalCuts.constFind(bodyTemplateIds[lastIndex]);
     if (cut && subWord.joins.size() == size_t(lastIndex) &&
-        (!matchedLamForks.isEmpty() || visibleFinal != visibleFinalCuts.cend())) {
+        (!matchedStemForks.isEmpty() || visibleFinal != visibleFinalCuts.cend())) {
         const auto joins = std::vector<Stretching>(subWord.joins.begin(), subWord.joins.end());
         std::vector<std::vector<QBezier>> sourceCurves;
         const auto boundary = [&](int join, bool receiving) -> std::optional<Stretching> {
@@ -1267,10 +1247,10 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             return getJoinTime(entry, context.orientation).isLeft(point.time) &&
                 (!exit || getJoinTime(*exit, context.orientation).isRight(point.time));
         };
-        for (auto fork = matchedLamForks.cbegin(); fork != matchedLamForks.cend(); ++fork) {
+        for (auto fork = matchedStemForks.cbegin(); fork != matchedStemForks.cend(); ++fork) {
             const int slot = fork.key();
             const auto entry = boundary(slot - 1, true), exit = boundary(slot, false);
-            if (entry && exit && retains(*entry, &*exit, *fork) && retains(*entry, &*exit, ownedLamCrests[slot])) continue;
+            if (entry && exit && retains(*entry, &*exit, *fork) && retains(*entry, &*exit, ownedStemCrests[slot])) continue;
             subWord.templateTrace.append(bodyTemplateIds[slot] + " · cut separates the stem or fork");
             bodyTemplateIds[slot].clear();
         }
@@ -1284,7 +1264,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         }
         if (std::none_of(bodyTemplateIds.cbegin(), bodyTemplateIds.cend(), [](const auto& id) { return id.isEmpty(); }) &&
             !coversOriginalInk(word, subWord)) {
-            for (auto fork = matchedLamForks.cbegin(); fork != matchedLamForks.cend(); ++fork)
+            for (auto fork = matchedStemForks.cbegin(); fork != matchedStemForks.cend(); ++fork)
                 bodyTemplateIds[fork.key()].clear();
             if (visibleFinal != visibleFinalCuts.cend()) bodyTemplateIds[lastIndex].clear();
             subWord.templateTrace.append("Contour features failed the ink ownership check");
@@ -1340,7 +1320,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             {"template", bodyTemplateIds[letter]}, {"candidates", candidates}};
         if (letter == lastIndex && status == "matched" && !terminalBoundaryTemplate.isEmpty())
             diagnostic.insert("entryTemplate", terminalBoundaryTemplate);
-        if (matchedLamForks.contains(letter)) {
+        if (matchedStemForks.contains(letter)) {
             diagnostic.insert("bodyForm", "lam-fork");
             diagnostic.insert("cutPolicy", "lam-fork-flanks");
             diagnostic.insert("boundaryKind", "lam-fork");

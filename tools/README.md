@@ -76,11 +76,10 @@ and unmeasured letters by ID. Either result makes the check fail.
 
 Declared forms use `body` for recognition and `cuts` for cut placement.
 Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
-declares its stem/bowl measurements in `body.stem`, then uses
-`cuts.boundaries: {"right": "fork-normal", "left": "free"}`. There is no
-lām `method` or `legacyLamRoutes` adapter. The two exposed-head recipes use
-`assembly` to combine existing body templates at a shared seam;
-they are recovery composition rules, not additional shape recognizers.
+declares its stem rise in `body.stem` and uses
+`cuts.boundaries: {"right": "fork-normal", "left": "free"}`.
+It shares the stemmed-bowl recognizer with final kāf. The exposed-head
+recipes use `assembly` to combine body templates at a shared seam.
 
 In the native application, enable **Inspect cuts** and click a subword. Select
 a declared template, including an applicable alternative that did not
@@ -124,9 +123,10 @@ python3 tools/tests/check_letter_forms.py lam_body_independence_test.cpp
 `fork-normal` walks `forkOffset` page units along a fork flank, then cuts
 normally to that stroke. `tightJoin: "tip-normal"` permits a cut from the tip
 when space is limited. `free` adds no boundary; `preserve` keeps the boundary
-from the declared shape's attachment. `beforeFinal` supplies the lām–alef
-policy: keep the lower return with lām and share one seam at the inward
-corners. `counterJoin` and `preserveEntryAfter` preserve the kāf–lām attachments.
+from the declared shape's attachment. `beforeFinal` keeps the lower return
+with lām in lām–alef. Its `junction.template` names the final form that
+supplies the shared cut at the inward corners. `counterJoin` and
+`preserveEntryAfter` preserve the kāf–lām attachments.
 
 The folded-foot option is `cuts.shortExit`: `minHorizontalRun` and
 `maxEntryGap` use local stroke widths; `anchorTolerance` uses page units.

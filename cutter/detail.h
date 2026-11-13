@@ -169,7 +169,7 @@ struct StrokeNormalSample {
 
 // Intrinsic body evidence. It contains no proposed boundaries and does not
 // depend on the width or landmarks of either adjoining letter.
-struct LamForkBody {
+struct StemFork {
     PathExtrema tip;
     QPointF forwardFlank, backwardFlank;
     bool rightForward;
@@ -191,12 +191,10 @@ struct LamForkBody {
     }
 };
 
-struct LamBodyEvidence {
+struct StemForkEvidence {
     std::vector<PathExtrema> crests;
-    std::vector<LamForkBody> forks;
+    std::vector<StemFork> forks;
 };
-
-struct LamMedialBodyEvidence;
 
 struct SharedShapeEvidence;
 
@@ -204,7 +202,7 @@ struct PreparedPassOutline;
 
 struct ToothCandidateMemo;
 
-struct LamCandidateMemo;
+struct StemCandidateMemo;
 
 struct PreparedPassRules {
     QJsonObject config;
@@ -230,10 +228,9 @@ struct OutlineSearchCache {
     std::map<std::pair<QString, double>, std::vector<std::pair<Stretching, Stretching>>> contourBodies;
     // Interior points on the two lips found in an adjoining connector.
     std::map<int, QLineF> misplacedHeads;
-    std::map<std::pair<QByteArray, int>, std::shared_ptr<const MedinaCutter::LamMedialBodyEvidence>> medialLamBodies;
     std::map<std::pair<QByteArray, int>, std::shared_ptr<const MedinaCutter::SharedShapeEvidence>> sharedBodies;
     std::shared_ptr<MedinaCutter::ToothCandidateMemo> toothCandidates;
-    std::shared_ptr<MedinaCutter::LamCandidateMemo> lamCandidates;
+    std::shared_ptr<MedinaCutter::StemCandidateMemo> stemCandidates;
 };
 
 namespace MedinaCutter {
@@ -358,8 +355,6 @@ void FindInterections(const QBezier& b, const QLineF& line, int pathIndex, int c
 std::vector<PathExtrema> FindInterections(const QPainterPath& path, const QLineF& line, bool segment = false,
         RootSearch search = RootSearch::Standard);
 
-QJsonObject medialLamShortExit(const QJsonObject& config);
-
 QJsonObject withOverrides(QJsonObject defaults, const QJsonObject& overrides);
 
 QString invalidWalkSettings(const QJsonObject& route, const QString& location);
@@ -383,7 +378,7 @@ QJsonObject formDescription(const QJsonObject& config, const QJsonObject& form,
 
 QJsonObject resolvedBodyForm(const QJsonObject& config, QJsonObject form);
 
-bool lamDescription(const QJsonObject &body);
+bool hasStemFlanks(const QJsonObject& body);
 
 struct SharedShapeSchema {
     QString section;
@@ -545,12 +540,12 @@ struct ForkRefinement {
     PathExtrema corner;
 };
 
-LamBodyEvidence recognizeLamBodies(const SearchContext& context, double flankSpan, bool allowLevelCrest);
+StemForkEvidence recognizeStemForkEvidence(const SearchContext& context, double flankSpan, bool allowLevelCrest);
 
-std::optional<Stretching> cutLamForkFlank(const SearchContext& context, const PathExtrema& tip,
+std::optional<Stretching> cutForkFlank(const SearchContext& context, const PathExtrema& tip,
                                                std::optional<PathExtrema> end, bool forward, int side, double distance);
 
-bool lamAnchorWithinWalk(const SearchContext& context, const PathExtrema& tip,
+bool forkAnchorWithinWalk(const SearchContext& context, const PathExtrema& tip,
                                const Stretching& cut, bool forward, double distance);
 
 std::optional<Stretching> levelForkEntry(SearchContext& context, const PathExtrema& corner,
@@ -1127,8 +1122,6 @@ bool cutTailBranches(SearchContext &context, const TailBody &body, const QJsonOb
 std::vector<std::optional<Stretching>> contourShoulderCuts(SearchContext& context, const TailBody& body,
         const QJsonObject& shoulder, const QJsonObject& range);
 
-bool terminalTailEntry(SearchContext &context, const QJsonObject &settings, Stretching &result);
-
 std::optional<Stretching> stackedAttachment(SearchContext& context, const QJsonObject& settings,
                                                    const QRectF& cap, const QPainterPath& head,
                                                    const Stretching& incoming, const Stretching& outgoing,
@@ -1162,23 +1155,25 @@ bool readTerminalOutline(SearchContext& context);
 bool declaredArmRoot(SearchContext &ctx, const QJsonObject &form, Stretching &result,
                             bool *cornerPair = nullptr);
 
-using LamShaftEdges = std::array<std::optional<PathExtrema>, 2>;
+using StemEdges = std::array<std::optional<PathExtrema>, 2>;
 
-std::vector<size_t> lamShaftForks(const SearchContext& context, const PathExtrema& crest,
-                                        const std::vector<LamForkBody>& forks,
+StemEdges traceStemEdges(const SearchContext& context, const PathExtrema& crest, bool allowLevel);
+
+std::vector<size_t> stemForks(const SearchContext& context, const PathExtrema& crest,
+                                        const std::vector<StemFork>& forks,
                                         const std::vector<QBezier>& curves);
 
-struct LamBodyRecognition {
-    LamBodyEvidence lamBodies;
+struct StemAttachmentEvidence {
+    StemForkEvidence forkEvidence;
     std::vector<std::vector<size_t>> shaftForks;
-    std::optional<std::pair<PathExtrema, PathExtrema>> alefAttachment;
 };
 
 struct SubwordBodyRecognition {
     QPainterPath source;
     std::vector<QPainterPath> contours;
     QVector<PathExtrema> landmarks;
-    QMap<QByteArray, LamBodyRecognition> lamProfiles;
+    QMap<QByteArray, StemAttachmentEvidence> stemProfiles;
+    QMap<QString, Stretching> terminalJunctions;
     Orientation orientation = Orientation::ClockWise;
     bool valid = false;
 };
@@ -1220,7 +1215,7 @@ const BodyCutProgram& bodyCutProgram(const QJsonObject& config);
 
 QByteArray bodyDescriptionKey(const QJsonObject& body);
 
-const LamBodyRecognition* recognizedLamBody(const SubwordBodyRecognition& recognition,
+const StemAttachmentEvidence* recognizedStemAttachment(const SubwordBodyRecognition& recognition,
                                                    const QJsonObject& description);
 
 SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
@@ -1231,10 +1226,8 @@ LigatureMatch segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordI
                                       const QJsonObject& config);
 QJsonObject ligatureForm(const QJsonObject& config, const QJsonObject& selection);
 
-// Phase 2: assemble the declared lām candidates alongside the other letters.
-// Each recognized lām form supplies its body and boundary policies. Forms not
-// yet migrated still supply attachments from the existing matcher.
-enum class BodyAttachmentPolicy { ForkFlanks, ForkEntry, PreserveCounterEntry, SharedAlefReturn, SeparateAlefReturn };
+// Assemble the boundaries and shared attachments declared by the selected forms.
+enum class BodyAttachmentPolicy { ForkFlanks, ForkEntry, PreserveCounterEntry, SharedReturn, DetachedReturn };
 
 struct BodyCutRequest {
     int letterIndex;
@@ -1293,7 +1286,9 @@ cutRimBodies(SearchContext &ctx, const std::vector<RimBodyEvidence> &bodies, con
 
 std::vector<std::pair<Stretching, Stretching>> rimSections(SearchContext &ctx, const QJsonObject &settings);
 
-bool descendingStemExit(SearchContext& ctx, const QJsonObject& spec, Stretching& best);
+std::optional<Stretching> recognizeDescendingStemSection(const InkOutline& outline, const QJsonObject& body);
+
+bool cutTerminalStemFork(SearchContext& context, const QJsonObject& settings, Stretching& result);
 
 std::vector<PathExtrema> recognizeLoopShoulders(const InkOutline &outline, const QRectF &hole,
                                                        const QJsonObject &body);
@@ -1383,15 +1378,13 @@ struct MedialCandidate {
     Stretching left;
     bool sharedJoins = false;
     std::optional<std::pair<Stretching, Stretching>> hollowCuts;
-    std::optional<PathExtrema> lamCrest;
-    std::optional<PathExtrema> lamFork;
+    std::optional<PathExtrema> stemCrest;
+    std::optional<PathExtrema> stemFork;
 };
-
-bool declaredLamBoundary(SearchContext& context, const QJsonObject& config, const QJsonObject& form);
 
 // One intrinsic stem occurrence, including both contour routes even when a
 // neighbor will later make one of them unusable. No boundary is an input.
-struct LamStemBody {
+struct MedialStem {
     PathExtrema crest;
     std::array<std::optional<PathExtrema>, 2> descendingFlanks;
     std::array<std::optional<SavedContourRoute>, 2> entryRoutes;
@@ -1399,29 +1392,26 @@ struct LamStemBody {
     std::vector<size_t> forks;
 };
 
-struct LamMedialBodyEvidence {
+struct MedialStemEvidence {
     QPainterPath source;
-    LamBodyEvidence features;
-    std::vector<LamStemBody> stems;
+    StemForkEvidence features;
+    std::vector<MedialStem> stems;
     std::vector<TurningShaftBody> turningShafts;
 };
 
-LamMedialBodyEvidence recognizeMedialLamBodies(const InkOutline &outline, const QJsonObject &body);
+MedialStemEvidence recognizeMedialStems(const InkOutline &outline, const QJsonObject &body);
 
-std::shared_ptr<const LamMedialBodyEvidence> recognizedMedialLamBodies(
-        SearchContext& context, const QJsonObject& body);
+void inspectStemEvidence(const MedialStemEvidence& evidence);
 
-void inspectLamBodyEvidence(const LamMedialBodyEvidence& evidence);
-
-std::vector<MedialCandidate> computeMedialLamCuts(SearchContext& context,
-        const QJsonObject& config, const QJsonObject& form, const LamMedialBodyEvidence& evidence,
+std::vector<MedialCandidate> computeStemBoundaries(SearchContext& context,
+        const QJsonObject& config, const QJsonObject& form, const MedialStemEvidence& evidence,
         const Stretching& incoming,
         const QPointF& entry, const QPointF& exit, double stroke, bool open, bool recoverTeeth,
         bool allowFork, const std::optional<Stretching>& sharedExit);
 
 // A cached assembly is specific to its complete geometry, policies and adjacent
 // boundary. It does not promote a template or skip any distinct placement.
-struct LamCandidateMemo {
+struct StemCandidateMemo {
     QPainterPath source;
     Orientation orientation;
     std::vector<QJsonObject> objects;
@@ -1436,8 +1426,8 @@ struct LamCandidateMemo {
 
 void appendCandidateBoundary(QByteArray& key, const Stretching& cut);
 
-std::vector<MedialCandidate> assembleMedialLamCuts(SearchContext& context,
-        const QJsonObject& config, const QJsonObject& form, const LamMedialBodyEvidence& evidence,
+std::vector<MedialCandidate> stemBoundaryCandidates(SearchContext& context,
+        const QJsonObject& config, const QJsonObject& form, const MedialStemEvidence& evidence,
         const Stretching& incoming, const QPointF& entry, const QPointF& exit, double stroke,
         bool open, bool recoverTeeth, bool allowFork, const std::optional<Stretching>& sharedExit);
 
@@ -1550,6 +1540,8 @@ struct SharedShapeEvidence {
     std::optional<LayeredHeadBody> layeredHead;
     std::optional<UprightStemBody> uprightStem;
     std::optional<DescendingShaftBody> descendingShaft;
+    std::optional<Stretching> descendingStemSection;
+    std::optional<MedialStemEvidence> medialStem;
     std::vector<TaperedArmBody> taperedArms;
     std::vector<ComponentArmBody> componentArms;
     std::vector<InkComponentBody> components;
@@ -1639,6 +1631,10 @@ bool hasIntrinsicMedialBody(const QJsonObject& config, const QJsonObject& form);
 std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
         SearchContext& context, const QJsonObject& form, ToothSearchPlan* plan, QChar nextLetter,
         const Stretching* precedingBody, double bodyMinX, double entryX);
+
+std::vector<MedialCandidate> declaredStemBoundaries(SearchContext& context, const QJsonObject& config,
+        const QJsonObject& form, const Stretching& incoming, const QPointF& entry, const QPointF& exit,
+        double stroke, bool open, bool recoverTeeth, bool allowFork, const std::optional<Stretching>& sharedExit);
 
 void recoverIncomingToothShoulder(SearchContext& context, Stretching& incoming);
 

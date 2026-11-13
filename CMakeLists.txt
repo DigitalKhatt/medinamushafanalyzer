@@ -48,6 +48,7 @@ add_executable(${PROJECT_NAME} ${ALL_FILES} ${TFMatcherCpp} main.cpp proposalexp
 target_sources(${PROJECT_NAME} PRIVATE
     cutter/detail.h
     cutter/engine/anchor_search.cpp
+    cutter/engine/attachment_assembly.cpp
     cutter/engine/body_cut_plan.cpp
     cutter/engine/component_assembly.cpp
     cutter/engine/diagnostics.cpp
@@ -58,9 +59,8 @@ target_sources(${PROJECT_NAME} PRIVATE
     cutter/forms/counters_and_bowls.cpp
     cutter/forms/dispatch.cpp
     cutter/forms/heads_and_ligatures.cpp
-    cutter/forms/lam/attachment_policy.cpp
-    cutter/forms/lam/recognition.cpp
     cutter/forms/ownership_repairs.cpp
+    cutter/forms/stem_boundaries.cpp
     cutter/forms/stems_and_routes.cpp
     cutter/forms/teeth.cpp
     cutter/geometry/contours.cpp

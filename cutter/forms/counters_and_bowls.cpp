@@ -2102,13 +2102,16 @@ std::vector<std::pair<Stretching, Stretching>> rimSections(SearchContext &ctx, c
 }
 
 // Match both sides of an unbranched ascender where it enters a stacked stroke.
-bool descendingStemExit(SearchContext& ctx, const QJsonObject& spec, Stretching& best) {
+std::optional<Stretching> recognizeDescendingStemSection(const InkOutline& outline, const QJsonObject& spec) {
+    WordResultInfo::SubWordInfo empty;
+    auto ctx = outline.geometry(empty);
     if (ctx.timeSorted.empty())
-        return false;
+        return {};
     const double pen = spec.value("penWidth").toDouble(.5);
     const double rise = spec.value("minRise").toDouble(4);
     const auto lip = spec.value("headLip").toObject();
     const bool stacked = !lip.isEmpty();
+    std::optional<Stretching> best;
     double lowest = -std::numeric_limits<double>::infinity();
     for (const auto& p : ctx.timeSorted) {
         if ((!p.isSharp && !stacked) || p.point.y() < ctx.bbox.top() + rise)
@@ -2172,7 +2175,7 @@ bool descendingStemExit(SearchContext& ctx, const QJsonObject& spec, Stretching&
             }
         }
     }
-    return std::isfinite(lowest);
+    return best;
 }
 
 std::vector<PathExtrema> recognizeLoopShoulders(const InkOutline &outline, const QRectF &hole,

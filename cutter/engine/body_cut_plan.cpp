@@ -52,10 +52,10 @@ bool preparePassOutline(SearchContext& context, OutlineSearchCache& cache) {
     return true;
 }
 
-const LamBodyRecognition* recognizedLamBody(const SubwordBodyRecognition& recognition,
+const StemAttachmentEvidence* recognizedStemAttachment(const SubwordBodyRecognition& recognition,
                                                    const QJsonObject& description) {
-    const auto found = recognition.lamProfiles.constFind(bodyDescriptionKey(description));
-    return found == recognition.lamProfiles.cend() ? nullptr : &found.value();
+    const auto found = recognition.stemProfiles.constFind(bodyDescriptionKey(description));
+    return found == recognition.stemProfiles.cend() ? nullptr : &found.value();
 }
 
 SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
@@ -67,7 +67,8 @@ SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
     if (letters.size() < 2) return result;
     const auto& program = bodyCutProgram(config);
     const int last = letters.size() - 1;
-    QMap<QByteArray, std::pair<QJsonObject, bool>> descriptions;
+    QMap<QByteArray, QJsonObject> descriptions;
+    QSet<QString> junctionTemplates;
     for (int slot = 0; slot <= last; ++slot) {
         const size_t position = slot == 0 ? 0 : slot == last ? 2 : 1;
         const auto& forms = program.formsByPosition[position];
@@ -78,10 +79,11 @@ SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
             if (!form.nextLetters.isEmpty() &&
                 !hasFollowingLetter(letters, slot, form.nextLetters, position == 1)) continue;
             const auto addProfile = [&](const DeclaredBodyForm& profile) {
-                if (!lamDescription(profile.body)) return;
-                auto& [body, needsAlefArm] = descriptions[profile.key];
-                body = profile.body;
-                needsAlefArm |= hasFollowingLetter(letters, slot, body.value("alefLetters").toString(), true);
+                if (hasStemFlanks(profile.body) || profile.body.contains("minFlankSpan"))
+                    descriptions.insert(profile.key, profile.body);
+                const auto junction = bodyCutPolicy(profile.cuts, letters, slot).value("junction").toObject();
+                if (junction.value("at") == "inward-corners")
+                    junctionTemplates.insert(junction.value("template").toString());
             };
             addProfile(form);
             if (slot + 1 == last) {
@@ -91,7 +93,7 @@ SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
             }
         }
     }
-    if (descriptions.isEmpty()) return result;
+    if (descriptions.isEmpty() && junctionTemplates.isEmpty()) return result;
     const auto shape = word.bodyShape(sub);
     result.source = shape.transform.map(shape.path).translated(shape.pos);
     WordResultInfo::SubWordInfo geometryOnly{};
@@ -100,37 +102,30 @@ SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
     result.orientation = context.orientation;
     result.contours = context.subPaths;
     for (const auto& point : context.timeSorted) result.landmarks.append(point);
-    QMap<std::pair<double, bool>, LamBodyEvidence> forkFeatures;
-    QMap<QString, std::optional<std::pair<PathExtrema, PathExtrema>>> armFeatures;
+    QMap<std::pair<double, bool>, StemForkEvidence> forkFeatures;
     for (auto it = descriptions.begin(); it != descriptions.end(); ++it) {
-        const auto& [body, needsAlefArm] = it.value();
-        LamBodyRecognition features;
+        const auto& body = it.value();
+        StemAttachmentEvidence features;
         const auto span = body.value("minFlankSpan").toDouble();
-        const bool verifyShaft = body.value("shape") == "forked-stem" || body.value("shape") == "turning-shaft";
+        const bool verifyShaft = hasStemFlanks(body);
         const auto key = std::pair{span, verifyShaft};
         auto forks = forkFeatures.find(key);
-        if (forks == forkFeatures.end()) forks = forkFeatures.insert(key, recognizeLamBodies(context, span, verifyShaft));
-        features.lamBodies = forks.value();
+        if (forks == forkFeatures.end()) forks = forkFeatures.insert(key, recognizeStemForkEvidence(context, span, verifyShaft));
+        features.forkEvidence = forks.value();
         if (verifyShaft) {
             const auto curves = baseContourCurves(context.transformedPath);
-            for (const auto& crest : features.lamBodies.crests)
-                features.shaftForks.push_back(lamShaftForks(context, crest, features.lamBodies.forks, curves));
+            for (const auto& crest : features.forkEvidence.crests)
+                features.shaftForks.push_back(stemForks(context, crest, features.forkEvidence.forks, curves));
         }
-        if (needsAlefArm) {
-            const auto armId = body.value("alefArm").toString();
-            auto root = armFeatures.find(armId);
-            if (root == armFeatures.end()) {
-                const auto arm = namedLetterForm(config, armId);
-                Stretching attachment{};
-                bool corners = false;
-                std::optional<std::pair<PathExtrema, PathExtrema>> seam;
-                if (!arm.isEmpty() && declaredArmRoot(context, arm, attachment, &corners) && corners)
-                    seam = std::pair{attachment.topBaseLine, attachment.bottomBaseLine};
-                root = armFeatures.insert(armId, seam);
-            }
-            features.alefAttachment = root.value();
-        }
-        result.lamProfiles.insert(it.key(), std::move(features));
+        result.stemProfiles.insert(it.key(), std::move(features));
+    }
+    for (const auto& id : junctionTemplates) {
+        const auto receiver = resolvedLetterForm(config, id);
+        Stretching attachment{};
+        bool corners = false;
+        if (receiver.value("current").toString().contains(letters.back()) &&
+            declaredArmRoot(context, receiver, attachment, &corners) && corners)
+            result.terminalJunctions.insert(id, attachment);
     }
     result.valid = true;
     return result;
@@ -160,7 +155,7 @@ SubwordCutPlan makeSubwordCutPlan(WordResultInfo::SubWordInfo proposals, const Q
         const bool shared = boundaries.value("left") == "shared-return";
         if (shared) {
             const bool separate = sub.letterDiagnostics.last().toObject().value("boundaryKind") == "separate-contours";
-            add(separate ? BodyAttachmentPolicy::SeparateAlefReturn : BodyAttachmentPolicy::SharedAlefReturn);
+            add(separate ? BodyAttachmentPolicy::DetachedReturn : BodyAttachmentPolicy::SharedReturn);
         }
         if (!incoming || boundaries.value("right") != "fork-normal") continue;
         if (boundaries.value("left") == "fork-normal" && slot < int(joins.size())) {
@@ -357,8 +352,9 @@ static void shareFoldedStemReturn(const Word& word, WordResultInfo::SubWordInfo&
     const auto after = inPage(trial->baseGlyphs[slot].path);
     if (toSubpaths(before).size() != toSubpaths(after).size() ||
         std::abs(before.boundingRect().top() - after.boundingRect().top()) > 1e-5) return;
-    recordBoundaryTemplate(*trial, slot, false, fold.value("template").toString());
-    recordBoundaryTemplate(*trial, slot + 1, true, fold.value("template").toString());
+    const auto receiverId = receiver.value("id").toString();
+    recordBoundaryTemplate(*trial, slot, false, receiverId);
+    recordBoundaryTemplate(*trial, slot + 1, true, receiverId);
     trial->templateTrace.append(id + " · stem return kept at the final fold");
     sub = std::move(*trial);
 }
@@ -383,8 +379,8 @@ void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, 
     const auto initial = program.forms.constFind(idAt(0));
     if (initial == program.forms.cend()) return;
     const auto shapeType = initial->body.value("shape");
-    if (shapeType != "contour-route" && shapeType != "contour-stem") return;
-    const bool keepStemArm = shapeType == "contour-stem";
+    if (shapeType != "contour-route") return;
+    const bool keepStemArm = initial->cuts.value("shareTerminalReturn").toBool();
     if (keepStemArm && !hasConnector) return;
     const auto finalRules = config.value("final").toArray();
     const auto returning = std::find_if(finalRules.begin(), finalRules.end(), [&](const auto& value) {

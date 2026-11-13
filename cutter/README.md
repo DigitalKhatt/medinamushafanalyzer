@@ -8,18 +8,20 @@ cutter. The application calls the cutter through `PageAnalysisResult`.
 | --- | --- |
 | Segmentation and retries | [segmentsubword.cpp](../segmentsubword.cpp) selects the pass and handles retries. [search_pass.cpp](engine/search_pass.cpp) chooses candidates in transcript order, checks ownership and join compatibility, and records the result. |
 | Template dispatch | [dispatch.cpp](forms/dispatch.cpp) gathers proposals for a slot and connects declared shapes to their recognizers and cut policies. |
-| Template families | [Lām](forms/lam), [teeth](forms/teeth.cpp), [counters and bowls](forms/counters_and_bowls.cpp), and [heads and ligatures](forms/heads_and_ligatures.cpp) keep shape geometry and cut policies together. Several forms can share the same recognizer. |
+| Template families | [Stems and routes](forms/stems_and_routes.cpp), [stem boundaries](forms/stem_boundaries.cpp), [teeth](forms/teeth.cpp), [counters and bowls](forms/counters_and_bowls.cpp), and [heads and ligatures](forms/heads_and_ligatures.cpp) provide reusable geometry. |
 | Contour operations | [geometry](geometry) contains intersections, contour walks and projections, stroke sections, join order, and path partitioning. |
-| Final assembly | [body_cut_plan.cpp](engine/body_cut_plan.cpp) gathers reusable evidence and reads attachment policies. [partition_assembly.cpp](engine/partition_assembly.cpp) builds letter and connector paths and checks recovered bodies and ink coverage. |
+| Final assembly | [body_cut_plan.cpp](engine/body_cut_plan.cpp) gathers evidence and reads attachment policies. [attachment_assembly.cpp](engine/attachment_assembly.cpp) applies fork and shared-return policies. [partition_assembly.cpp](engine/partition_assembly.cpp) builds the letter and connector paths and checks ink coverage. |
 | Component assembly | [component_assembly.cpp](engine/component_assembly.cpp) fits folded arms, split entries and pen lifts using the source contours. |
 
 Template settings live in [letter-forms.json](../templates/letter-forms.json).
 Recognizers use the outline and `body` settings to find evidence. Cut functions
 use `cuts` settings to propose boundaries. The search pass decides which
-proposals fit together. For lām, [recognition.cpp](forms/lam/recognition.cpp)
-verifies the fork from the uncut ink and proposes cuts.
-[attachment_policy.cpp](forms/lam/attachment_policy.cpp) applies the chosen
-fork or ligature policy.
+proposals fit together. Each template declares the boundary at either end
+of its body. A shared join identifies which template supplies the seam, and
+the diagnostics record that template on both letters. The final form's
+body match is recorded separately from the source of its entry. In lām–alef,
+`cuts.beforeFinal` names the terminal template that supplies the seam at
+the inward corners. Lām keeps its lower return.
 
 `lam-turning-flanks-medi` follows both contour edges from the same shaft cap.
 `body.shaft.turnAngle` locates the first turn on each edge. The width comes
@@ -77,7 +79,8 @@ and uses the first matching final boundary for the declared adjacent letters.
 flank. Set `left` or `right` to `trim` to move a cut off a long connector
 and back toward the body. The incoming policies `descender` and `stem`
 follow a clipped stroke to its turn. `stem-foot` trims a long horizontal
-run from a final stem. Assembly checks the other cap and keeps the
+run from a final stem. `cuts.skipEntryTurnAfter` lists preceding letters
+whose attachment calls for retaining the original entry. Assembly checks the other cap and keeps the
 recognized tooth tips and the ink partition intact.
 
 For an initial tooth, `cuts.initialToothTurnAngle` sets the angle in degrees
@@ -161,10 +164,13 @@ A medial form can declare `terminalArmRecovery` with a final `prefixForm`
 for its own letters and an `attached` or `detached` mode. Each mode names a
 final arm profile and a catalog variant label. An attached mode uses a tapered
 arm profile, and a detached mode uses a component arm profile. The prefix is
-segmented with the usual matching priority. `prefixSection` overrides section
+segmented with the usual matching priority. `prefixCuts` overrides cut
 settings for the named prefix form if it matches, and `maxTipGap` controls how
 far the arm tip may sit from the prefix body. The recipe's `cuts` override the
 medial cut policy after recovery. Medial lām uses both arm modes.
+`cuts.detachedEntry` can select a separate source contour when a connected
+final form captured only a small piece of its stroke. The named component
+template defines the stroke and supplies its original contour.
 
 Use the [native tests and catalog comparison](../tools/README.md#letter-audit)
 to check a change. Audit and training snapshots fingerprint the cutter’s

@@ -269,13 +269,24 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
     const auto first = world(sub.baseGlyphs.front().path).boundingRect();
     const auto tail = world(sub.baseGlyphs.back().path).boundingRect();
     const double penWidth = config.value("strokeWidth").toDouble(1);
-    const auto stackedLam = letters.front() == QChar(0x0644) ? namedLetterForm(config, "lam-hah-stacked-init") : QJsonObject{};
-    const bool stackedPair = hasFollowingLetter(letters, 0, stackedLam.value("ligatureWith").toString());
-    const auto shaftFeatures = stackedPair ? formDescription(config, stackedLam, "body").value("features").toObject()
-                                          : QJsonObject{};
-    const double shaftAspect = shaftFeatures.value("maxWidthToHeight").toDouble();
-    const bool overwideLam = shaftAspect > 0 && first.width() > shaftAspect * first.height();
-    const bool clippedLam = initial == "lam-normal-init" && templateId(1) == "hah-stacked-medi" && first.height() < 3.2;
+    const auto& program = bodyCutProgram(config);
+    QString stackedExit;
+    double shaftAspect = 0, minHeightGain = 0;
+    bool overwideStem = false, clippedStem = false;
+    for (const auto& id : program.formsByPosition[0].value(letters.front())) {
+        const auto& form = program.forms.constFind(id).value();
+        const auto policy = form.cuts.value("restoreStackedExit").toObject();
+        if (policy.isEmpty() || !hasFollowingLetter(letters, 0, form.nextLetters)) continue;
+        shaftAspect = form.body.value("features").toObject().value("maxWidthToHeight").toDouble();
+        overwideStem = first.width() > shaftAspect * first.height();
+        clippedStem = initial == policy.value("fromTemplate").toString() &&
+            templateId(1) == policy.value("nextTemplate").toString() &&
+            first.height() < policy.value("maxClippedHeight").toDouble();
+        if (!overwideStem && !clippedStem) continue;
+        stackedExit = id;
+        minHeightGain = policy.value("minHeightGain").toDouble();
+        break;
+    }
     const bool clippedSeen = initial == "seen-init" && first.width() < 1.5 && first.height() < 2;
     const bool clippedHah = initial == "hah-open-init" && first.width() < 1 && first.height() < 1;
     const bool clippedTooth = initial == "beh-shallow-step-init" && (first.width() < .25 || first.height() < .6);
@@ -285,13 +296,12 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             1.05 * QLineF(entryJoin.topBaseLine.point, entryJoin.bottomBaseLine.point).length();
     const bool clippedKafDescent = last >= 2 && initial.startsWith("kaf-") && templateId(1) == "hah-stacked-medi" &&
         QLineF(entryJoin.topBaseLine.point, entryJoin.bottomBaseLine.point).length() < .6 * penWidth;
-    const auto &program = bodyCutProgram(config);
     const auto terminalForm = program.forms.constFind(terminal);
+    const auto terminalCuts = terminalForm == program.forms.cend() ? QJsonObject{} : terminalForm->cuts;
     const auto &lastJoin = *sub.joins.rbegin();
     const QLineF terminalChord(lastJoin.topBaseLine.point, lastJoin.bottomBaseLine.point);
     const bool broadShoulder = sub.kashidaPaths.back().isEmpty() && terminalChord.length() > 2.8 * penWidth &&
-        terminalForm != program.forms.cend() &&
-        terminalForm->cuts.value("route").toObject().contains("range");
+        terminalCuts.value("route").toObject().contains("range");
     const bool checkTerminalTeeth = terminal == "seen-fina" && !sub.kashidaPaths.back().isEmpty();
     struct TurnCut { int join; bool incoming; QString policy; };
     std::vector<TurnCut> turnCuts;
@@ -307,7 +317,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         const double vertical = std::abs(cap.dy()) / width;
         if (policy == "descender" && (!connector || vertical < .4 || vertical > .91)) return;
         if (policy == "stem" && (!connector || vertical > .05 || width > .83 * penWidth)) return;
-        if (policy == "stem-foot" && letters[owner - 1] == QChar(0x0644)) return;
+        if (incoming && form->cuts.value("skipEntryTurnAfter").toString().contains(letters[owner - 1])) return;
         if ((policy == "trim" || policy == "stem-foot") &&
             (vertical < .72 || world(sub.baseGlyphs[owner].path).boundingRect().width() < 2.7 * width))
             return;
@@ -330,10 +340,14 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         if (form != program.forms.cend() && form->cuts.value("preserveEntryRim").toBool())
             clippedCounterEntries.push_back(slot);
     }
-    const bool lostShaft = terminal == "alef-fina" && letters[last - 1] == QChar(0x0647) &&
-        std::min(tail.width(), tail.height()) < .05;
-    const bool lostFold = terminal == "yeh-fina" && templateId(last - 1) == "lam-medi" &&
-        tail.width() < 1.2 && tail.height() < 1.4;
+    const auto reorient = terminalCuts.value("reorientEntry").toObject();
+    const auto after = reorient.value("after").toString(), afterTemplate = reorient.value("afterTemplate").toString();
+    const bool clippedEntry = !reorient.isEmpty() &&
+        (after.isEmpty() || after.contains(letters[last - 1])) &&
+        (afterTemplate.isEmpty() || afterTemplate == templateId(last - 1)) &&
+        tail.width() < reorient.value("maxWidth").toDouble(INFINITY) &&
+        tail.height() < reorient.value("maxHeight").toDouble(INFINITY) &&
+        std::min(tail.width(), tail.height()) < reorient.value("maxShortSide").toDouble(INFINITY);
     const bool risingTail = terminal == "reh-rising-tail-fina" && initial == "ain-round-init";
     const bool clippedReh = !risingTail && (terminal == "reh-rising-tail-fina" || terminal == "reh-fina" ||
         terminal == "reh-shouldered-fina" || terminal == "reh-hook-fina");
@@ -345,11 +359,12 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             formDescription(config, form, "body").value("shape") == "counter-bridge";
     }();
     const bool connectedNoon = letters[last] == QChar(0x0646) && !sub.kashidaPaths.back().isEmpty();
-    const bool liftedAlef = terminal == "alef-return-fina" && letters[last - 1] == QChar(0x0644) &&
-        tail.width() < 1.5 && sub.kashidaPaths.back().isEmpty();
-    if (!overwideLam && !clippedLam && !clippedSeen && !clippedHah && !clippedTooth && !clippedStackedTooth &&
-        !clippedKafDescent && clippedCounterEntries.empty() && !broadShoulder && !lostShaft && !lostFold &&
-        !risingTail && !clippedReh && !clippedKaf && !liftedAlef && !connectedNoon &&
+    const auto detach = terminalCuts.value("detachedEntry").toObject();
+    const bool detachedStroke = detach.value("after").toString().contains(letters[last - 1]) &&
+        tail.width() < detach.value("maxMatchedWidth").toDouble() && sub.kashidaPaths.back().isEmpty();
+    if (!overwideStem && !clippedStem && !clippedSeen && !clippedHah && !clippedTooth && !clippedStackedTooth &&
+        !clippedKafDescent && clippedCounterEntries.empty() && !broadShoulder && !clippedEntry &&
+        !risingTail && !clippedReh && !clippedKaf && !detachedStroke && !connectedNoon &&
         turnCuts.empty() && !checkTerminalTeeth)
         return;
 
@@ -363,16 +378,13 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             if (value.toObject().value("id") == id) return value.toObject();
         return QJsonObject{};
     };
-    const auto walk = [&](const char* position, const QString& id, bool seen = false,
+    const auto walk = [&](const char* position, const QString& id,
                           ContourRouteSearch* routeSearch = nullptr) -> std::optional<Stretching> {
         outline.form = form(position, id);
         outline.nextIter = std::next(outline.xSorted.begin());
         outline.res = {};
         if (outline.form.isEmpty() ||
-            !(sharedShapeDescription(outline.form.value("body").toObject())
-                  ? declaredSharedBoundary(outline, resolvedBodyForm(config, outline.form), nullptr, false, nullptr, routeSearch)
-              : outline.form.contains("body") ? declaredLamBoundary(outline, config, outline.form)
-                                              : searchContourWalk(outline)))
+            !declaredSharedBoundary(outline, resolvedBodyForm(config, outline.form), nullptr, false, nullptr, routeSearch))
             return {};
         return outline.res;
     };
@@ -620,7 +632,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         // intrinsic shoulder and keep the join shared at the narrow seam.
         ContourRouteSearch search;
         for (; search.position < search.count; ++search.position) {
-            auto cut = walk("final", terminal, false, &search);
+            auto cut = walk("final", terminal, &search);
             if (!cut || QLineF(cut->topBaseLine.point, cut->bottomBaseLine.point).length() > .6 * terminalChord.length())
                 continue;
             orientSection(outline, *cut, outline.xSorted.rbegin()->time, true);
@@ -638,10 +650,11 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
 
     // The generic contour route can reach around the head under a stacked
     // shaft. Require actual ink just inside the projecting lip to change owner.
-    if (overwideLam && declaredLamBoundary(outline, config, stackedLam)) {
+    const auto overwideBoundary = overwideStem ? walk("initial", stackedExit) : std::nullopt;
+    if (overwideBoundary) {
         const auto oldShaft = world(sub.baseGlyphs.front().path);
         const auto lip = outline.xSorted.begin()->point;
-        const auto stem = descendingStemDescription(config, stackedLam);
+        const auto stem = program.forms.constFind(stackedExit)->body.value("stem").toObject();
         const double pen = stem.value("penWidth").toDouble(.5);
         const auto shaftRestored = [&] {
             const auto repaired = world(sub.baseGlyphs.front().path).boundingRect();
@@ -670,23 +683,21 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             }
             return true;
         };
-        const auto id = stackedLam.value("id").toString();
-        if (replace(0, outline.res, {}, id + " · stacked head restored to its own body", shaftRestored)) {
-            recordAssembledForm(sub, 0, id);
-            recordBoundaryTemplate(sub, 0, false, id);
-            recordBoundaryTemplate(sub, 1, true, id);
+        if (replace(0, *overwideBoundary, {}, stackedExit + " · stacked head restored to its own body", shaftRestored)) {
+            recordAssembledForm(sub, 0, stackedExit);
+            recordBoundaryTemplate(sub, 0, false, stackedExit);
+            recordBoundaryTemplate(sub, 1, true, stackedExit);
         }
     }
 
-    if (clippedLam || clippedSeen || clippedHah || clippedTooth || clippedStackedTooth) {
+    if (clippedStem || clippedSeen || clippedHah || clippedTooth || clippedStackedTooth) {
         const auto current = *sub.joins.begin();
         auto connector = sub.kashidaPaths.front().isEmpty() ? std::optional<Stretching>{} : entry(current);
         std::optional<Stretching> boundary;
         QString boundaryId;
-        if (clippedLam) {
-            boundaryId = "lam-hah-stacked-init";
-            const auto declaration = form("initial", boundaryId);
-            if (!declaration.isEmpty() && declaredLamBoundary(outline, config, declaration)) boundary = outline.res;
+        if (clippedStem) {
+            boundaryId = stackedExit;
+            boundary = walk("initial", boundaryId);
         } else if ((clippedSeen || clippedTooth || clippedStackedTooth) && last >= 2 && QStringLiteral("جحخ").contains(letters[1])) {
             boundaryId = "hah-stacked-medi";
             const auto settings = form("medial", boundaryId).value("upperAttachment").toObject();
@@ -697,28 +708,30 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             if (boundary) connector.reset();
         } else {
             boundaryId = clippedTooth ? QStringLiteral("beh-foot-init") : initial;
-            boundary = walk("initial", boundaryId, clippedSeen);
+            boundary = walk("initial", boundaryId);
         }
         if (boundary) {
             const auto restoresBody = [&] {
                 const auto repaired = world(sub.baseGlyphs.front().path).boundingRect();
-                return clippedLam ? repaired.height() >= 2 * first.height() :
+                return clippedStem ? repaired.height() >= minHeightGain * first.height() :
                     repaired.width() >= std::max(.45, 1.5 * first.width()) && repaired.height() >= 1.2;
             };
             if (replace(0, *boundary, connector, boundaryId + " · initial stroke restored at its own boundary", restoresBody)) {
+                if (clippedStem) recordAssembledForm(sub, 0, boundaryId);
                 recordBoundaryTemplate(sub, 0, false, boundaryId);
                 if (!connector) recordBoundaryTemplate(sub, 1, true, boundaryId);
             }
         }
     }
 
-    if (lostShaft || lostFold) {
+    if (clippedEntry) {
         auto seam = entry(*sub.joins.rbegin());
         orientSection(outline, seam, outline.xSorted.rbegin()->time, true);
         const auto restoresBody = [&] {
             const auto repaired = world(sub.baseGlyphs.back().path).boundingRect();
             return repaired.left() <= outline.bbox.left() + 1e-5 &&
-                (lostShaft ? repaired.height() >= 4 : repaired.width() >= 2.5 && repaired.height() >= 1.4);
+                repaired.width() >= reorient.value("minWidth").toDouble() &&
+                repaired.height() >= reorient.value("minHeight").toDouble();
         };
         const auto source = sub.letterDiagnostics.last().toObject().value("entryTemplate").toString(terminal);
         if (replace(last - 1, seam, {}, terminal + " · terminal stroke restored at its own boundary", restoresBody)) {
@@ -871,19 +884,26 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             })) recordBoundaryTemplate(sub, last, true, terminal);
     }
 
-    if (liftedAlef) {
+    if (detachedStroke) {
+        const auto id = detach.value("template").toString();
+        const auto detached = program.forms.constFind(id);
+        if (detached == program.forms.cend()) return;
+        const auto arm = detached->body.value("arm").toObject();
+        const auto stroke = arm.value("singleStroke").toObject();
         const auto contours = toSubpaths(shape.path);
         if (contours.size() != 2) return;
         const auto branch = world(contours[1]);
         const auto main = world(contours[0]);
         const auto box = branch.boundingRect();
-        if (box.height() < 3 || box.width() < 2 || box.top() > main.boundingRect().top() + 3 ||
+        if (box.height() < arm.value("minRise").toDouble() || box.width() < stroke.value("minWidth").toDouble() ||
+            box.top() > main.boundingRect().top() + stroke.value("maxTopOffset").toDouble() ||
             box.left() >= tail.left() || branch.intersects(main))
             return;
         const auto top = singleHorizontalStroke(branch, box, box.top() + .25 * box.height());
         const auto bottom = singleHorizontalStroke(branch, box, box.top() + .75 * box.height());
-        if (!top || !bottom || bottom->center().x() - top->center().x() < .3 * box.height() ||
-            std::max(top->length(), bottom->length()) > .45 * box.height())
+        if (!top || !bottom ||
+            bottom->center().x() - top->center().x() < stroke.value("minLeanToHeight").toDouble() * box.height() ||
+            std::max(top->length(), bottom->length()) > stroke.value("maxWidthToHeight").toDouble() * box.height())
             return;
         auto previous = sub;
         sub.joins.erase(std::prev(sub.joins.end()));
@@ -900,6 +920,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             sub = std::move(previous);
             return;
         }
+        recordAssembledForm(sub, last, id);
         auto diagnostic = sub.letterDiagnostics[last].toObject();
         diagnostic.insert("boundaryKind", "separate-contours");
         diagnostic.remove("entryTemplate");
@@ -907,6 +928,6 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         auto previousLetter = sub.letterDiagnostics[last - 1].toObject();
         previousLetter.remove("exitTemplate");
         sub.letterDiagnostics[last - 1] = previousLetter;
-        sub.templateTrace.append(terminal + " · detached diagonal retained in alef");
+        sub.templateTrace.append(id + " · detached diagonal retained by its own contour");
     }
 }

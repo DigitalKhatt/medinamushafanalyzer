@@ -50,10 +50,10 @@ int main(int argc, char** argv) {
     WordResultInfo::SubWordInfo dummy;
     auto c = geometry(source, dummy);
     c.form = lam;
-    check(declaredLamBoundary(c, config, c.form), "Expected the old overwide lam proposal");
+    check(declaredSharedBoundary(c, resolvedBodyForm(config, c.form)), "Expected the old overwide lam proposal");
     check(!matchesBoundaryBody(c, lam, c.res, true), "Overwide lam body was accepted");
     c.form = lamNormal; c.res = {};
-    check(declaredLamBoundary(c, config, c.form) && matchesBoundaryBody(c, lamNormal, c.res, true), "Lam stem was rejected");
+    check(declaredSharedBoundary(c, resolvedBodyForm(config, c.form)) && matchesBoundaryBody(c, lamNormal, c.res, true), "Lam stem was rejected");
     const auto lamCut = c.res;
     const auto badShared = contourBodyBoundaries(c, pairedRouteSettings(rule("medial", "hah-stacked-medi")));
     check(!badShared.empty(), "Expected the former lam-tip ligature proposal");
@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
             return same(*tall->right, *p.right, mapping) && same(tall->left, p.left, mapping);
         }), "Baseline-entry tooth changed under scale/translation");
         scaled.form = lamNormal;
-        check(declaredLamBoundary(scaled, config, scaled.form) && same(lamCut, scaled.res, mapping) &&
+        check(declaredSharedBoundary(scaled, resolvedBodyForm(config, scaled.form)) && same(lamCut, scaled.res, mapping) &&
               matchesBoundaryBody(scaled, lamNormal, scaled.res, true), "Lam body constraints changed under scaling");
     }
     check(analysis.segmentSubword(599, 2, 9, 0, nullptr, true), "Lam-kha example did not complete");

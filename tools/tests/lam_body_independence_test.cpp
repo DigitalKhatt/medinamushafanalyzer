@@ -6,7 +6,7 @@ using namespace MedinaCutter;
 
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 
-static QByteArray snapshot(const LamMedialBodyEvidence& evidence) {
+static QByteArray snapshot(const MedialStemEvidence& evidence) {
     QByteArray bytes;
     QDataStream out(&bytes, QIODevice::WriteOnly);
     const auto point = [&](const PathExtrema& p) {
@@ -58,7 +58,7 @@ static void checkConnectedShafts() {
     WordResultInfo::SubWordInfo empty;
     SearchContext context{.transformedPath = ink, .subword = empty};
     check(readTerminalOutline(context), "Two-shaft fixture outline missing");
-    const auto evidence = recognizeMedialLamBodies(inkOutline(context),
+    const auto evidence = recognizeMedialStems(inkOutline(context),
         QJsonObject{{"shape", "forked-stem"}, {"minFlankSpan", .25}});
     int shafts = 0;
     for (const auto& stem : evidence.stems) {
@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
         context.nextIter = context.xSorted.begin();
         const auto form = resolvedBodyForm(config, namedLetterForm(config, f.form));
         const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
-        const auto evidence = recognizeMedialLamBodies(inkOutline(context), body);
+        const auto evidence = recognizeMedialStems(inkOutline(context), body);
         check(!evidence.stems.empty() || !evidence.turningShafts.empty(), "No body evidence without joins");
         const auto original = snapshot(evidence);
 
@@ -113,18 +113,18 @@ int main(int argc, char** argv) {
         context.baseText = QStringLiteral("unrelated");
         context.res.topBaseLine.point = {-10000, 10000};
         empty.joins.insert(context.res);
-        check(snapshot(recognizeMedialLamBodies(inkOutline(context), body)) == original,
+        check(snapshot(recognizeMedialStems(inkOutline(context), body)) == original,
               "Neighbor joins, widths or assembly state changed body recognition");
 
         OutlineSearchCache cache;
         context.outlineCache = &cache;
-        const auto cached = recognizedMedialLamBodies(context, body);
+        const auto cached = recognizedSharedShape(context, body);
         auto edited = form;
         auto policy = cuts;
         policy.insert("forkOffset", .25);
         policy.insert("placement", QJsonObject{{"entryOverlap", 0}, {"turnAngle", 75}});
         edited.insert("cuts", policy);
-        check(recognizedMedialLamBodies(context, edited.value("body").toObject()) == cached,
+        check(recognizedSharedShape(context, edited.value("body").toObject()) == cached,
               "A cut-only edit invalidated intrinsic body evidence");
 
         // Every saved route must project identically to recognizing that
@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
             const QPointF impossible(context.bbox.left() - 100, context.bbox.top() - 100);
             LetterFormInspection report; report.formId = f.form; report.ink = context.transformedPath;
             formInspection = &report;
-            const auto rejected = assembleMedialLamCuts(context, config, form, evidence, {},
+            const auto rejected = stemBoundaryCandidates(context, config, form, evidence, {},
                 impossible, impossible, .5, false, false, true, {});
             formInspection = nullptr;
             check(rejected.empty(), "Assembly accepted an impossible neighboring slot");

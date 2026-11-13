@@ -16,7 +16,7 @@ static QByteArray snapshot(const std::vector<MedialCandidate>& candidates) {
             appendCandidateBoundary(bytes, c.hollowCuts->first);
             appendCandidateBoundary(bytes, c.hollowCuts->second);
         }
-        for (const auto& p : {c.lamCrest, c.lamFork}) {
+        for (const auto& p : {c.stemCrest, c.stemFork}) {
             appendGeometryKey(bytes, bool(p));
             if (p) appendGeometryAnchor(bytes, *p);
         }
@@ -158,11 +158,11 @@ int main(int argc, char** argv) {
             const auto verify = [&](const QJsonObject& rules, const QJsonObject& declaration, const Stretching& before,
                                     QPointF at, double width, bool open, bool recovery,
                                     const std::optional<Stretching>& shared) {
-                const auto evidence = recognizedMedialLamBodies(context,declaration.value("body").toObject());
-                const auto expected = computeMedialLamCuts(context,rules,declaration,*evidence,before,at,exit,
+                const auto evidence = recognizedSharedShape(context,declaration.value("body").toObject());
+                const auto expected = computeStemBoundaries(context,rules,declaration,*evidence->medialStem,before,at,exit,
                                                             width,open,recovery,true,shared);
                 for (int repeat=0; repeat<2; ++repeat) {
-                    const auto actual = assembleMedialLamCuts(context,rules,declaration,*evidence,before,at,exit,
+                    const auto actual = stemBoundaryCandidates(context,rules,declaration,*evidence->medialStem,before,at,exit,
                                                                width,open,recovery,true,shared);
                     check(snapshot(actual)==snapshot(expected), "Cached lam candidates differ from a fresh search");
                 }
@@ -192,7 +192,7 @@ int main(int argc, char** argv) {
                 break;
             }
             rules.insert("medial", medial);
-            verify(rules,form,incoming,entry,stroke,false,true,{});
+            verify(rules,resolvedLetterForm(rules,"lam-medi"),incoming,entry,stroke,false,true,{});
             context.pairedStrokeWidth = .7;
             verify(config,form,incoming,entry,stroke,false,true,{});
         }

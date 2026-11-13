@@ -193,15 +193,13 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
     auto prefix = componentPage(shape, connected, letters.chopped(1));
     auto& result = prefix.page.lines.front().words.front().wordResultInfo.subWords.front();
     auto prefixForms = config;
-    const auto sectionOverride = mode.value("prefixSection").toObject();
-    if (!sectionOverride.isEmpty()) {
+    const auto cutOverride = mode.value("prefixCuts").toObject();
+    if (!cutOverride.isEmpty()) {
         auto rules = prefixForms.value("final").toArray();
         for (int i = 0; i < rules.size(); ++i) {
             auto form = rules[i].toObject();
             if (form.value("id") != prefixForm.value("id")) continue;
-            auto cuts = formDescription(prefixForms, form, "cuts");
-            cuts.insert("section", withOverrides(cuts.value("section").toObject(), sectionOverride));
-            form.insert("cuts", cuts);
+            form.insert("cuts", mergeShapeSettings(formDescription(prefixForms, form, "cuts"), cutOverride));
             rules[i] = form;
             break;
         }

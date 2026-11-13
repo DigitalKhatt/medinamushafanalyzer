@@ -44,15 +44,14 @@ int main(int argc, char** argv) {
         for (int i = 0; i < forms.size(); ++i) {
             auto form = forms[i].toObject();
             if (form.value("id") != "lam-medi") continue;
-            const auto field = badReference ? "body" : "cuts";
-            auto settings = form.value(field).toObject();
-            if (badReference) settings.insert("alefArm", "missing-body");
-            else {
-                auto terminal = settings.value("beforeFinal").toObject();
-                terminal.insert("junction", "normal");
-                settings.insert("beforeFinal", terminal);
-            }
-            form.insert(field, settings);
+            auto settings = form.value("cuts").toObject();
+            auto terminal = settings.value("beforeFinal").toObject();
+            auto junction = terminal.value("junction").toObject();
+            if (badReference) junction.insert("template", "missing-body");
+            else junction.insert("at", "normal");
+            terminal.insert("junction", junction);
+            settings.insert("beforeFinal", terminal);
+            form.insert("cuts", settings);
             forms[i] = form;
         }
         invalid.insert("medial", forms);

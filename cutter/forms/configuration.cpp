@@ -259,11 +259,9 @@ namespace MedinaCutter {
 // Shared shape declarations keep recognition measurements separate from cut
 // projection. The field readers also serve forms not migrated yet; they do not
 // reconstruct a legacy method or route through the old method dispatcher.
-bool lamDescription(const QJsonObject &body) {
-    static const QStringList shapes{"contour-stem",    "descending-stem", "forked-stem",
-                                    "turning-shaft",   "terminal-bowl",   "terminal-fork",
-                                    "terminal-return"};
-    return shapes.contains(body.value("shape").toString());
+bool hasStemFlanks(const QJsonObject& body) {
+    const auto shape = body.value("shape");
+    return shape == "forked-stem" || shape == "turning-shaft";
 }
 
 const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
@@ -275,6 +273,10 @@ const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
         {"counter-rim", {"rim", {"free", "loop-entry", "loop-exit"}}},
         {"counter-outline", {"outline", {"free", "outline-entry", "outline-exit"}}},
         {"contour-route", {"route", {"free", "contour-route"}}},
+        {"descending-stem", {"stem", {"free", "stem-section"}}},
+        {"terminal-fork", {"stem", {"free", "fork-normal"}}},
+        {"forked-stem", {"", {"fork-normal"}}},
+        {"turning-shaft", {"shaft", {"shaft-normal"}}},
         {"suspended-loop", {"head", {"free", "head-neck"}}},
         {"crested-loop", {"head", {"free", "head-neck"}}},
         {"open-head", {"head", {"free", "head-neck"}}},
@@ -282,7 +284,7 @@ const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
         {"open-bowl", {"bowl", {"free", "corner-junction"}}},
         {"horizontal-counters", {"pair", {"free", "pair-neck"}}},
         {"stacked-counters", {"pair", {"free", "pair-neck"}}},
-        {"tail-branch", {"tail", {"free", "branch-normal"}}},
+        {"tail-branch", {"tail", {"free", "branch-normal", "fork-normal"}}},
         {"rising-return", {"return", {"free", "return-seam"}}},
         {"folded-return", {"return", {"free", "return-seam"}}},
         {"paired-route", {"routes", {"route-left", "route-right"}}},
@@ -292,7 +294,7 @@ const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
         {"returning-lips", {"mouth", {"corner-normal"}}},
         {"inclined-blade", {"blade", {"corner-normal"}}},
         {"parallel-return", {"bands", {"band-section"}}},
-        {"stemmed-bowl", {"stem", {"free", "stem-turn"}}},
+        {"stemmed-bowl", {"stem", {"free", "stem-turn", "fork-normal"}}},
         {"upright-stem", {"stem", {"free", "stem-turn"}}},
         {"forked-bowl", {"fork", {"free", "branch-normal"}}},
         {"counter-attachment", {"attachment", {"free", "counter-bridge", "counter-shoulder"}}},
@@ -401,6 +403,10 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
     }
     if (shape == "upright-stem")
         form = withOverrides(form, shapeSettings(form, "stem"));
+    if (shape == "descending-stem")
+        form.insert("descendingStem", body.value("stem"));
+    if (shape == "terminal-fork")
+        form.insert("start", "left");
     if (shape == "layered-head")
         form = withOverrides(form, shapeSettings(form, "head"));
     if (shape == "counter-attachment") {
@@ -496,7 +502,7 @@ static QString invalidBowlJunction(const QJsonObject& junction) {
     return {};
 }
 
-static QString validateSharedShape(const QJsonObject &form, const QString &phase) {
+static QString validateSharedShape(const QJsonObject& config, const QJsonObject& form, const QString& phase) {
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto shape = body.value("shape").toString(), id = form.value("id").toString();
     if (cuts.isEmpty())
@@ -509,6 +515,207 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     const auto schema = sharedShapeSchemas().value(shape);
     const auto &section = schema.section;
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
+    const auto positive = [](const QJsonValue& value) {
+        return value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble() > 0;
+    };
+    const auto turnError = invalidTurnBoundaries(cuts.value("turnBoundaries"), id, phase);
+    if (!turnError.isEmpty()) return turnError;
+    if (hasStemFlanks(body)) {
+        if (phase != "medial") return id + ": stem flanks require an entry and exit";
+        bodyKeys << "minRise" << "maxWidthToHeight" << "minFlankSpan" << "entryRoute" << "exitRoutes";
+        cutKeys << "forkOffset" << "tightJoin" << "counterJoin" << "entryRoute" << "exitRoutes" << "placement"
+                << "shortExit" << "overlappingExit" << "sharedFold" << "sharedEntryCorner";
+        if (!positive(body.value("minRise")) || !positive(body.value("maxWidthToHeight")) ||
+            !positive(body.value("minFlankSpan")))
+            return id + ": stem flanks need positive rise, aspect and flank measurements";
+        if (shape == "forked-stem") {
+            const auto checkRoute = [&](const QJsonValue& route, const QJsonValue& policy, const QString& name) {
+                if (!route.isObject() || !policy.isObject() || route.toObject().value("top").toArray().isEmpty())
+                    return id + ": " + name + " needs body landmarks and a cut policy";
+                return invalidWalkSettings(withOverrides(route.toObject(), policy.toObject()), id + "." + name);
+            };
+            const auto routes = body.value("exitRoutes").toArray(), policies = cuts.value("exitRoutes").toArray();
+            if (routes.isEmpty() || routes.size() != policies.size())
+                return id + ": body/cut exitRoutes must have equal nonzero size";
+            for (int i = 0; i < routes.size(); ++i) {
+                const auto problem = checkRoute(routes[i], policies[i], "exitRoutes");
+                if (!problem.isEmpty()) return problem;
+            }
+            const auto problem = checkRoute(body.value("entryRoute"), cuts.value("entryRoute"), "entryRoute");
+            if (!problem.isEmpty()) return problem;
+            const auto placement = cuts.value("placement").toObject();
+            if (!positive(placement.value("entryOverlap")) || !positive(placement.value("turnAngle")) ||
+                placement.value("turnAngle").toDouble() >= 90 || !placement.value("levelForkEntry").isBool())
+                return id + ": invalid cuts.placement";
+        }
+        if (shape == "turning-shaft") {
+            const auto shaft = body.value("shaft").toObject();
+            if (shaft.size() != 3 || !positive(shaft.value("minRise")) ||
+                !positive(shaft.value("maxWidthToHeight")) || !positive(shaft.value("turnAngle")) ||
+                shaft.value("turnAngle").toDouble() >= 90)
+                return id + ": body.shaft needs a positive rise, aspect and turn angle below 90 degrees";
+            const auto policy = cuts.value("shaft").toObject();
+            const auto walk = policy.value("walkWidths");
+            if (policy.size() != 3 || !walk.isDouble() || !std::isfinite(walk.toDouble()) ||
+                walk.toDouble() < 0 || !policy.value("atTurnWhenTight").isBool() ||
+                !policy.value("forkJunction").isBool())
+                return id + ": cuts.shaft needs a nonnegative walk and explicit turn and junction policies";
+        }
+        const auto shortExit = cuts.value("shortExit");
+        if (!shortExit.isUndefined() && shortExit != QJsonValue(false)) {
+            if (!shortExit.isObject()) return "cuts.shortExit must be an object or false";
+            const auto settings = shortExit.toObject();
+            for (const auto* key : {"minHorizontalRun", "maxEntryGap", "minLengthRatio", "anchorTolerance"}) {
+                const auto value = settings.value(key);
+                const double minimum = QString(key) == "minLengthRatio" ? 1 : 0;
+                if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= minimum)
+                    return QString("cuts.shortExit.%1 must be greater than %2").arg(key).arg(minimum);
+            }
+            const auto hollow = settings.value("cutsAroundHollow");
+            if (!hollow.isUndefined() && !hollow.isBool())
+                return "cuts.shortExit.cutsAroundHollow must be true or false";
+            const auto tilt = settings.value("entryMaxTilt");
+            if (!tilt.isUndefined() && (!tilt.isDouble() || !std::isfinite(tilt.toDouble()) || tilt.toDouble() < 0 || tilt.toDouble() >= 90))
+                return "cuts.shortExit.entryMaxTilt must be an angle from 0 up to 90 degrees";
+        }
+        const auto forkOffset = cuts.value("forkOffset");
+        if (!forkOffset.isUndefined() && !positive(forkOffset))
+            return id + ": cuts.forkOffset must be positive in page units";
+        if (const auto value = cuts.value("overlappingExit"); !value.isUndefined()) {
+            const auto attachment = value.toObject();
+            const auto finals = config.value("final").toArray();
+            const auto partner = std::find_if(finals.begin(), finals.end(), [&](const auto& value) {
+                return value.toObject().value("id") == attachment.value("finalTemplate");
+            });
+            if (attachment.size() != 3 ||
+                !positive(attachment.value("maxEntryShiftWidths")) ||
+                !positive(attachment.value("minGapToOffset")) || partner == finals.end() ||
+                formDescription(config, partner->toObject(), "body").value("shape") != "counter-shoulder")
+                return id + ": cuts.overlappingExit needs a final counter-shoulder template and positive shift and gap ratios";
+        }
+        if (const auto value = cuts.value("sharedEntryCorner"); !value.isUndefined()) {
+            const auto settings = value.toObject();
+            const auto initials = config.value("initial").toArray();
+            const auto partner = std::find_if(initials.begin(), initials.end(), [&](const auto& value) {
+                return value.toObject().value("id") == settings.value("initialTemplate");
+            });
+            if (QString(phase) != "medial" || settings.size() != 2 || partner == initials.end() ||
+                !positive(settings.value("maxClipWidths")))
+                return id + ": cuts.sharedEntryCorner needs a medial body, an initial template and a positive clip limit";
+            const auto body = formDescription(config, partner->toObject(), "body");
+            if (body.value("shape") != "contour-route" || body.value("counters").toInt() != 1)
+                return id + ": cuts.sharedEntryCorner requires an initial contour route enclosing one counter";
+        }
+        if (const auto value = cuts.value("sharedFold"); !value.isUndefined()) {
+            const auto fold = value.toObject();
+            const auto receiver = namedLetterForm(config, fold.value("template").toString());
+            const auto letters = fold.value("letters").toString();
+            const auto selects = receiver.value("current").toString();
+            if (fold.size() != 3 || letters.isEmpty() || !positive(fold.value("maxSlope")) ||
+                formDescription(config, receiver, "body").value("shape") != "folded-return" ||
+                !std::ranges::all_of(letters, [&](QChar letter) { return selects.contains(letter); }))
+                return id + ": cuts.sharedFold needs a final folded-return template, its letters and a positive slope";
+        }
+        if (!QStringList{"tip-normal", "preserve"}.contains(cuts.value("tightJoin").toString()) ||
+            cuts.value("counterJoin") != "preserve-entry")
+            return id + ": cuts needs a tightJoin policy and counterJoin: preserve-entry";
+    }
+    if (hasStemFlanks(body) || (phase == "initial" && (shape == "contour-route" || shape == "descending-stem"))) {
+        cutKeys << "beforeFinal";
+        const auto terminal = cuts.value("beforeFinal");
+        if (!terminal.isUndefined() && terminal != QJsonValue(false) &&
+            (!terminal.isObject() || terminal.toObject().value("letters").toString().isEmpty()))
+            return id + ": cuts.beforeFinal needs a terminal letter selector, or false";
+        if (terminal.isObject()) {
+            const auto entry = terminal.toObject();
+            const auto boundaries = entry.value("boundaries").toObject();
+            const auto right = boundaries.value("right");
+            const bool validEntry = phase == "initial" ? right == "free" : right == "fork-normal" || right == "preserve";
+            if (boundaries.size() != 2 || !validEntry || boundaries.value("left") != "shared-return")
+                return id + ": a terminal return needs an entry and a shared exit";
+            if (entry.contains("preserveEntryAfter") &&
+                (phase != "medial" || entry.value("preserveEntryAfter").toString().isEmpty()))
+                return id + ": preserveEntryAfter needs a medial form and preceding letters";
+            if (entry.contains("junction")) {
+                const auto joint = entry.value("junction").toObject();
+                const auto final = namedLetterForm(config, joint.value("template").toString());
+                const auto following = entry.value("letters").toString();
+                const auto selectors = final.value("current").toString();
+                if (joint.size() != 2 || joint.value("at") != "inward-corners" ||
+                    formDescription(config, final, "body").value("shape") != "tapered-arm" ||
+                    !std::ranges::all_of(following, [&](QChar letter) { return selectors.contains(letter); }))
+                    return id + ": a terminal junction needs a tapered-arm template supplying the shared cut";
+            }
+            for (auto it = entry.begin(); it != entry.end(); ++it)
+                if (!QStringList{"letters", "boundaries", "junction", "preserveEntryAfter"}.contains(it.key()))
+                    return id + ": unknown terminal return setting " + it.key();
+        }
+    }
+    if (phase == "final" && boundaries.value("right") == "fork-normal") {
+        bodyKeys << "minFlankSpan" << "minRise" << "maxWidthToHeight";
+        cutKeys << "forkOffset" << "tightJoin" << "preserveEntryAfter";
+        if (!positive(body.value("minFlankSpan")) || !positive(body.value("minRise")) ||
+            !positive(body.value("maxWidthToHeight")) ||
+            !positive(cuts.value("forkOffset")) ||
+            !QStringList{"tip-normal", "preserve"}.contains(cuts.value("tightJoin").toString()) ||
+            (cuts.contains("preserveEntryAfter") && !cuts.value("preserveEntryAfter").isString()))
+            return id + ": a fork entry needs positive flank, rise and offset measurements and a tight-join policy";
+    }
+    if (cuts.contains("shareTerminalReturn")) {
+        if (phase != "initial" || shape != "contour-route" || !cuts.value("shareTerminalReturn").isBool())
+            return id + ": shareTerminalReturn needs an initial contour route";
+        cutKeys << "shareTerminalReturn";
+    }
+    if (const auto value = cuts.value("restoreStackedExit"); !value.isUndefined()) {
+        const auto restore = value.toObject();
+        const auto previous = namedLetterForm(config, restore.value("fromTemplate").toString());
+        const auto next = namedLetterForm(config, restore.value("nextTemplate").toString());
+        if (shape != "descending-stem" || restore.size() != 4 ||
+            body.value("stem").toObject().value("headLip").toObject().isEmpty() ||
+            !positive(body.value("features").toObject().value("maxWidthToHeight")) ||
+            previous.isEmpty() || next.isEmpty() ||
+            !positive(restore.value("maxClippedHeight")) || !positive(restore.value("minHeightGain")))
+            return id + ": restoreStackedExit requires a stacked stem, two template references and positive height limits";
+        cutKeys << "restoreStackedExit";
+    }
+    if (const auto value = cuts.value("skipEntryTurnAfter"); !value.isUndefined()) {
+        if (value.toString().isEmpty() || !cuts.value("turnBoundaries").toObject().contains("right"))
+            return id + ": skipEntryTurnAfter needs preceding letters and an entry turn";
+        cutKeys << "skipEntryTurnAfter";
+    }
+    if (const auto value = cuts.value("reorientEntry"); !value.isUndefined()) {
+        const auto reorient = value.toObject();
+        if (phase != "final" || !positive(reorient.value("minHeight")) ||
+            (!reorient.contains("maxWidth") && !reorient.contains("maxHeight") && !reorient.contains("maxShortSide")))
+            return id + ": reorientEntry needs a final body and a height and clipping limit";
+        for (auto it = reorient.begin(); it != reorient.end(); ++it) {
+            const bool valid = it.key() == "after" ? !it.value().toString().isEmpty() :
+                it.key() == "afterTemplate" ? !namedLetterForm(config, it.value().toString()).isEmpty() :
+                QStringList{"minWidth", "minHeight", "maxWidth", "maxHeight", "maxShortSide"}.contains(it.key()) &&
+                    positive(it.value());
+            if (!valid) return id + ": invalid reorientEntry setting " + it.key();
+        }
+        cutKeys << "reorientEntry";
+    }
+    if (const auto value = cuts.value("detachedEntry"); !value.isUndefined()) {
+        const auto detached = value.toObject();
+        const auto arm = namedLetterForm(config, detached.value("template").toString());
+        const auto armBody = formDescription(config, arm, "body");
+        const auto letters = form.value("current").toString(), covered = arm.value("current").toString();
+        if (phase != "final" || detached.size() != 3 || detached.value("after").toString().isEmpty() ||
+            !positive(detached.value("maxMatchedWidth")) || armBody.value("shape") != "component-arm" ||
+            armBody.value("arm").toObject().value("singleStroke").toObject().isEmpty() ||
+            !std::ranges::all_of(letters, [&](QChar letter) { return covered.contains(letter); }))
+            return id + ": detachedEntry needs a single-stroke component template, preceding letters and a positive width limit";
+        cutKeys << "detachedEntry";
+    }
+    if (shape == "descending-stem" || shape == "terminal-fork") {
+        const auto stem = body.value("stem").toObject(), policy = cuts.value("stem").toObject();
+        if (!positive(stem.value("minRise")) || !positive(stem.value("penWidth")) ||
+            (shape == "descending-stem" ? phase != "initial" || !policy.isEmpty() :
+                phase != "final" || !positive(policy.value("walkWidths"))))
+            return id + ": invalid stem geometry or boundary for this position";
+    }
     if (cuts.contains("preserveEntryRim")) {
         if (phase == "initial" || !QStringList{"counter-neck", "counter-outline", "counter-loop"}.contains(shape) ||
             !cuts.value("preserveEntryRim").isBool())
@@ -616,6 +823,7 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         if (!cutKeys.contains(it.key()))
             return id + ": unknown cut-policy setting " + it.key();
     for (const auto *old : {"method",
+                            "legacyLamRoutes",
                             "counter",
                             "loopBoundaries",
                             "bodyOutline",
@@ -645,11 +853,13 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         "penWidth",   "strokeSource",  "walkNormalOffset", "anchorSide",     "visibleFrom",  "maxProjectionInset", "maxChordToRun",
         "returningFoot", "floorExit", "snapOppositeToOrigin", "allowUnshiftedEntry", "normalWalkBack", "normalFrom",
         "rimWalkWidths"};
-    const auto checkBody = [&](auto &&self, const QJsonObject &value, bool anchor = false) -> bool {
+    const auto checkBody = [&](auto &&self, const QJsonObject &value, const QString& sectionName = {}) -> bool {
         for (auto it = value.begin(); it != value.end(); ++it) {
-            if (projectionKeys.contains(it.key()) && !(anchor && it.key() == "offset"))
+            const bool scale = sectionName == "stem" && it.key() == "penWidth" &&
+                (shape == "descending-stem" || shape == "terminal-fork");
+            if (projectionKeys.contains(it.key()) && !scale && !(sectionName == "anchor" && it.key() == "offset"))
                 return false;
-            if (it.value().isObject() && !self(self, it.value().toObject(), it.key() == "anchor"))
+            if (it.value().isObject() && !self(self, it.value().toObject(), it.key()))
                 return false;
         }
         return true;
@@ -750,6 +960,12 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     }
     if (shape == "tail-branch") {
         const auto tail = cuts.value("tail").toObject();
+        const auto dimensions = body.value("tail").toObject();
+        if (boundaries.value("right") == "fork-normal" &&
+            (!positive(dimensions.value("minRise")) || !positive(dimensions.value("minRun")) ||
+             !positive(dimensions.value("maxRun")) || dimensions.value("minRun").toDouble() > dimensions.value("maxRun").toDouble() ||
+             !positive(tail.value("walkWidths"))))
+            return id + ": a forked return needs positive rise, run and walk measurements";
         const auto strokeSource = tail.value("strokeSource");
         const auto strokeWidth = tail.value("strokeWidth");
         if (!strokeSource.isUndefined() && strokeSource != "global")
@@ -790,9 +1006,16 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     }
     if (shape == "component-arm") {
         const auto arm = body.value("arm").toObject(), policy = cuts.value("arm").toObject();
-        if (phase != "final" || arm.size() != 1 || !(arm.value("minRise").toDouble() > 0) || policy.size() != 1 ||
-            !(policy.value("maxTipGap").toDouble() > 0))
+        const auto spec = arm.value("singleStroke");
+        if (phase != "final" || arm.size() != 1 + !spec.isUndefined() || !positive(arm.value("minRise")) ||
+            policy.size() != 1 || !positive(policy.value("maxTipGap")))
             return id + ": invalid component arm or attachment gap";
+        if (!spec.isUndefined()) {
+            const auto stroke = spec.toObject();
+            if (stroke.size() != 4 || !positive(stroke.value("minWidth")) || !positive(stroke.value("maxTopOffset")) ||
+                !positive(stroke.value("minLeanToHeight")) || !positive(stroke.value("maxWidthToHeight")))
+                return id + ": singleStroke needs positive width, top offset, lean and thickness measurements";
+        }
     }
     if (shape == "tapered-arm") {
         const auto arm = body.value("arm").toObject(), policy = cuts.value("arm").toObject();
@@ -996,6 +1219,8 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString &ph
     form.remove("cuts");
     if (shape == "upright-stem")
         form.insert("method", "alef-stem");
+    if (shape == "descending-stem")
+        form.insert("method", "descending-stem");
     if (shape == "layered-head")
         form.insert("method", "hah");
     if (shape == "counter-attachment" && phase == "initial")
@@ -1036,15 +1261,6 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString &ph
 QJsonObject descendingStemDescription(const QJsonObject& config, const QJsonObject& form) {
     return form.contains("body") ? formDescription(config, form, "body").value("stem").toObject()
                                     : form.value("descendingStem").toObject();
-}
-
-QJsonObject medialLamShortExit(const QJsonObject& config) {
-    for (const auto& value : config.value("medial").toArray()) {
-        const auto form = value.toObject();
-        if (formDescription(config, form, "body").value("shape") == "forked-stem")
-            return formDescription(config, form, "cuts").value("shortExit").toObject();
-    }
-    return {};
 }
 
 QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form) {
@@ -1292,7 +1508,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             QJsonObject sharedOutline;
             if (sharedShapeDescription(sharedBody)) {
                 const auto resolved = resolvedBodyForm(config, rule);
-                sharedError = validateSharedShape(resolved, phase);
+                sharedError = validateSharedShape(config, resolved, phase);
                 if (!sharedError.isEmpty())
                     return sharedError;
                 if (hasCounterOutline(resolved)) sharedOutline = counterOutlineSettings(resolved);
@@ -1352,7 +1568,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     const bool attached = QLatin1String(key) == "attached";
                     if (shape != (attached ? "tapered-arm" : "component-arm") ||
                         mode.value("variant").toString().trimmed().isEmpty() ||
-                        (mode.contains("prefixSection") && !mode.value("prefixSection").isObject()) ||
+                        (mode.contains("prefixCuts") && !mode.value("prefixCuts").isObject()) ||
                         (mode.contains("minRise") && (!attached || !positive(mode.value("minRise")))) ||
                         (mode.contains("maxTipGap") && !positive(mode.value("maxTipGap"))))
                         return id + ": invalid terminalArmRecovery." + key + " arm profile, variant or cut settings";
@@ -1489,8 +1705,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                         return id + ": " + side + "." + key + " must be true or false";
               }
             }
-            if (rule.contains("ownsLeftTip") && (QString(phase) != "final" || (rule.value("start") != "left" &&
-                declaredBody.value("shape") != "terminal-return" && declaredBody.value("shape") != "terminal-fork") ||
+            if (rule.contains("ownsLeftTip") && (QString(phase) != "final" || rule.value("start") != "left" ||
                 !rule.value("ownsLeftTip").isBool()))
                 return id + ": ownsLeftTip needs a final form starting from its own left tip";
             if (rule.contains("retainBodyFeatures") && (QString(phase) != "final" ||
@@ -1587,170 +1802,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                                      QStringList{"flankMode", "flankOffset", "maxSectionWidth"};
                 for (auto key = declaredCuts.begin(); key != declaredCuts.end(); ++key)
                     if (!policyKeys.contains(key.key())) return id + ": unknown tooth cuts setting " + key.key();
-            } else if (rule.contains("body") || rule.contains("cuts")) {
-                if (!positive(declaredBody.value("minRise")) || !positive(declaredBody.value("maxWidthToHeight")) ||
-                    !positive(declaredBody.value("minFlankSpan")) || declaredCuts.isEmpty())
-                    return id + ": body needs positive flank/rise/aspect measurements and separate cuts";
-                for (const auto* key : {"method", "top", "bottomProbe", "legacyLamRoutes", "shaft", "tailEntry", "descendingStem",
-                                        "terminalArm", "detachedExit", "prefixTail", "bodyFeatures", "bodyCounters"})
-                    if (rule.contains(key)) return id + ": lām geometry belongs in body / cuts, not " + key;
-                const auto shape = declaredBody.value("shape").toString();
-                const QStringList shapes = QString(phase) == "initial" ? QStringList{"contour-stem", "descending-stem"} :
-                    QString(phase) == "medial" ? QStringList{"forked-stem", "turning-shaft"} :
-                    QStringList{"terminal-bowl", "terminal-fork", "terminal-return"};
-                if (!shapes.contains(shape)) return id + ": unknown body.shape for this position";
-                const auto counters = declaredBody.value("counters");
-                if (!counters.isUndefined() && counters != QJsonValue(false) &&
-                    (!counters.isDouble() || !std::isfinite(counters.toDouble()) || counters.toDouble() < 0 ||
-                     counters.toDouble() != std::floor(counters.toDouble())))
-                    return id + ": body.counters needs a nonnegative integer or false";
-                const auto checkRoute = [&](const QJsonValue& body, const QJsonValue& cuts, const QString& name) {
-                    if (!body.isObject() || !cuts.isObject() || body.toObject().value("top").toArray().isEmpty())
-                        return id + ": " + name + " needs body landmarks and a cut policy";
-                    return invalidWalkSettings(withOverrides(body.toObject(), cuts.toObject()), id + "." + name);
-                };
-                if (shape == "contour-stem") {
-                    problem = checkRoute(declaredBody.value("route"), declaredCuts.value("route"), "route");
-                    if (!problem.isEmpty()) return problem;
-                }
-                if (shape == "forked-stem") {
-                    const auto routes = declaredBody.value("exitRoutes").toArray(), cuts = declaredCuts.value("exitRoutes").toArray();
-                    if (routes.isEmpty() || routes.size() != cuts.size()) return id + ": body/cut exitRoutes must have equal nonzero size";
-                    for (int i = 0; i < routes.size(); ++i) {
-                        problem = checkRoute(routes[i], cuts[i], "exitRoutes");
-                        if (!problem.isEmpty()) return problem;
-                    }
-                    problem = checkRoute(declaredBody.value("entryRoute"), declaredCuts.value("entryRoute"), "entryRoute");
-                    if (!problem.isEmpty()) return problem;
-                    const auto placement = declaredCuts.value("placement").toObject();
-                    if (!positive(placement.value("entryOverlap")) || !positive(placement.value("turnAngle")) ||
-                        placement.value("turnAngle").toDouble() >= 90 || !placement.value("levelForkEntry").isBool())
-                        return id + ": invalid cuts.placement";
-                }
-                const auto stem = declaredBody.value("stem").toObject();
-                if ((shape == "descending-stem" || shape == "terminal-fork") &&
-                    (!positive(stem.value("minRise")) || !positive(stem.value("penWidth"))))
-                    return id + ": body.stem needs positive penWidth and minRise";
-                if (shape == "terminal-bowl" && (!positive(stem.value("minRise")) || !positive(stem.value("maxNeckDistance")) ||
-                    !positive(declaredCuts.value("section").toObject().value("turnAngle"))))
-                    return id + ": invalid terminal bowl body / section";
-                if (shape == "turning-shaft") {
-                    const auto shaft = declaredBody.value("shaft").toObject();
-                    if (shaft.size() != 3 || !positive(shaft.value("minRise")) ||
-                        !positive(shaft.value("maxWidthToHeight")) || !positive(shaft.value("turnAngle")) ||
-                        shaft.value("turnAngle").toDouble() >= 90)
-                        return id + ": body.shaft needs a positive rise, aspect and turn angle below 90 degrees";
-                    const auto policy = declaredCuts.value("shaft").toObject();
-                    const auto walk = policy.value("walkWidths");
-                    if (policy.size() != 3 || !walk.isDouble() || !std::isfinite(walk.toDouble()) ||
-                        walk.toDouble() < 0 || !policy.value("atTurnWhenTight").isBool() ||
-                        !policy.value("forkJunction").isBool())
-                        return id + ": cuts.shaft needs a nonnegative walk and explicit turn and junction policies";
-                }
-                if (shape == "terminal-return") {
-                    const auto tail = declaredBody.value("tail").toObject();
-                    for (const auto* key : {"minRise", "minRun", "maxRun"})
-                        if (!positive(tail.value(key))) return id + ": invalid body.tail";
-                }
-                if ((shape == "terminal-return" || shape == "terminal-fork") &&
-                    !positive(declaredCuts.value("section").toObject().value("walkWidths")))
-                    return id + ": section.walkWidths must be positive";
-                const auto shortExit = declaredCuts.value("shortExit");
-                if (!shortExit.isUndefined() && shortExit != QJsonValue(false)) {
-                    if (!shortExit.isObject()) return "cuts.shortExit must be an object or false";
-                    const auto settings = shortExit.toObject();
-                    for (const auto* key : {"minHorizontalRun", "maxEntryGap", "minLengthRatio", "anchorTolerance"}) {
-                        const auto value = settings.value(key);
-                        const double minimum = QString(key) == "minLengthRatio" ? 1 : 0;
-                        if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= minimum)
-                            return QString("cuts.shortExit.%1 must be greater than %2").arg(key).arg(minimum);
-                    }
-                    const auto hollow = settings.value("cutsAroundHollow");
-                    if (!hollow.isUndefined() && !hollow.isBool())
-                        return "cuts.shortExit.cutsAroundHollow must be true or false";
-                    const auto tilt = settings.value("entryMaxTilt");
-                    if (!tilt.isUndefined() && (!tilt.isDouble() || !std::isfinite(tilt.toDouble()) || tilt.toDouble() < 0 || tilt.toDouble() >= 90))
-                        return "cuts.shortExit.entryMaxTilt must be an angle from 0 up to 90 degrees";
-                }
-                const auto arm = declaredBody.value("alefArm");
-                if (!arm.isUndefined() &&
-                    (!arm.isString() ||
-                     formDescription(config, namedLetterForm(config, arm.toString()), "body").value("shape") !=
-                         "tapered-arm" ||
-                     declaredBody.value("alefLetters").toString().isEmpty()))
-                    return id + ": body.alefArm needs a folded-arm body template and alefLetters";
-                const auto forkOffset = declaredCuts.value("forkOffset");
-                if (!forkOffset.isUndefined() && !positive(forkOffset))
-                    return id + ": cuts.forkOffset must be positive in page units";
-                if (const auto value = declaredCuts.value("overlappingExit"); !value.isUndefined()) {
-                    const auto attachment = value.toObject();
-                    const auto finals = config.value("final").toArray();
-                    const auto partner = std::find_if(finals.begin(), finals.end(), [&](const auto& value) {
-                        return value.toObject().value("id") == attachment.value("finalTemplate");
-                    });
-                    if (attachment.size() != 3 ||
-                        !positive(attachment.value("maxEntryShiftWidths")) ||
-                        !positive(attachment.value("minGapToOffset")) || partner == finals.end() ||
-                        formDescription(config, partner->toObject(), "body").value("shape") != "counter-shoulder")
-                        return id + ": cuts.overlappingExit needs a final counter-shoulder template and positive shift and gap ratios";
-                }
-                if (const auto value = declaredCuts.value("sharedEntryCorner"); !value.isUndefined()) {
-                    const auto settings = value.toObject();
-                    const auto initials = config.value("initial").toArray();
-                    const auto partner = std::find_if(initials.begin(), initials.end(), [&](const auto& value) {
-                        return value.toObject().value("id") == settings.value("initialTemplate");
-                    });
-                    if (QString(phase) != "medial" || settings.size() != 2 || partner == initials.end() ||
-                        !positive(settings.value("maxClipWidths")))
-                        return id + ": cuts.sharedEntryCorner needs a medial body, an initial template and a positive clip limit";
-                    const auto body = formDescription(config, partner->toObject(), "body");
-                    if (body.value("shape") != "contour-route" || body.value("counters").toInt() != 1)
-                        return id + ": cuts.sharedEntryCorner requires an initial contour route enclosing one counter";
-                }
-                if (const auto value = declaredCuts.value("sharedFold"); !value.isUndefined()) {
-                    const auto fold = value.toObject();
-                    const auto receiver = namedLetterForm(config, fold.value("template").toString());
-                    const auto letters = fold.value("letters").toString();
-                    const auto selects = receiver.value("current").toString();
-                    if (fold.size() != 3 || letters.isEmpty() || !positive(fold.value("maxSlope")) ||
-                        formDescription(config, receiver, "body").value("shape") != "folded-return" ||
-                        !std::ranges::all_of(letters, [&](QChar letter) { return selects.contains(letter); }))
-                        return id + ": cuts.sharedFold needs a final folded-return template, its letters and a positive slope";
-                }
-                if (!QStringList{"tip-normal", "preserve"}.contains(declaredCuts.value("tightJoin").toString()) ||
-                    declaredCuts.value("counterJoin") != "preserve-entry")
-                    return id + ": cuts needs a tightJoin policy and counterJoin: preserve-entry";
-                const auto terminal = declaredCuts.value("beforeFinal");
-                if (!terminal.isUndefined() && terminal != QJsonValue(false) &&
-                    (!terminal.isObject() || terminal.toObject().value("letters").toString().isEmpty()))
-                    return id + ": cuts.beforeFinal needs a terminal letter selector, or false";
-                for (const auto& settings : {declaredCuts, terminal.toObject()}) {
-                    if (settings.isEmpty()) continue;
-                    const auto boundaries = settings.value("boundaries").toObject();
-                    if (!QStringList{"free", "preserve", "fork-normal", "shaft-normal"}.contains(boundaries.value("right").toString()) ||
-                        !QStringList{"free", "preserve", "fork-normal", "shared-return", "shaft-normal"}.contains(boundaries.value("left").toString()))
-                        return id + ": cuts.boundaries must declare the right and left cut policies";
-                    const bool shaft = boundaries.value("right") == "shaft-normal" || boundaries.value("left") == "shaft-normal";
-                    if (shaft && (shape != "turning-shaft" || boundaries.value("right") != "shaft-normal" ||
-                                  boundaries.value("left") != "shaft-normal"))
-                        return id + ": shaft-normal needs both flanks of a turning-shaft";
-                    if (boundaries.value("left") == "fork-normal" && boundaries.value("right") != "fork-normal")
-                        return id + ": an outgoing fork-normal policy currently needs the incoming fork-normal policy";
-                    if (boundaries.value("left") == "shared-return" && !settings.contains("letters"))
-                        return id + ": a shared-return policy belongs in beforeFinal with its letter selector";
-                    if (settings.contains("preserveEntryAfter") && !settings.value("preserveEntryAfter").isString())
-                        return id + ": cuts.preserveEntryAfter must be a letter selector";
-                    if (settings.contains("junction") && (settings.value("junction") != "inward-corners" ||
-                        arm.isUndefined() || boundaries.value("left") != "shared-return"))
-                        return id + ": inward-corners needs a shared-return boundary and an alefArm body";
-                    for (auto key = settings.begin(); key != settings.end(); ++key)
-                        if (!QStringList{"boundaries", "forkOffset", "tightJoin", "counterJoin", "beforeFinal",
-                                         "letters", "junction", "preserveEntryAfter", "route", "section", "exitRoutes",
-                                         "entryRoute", "placement", "shortExit", "overlappingExit", "sharedFold",
-                                         "turnBoundaries", "shaft", "sharedEntryCorner"}.contains(key.key()))
-                            return id + ": unknown cuts setting " + key.key();
-                }
-            }
+            } else if (rule.contains("body") || rule.contains("cuts"))
+                return id + ": unknown declared body shape";
             if (rule.contains("shaftTurn") && (method != "alef-stem" || !rule.value("shaftTurn").isBool()))
                 return id + ": shaftTurn requires an alef stem and must be true or false";
             if (rule.contains("tailEntry")) {
@@ -1826,12 +1879,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 if (rule.value("lowerBridge") == "stem-side" && !rule.contains("forkRise"))
                     return id + ": a stem-side bridge requires a fork rise";
             }
-            if (rule.contains("lamPosition") && (method != "lam-alef" ||
-                !QStringList{"initial", "medial"}.contains(rule.value("lamPosition").toString())))
-                return id + ": lamPosition requires lam-alef and must be initial or medial";
-            if (rule.contains("sameDirectionCheck") &&
-                (method != "lam-alef" || !rule.value("sameDirectionCheck").isBool()))
-                return id + ": sameDirectionCheck requires lam-alef and must be true or false";
+            if (rule.contains("lamPosition") || rule.contains("sameDirectionCheck"))
+                return id + ": put the attachment and contour constraints in body / cuts";
             const auto teeth = method == "seen-teeth" ? rule : rule.value("seenTeeth").toObject();
             if (rule.contains("sharedFoldWithFinal")) {
                 const bool initialBody = QString(phase) == "initial" && method == "seen-teeth";
@@ -1939,7 +1988,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     !rule.value("contourBody").toObject().isEmpty() ||
                     !rule.value("pairedCounterCorners").toObject().isEmpty() ||
                     !rule.value("openHead").toObject().isEmpty() || !rule.value("seenTeeth").toObject().isEmpty() ||
-                    !declaredBody.isEmpty() || !rule.value("headEdges").toObject().isEmpty() ||
+                    !sharedBody.isEmpty() || !rule.value("headEdges").toObject().isEmpty() ||
                     (!rule.value("right").toObject().value("walk").toArray().isEmpty() &&
                      !rule.value("left").toObject().value("walk").toArray().isEmpty());
                 if (!feature || rule.contains("method")) return id + ": a medial form must define both body boundaries";
@@ -1947,10 +1996,11 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 static const QStringList initialMethods{"enclosed-head","walk","descending-stem", "initial-counter", "initial-loop-head", "initial-loop-body", "heh-initial-counters", "seen-teeth", "kaf", "kaf-zigzag", "hah", "counter-ligature"};
                 static const QStringList finalMethods{"rising-tail", "folded-bowl", "bowl-fork",
                                                       "tail-entry",  "walk",        "qaf",
-                                                      "alef-stem",   "stem-entry",  "lam-alef",
+                                                      "alef-stem",   "stem-entry",
                                                       "waw",         "sad-tah",     "final-counter", "seen-teeth"};
                 const auto shape = sharedBody.value("shape");
                 if (declaredBody.isEmpty() && shape != "component-arm" && shape != "tapered-arm" && shape != "open-bowl" &&
+                    shape != "terminal-fork" &&
                     !(QString(phase) == "initial" ? initialMethods : finalMethods).contains(method))
                     return id + ": an explicit body method for this position is required; generic join rules are unsupported";
             }
@@ -2082,7 +2132,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             if (index == 0 && !connector.isUndefined() &&
                 form.value("body").toObject().value("shape") == "suspended-loop")
                 return id + ": minConnectorWidths requires an initial exit cut";
-            problem = validateSharedShape(form, position);
+            problem = validateSharedShape(config, form, position);
             if (!problem.isEmpty()) return id + ": " + problem;
         }
     }

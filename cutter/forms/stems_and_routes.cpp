@@ -654,9 +654,309 @@ std::vector<std::optional<Stretching>> contourShoulderCuts(SearchContext& contex
     return result;
 }
 
-// Legacy declarations share the primitive until their family is migrated.
-bool terminalTailEntry(SearchContext &context, const QJsonObject &settings, Stretching &result) {
-    return cutTailBranches(context, recognizeTailBranches(inkOutline(context), settings), settings, result);
+static std::vector<StemFork> recognizeStemForks(const SearchContext& context, double flankSpan) {
+    std::vector<StemFork> bodies;
+    for (auto tip = context.timeSorted.begin(); tip != context.timeSorted.end(); ++tip) {
+        const auto flank = [&](bool previous) {
+            auto at = previous ? context.prev(tip) : context.next(tip);
+            const bool tiny = QLineF(at->point, tip->point).length() < flankSpan;
+            for (size_t n = 0; n + 1 < context.timeSorted.size() &&
+                    QLineF(at->point, tip->point).length() < flankSpan; ++n)
+                at = previous ? context.prev(at) : context.next(at);
+            if (tiny && at->point.y() <= tip->point.y()) {
+                // Look past short contour pieces, but not past the descending
+                // flank itself. A distant landmark can already be rising into
+                // another letter; sample the local curve in that case.
+                auto limit = *tip;
+                limit.time += (previous ? 1 : -1) * int(baseContourCurves(context.transformedPath).size());
+                PathExtrema sample;
+                QPointF tangent;
+                if (advanceOnContour(context.transformedPath, *tip, limit, previous, flankSpan, sample, tangent))
+                    return sample.point - tip->point;
+            }
+            return at->point - tip->point;
+        };
+        // Short contour pieces and duplicate extrema can subdivide a flank.
+        // Recognize the two branches across that noise, keeping the actual tip.
+        const auto a = flank(true), b = flank(false);
+        if (a.y() <= 0 || b.y() <= 0) continue;
+        // The fork is a concave turn of the outer contour, not the convex
+        // top of another stroke. Use winding instead of a fragile ink probe
+        // just beside a nearly tangent Bezier corner.
+        const double turn = a.x() * b.y() - a.y() * b.x();
+        if (std::abs(turn) <= 1e-8) continue;
+        const bool fork = a.x() * b.x() < 0;
+        // Keep the intrinsic turn sign. A recovered/scaled outline can resolve
+        // a degenerate winding estimate differently; that must not require a
+        // second landmark search or discard the real fork from the inventory.
+        bodies.push_back({*tip, a, b, a.x() > b.x(), fork, turn > 0});
+    }
+    return bodies;
+}
+
+// Cache intrinsic body evidence independently of route and cut-policy alternatives.
+StemForkEvidence recognizeStemForkEvidence(const SearchContext& context, double flankSpan, bool allowLevelCrest) {
+    StemForkEvidence result;
+    result.forks = recognizeStemForks(context, flankSpan);
+    for (auto crest = context.timeSorted.begin(); crest != context.timeSorted.end(); ++crest) {
+        const double y = crest->point.y();
+        if (y >= context.prev(crest)->point.y()) continue;
+        auto edge = context.next(crest);
+        // A level nib can have several contour nodes at its top. Keep
+        // its first node if the outline descends on both sides of the cap.
+        while (allowLevelCrest && edge != crest && edge->point.y() == y) edge = context.next(edge);
+        if (y < edge->point.y()) result.crests.push_back(*crest);
+    }
+    return result;
+}
+
+// The lower contour of a forked stem rises to a tip under the shaft. Follow
+// each flank away from that tip and cut across the same strip of ink.
+std::optional<Stretching> cutForkFlank(const SearchContext& context, const PathExtrema& tip,
+                                               std::optional<PathExtrema> end, bool forward, int side, double distance) {
+    auto anchor = tip;
+    if (distance > 0) {
+        auto limit = end.value_or(tip);
+        if (end && limit.time == tip.time) return {};
+        if (!end || forward != (limit.time > tip.time))
+            limit.time += (forward ? 1 : -1) * int(baseContourCurves(context.transformedPath).size());
+        QPointF tangent;
+        if (!advanceOnContour(context.transformedPath, tip, limit, forward, distance, anchor, tangent)) return {};
+    }
+    Stretching cut{};
+    if (!contourNormalCut(context, anchor, forward, false, cut, distance == 0)) return {};
+    std::swap(cut.topBaseLine, cut.bottomBaseLine);
+    if (distance == 0 && side * (cut.topBaseLine.point.x() - tip.point.x()) <= 0) return {};
+    return cut;
+}
+
+bool forkAnchorWithinWalk(const SearchContext& context, const PathExtrema& tip,
+                               const Stretching& cut, bool forward, double distance) {
+    auto end = cut.bottomBaseLine;
+    if (end.pathIndex != 0 || QLineF(tip.point, end.point).length() > distance + 1e-5) return false;
+    if (QLineF(tip.point, end.point).length() < 1e-5) return true;
+    const double count = baseContourCurves(context.transformedPath).size();
+    if (count <= 0) return false;
+    if (forward != (end.time > tip.time)) end.time += (forward ? 1 : -1) * count;
+    PathExtrema point;
+    QPointF tangent;
+    return !advanceOnContour(context.transformedPath, tip, end, forward, distance + 1e-5, point, tangent);
+}
+
+// Follow only the adjacent lower flank of the same fork. Its intersection at
+// the exit's height fixes the lower endpoint; the local tangent fixes the cut.
+std::optional<Stretching> levelForkEntry(SearchContext& context, const PathExtrema& corner,
+                                               const Stretching& exit) {
+    const auto level = exit.bottomBaseLine.point.y();
+    const auto start = context.timeSorted.find(corner);
+    if (start == context.timeSorted.end() || level <= corner.point.y() ||
+        exit.bottomBaseLine.point.x() >= corner.point.x()) return {};
+    for (const auto advance : {&SearchContext::next, &SearchContext::prev}) {
+        auto current = start;
+        for (size_t i = 0; i < context.timeSorted.size(); ++i) {
+            const auto next = (context.*advance)(current);
+            if (next->point.x() < current->point.x() || next->point.y() < current->point.y()) break;
+            if (next->point.y() >= level) {
+                const auto hits = FindInterections(context.transformedPath,
+                    QLineF(current->point.x(), level, next->point.x(), level), true);
+                // Time increases for prev() in the descending contour set.
+                const bool increasing = advance == &SearchContext::prev;
+                const double lo = increasing ? current->time : next->time;
+                const double hi = increasing ? next->time : current->time;
+                for (const auto& hit : hits) {
+                    const bool onArc = lo <= hi ? lo <= hit.time && hit.time <= hi : hit.time >= lo || hit.time <= hi;
+                    if (hit.pathIndex != 0 || !onArc || hit.point.x() <= corner.point.x()) continue;
+                    Stretching entry{};
+                    if (!contourNormalCut(context, hit, increasing, false, entry, true) ||
+                        entry.bottomBaseLine.point.x() <= corner.point.x()) continue;
+                    std::swap(entry.topBaseLine, entry.bottomBaseLine);
+                    return entry;
+                }
+                break;
+            }
+            current = next;
+        }
+    }
+    return {};
+}
+
+StemEdges traceStemEdges(const SearchContext& context, const PathExtrema& crest,
+                                       bool allowLevel) {
+    StemEdges edges;
+    const auto cap = context.timeSorted.find(crest);
+    int side = 0;
+    for (const auto advance : {&SearchContext::next, &SearchContext::prev}) {
+        auto foot = cap;
+        auto point = cap;
+        for (size_t step = 0; step < context.timeSorted.size(); ++step) {
+            const auto next = (context.*advance)(point);
+            if (next == cap) break;
+            const double fall = next->point.y() - foot->point.y();
+            // Several almost coincident extrema can describe a rounded nib.
+            // Follow through that cap before measuring the descending edge.
+            if (allowLevel) {
+                if (fall < -1e-8 && QLineF(cap->point, next->point).length() > .05) break;
+            } else if (fall <= 0) break;
+            if (fall >= 0) foot = next;
+            point = next;
+        }
+        if (foot != cap) edges[side] = *foot;
+        ++side;
+    }
+    return edges;
+}
+
+// Follow the two contour arcs down from the cap. A fork must lead into the
+// ink strip bounded by those same arcs, even when another stroke is nearby.
+static bool forkBelongsToStem(const SearchContext& context, const PathExtrema& crest,
+                                const StemEdges& edges, const PathExtrema& tip,
+                                const std::vector<QBezier>& curves) {
+    if (!edges[0] || !edges[1] || curves.empty() || tip.point.y() <= crest.point.y()) return false;
+    const double foot = std::min({edges[0]->point.y(), edges[1]->point.y(), tip.point.y()});
+    if (foot <= crest.point.y()) return false;
+    const double period = curves.size();
+    const auto edgeAt = [&](double y, int side) {
+        const int direction = side == 0 ? -1 : 1;
+        double low = 0, high = std::fmod(direction * (edges[side]->time - crest.time) + period, period);
+        // Bracket the crossing on this edge. A whole-outline polynomial
+        // probe can lose a root on a nearly straight Bézier segment.
+        QPointF point;
+        for (int step = 0; step < 36; ++step) {
+            const double middle = (low + high) / 2;
+            const double time = std::fmod(crest.time + direction * middle + period, period);
+            point = curves[size_t(time)].pointAt(time - std::floor(time));
+            (point.y() < y ? low : high) = middle;
+        }
+        return point;
+    };
+    const auto section = [&](double y) -> QLineF {
+        const QLineF span(edgeAt(y, 0), edgeAt(y, 1));
+        const auto [left, right] = std::minmax({span.x1(), span.x2()});
+        if (right - left <= 1e-6 || !context.transformedPath.contains(span.center())) return {};
+        const auto hits = FindInterections(context.transformedPath, QLineF(left, y, right, y), true);
+        if (std::ranges::any_of(hits, [&](const PathExtrema& hit) {
+                return hit.point.x() > left + 1e-6 && hit.point.x() < right - 1e-6;
+            })) return {};
+        return span;
+    };
+    const double tracedRise = foot - crest.point.y();
+    const auto sample = [&](double preferred, double alternate) {
+        const auto span = section(crest.point.y() + preferred * tracedRise);
+        return span.isNull() ? section(crest.point.y() + alternate * tracedRise) : span;
+    };
+    // A slice can pass through a turn or a tangent on one edge. Sample
+    // just above it, keeping the same two contour arcs.
+    const auto upper = sample(.5, .375);
+    const auto lower = sample(.75, .625);
+    if (upper.isNull() || lower.isNull()) return false;
+    const double width = std::max(upper.length(), lower.length());
+    if (tracedRise < 2 * width) return false;
+    const auto axis = QLineF(upper.center(), lower.center());
+    const double atTip = (tip.point.y() - axis.y1()) / axis.dy();
+    const double remainingFall = tip.point.y() - lower.center().y();
+    if (std::abs(axis.pointAt(atTip).x() - tip.point.x()) > width + .15 * remainingFall) return false;
+    // A counter or a bent foot can turn one edge out before the other.
+    // Check the ink from the remaining traced strip to the fork itself.
+    const std::array shaftProbes{.5, .25, .75};
+    return std::ranges::any_of(shaftProbes, [&](double t) {
+        return interiorInkSegment(context.transformedPath, lower.pointAt(t), tip.point);
+    });
+}
+
+std::vector<size_t> stemForks(const SearchContext& context, const PathExtrema& crest,
+                                        const std::vector<StemFork>& forks,
+                                        const std::vector<QBezier>& curves) {
+    const auto edges = traceStemEdges(context, crest, true);
+    std::vector<size_t> owned;
+    for (size_t i = 0; i < forks.size(); ++i) {
+        const auto& fork = forks[i];
+        if ((fork.fork || fork.folded()) &&
+            forkBelongsToStem(context, crest, edges, fork.tip, curves)) owned.push_back(i);
+    }
+    return owned;
+}
+
+// The incoming branch leaves a notch between the upstroke and the bowl.
+// A horizontal slice above that notch must cross only the slim upright.
+bool cutTerminalStemFork(SearchContext &ctx, const QJsonObject &form, Stretching &best) {
+    const auto &ink = ctx.transformedPath;
+    const auto tail = std::prev(ctx.xSorted.end());
+    const double pen = form.value("penWidth").toDouble(.5);
+    const double inset = form.value("walkWidths").toDouble(.5) * pen;
+    const int count = int(baseContourCurves(ink).size());
+    double score = std::numeric_limits<double>::infinity();
+    for (auto p = ctx.timeSorted.begin(); p != ctx.timeSorted.end(); ++p) {
+        if (p->point.x() < tail->point.x() + 2 * pen)
+            continue;
+        const auto flank = [&](auto advance) {
+            auto step = p;
+            do {
+                step = (ctx.*advance)(step);
+            } while (step != p && QLineF(p->point, step->point).length() < .25 * pen);
+            return step->point - p->point;
+        };
+        const auto a = flank(&SearchContext::prev), b = flank(&SearchContext::next);
+        if (std::min(a.y(), b.y()) < -.15 * pen || std::max(a.x(), b.x()) < pen)
+            continue;
+        const bool forward = a.x() > b.x();
+        PathExtrema limit = *p, anchor{};
+        limit.time += (forward ? 1 : -1) * count;
+        QPointF tangent;
+        std::vector<Stretching> proposals;
+        Stretching normal{};
+        if (advanceOnContour(ink, *p, limit, forward, inset, anchor, tangent) && anchor.point.x() > p->point.x() &&
+            contourNormalCut(ctx, anchor, forward, false, normal, true))
+            proposals.push_back(normal);
+        // A head touching the upright creates a second notch on the other
+        // edge of the attachment. Both notches stay on the shared cut.
+        for (const auto &q : ctx.timeSorted) {
+            const auto d = q.point - p->point;
+            if (d.y() > -.4 * pen || d.y() < -4.5 * pen || d.x() < -.4 * pen || d.x() > 3.5 * pen ||
+                !interiorChord(ink, q, *p))
+                continue;
+            Stretching bridge{};
+            bridge.topBaseLine = q;
+            bridge.bottomBaseLine = *p;
+            proposals.push_back(bridge);
+        }
+        for (auto cut : proposals) {
+            orientSection(ctx, cut, tail->time, true);
+            const QLineF chord(cut.topBaseLine.point, cut.bottomBaseLine.point);
+            if (chord.length() > 5 * pen || QLineF(chord.center(), p->point).length() > 4 * pen)
+                continue;
+            const auto parts = cutRegions(ink, {}, {cut}, ctx.orientation, true);
+            if (parts.size() != 2 || toSubpaths(parts[1].path).size() != 1)
+                continue;
+            const auto &body = parts[1].path;
+            const auto box = body.boundingRect();
+            const double rise = p->point.y() - box.top();
+            if (rise < form.value("minRise").toDouble(3) || box.bottom() - p->point.y() < pen ||
+                std::abs(box.left() - tail->point.x()) > pen || box.right() > chord.center().x() + 3 * pen)
+                continue;
+            bool slender = true;
+            for (double fraction : {.3, .65}) {
+                const double y = box.top() + fraction * rise;
+                const auto hits = FindInterections(body, QLineF(box.left() - 1, y, box.right() + 1, y));
+                if (hits.size() != 2) {
+                    slender = false;
+                    break;
+                }
+                const QLineF band(hits.front().point, hits.back().point);
+                if (band.length() > .4 * rise || std::abs(band.center().x() - p->point.x()) > .5 * rise) {
+                    slender = false;
+                    break;
+                }
+            }
+            if (!slender)
+                continue;
+            const double fit = chord.length() + .45 * QLineF(chord.center(), p->point).length();
+            if (fit < score) {
+                score = fit;
+                best = cut;
+            }
+        }
+    }
+    return std::isfinite(score);
 }
 
 // Follow the descending edge from the cap. The first steep-to-shallow
