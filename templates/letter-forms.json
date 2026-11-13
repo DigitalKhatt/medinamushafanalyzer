@@ -1624,6 +1624,7 @@
     },
     {
       "id": "tah-low-rim-init",
+      "fixedAnchors": true,
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
