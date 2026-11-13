@@ -1011,6 +1011,7 @@
     },
     {
       "id": "kaf-zigzag-init",
+      "fixedAnchors": true,
       "current": "ك",
       "tryNext": true,
       "retryOnPartial": true,
