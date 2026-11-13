@@ -44,6 +44,11 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     if (shape == "contour-route") {
         const bool initial = position == 0;
         if (declaredSharedBoundary(source, form) && matchesBoundaryBody(source, form, source.res, initial)) {
+            if (form.contains("bodyCounters")) {
+                const auto pieces = cutRegions(source.transformedPath, {}, {source.res}, source.orientation, true);
+                if (pieces.size() != 2 || toSubpaths(pieces[initial ? 0 : 1].path).size() - 1 !=
+                    form.value("bodyCounters").toInt()) return result;
+            }
             if (initial)
                 result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()}});
             else
@@ -84,6 +89,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             const QLineF axis(tooth.tip.point, tooth.bend.point);
             result.push_back({id, tooth.right, tooth.left, {tooth.tip, tooth.bend},
                 tooth.curvedAxis.isEmpty() ? QVector<QPointF>{axis.pointAt(.05), axis.pointAt(.95)} : tooth.curvedAxis});
+            result.back().sharesIncoming = cuts.value("tightJoin") == "shared-boundary";
         }
     } else if (shape == "stemmed-bowl") {
         const auto evidence = recognizedSharedShape(source, body);

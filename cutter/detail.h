@@ -1261,6 +1261,7 @@ struct AnchoredBody {
     QVector<QPointF> samples;
     QVector<size_t> counters;
     bool retainsCounterRim = false;
+    bool sharesIncoming = false;
 };
 
 using AnchorForms = std::array<QHash<QChar, std::vector<QJsonObject>>, 3>;

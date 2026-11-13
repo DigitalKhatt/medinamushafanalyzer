@@ -27,6 +27,14 @@ bool orderedSections(const Stretching& right, const Stretching& left, Orientatio
            sectionLine(right).intersects(sectionLine(left), nullptr) != QLineF::BoundedIntersection;
 }
 
+bool sharesIncomingSection(const Stretching& sending, const AnchoredBody& receiving, Orientation orientation) {
+    if (!receiving.sharesIncoming || !receiving.exit || cutPrecedes(sending, *receiving.entry, orientation) ||
+        !orderedSections(sending, *receiving.exit, orientation)) return false;
+    const auto side = getJoinTime(sending, orientation);
+    return std::all_of(receiving.landmarks.begin(), receiving.landmarks.end(),
+                       [&](const auto& landmark) { return side.isStrictLeft(landmark.time); });
+}
+
 bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot, size_t count) {
     if (body.entry.has_value() != (slot > 0) || body.exit.has_value() != (slot + 1 < count)) return false;
     const auto validSection = [&](const Stretching& section) {
@@ -64,7 +72,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
     for (size_t slot = 1; slot < bodies.size(); ++slot) {
         auto exit = *bodies[slot - 1]->exit;
         const auto& entry = *bodies[slot]->entry;
-        const bool shared = sameSection(exit, entry);
+        const bool shared = sameSection(exit, entry) || sharesIncomingSection(exit, *bodies[slot], source.orientation);
         if (!shared && bodies[slot]->retainsCounterRim) {
             // The saved rim geometry uses the sending cap's source curve
             // parameter. Rebind it without moving either endpoint.
@@ -79,8 +87,8 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         auto join = exit;
         join.topRight = exit.topBaseLine;
         join.bottomRight = exit.bottomBaseLine;
-        join.topLeft = entry.topBaseLine;
-        join.bottomLeft = entry.bottomBaseLine;
+        join.topLeft = shared ? exit.topBaseLine : entry.topBaseLine;
+        join.bottomLeft = shared ? exit.bottomBaseLine : entry.bottomBaseLine;
         join.length = 0;
         join.readingOrder = int(slot - 1);
         join.fixedRightBoundary = true;
@@ -113,7 +121,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
             {"position", slot == 0 ? "initial" : slot + 1 == bodies.size() ? "final" : "medial"},
             {"status", "matched"}, {"template", body.formId}, {"candidates", QJsonArray{body.formId}}});
 
-        if (slot + 1 == bodies.size() || sameSection(*body.exit, *bodies[slot + 1]->entry)) continue;
+        if (slot + 1 == bodies.size() || trial.kashidaCuts[slot].first.isNull()) continue;
         const auto& [right, left] = trial.kashidaCuts[slot];
         auto& connector = regions[region++].path;
         if (connector.boundingRect().isEmpty() || toSubpaths(connector).size() != 1 ||
@@ -155,7 +163,8 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
             for (const auto& body : bodiesFor(form, slot)) {
                 if (slot) {
                     const auto& exit = *selected.back()->exit;
-                    if (!sameSection(exit, *body.entry) && !orderedSections(exit, *body.entry, source.orientation))
+                    if (!sameSection(exit, *body.entry) && !orderedSections(exit, *body.entry, source.orientation) &&
+                        !sharesIncomingSection(exit, body, source.orientation))
                         continue;
                 }
                 selected.push_back(&body);
