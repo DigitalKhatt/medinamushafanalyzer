@@ -6049,6 +6049,7 @@
     },
     {
       "id": "feh-fina",
+      "fixedAnchors": true,
       "current": "ف",
       "tryNext": true,
       "body": {
