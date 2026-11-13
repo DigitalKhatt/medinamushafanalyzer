@@ -1372,6 +1372,7 @@
     },
     {
       "id": "sad-init",
+      "fixedAnchors": true,
       "current": "صض",
       "body": {
         "shape": "counter-loop",
