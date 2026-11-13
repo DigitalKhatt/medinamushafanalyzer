@@ -3542,6 +3542,7 @@
     },
     {
       "id": "heh-loop-medi",
+      "fixedAnchors": true,
       "current": "ه",
       "body": {
         "shape": "counter-loop",
