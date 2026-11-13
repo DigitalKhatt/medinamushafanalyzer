@@ -1027,7 +1027,7 @@ cutOpenHeads(SearchContext &context, const std::vector<OpenHeadBody> &bodies, co
 // The resulting body must retain the entire loop and the crest. Neighboring
 // letters supply neither landmarks nor stroke-width/height estimates.
 struct CrestedLoopBody {
-    QRectF counter;
+    CounterHole counter;
     PathExtrema crest, rightEdge, leftEdge;
 };
 

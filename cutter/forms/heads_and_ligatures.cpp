@@ -106,7 +106,7 @@ std::vector<CrestedLoopBody> recognizeCrestedLoops(const InkOutline &outline, co
                 counter.top() <= crest->point.y() || counter.top() >= std::max(r.y(), l.y()) ||
                 !matchesOffset(settings.value("crestToRight").toObject(), (r - crest->point) / scale) ||
                 !matchesOffset(settings.value("crestToLeft").toObject(), (l - crest->point) / scale)) continue;
-            result.push_back({counter, *crest, *rightEdge, *leftEdge});
+            result.push_back({{i, counter}, *crest, *rightEdge, *leftEdge});
         }
     }
     return result;
@@ -117,7 +117,7 @@ cutCrestedLoops(SearchContext &context, const std::vector<CrestedLoopBody> &bodi
     std::vector<std::pair<Stretching, Stretching>> candidates;
     const auto &ink = context.transformedPath;
     for (const auto &body : bodies) {
-        const auto &counter = body.counter;
+        const auto &counter = body.counter.box;
         const auto *crest = &body.crest;
         const auto r = body.rightEdge.point, l = body.leftEdge.point;
         const double scale = counter.height();

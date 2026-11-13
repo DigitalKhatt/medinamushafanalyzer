@@ -2972,6 +2972,7 @@
     },
     {
       "id": "feh-head-medi",
+      "fixedAnchors": true,
       "current": "فق",
       "body": {
         "shape": "crested-loop",

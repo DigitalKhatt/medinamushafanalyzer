@@ -144,7 +144,7 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
     }
     out << quint64(e.crestedHeads.size());
     for (const auto &head : e.crestedHeads) {
-        out << head.counter;
+        out << quint64(head.counter.index) << head.counter.box;
         point(head.crest);
         point(head.rightEdge);
         point(head.leftEdge);

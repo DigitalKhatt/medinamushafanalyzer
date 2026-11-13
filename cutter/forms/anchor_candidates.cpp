@@ -21,7 +21,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const bool supported = position == 0 ? shape == "contour-route" || shape == "horizontal-counters" ||
                 shape == "suspended-loop" || shape == "counter-neck" :
                 position == 1 ? toothDescription(body) || shape == "stacked-counters" || shape == "counter-loop" ||
-                shape == "open-head" :
+                shape == "open-head" || shape == "crested-loop" :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn";
             if (!supported)
@@ -96,13 +96,19 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             result.push_back({.formId = id, .entry = sections->first, .exit = sections->second,
                               .counters = std::move(counters)});
         }
-    } else if (shape == "open-head") {
+    } else if (shape == "open-head" || shape == "crested-loop") {
         const auto evidence = recognizedSharedShape(source, body);
         const auto policy = cuts.value("head").toObject();
-        for (const auto& head : evidence->openHeads) {
-            for (const auto& [entry, exit] : cutOpenHeads(source, {head}, policy))
-                result.push_back({.formId = id, .entry = entry, .exit = exit,
-                                  .landmarks = {head.crest, head.rightEdge, head.leftEdge}});
+        if (shape == "crested-loop") {
+            for (const auto& head : evidence->crestedHeads)
+                for (const auto& [entry, exit] : cutCrestedLoops(source, {head}, policy))
+                    result.push_back({.formId = id, .entry = entry, .exit = exit,
+                                      .landmarks = {head.crest}, .counters = {head.counter.index}});
+        } else {
+            for (const auto& head : evidence->openHeads)
+                for (const auto& [entry, exit] : cutOpenHeads(source, {head}, policy))
+                    result.push_back({.formId = id, .entry = entry, .exit = exit,
+                                      .landmarks = {head.crest, head.rightEdge, head.leftEdge}});
         }
         std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
             return Stretching::cmpbyx{}(*a.entry, *b.entry);
