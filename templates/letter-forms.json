@@ -3087,6 +3087,7 @@
     },
     {
       "id": "beh-low-medi",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "body": {
         "inherit": "beh-tooth-medi",
