@@ -791,6 +791,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             };
             const auto message = terminal + " · upper hook retained in final body";
             const auto chord = [](const Stretching& cut) { return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point); };
+            const auto toothId = terminalCuts.value("precedingTooth").toObject().value("refitTemplate").toString();
+            const auto previousForm = program.forms.constFind(templateId(last - 1));
             const bool sliver = preceding && !connected &&
                 QLineF(chord(*preceding).center(), chord(*boundary).center()).length() < .4 * chord(*boundary).length();
             if (!sliver) {
@@ -798,14 +800,14 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                     recordBoundaryTemplate(sub, last, true, terminal);
                     if (!connected) recordBoundaryTemplate(sub, last - 1, false, terminal);
                 }
-            } else if (templateId(last - 1).startsWith("beh-")) {
+            } else if (!toothId.isEmpty() && previousForm != program.forms.cend() && toothDescription(previousForm->body)) {
                 // The old tooth match can be the reh hook itself. If giving
                 // that hook back leaves a sliver, look for the actual tooth
                 // and recover its incoming boundary at the same time.
                 const auto oldEntry = *std::next(sub.joins.rbegin());
                 const bool ribbon = !sub.kashidaPaths[last - 2].isEmpty();
-                const auto declaration = resolvedBodyForm(config, form("medial", "beh-shoulder-medi"));
-                const auto toothId = declaration.value("id").toString();
+                const auto declaration = resolvedBodyForm(config, form("medial", toothId));
+                if (!declaration.value("current").toString().contains(letters[last - 1])) return;
                 auto teeth = declaredToothBoundaries(outline, declaration);
                 std::stable_sort(teeth.begin(), teeth.end(), [](const auto& a, const auto& b) {
                     return a.tip.point.y() < b.tip.point.y();
@@ -836,6 +838,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                             return hookAndTooth() && toSubpaths(connector).size() == 1 &&
                                 followsOneStroke(connector, end, startOfReh);
                         }, incoming)) {
+                        recordAssembledForm(sub, last - 1, toothId);
                         recordBoundaryTemplate(sub, last, true, terminal);
                         recordBoundaryTemplate(sub, last - 1, true, toothId);
                         recordBoundaryTemplate(sub, last - 1, false, toothId);
@@ -843,6 +846,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                         break;
                     }
                     if (replace(last - 1, *boundary, {}, restored, hookAndTooth, incoming)) {
+                        recordAssembledForm(sub, last - 1, toothId);
                         recordBoundaryTemplate(sub, last, true, terminal);
                         recordBoundaryTemplate(sub, last - 1, true, toothId);
                         recordBoundaryTemplate(sub, last - 1, false, terminal);

@@ -33,8 +33,8 @@ static void checkSennaPolicy(const QJsonObject& config, const char* id, int page
     SearchContext context{.transformedPath = ink, .subword = empty};
     check(readTerminalOutline(context), "Senna outline missing");
     const bool paired = toothPairDescription(body);
-    const auto pairEvidence = paired ? recognizeToothBodies(context, body) : std::vector<ToothBodyEvidence>{};
-    const auto bendEvidence = paired ? BentToothRecognition{} : recognizeBentToothBodies(context, body);
+    const auto pairEvidence = paired ? recognizeToothBodies(inkOutline(context), body) : std::vector<ToothBodyEvidence>{};
+    const auto bendEvidence = paired ? BentToothRecognition{} : recognizeBentToothBodies(inkOutline(context), body);
     const auto project = [&](const QJsonObject& policy) {
         return paired ? cutToothBodies(context, pairEvidence, policy) : cutBentToothBodies(context, bendEvidence, policy);
     };
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
     WordResultInfo::SubWordInfo empty;
     SearchContext context{.transformedPath = ink, .subword = empty};
     check(readTerminalOutline(context), "Fixture outline missing");
-    const auto evidence = recognizeToothBodies(context, body);
+    const auto evidence = recognizeToothBodies(inkOutline(context), body);
     const auto projected = cutToothBodies(context, evidence, cuts);
     const auto target = std::find_if(projected.begin(), projected.end(), [](const auto& tooth) {
         return std::abs(tooth.tip.time - 5.53152858) < 1e-6 && tooth.bend.time == 17;

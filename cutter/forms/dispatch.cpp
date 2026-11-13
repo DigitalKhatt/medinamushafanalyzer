@@ -148,7 +148,8 @@ bool matchesBoundaryBody(SearchContext& context, const QJsonObject& rule,
     return true;
 }
 
-SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonObject &body) {
+SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonObject &body,
+                                         StrokeNormalCache* normals) {
     SharedShapeEvidence result;
     result.source = outline.ink;
     const auto shape = body.value("shape");
@@ -198,6 +199,10 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
         result.enclosedLips = recognizeEnclosedLips(outline, body.value("head").toObject());
     else if (shape == "tooth-cluster")
         result.clusters = recognizeToothClusters(outline, body.value("cluster").toObject());
+    else if (toothPairDescription(body))
+        result.toothPairs = recognizeToothBodies(outline, body, normals);
+    else if (bentToothDescription(body))
+        result.bentTeeth = recognizeBentToothBodies(outline, body);
     else if (shape == "profile-neck")
         result.bowlNecks = recognizeProfileNecks(outline, body);
     else if (shape == "paired-route")
@@ -251,13 +256,15 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
 std::shared_ptr<const SharedShapeEvidence> recognizedSharedShape(SearchContext &context,
                                                                         const QJsonObject &body) {
     const auto generate = [&] {
-        return std::make_shared<const SharedShapeEvidence>(recognizeSharedShape(inkOutline(context), body));
+        auto* normals = context.outlineCache ? &context.outlineCache->normalsByCenter : nullptr;
+        return std::make_shared<const SharedShapeEvidence>(recognizeSharedShape(inkOutline(context), body, normals));
     };
     if (!context.outlineCache)
         return generate();
     const auto key = std::make_pair(bodyDescriptionKey(body), static_cast<int>(context.orientation));
     auto &evidence = context.outlineCache->sharedBodies[key];
-    if (!evidence || evidence->source != context.transformedPath)
+    if (!evidence || evidence->source != context.transformedPath ||
+        evidence->source.fillRule() != context.transformedPath.fillRule())
         evidence = generate();
     return evidence;
 }
@@ -341,6 +348,17 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
         inspectLandmark("Opposite edge", evidence.descendingStemSection->bottomBaseLine);
     }
     if (evidence.medialStem) inspectStemEvidence(*evidence.medialStem);
+    for (const auto& tooth : evidence.toothPairs) {
+        inspectLandmark("Tooth tip", tooth.tip);
+        for (const auto& pair : tooth.pairs) inspectLandmark("Inner bend", pair.bend);
+        if (!tooth.forwardFlank.empty()) inspectLandmark("Flank foot", tooth.forwardFlank.back());
+        if (!tooth.reverseFlank.empty()) inspectLandmark("Flank foot", tooth.reverseFlank.back());
+    }
+    for (const auto& tooth : evidence.bentTeeth.bodies) {
+        inspectLandmark("Tooth tip", tooth.tip);
+        inspectLandmark("Inner bend", tooth.bend);
+        for (const auto& entry : tooth.entries) inspectLandmark("Baseline foot", entry.foot);
+    }
     for (const auto &fork : evidence.bowlForks) {
         inspectLandmark("Fork upper", fork.upper);
         inspectLandmark("Fork lower", fork.lower);
@@ -718,8 +736,13 @@ bool hasIntrinsicMedialBody(const QJsonObject& config, const QJsonObject& form) 
         form.contains("mouth") || form.contains("blade") || !form.value("counterLigature").toObject().isEmpty() ||
         !pairedRouteSettings(form).isEmpty() || !loopSettings(form).isEmpty() ||
         !openHeadSettings(form).isEmpty() || !pairedCounterSettings(form).isEmpty() ||
-        !toothRecognitionSettings(form).isEmpty() || !loopHeadSettings(form).isEmpty() ||
+        hasToothBody(form) || !loopHeadSettings(form).isEmpty() ||
         (form.value("sharedEntry").toBool() && !form.value("seenTeeth").toObject().isEmpty());
+}
+
+bool usesToothEntryProbe(const QJsonObject& form) {
+    return form.value("cuts").toObject().value("precedingTooth").toObject()
+        .value("probeEntry").toBool();
 }
 
 std::vector<MedialCandidate> declaredStemBoundaries(SearchContext& context, const QJsonObject& config,
@@ -734,7 +757,7 @@ std::vector<MedialCandidate> declaredStemBoundaries(SearchContext& context, cons
 
 // Collect template proposals before resolving the following body's boundary.
 std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
-        SearchContext& context, const QJsonObject& form, ToothSearchPlan* plan, QChar nextLetter,
+        SearchContext& context, const QJsonObject& form, PlacementSearch* plan, QChar nextLetter,
         const Stretching* precedingBody, double bodyMinX, double entryX) {
     std::vector<MedialCandidate> candidates;
     const auto contour = pairedRouteSettings(form);
@@ -869,44 +892,6 @@ std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
             candidates.emplace_back(right, left);
     }
     return candidates;
-}
-
-// A final alef can provide an independent seam after a tooth. Recover the
-// incoming tooth shoulder if the earlier walk stopped at its tip.
-void recoverIncomingToothShoulder(SearchContext& context, Stretching& incoming) {
-    const auto tip = context.timeSorted.find(incoming.topBaseLine);
-    if (tip != context.timeSorted.end() && tip->point.y() < context.prev(tip)->point.y() &&
-        tip->point.y() < context.next(tip)->point.y()) {
-        const auto& ink = context.transformedPath;
-        const double width = QLineF(tip->point, incoming.bottomBaseLine.point).length();
-        for (auto bend = context.timeSorted.begin(); bend != context.timeSorted.end(); ++bend) {
-            if (bend->point.y() <= tip->point.y() ||
-                bend->point.y() > context.prev(bend)->point.y() ||
-                bend->point.y() > context.next(bend)->point.y() ||
-                QLineF(tip->point, bend->point).length() > 3 * width ||
-                !interiorChord(ink, *tip, *bend)) continue;
-            const auto shoulder = [&](auto point, auto advance) {
-                for (int step = 0; step < 4; ++step) {
-                    const auto next = (context.*advance)(point);
-                    if (next->point.y() <= point->point.y()) break;
-                    point = next;
-                }
-                return point;
-            };
-            for (const auto advance : {&SearchContext::prev, &SearchContext::next}) {
-                const auto reverse = advance == &SearchContext::prev
-                    ? &SearchContext::next : &SearchContext::prev;
-                const auto top = shoulder(tip, advance);
-                const auto bottom = shoulder(bend, reverse);
-                if (top->point.x() <= tip->point.x() || bottom->point.x() <= tip->point.x() ||
-                    bottom->point.y() <= top->point.y() || !interiorChord(ink, *top, *bottom)) continue;
-                incoming.topBaseLine = *top;
-                incoming.bottomBaseLine = *bottom;
-                break;
-            }
-            if (incoming.topBaseLine.time != tip->time) break;
-        }
-    }
 }
 
 // Project template walks and the paired-counter fallback at this slot.

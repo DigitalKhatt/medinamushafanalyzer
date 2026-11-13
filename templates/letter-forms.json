@@ -5930,6 +5930,9 @@
         }
       },
       "cuts": {
+        "precedingTooth": {
+          "refitTemplate": "beh-shoulder-medi"
+        },
         "route": {
           "bottomProbe": "up"
         },
@@ -5967,6 +5970,9 @@
         }
       },
       "cuts": {
+        "precedingTooth": {
+          "refitTemplate": "beh-shoulder-medi"
+        },
         "shareEntryWhenUnresolved": true,
         "return": {
           "maxChord": 1.5
@@ -6013,6 +6019,9 @@
         }
       },
       "cuts": {
+        "precedingTooth": {
+          "refitTemplate": "beh-shoulder-medi"
+        },
         "route": {
           "bottomProbe": "up"
         },
@@ -6287,6 +6296,9 @@
         }
       },
       "cuts": {
+        "precedingTooth": {
+          "probeEntry": true
+        },
         "route": {
           "bottomProbe": "walk-stroke-normal",
           "range": {
@@ -6538,6 +6550,13 @@
         "stem": {}
       },
       "cuts": {
+        "precedingTooth": {
+          "probeEntry": true,
+          "incomingShoulder": {
+            "maxBendDistance": 3,
+            "flankSteps": 4
+          }
+        },
         "reorientEntry": {
           "after": "ه",
           "maxShortSide": 0.05,
@@ -6648,6 +6667,9 @@
         }
       },
       "cuts": {
+        "precedingTooth": {
+          "probeEntry": true
+        },
         "boundaries": {
           "right": "fork-normal",
           "left": "free"
@@ -6843,6 +6865,9 @@
         }
       },
       "cuts": {
+        "precedingTooth": {
+          "refitTemplate": "beh-shoulder-medi"
+        },
         "route": {
           "bottomProbe": "normal",
           "anchorSide": "bottom"
@@ -6929,6 +6954,9 @@
         "counters": 0
       },
       "cuts": {
+        "precedingTooth": {
+          "probeEntry": true
+        },
         "route": {
           "bottomProbe": "walk-stroke-normal",
           "penWidth": 0.5

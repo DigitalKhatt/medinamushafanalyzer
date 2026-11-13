@@ -167,6 +167,8 @@ struct StrokeNormalSample {
     double width = 0;
 };
 
+using StrokeNormalCache = std::map<std::pair<double, double>, StrokeNormalSample>;
+
 // Intrinsic body evidence. It contains no proposed boundaries and does not
 // depend on the width or landmarks of either adjoining letter.
 struct StemFork {
@@ -222,7 +224,7 @@ struct ContourRouteSearch {
 struct OutlineSearchCache {
     std::shared_ptr<const MedinaCutter::PreparedPassOutline> outline;
     std::vector<std::unique_ptr<MedinaCutter::PreparedPassRules>> rules;
-    std::map<std::pair<double, double>, MedinaCutter::StrokeNormalSample> normalsByCenter;
+    MedinaCutter::StrokeNormalCache normalsByCenter;
     std::map<std::pair<QString, bool>, std::optional<Stretching>> terminalCuts;
     std::map<QByteArray, std::vector<std::optional<Stretching>>> routeCuts;
     std::map<std::pair<QString, double>, std::vector<std::pair<Stretching, Stretching>>> contourBodies;
@@ -287,7 +289,6 @@ struct InkOutline {
     const std::vector<QPainterPath>& contours;
     QRectF bounds;
     Orientation orientation;
-
     SearchContext geometry(WordResultInfo::SubWordInfo& empty) const {
         return {.transformedPath = ink, .xSorted = x, .ySorted = y, .timeSorted = time,
                 .bbox = bounds, .subword = empty, .subPaths = contours, .orientation = orientation};
@@ -368,10 +369,6 @@ bool bentToothDescription(const QJsonObject& body);
 bool toothDescription(const QJsonObject& body);
 
 bool hasToothBody(const QJsonObject& form);
-
-QJsonObject toothRecognitionSettings(const QJsonObject& form);
-
-QJsonObject toothPlacementSettings(const QJsonObject& form);
 
 QJsonObject formDescription(const QJsonObject& config, const QJsonObject& form,
         const QString& field, QString* error = nullptr, QSet<QString> parents = {});
@@ -497,7 +494,8 @@ bool cutLayeredHead(SearchContext &context, const LayeredHeadBody &body, const Q
 std::vector<Stretching> cutLayeredHeadRims(const SearchContext& context, const LayeredHeadBody& body,
                                          const QJsonObject& policy, double strokeWidth);
 
-bool strokeNormalCut(const SearchContext &context, Stretching &cut, double offsetX = 0);
+bool strokeNormalCut(const SearchContext &context, Stretching &cut, double offsetX = 0,
+                     StrokeNormalCache* normals = nullptr);
 
 bool anchoredStrokeNormalCut(const SearchContext &context, Stretching &cut, bool forward, bool anchorTop = false);
 
@@ -860,9 +858,6 @@ struct ToothEntryLandmark {
     bool forward;
 };
 
-void extendToothToBaseline(SearchContext& context, ToothBody& body,
-        const QJsonObject& entry, const QJsonObject& policy);
-
 // A pointed or sloping tooth can turn sideways before its two flanks reach
 // the baseline. Follow the underside both ways from its concave bend and
 // measure a normal on each attachment, including across the path's closure.
@@ -939,7 +934,7 @@ struct BentToothRecognition {
     std::vector<BentToothBodyEvidence> bodies;
 };
 
-BentToothRecognition recognizeBentToothBodies(SearchContext& context, const QJsonObject& body);
+BentToothRecognition recognizeBentToothBodies(const InkOutline& outline, const QJsonObject& body);
 
 std::vector<ToothBody> cutBentToothBodies(SearchContext& context,
         const BentToothRecognition& evidence, const QJsonObject& policy);
@@ -974,21 +969,27 @@ struct ToothBodyEvidence {
 };
 
 std::vector<ToothBodyEvidence> recognizeToothBodies(
-        SearchContext& context, const QJsonObject& settings);
+        const InkOutline& outline, const QJsonObject& settings, StrokeNormalCache* normals = nullptr);
 
 std::vector<ToothBody> cutToothBodies(SearchContext& context,
         const std::vector<ToothBodyEvidence>& bodies, const QJsonObject& settings, bool bothSides = true);
 
-std::vector<ToothBody> computeToothBoundaries(SearchContext& context, const QJsonObject& form);
+std::vector<ToothBody> computeToothBoundaries(SearchContext& context, const QJsonObject& form,
+                                            bool recovering = false);
 
 struct ToothCandidateMemo {
     QPainterPath source;
     Orientation orientation;
-    struct Entry { QJsonObject form; std::vector<ToothBody> candidates; };
+    struct Entry {
+        QJsonObject body, cuts;
+        std::vector<ToothBody> candidates;
+        std::optional<std::vector<ToothBody>> recovered;
+    };
     QMap<QString, Entry> forms;
 };
 
-std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJsonObject& form);
+std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJsonObject& form,
+                                             bool recovering = false);
 
 std::vector<StackedCounterPair> recognizeStackedPairs(const InkOutline &outline, const QJsonObject &settings);
 
@@ -1548,13 +1549,16 @@ struct SharedShapeEvidence {
     std::vector<OpenHeadBody> openHeads;
     std::optional<HorizontalCounterPair> horizontalPair;
     std::vector<StackedCounterPair> stackedPairs;
+    std::vector<ToothBodyEvidence> toothPairs;
+    BentToothRecognition bentTeeth;
     std::optional<TailBody> tail;
     std::optional<ReturnSeamBody> returnSeam;
     std::vector<PairedRouteBody> pairedRoutes;
     std::vector<CounterOutlineBody> outlines;
 };
 
-SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonObject &body);
+SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonObject &body,
+                                         StrokeNormalCache* normals = nullptr);
 
 std::shared_ptr<const SharedShapeEvidence> recognizedSharedShape(SearchContext &context,
                                                                         const QJsonObject &body);
@@ -1573,17 +1577,16 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
 
 } // namespace MedinaCutter
 
-// Enumerate distinct, geometrically valid readings of a prefix only when a
-// subsequent tooth is unresolved. Curves meeting at the same seam are one choice.
-struct ToothSearchPlan {
+// Enumerate distinct, geometrically valid readings of a prefix when
+// placement fails. Curves meeting at the same seam are one choice.
+struct PlacementSearch {
     bool enumerate = false;
     int stage = 1;
-    QMap<QString, std::vector<MedinaCutter::ToothBody>> teeth;
     QMap<QString, std::vector<std::pair<Stretching,Stretching>>> intrinsic;
     QVector<int> skip, choices;
     QVector<std::set<std::array<int, 4>>> encountered;
     QVector<MedinaCutter::ContourRouteSearch> routeSearches;
-    explicit ToothSearchPlan(int size) : skip(size), choices(size), encountered(size), routeSearches(size) {}
+    explicit PlacementSearch(int size) : skip(size), choices(size), encountered(size), routeSearches(size) {}
     bool accepts(int letter, const Stretching& entry, const Stretching& exit) {
         const auto key = [](double time) { return static_cast<int>(std::lround(time * 100)); };
         if (!encountered[letter]
@@ -1629,14 +1632,16 @@ bool supportsOpenMedialBoundary(const QJsonObject& config, const QJsonObject& fo
 bool hasIntrinsicMedialBody(const QJsonObject& config, const QJsonObject& form);
 
 std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
-        SearchContext& context, const QJsonObject& form, ToothSearchPlan* plan, QChar nextLetter,
+        SearchContext& context, const QJsonObject& form, PlacementSearch* plan, QChar nextLetter,
         const Stretching* precedingBody, double bodyMinX, double entryX);
 
 std::vector<MedialCandidate> declaredStemBoundaries(SearchContext& context, const QJsonObject& config,
         const QJsonObject& form, const Stretching& incoming, const QPointF& entry, const QPointF& exit,
         double stroke, bool open, bool recoverTeeth, bool allowFork, const std::optional<Stretching>& sharedExit);
 
-void recoverIncomingToothShoulder(SearchContext& context, Stretching& incoming);
+std::optional<Stretching> toothShoulderEntry(SearchContext& context, const Stretching& incoming,
+                                          const QJsonObject& settings);
+bool usesToothEntryProbe(const QJsonObject& form);
 
 void appendMedialWalks(SearchContext& context, const QJsonObject& form,
                               const QPointF& entry, const QPointF& exit, double stroke,

@@ -857,7 +857,7 @@ static std::optional<Stretching> cutToothEntry(SearchContext& context, const Pat
 // The ordinary tip detector can enclose the crown while leaving the entire
 // inclined shaft in the preceding connector. Replace that short entry only
 // when the same tooth's baseline turn produces a solid, ordered body.
-void extendToothToBaseline(SearchContext& context, ToothBody& body,
+static void extendToothToBaseline(SearchContext& context, ToothBody& body,
         const QJsonObject& entry, const QJsonObject& policy) {
     if (!body.right) return;
     const auto chord = [](const Stretching& cut) {
@@ -1059,11 +1059,10 @@ static std::vector<ToothBody> cutToothBends(SearchContext& context,
     return results;
 }
 
-BentToothRecognition recognizeBentToothBodies(SearchContext& context, const QJsonObject& body) {
-    if (body.value("shape") == "tooth-bend") return {false, {}, recognizeToothBends(context, body)};
-    SearchContext local{.transformedPath=context.transformedPath, .xSorted=context.xSorted,
-        .timeSorted=context.timeSorted, .bbox=context.bbox, .subword=context.subword, .orientation=context.orientation,
-        .outlineCache=context.outlineCache};
+BentToothRecognition recognizeBentToothBodies(const InkOutline& outline, const QJsonObject& body) {
+    WordResultInfo::SubWordInfo empty{};
+    auto local = outline.geometry(empty);
+    if (body.value("shape") == "tooth-bend") return {false, {}, recognizeToothBends(local, body)};
     const auto curves = baseContourCurves(local.transformedPath);
     for (int i = 0; i < static_cast<int>(curves.size()); ++i) {
         const auto p = curves[i].pt1();
@@ -1075,7 +1074,8 @@ BentToothRecognition recognizeBentToothBodies(SearchContext& context, const QJso
         });
         if (!already) local.timeSorted.insert({0,double(i),p,false,true});
     }
-    return {true, local.timeSorted, recognizeToothBends(local, body)};
+    auto bodies = recognizeToothBends(local, body);
+    return {true, std::move(local.timeSorted), std::move(bodies)};
 }
 
 std::vector<ToothBody> cutBentToothBodies(SearchContext& context,
@@ -1088,7 +1088,9 @@ std::vector<ToothBody> cutBentToothBodies(SearchContext& context,
 }
 
 std::vector<ToothBodyEvidence> recognizeToothBodies(
-        SearchContext& context, const QJsonObject& settings) {
+        const InkOutline& outline, const QJsonObject& settings, StrokeNormalCache* normals) {
+    WordResultInfo::SubWordInfo empty{};
+    auto context = outline.geometry(empty);
     const auto& ink = context.transformedPath;
     std::vector<ToothBodyEvidence> results;
     // Derivative roots and curve endpoints can name the same extremum
@@ -1160,7 +1162,7 @@ std::vector<ToothBodyEvidence> recognizeToothBodies(
                 Stretching cut{};
                 cut.topBaseLine = anchor;
                 cut.bottomBaseLine = bottom;
-                if (strokeNormalCut(context, cut)) footEntry = cut;
+                if (strokeNormalCut(context, cut, 0, normals)) footEntry = cut;
                 break;
             }
             if (footEntry) {
@@ -1503,9 +1505,7 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
 
 // A compound loop shares the same intrinsic tooth recognizer as a senna.
 std::shared_ptr<const LoopTeeth> recognizeLoopTeeth(const InkOutline &outline, const QJsonObject &body) {
-    WordResultInfo::SubWordInfo empty;
-    auto geometry = outline.geometry(empty);
-    return std::make_shared<const LoopTeeth>(recognizeToothBodies(geometry, body));
+    return std::make_shared<const LoopTeeth>(recognizeToothBodies(outline, body));
 }
 
 std::vector<ToothBody> cutLoopReturningTeeth(const SearchContext& context, const LoopTeeth& bodies) {
@@ -1530,64 +1530,104 @@ std::vector<ToothBody> cutLoopReturningTeeth(const SearchContext& context, const
     return result;
 }
 
-std::vector<ToothBody> computeToothBoundaries(SearchContext& context, const QJsonObject& form) {
+// A tooth entering a stem attachment can expose a tip on the earlier seam.
+// Walk both flanks of that same tip/bend pair to find its incoming shoulder.
+std::optional<Stretching> toothShoulderEntry(SearchContext& context, const Stretching& incoming,
+                                          const QJsonObject& settings) {
+    const auto tip = context.timeSorted.find(incoming.topBaseLine);
+    if (tip == context.timeSorted.end() || tip->point.y() >= context.prev(tip)->point.y() ||
+        tip->point.y() >= context.next(tip)->point.y()) return {};
+    const auto& ink = context.transformedPath;
+    const double width = QLineF(tip->point, incoming.bottomBaseLine.point).length();
+    const double maxBendDistance = settings.value("maxBendDistance").toDouble();
+    const int flankSteps = settings.value("flankSteps").toInt();
+    const auto shoulder = [&](auto point, auto advance) {
+        for (int step = 0; step < flankSteps; ++step) {
+            const auto next = (context.*advance)(point);
+            if (next->point.y() <= point->point.y()) break;
+            point = next;
+        }
+        return point;
+    };
+    for (auto bend = context.timeSorted.begin(); bend != context.timeSorted.end(); ++bend) {
+        if (bend->point.y() <= tip->point.y() ||
+            bend->point.y() > context.prev(bend)->point.y() ||
+            bend->point.y() > context.next(bend)->point.y() ||
+            QLineF(tip->point, bend->point).length() > maxBendDistance * width ||
+            !interiorChord(ink, *tip, *bend)) continue;
+        for (const auto advance : {&SearchContext::prev, &SearchContext::next}) {
+            const auto reverse = advance == &SearchContext::prev ? &SearchContext::next : &SearchContext::prev;
+            const auto top = shoulder(tip, advance);
+            const auto bottom = shoulder(bend, reverse);
+            if (top->point.x() <= tip->point.x() || bottom->point.x() <= tip->point.x() ||
+                bottom->point.y() <= top->point.y() || !interiorChord(ink, *top, *bottom)) continue;
+            auto section = incoming;
+            section.topBaseLine = *top;
+            section.bottomBaseLine = *bottom;
+            return section;
+        }
+    }
+    return {};
+}
+
+static void projectBaselineEntries(SearchContext& context, std::vector<ToothBody>& candidates,
+                                   const QJsonObject& body, const QJsonObject& cuts) {
+    const auto entry = body.value("baselineEntry").toObject();
+    const auto policy = cuts.value("baselineEntry").toObject();
+    if (!toothPairDescription(body) || entry.isEmpty() || policy.isEmpty()) return;
+    for (auto& candidate : candidates) extendToothToBaseline(context, candidate, entry, policy);
+}
+
+std::vector<ToothBody> computeToothBoundaries(SearchContext& context, const QJsonObject& form, bool recovering) {
     InspectFormScope inspection(form, context.transformedPath);
     const auto body = form.value("body").toObject();
     const auto cuts = form.value("cuts").toObject();
+    const auto evidence = recognizedSharedShape(context, body);
+    inspectSharedShape(*evidence);
     std::vector<ToothBody> result;
-    bool recognized = false;
-    if (bentToothDescription(body)) {
-        const auto evidence = recognizeBentToothBodies(context, body);
-        if (cutGeometryMemo && cutGeometryMemo->activeForm)
-            cutGeometryMemo->activeForm->bodies += evidence.bodies.size();
-        recognized = !evidence.bodies.empty();
-        if (inspectingForm) for (const auto& item : evidence.bodies) {
-            inspectLandmark("Tooth tip", item.tip);
-            inspectLandmark("Inner bend", item.bend);
-            for (const auto& entry : item.entries) inspectLandmark("Baseline foot", entry.foot);
-        }
-        if (evidence.bodies.empty()) inspectReason("Body", "No tip–bend pair passed the bend, flank, ink continuity and distance constraints.");
-        result = cutBentToothBodies(context, evidence, cuts);
-    } else {
-        const auto evidence = recognizeToothBodies(context, body);
-        if (cutGeometryMemo && cutGeometryMemo->activeForm)
-            cutGeometryMemo->activeForm->bodies += evidence.size();
-        recognized = !evidence.empty();
-        if (inspectingForm) for (const auto& item : evidence) {
-            inspectLandmark("Tooth tip", item.tip);
-            for (const auto& pair : item.pairs) inspectLandmark("Inner bend", pair.bend);
-            if (!item.forwardFlank.empty()) inspectLandmark("Flank foot", item.forwardFlank.back());
-            if (!item.reverseFlank.empty()) inspectLandmark("Flank foot", item.reverseFlank.back());
-        }
-        if (evidence.empty()) inspectReason("Body", "No tip–bend pair passed the body constraints.");
-        result = cutToothBodies(context, evidence, cuts);
-    }
-    if (recognized && result.empty())
+    const auto count = evidence->toothPairs.size() + evidence->bentTeeth.bodies.size();
+    if (cutGeometryMemo && cutGeometryMemo->activeForm) cutGeometryMemo->activeForm->bodies += count;
+    if (!count) {
+        inspectReason("Body", "No tip–bend pair passed the body constraints.");
+    } else if (toothPairDescription(body)) {
+        result = cutToothBodies(context, evidence->toothPairs, cuts);
+        if (recovering) projectBaselineEntries(context, result, body, cuts);
+    } else
+        result = cutBentToothBodies(context, evidence->bentTeeth, cuts);
+    if (count && result.empty())
         inspectReason("Cuts", "Body evidence found, but no boundary pair passed projection and retained-body checks.");
     if (inspectingForm) for (const auto& item : result) inspectCandidate(QString("Tip %1 / bend %2").arg(item.tip.time, 0, 'f', 2)
         .arg(item.bend.time, 0, 'f', 2), item.left, item.right);
     return result;
 }
 
-// Tip/bend associations and the cut policies depend only on the uncut outline.
-// Placement retries get a copy: baseline extensions must not mutate this inventory.
-std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJsonObject& form) {
+// Both cuts are projected from one form's cached body. A recovery cut uses
+// the same landmarks and policy and leaves the ordinary proposal available.
+std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJsonObject& form, bool recovering) {
     CandidateSearchScope measured(form);
-    ToothCandidateMemo* memo = nullptr;
-    if (context.outlineCache && !formInspection) {
-        auto& saved = context.outlineCache->toothCandidates;
-        if (!saved || saved->source != context.transformedPath ||
-            saved->source.fillRule() != context.transformedPath.fillRule() || saved->orientation != context.orientation)
-            saved = std::make_shared<ToothCandidateMemo>(context.transformedPath, context.orientation);
-        memo = saved.get();
-        const auto hit = memo->forms.constFind(form.value("id").toString());
-        if (hit != memo->forms.cend() && hit->form == form) return hit->candidates;
+    const auto project = [&](bool recovery) {
+        if (measured.stats) ++measured.stats->builds;
+        auto candidates = computeToothBoundaries(context, form, recovery);
+        if (measured.stats) measured.stats->cutPairs += candidates.size();
+        return candidates;
+    };
+    if (!context.outlineCache || formInspection) return project(recovering);
+    auto& memo = context.outlineCache->toothCandidates;
+    if (!memo || memo->source != context.transformedPath ||
+        memo->source.fillRule() != context.transformedPath.fillRule() || memo->orientation != context.orientation)
+        memo = std::make_shared<ToothCandidateMemo>(context.transformedPath, context.orientation);
+    const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
+    const auto id = form.value("id").toString();
+    auto saved = memo->forms.find(id);
+    if (saved == memo->forms.end() || saved->body != body || saved->cuts != cuts)
+        saved = memo->forms.insert(id, {body, cuts, project(false), {}});
+    if (!recovering || !toothPairDescription(body) || cuts.value("baselineEntry").toObject().isEmpty())
+        return saved->candidates;
+    if (!saved->recovered) {
+        saved->recovered = saved->candidates;
+        projectBaselineEntries(context, *saved->recovered, body, cuts);
     }
-    if (measured.stats) ++measured.stats->builds;
-    auto candidates = computeToothBoundaries(context, form);
-    if (measured.stats) measured.stats->cutPairs += candidates.size();
-    if (memo) memo->forms.insert(form.value("id").toString(), {form, candidates});
-    return candidates;
+    return *saved->recovered;
 }
 
 } // namespace MedinaCutter

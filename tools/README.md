@@ -137,12 +137,10 @@ For the ordinary, upright and low senna forms, `body.shape: "tooth-pair"` recogn
 opposing inner bend, both flanks and local stroke measurements from uncut ink.
 `body` contains pair-distance/width limits, flat-bend acceptance and the baseline
 entry's minimum rise. `cuts` holds the left/right normal offsets, turn angle,
-minimum turn run and tight-join policy. Its offsets use `local-stroke` units;
-they preserve the existing normal-projection and contour-walk alternatives,
-not a new symmetric contour-walk rule. `shared-boundary` permits a shared seam
-when necessary. Recognition takes no cut policy or neighboring join landmarks.
-Changing a policy can reuse the recognized evidence; the assembler still checks
-that the tooth core survives. Check this separation and inheritance with:
+minimum turn run and tight-join policy. The normal projections and contour
+walks use `local-stroke` units. `shared-boundary` allows a shared seam when
+the bodies retain their landmarks. A cut-policy edit reuses recognition in
+the shared body cache. Check this separation and inheritance with:
 
 ```sh
 python3 tools/tests/check_letter_forms.py body_cuts_test.cpp medial_tooth_test.cpp lam_alef_test.cpp
@@ -159,7 +157,7 @@ fails to produce a valid mask. No medial senna uses the old `tooth` field.
 The variants inherit shared settings. Set `baselineEntry: false` in `body` and
 `cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
 preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright
-and low teeth are available in the initial pass. It does not alter body geometry.
+and low teeth are available in the initial pass.
 
 The shared recognizers receive only `InkOutline` and `body`. They record
 candidate geometry before any neighbor or cut-policy check. Assembly selects

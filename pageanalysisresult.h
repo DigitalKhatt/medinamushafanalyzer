@@ -445,7 +445,7 @@ struct arabic_state_table_entry {
 
 
 
-struct ToothSearchPlan;
+struct PlacementSearch;
 struct SeenExitRetry;
 struct OutlineSearchCache;
 
@@ -509,8 +509,8 @@ private:
     bool segmentWithLetterForms(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
                                 const QJsonObject& config, OutlineSearchCache& outlineCache, bool expand);
     bool segmentSubwordPass(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                            bool refresh, const QJsonObject* draft, bool recoverTeeth, OutlineSearchCache& outlineCache,
-                            ToothSearchPlan* plan = nullptr,
+                            bool refresh, const QJsonObject* draft, bool recovering, OutlineSearchCache& outlineCache,
+                            PlacementSearch* plan = nullptr,
                             const SeenExitRetry* seenRetry = nullptr);
 	void restoreWaqfTypes(int pageIndex, int lineIndex, int wordIndex, AFont* font);
 	void repairSubwordBoundaries(int pageIndex, int lineIndex, int wordIndex, AFont* font);

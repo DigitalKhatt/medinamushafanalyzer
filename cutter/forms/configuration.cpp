@@ -202,14 +202,6 @@ bool hasToothBody(const QJsonObject& form) {
     return toothDescription(form.value("body").toObject());
 }
 
-QJsonObject toothRecognitionSettings(const QJsonObject& form) {
-    return hasToothBody(form) ? form.value("body").toObject() : QJsonObject{};
-}
-
-QJsonObject toothPlacementSettings(const QJsonObject& form) {
-    return hasToothBody(form) ? form.value("cuts").toObject() : QJsonObject{};
-}
-
 // References share descriptions, not execution order. Resolve each field on
 // demand so editing a parent in the preview immediately updates its users.
 QJsonObject formDescription(const QJsonObject& config, const QJsonObject& form,
@@ -290,6 +282,10 @@ const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
         {"paired-route", {"routes", {"route-left", "route-right"}}},
         {"profile-neck", {"outline", {"free", "neck-section", "edge-projection", "lower-probe"}}},
         {"tooth-cluster", {"cluster", {"free", "tooth-entry", "tooth-exit"}}},
+        {"tooth-pair", {"", {"tooth-normal"}}},
+        {"tooth-bend", {"", {"tooth-flank"}}},
+        {"tooth-shoulder", {"", {"tooth-flank"}}},
+        {"tooth-hook", {"", {"tooth-flank"}}},
         {"enclosed-lips", {"head", {"free", "corner-normal"}}},
         {"returning-lips", {"mouth", {"corner-normal"}}},
         {"inclined-blade", {"blade", {"corner-normal"}}},
@@ -502,6 +498,73 @@ static QString invalidBowlJunction(const QJsonObject& junction) {
     return {};
 }
 
+static QString validateToothShape(const QJsonObject& form, const QString& phase) {
+    const auto id = form.value("id").toString();
+    const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
+    const auto positive = [](const QJsonValue& value) {
+        return value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble() > 0;
+    };
+    if (phase != "medial") return id + ": tooth shapes are medial bodies";
+    for (const auto* key : {"method", "tightJoin"})
+        if (form.contains(key)) return id + ": declared tooth geometry and policies belong in body / cuts";
+    const bool pair = toothPairDescription(body);
+    const QStringList dimensions = pair ? QStringList{"minPairDistance", "maxPairDistance", "minFlankRise",
+        "flankDrop", "maxTipOverhang", "minWidth", "maxWidth"} :
+        QStringList{"minPairDistance", "maxPairDistance", "minBendTurn"};
+    for (auto key = body.begin(); key != body.end(); ++key) {
+        if (dimensions.contains(key.key())) {
+            if (!key.value().isDouble() || !std::isfinite(key.value().toDouble()) || key.value().toDouble() < 0)
+                return id + ": tooth body measurements must be finite and nonnegative";
+        } else if (key.key() != "shape" && key.key() != "baselineEntry" &&
+                   !(pair && key.key() == "allowFlatBend"))
+            return id + ": unknown tooth body setting " + key.key();
+    }
+    if (!positive(body.value("maxPairDistance")) ||
+        body.value("minPairDistance").toDouble() >= body.value("maxPairDistance").toDouble() ||
+        (pair && (!positive(body.value("maxWidth")) ||
+         body.value("minWidth").toDouble() >= body.value("maxWidth").toDouble())))
+        return id + ": tooth body measurements need ordered pair-distance and width limits";
+    if (!pair && (!body.contains("minBendTurn") || body.value("minBendTurn").toDouble() > 1))
+        return id + ": body.minBendTurn must be between 0 and 1";
+    if (body.contains("allowFlatBend") && !body.value("allowFlatBend").isBool())
+        return id + ": body.allowFlatBend must be boolean";
+    const auto entry = body.value("baselineEntry").toObject();
+    if (body.contains("baselineEntry") && body.value("baselineEntry") != QJsonValue(false)) {
+        if (!positive(entry.value("minRise"))) return id + ": body.baselineEntry needs a positive minRise";
+        for (auto key = entry.begin(); key != entry.end(); ++key)
+            if (key.key() != "minRise" && (!pair || key.key() != "required" || !key.value().isBool()))
+                return id + ": body.baselineEntry supports minRise, plus required on a tooth-pair";
+    }
+    if (cuts.value("offsetUnit") != "local-stroke" ||
+        !QStringList{"shared-boundary", "separate"}.contains(cuts.value("tightJoin").toString()))
+        return id + ": tooth cuts need local-stroke offsets and a tightJoin policy";
+    if (pair) {
+        for (const auto* key : {"leftOffset", "rightOffset", "normalOffsetTolerance"}) {
+            const auto value = cuts.value(key);
+            if ((QString(key) != "normalOffsetTolerance" || !value.isUndefined()) &&
+                (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() < 0))
+                return id + ": tooth offsets must be nonnegative local stroke widths";
+        }
+    } else if (!positive(cuts.value("flankOffset")) || !positive(cuts.value("maxSectionWidth")) ||
+        !QStringList{"contour-normal", "axis-projection", "contour-search"}.contains(cuts.value("flankMode").toString()))
+        return id + ": tooth-flank cuts need a mode, positive flankOffset and maxSectionWidth";
+    const auto turn = cuts.value("baselineEntry").toObject();
+    if (cuts.contains("baselineEntry") && cuts.value("baselineEntry") != QJsonValue(false)) {
+        if (entry.isEmpty() || !positive(turn.value("turnAngle")) || turn.value("turnAngle").toDouble() >= 90 ||
+            (turn.contains("minTurnRun") && (!pair || !positive(turn.value("minTurnRun")))))
+            return id + ": cuts.baselineEntry needs recognized entry geometry and a turn angle between 0 and 90";
+        for (auto key = turn.begin(); key != turn.end(); ++key)
+            if (key.key() != "turnAngle" && key.key() != "minTurnRun")
+                return id + ": cuts.baselineEntry supports turnAngle and minTurnRun";
+    }
+    QStringList policyKeys{"boundaries", "offsetUnit", "tightJoin", "baselineEntry", "turnBoundaries"};
+    policyKeys += pair ? QStringList{"leftOffset", "rightOffset", "normalOffsetTolerance"} :
+                         QStringList{"flankMode", "flankOffset", "maxSectionWidth"};
+    for (auto key = cuts.begin(); key != cuts.end(); ++key)
+        if (!policyKeys.contains(key.key())) return id + ": unknown tooth cuts setting " + key.key();
+    return {};
+}
+
 static QString validateSharedShape(const QJsonObject& config, const QJsonObject& form, const QString& phase) {
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto shape = body.value("shape").toString(), id = form.value("id").toString();
@@ -513,13 +576,19 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         (phase == "final" && boundaries.value("left") != "free"))
         return id + ": cuts.boundaries must describe both sides for this position";
     const auto schema = sharedShapeSchemas().value(shape);
+    for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
+        if (!schema.boundaries.contains(it.value().toString()) || (phase == "medial" && it.value() == "free"))
+            return id + ": unsupported boundary policy for " + shape;
+    }
+    const auto turnError = invalidTurnBoundaries(cuts.value("turnBoundaries"), id, phase);
+    if (!turnError.isEmpty()) return turnError;
+    if (toothDescription(body)) return validateToothShape(form, phase);
+
     const auto &section = schema.section;
     QStringList bodyKeys{"shape", "counters", "features", section}, cutKeys{"boundaries", section};
     const auto positive = [](const QJsonValue& value) {
         return value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble() > 0;
     };
-    const auto turnError = invalidTurnBoundaries(cuts.value("turnBoundaries"), id, phase);
-    if (!turnError.isEmpty()) return turnError;
     if (hasStemFlanks(body)) {
         if (phase != "medial") return id + ": stem flanks require an entry and exit";
         bodyKeys << "minRise" << "maxWidthToHeight" << "minFlankSpan" << "entryRoute" << "exitRoutes";
@@ -758,6 +827,33 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     }
     if (shape == "upright-stem")
         cutKeys << "recoveryShaft";
+    if (const auto value = cuts.value("precedingTooth"); !value.isUndefined()) {
+        const auto placement = value.toObject();
+        const auto probe = placement.value("probeEntry");
+        const auto incoming = placement.value("incomingShoulder");
+        const auto refit = placement.value("refitTemplate");
+        if (phase != "final" || placement.isEmpty() ||
+            (!probe.isUndefined() && !probe.isBool()) ||
+            placement.size() != placement.contains("probeEntry") + placement.contains("incomingShoulder") +
+                placement.contains("refitTemplate"))
+            return id + ": invalid precedingTooth policy for a final entry";
+        if (!incoming.isUndefined()) {
+            const auto shoulder = incoming.toObject();
+            const auto steps = shoulder.value("flankSteps");
+            if (!probe.toBool() || shoulder.size() != 2 || !positive(shoulder.value("maxBendDistance")) ||
+                !positive(steps) || steps.toDouble() != steps.toInt())
+                return id + ": incomingShoulder needs an entry probe, a positive distance and an integer flank step limit";
+        }
+        if (!refit.isUndefined()) {
+            const auto medial = config.value("medial").toArray();
+            const auto alternative = std::find_if(medial.begin(), medial.end(), [&](const auto& value) {
+                return value.toObject().value("id") == refit;
+            });
+            if (alternative == medial.end() || !toothDescription(formDescription(config, alternative->toObject(), "body")))
+                return id + ": refitTemplate must name a medial tooth form";
+        }
+        cutKeys << "precedingTooth";
+    }
     if (shape == "tail-branch")
         bodyKeys << "maxShoulderBacktrackWidths";
     if (shape == "layered-head")
@@ -866,12 +962,6 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     };
     if (!checkBody(checkBody, body))
         return id + ": projection settings cannot change recognized body evidence";
-    for (auto it = boundaries.begin(); it != boundaries.end(); ++it) {
-        const auto mode = it.value().toString();
-        const auto &modes = schema.boundaries;
-        if (!modes.contains(mode) || (phase == "medial" && mode == "free"))
-            return id + ": unsupported boundary policy for " + shape;
-    }
     if ((shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge" ||
          shape == "contour-route") &&
         phase == "medial")
@@ -1733,76 +1823,12 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 return id + ": onPartial requires an initial contour walk";
             if (rule.contains("recoveryStage")) {
                 const auto stage = rule.value("recoveryStage");
-                if (QString(phase) != "medial" || !toothDescription(declaredBody) || !stage.isDouble() ||
+                if (QString(phase) != "medial" || !toothDescription(sharedBody) || !stage.isDouble() ||
                     !std::isfinite(stage.toDouble()) || stage.toDouble() != std::floor(stage.toDouble()) ||
                     stage.toInt() < 1 || stage.toInt() > 3)
                     return id + ": recoveryStage must be 1, 2 or 3 on a declared medial tooth";
             }
-            if (toothDescription(declaredBody)) {
-                if (QString(phase) != "medial") return id + ": tooth shapes are medial bodies";
-                for (const auto* key : {"method", "tightJoin"})
-                    if (rule.contains(key)) return id + ": declared tooth geometry and policies belong in body / cuts";
-                const bool pair = toothPairDescription(declaredBody);
-                const QStringList dimensions = pair ? QStringList{"minPairDistance", "maxPairDistance", "minFlankRise",
-                    "flankDrop", "maxTipOverhang", "minWidth", "maxWidth"} :
-                    QStringList{"minPairDistance", "maxPairDistance", "minBendTurn"};
-                for (auto key = declaredBody.begin(); key != declaredBody.end(); ++key) {
-                    if (dimensions.contains(key.key())) {
-                        if (!key.value().isDouble() || !std::isfinite(key.value().toDouble()) || key.value().toDouble() < 0)
-                            return id + ": tooth body measurements must be finite and nonnegative";
-                    } else if (key.key() != "shape" && key.key() != "baselineEntry" &&
-                               !(pair && key.key() == "allowFlatBend"))
-                        return id + ": unknown tooth body setting " + key.key();
-                }
-                if (!positive(declaredBody.value("maxPairDistance")) ||
-                    declaredBody.value("minPairDistance").toDouble() >= declaredBody.value("maxPairDistance").toDouble() ||
-                    (pair && (!positive(declaredBody.value("maxWidth")) ||
-                     declaredBody.value("minWidth").toDouble() >= declaredBody.value("maxWidth").toDouble())))
-                    return id + ": tooth body measurements need ordered pair-distance and width limits";
-                if (!pair && (!declaredBody.contains("minBendTurn") || declaredBody.value("minBendTurn").toDouble() > 1))
-                    return id + ": body.minBendTurn must be between 0 and 1";
-                if (declaredBody.contains("allowFlatBend") && !declaredBody.value("allowFlatBend").isBool())
-                    return id + ": body.allowFlatBend must be boolean";
-                const auto entry = declaredBody.value("baselineEntry").toObject();
-                if (declaredBody.contains("baselineEntry") && declaredBody.value("baselineEntry") != QJsonValue(false)) {
-                    if (!positive(entry.value("minRise"))) return id + ": body.baselineEntry needs a positive minRise";
-                    for (auto key = entry.begin(); key != entry.end(); ++key)
-                        if (key.key() != "minRise" && (!pair || key.key() != "required" || !key.value().isBool()))
-                            return id + ": body.baselineEntry supports minRise, plus required on a tooth-pair";
-                }
-                if (declaredCuts.value("offsetUnit") != "local-stroke" ||
-                    !QStringList{"shared-boundary", "separate"}.contains(declaredCuts.value("tightJoin").toString()))
-                    return id + ": tooth cuts need local-stroke offsets and a tightJoin policy";
-                const auto boundaries = declaredCuts.value("boundaries").toObject();
-                if (boundaries.size() != 2) return id + ": tooth cuts need exactly left and right boundaries";
-                for (const auto* side : {"left", "right"})
-                    if (boundaries.value(side) != (pair ? "tooth-normal" : "tooth-flank"))
-                        return id + ": unsupported tooth boundary policy";
-                if (pair) {
-                    for (const auto* key : {"leftOffset", "rightOffset", "normalOffsetTolerance"}) {
-                        const auto value = declaredCuts.value(key);
-                        if ((QString(key) != "normalOffsetTolerance" || !value.isUndefined()) &&
-                            (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() < 0))
-                            return id + ": tooth offsets must be nonnegative local stroke widths";
-                    }
-                } else if (!positive(declaredCuts.value("flankOffset")) || !positive(declaredCuts.value("maxSectionWidth")) ||
-                    !QStringList{"contour-normal", "axis-projection", "contour-search"}.contains(declaredCuts.value("flankMode").toString()))
-                    return id + ": tooth-flank cuts need a mode, positive flankOffset and maxSectionWidth";
-                const auto turn = declaredCuts.value("baselineEntry").toObject();
-                if (declaredCuts.contains("baselineEntry") && declaredCuts.value("baselineEntry") != QJsonValue(false)) {
-                    if (entry.isEmpty() || !positive(turn.value("turnAngle")) || turn.value("turnAngle").toDouble() >= 90 ||
-                        (turn.contains("minTurnRun") && (!pair || !positive(turn.value("minTurnRun")))))
-                        return id + ": cuts.baselineEntry needs recognized entry geometry and a turn angle between 0 and 90";
-                    for (auto key = turn.begin(); key != turn.end(); ++key)
-                        if (key.key() != "turnAngle" && key.key() != "minTurnRun")
-                            return id + ": cuts.baselineEntry supports turnAngle and minTurnRun";
-                }
-                QStringList policyKeys{"boundaries", "offsetUnit", "tightJoin", "baselineEntry", "turnBoundaries"};
-                policyKeys += pair ? QStringList{"leftOffset", "rightOffset", "normalOffsetTolerance"} :
-                                     QStringList{"flankMode", "flankOffset", "maxSectionWidth"};
-                for (auto key = declaredCuts.begin(); key != declaredCuts.end(); ++key)
-                    if (!policyKeys.contains(key.key())) return id + ": unknown tooth cuts setting " + key.key();
-            } else if (rule.contains("body") || rule.contains("cuts"))
+            if (rule.contains("body") || rule.contains("cuts"))
                 return id + ": unknown declared body shape";
             if (rule.contains("shaftTurn") && (method != "alef-stem" || !rule.value("shaftTurn").isBool()))
                 return id + ": shaftTurn requires an alef stem and must be true or false";

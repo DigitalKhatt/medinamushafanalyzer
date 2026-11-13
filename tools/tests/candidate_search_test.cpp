@@ -200,6 +200,7 @@ int main(int argc, char** argv) {
             auto form = resolvedBodyForm(config,namedLetterForm(config,id));
             const auto verify = [&](const QJsonObject& declaration) {
                 const auto expected = computeToothBoundaries(context,declaration);
+                const auto recovered = computeToothBoundaries(context,declaration,true);
                 for (int repeat=0; repeat<2; ++repeat) {
                     const auto actual = declaredToothBoundaries(context,declaration);
                     const auto a = snapshot(actual), b = snapshot(expected);
@@ -210,6 +211,8 @@ int main(int argc, char** argv) {
                                    << a.mid(first,32).toHex() << b.mid(first,32).toHex();
                     }
                     check(a==b,"Cached tooth candidates differ from a fresh search");
+                    check(snapshot(declaredToothBoundaries(context,declaration,true)) == snapshot(recovered),
+                          "Cached raised entries differ from a fresh projection");
                 }
                 toothPairs += expected.size();
             };

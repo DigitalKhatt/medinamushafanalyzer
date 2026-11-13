@@ -14,6 +14,7 @@ InkOutline inkOutline(const SearchContext &context) {
 bool preparePassOutline(SearchContext& context, OutlineSearchCache& cache) {
     if (!cache.outline || cache.outline->ink != context.transformedPath) {
         cache.routeCuts.clear();
+        cache.normalsByCenter.clear();
         auto prepared = std::make_shared<PreparedPassOutline>();
         prepared->ink = context.transformedPath;
         QVector<PathExtrema> raw;

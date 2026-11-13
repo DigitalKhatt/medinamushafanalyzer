@@ -3,8 +3,8 @@
 using namespace MedinaCutter;
 
 bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wordIndex, int subWordIndex,
-                                            AFont* font, bool refresh, const QJsonObject* draft, bool recoverTeeth,
-                                            OutlineSearchCache& outlineCache, ToothSearchPlan* plan, const SeenExitRetry* seenRetry) {
+                                            AFont* font, bool refresh, const QJsonObject* draft, bool recovering,
+                                            OutlineSearchCache& outlineCache, PlacementSearch* plan, const SeenExitRetry* seenRetry) {
     const auto seenRetryFor = [&](int slot, const QJsonObject& settings) {
         return seenRetry && seenRetry->slot == slot && seenRetry->supports(settings) ? seenRetry : nullptr;
     };
@@ -85,13 +85,14 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
 
 	int lastIndex = baseText.length() - 1;
 
-    const auto& preparedRules = preparePassRules(config, recoverTeeth, outlineCache);
+    const auto& preparedRules = preparePassRules(config, recovering, outlineCache);
     const auto& boundaryRules = preparedRules.boundaries;
     const auto& finalRules = preparedRules.finals;
     const auto& alefTurnRules = preparedRules.alefTurns;
     QVector<QString> bodyTemplateIds(baseText.size());
     QString terminalBoundaryTemplate;
     QString initialSharedBoundaryTemplate;
+    QMap<int, QString> sharedToothSeams;
     QVector<int> sharedEntries;
     QMap<int, ToothBody> ownedTeeth;
     QMap<int, PathExtrema> ownedStemCrests;
@@ -117,7 +118,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         context.res = {};
         const int owner = rule.value("bodyBoundary") == "current" ? 0 : lastIndex;
         bodyAttempted[owner] = true;
-        bool found = proposeTemplateBoundary(context, config, rule, owner == lastIndex, recoverTeeth,
+        bool found = proposeTemplateBoundary(context, config, rule, owner == lastIndex, recovering,
                                               seenRetryFor(owner, rule), finalFold,
                                               plan ? &plan->routeSearches[owner] : nullptr);
         QString rejectionReason;
@@ -474,8 +475,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         const auto center = [](const Stretching& join) {
             return QLineF(join.topBaseLine.point, join.bottomBaseLine.point).center();
         };
-        QMap<QString, std::vector<ToothBody>> localTeeth;
-        auto& teethByForm = plan ? plan->teeth : localTeeth;
+        QMap<QString, std::vector<ToothBody>> teethByForm;
         struct MedialAttempt {
             QJsonObject form;
             const ToothBody* tooth = nullptr;
@@ -487,9 +487,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             for (const auto& value : medialForms) {
                 const auto form = value.toObject();
                 if (!matchesBody(form, letter) || (open && !supportsOpenMedialBoundary(config, form))) continue;
-                const auto toothSettings = toothRecognitionSettings(form);
                 const int stage = form.value("recoveryStage").toInt();
-                if ((!recoverTeeth && stage > 0) || (plan && stage > plan->stage)) continue;
+                if ((!recovering && stage > 0) || (plan && stage > plan->stage)) continue;
                 bodyAttempted[letter] = true;
                 if (!hasToothBody(form)) {
                     attempts.push_back({form});
@@ -497,16 +496,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 }
                 if (!toothPosition) toothPosition = attempts.size();
                 const auto id = form.value("id").toString();
-                if (!teethByForm.contains(id)) {
-                    auto bodies = declaredToothBoundaries(context, form);
-                    if (recoverTeeth && toothPairDescription(toothSettings) && toothSettings.value("baselineEntry").isObject()) {
-                        const auto entry = toothSettings.value("baselineEntry").toObject();
-                        const auto policy = toothPlacementSettings(form).value("baselineEntry").toObject();
-                        if (!policy.isEmpty())
-                            for (auto& body : bodies) extendToothToBaseline(context, body, entry, policy);
-                    }
-                    teethByForm.insert(id, std::move(bodies));
-                }
+                if (!teethByForm.contains(id))
+                    teethByForm.insert(id, declaredToothBoundaries(context, form, recovering));
                 for (const auto& candidate : teethByForm.constFind(id).value()) {
                     const bool used = std::any_of(ownedTeeth.cbegin(), ownedTeeth.cend(), [&](const ToothBody& owned) {
                         return std::abs(owned.tip.time - candidate.tip.time) < 1e-7;
@@ -551,10 +542,15 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             auto& incoming = cuts[letter - 1];
             auto& outgoing = cuts[letter];
             const bool deferred = deferredFinalJoin && letter + 1 == lastIndex;
-            if (deferred && std::any_of(alefTurnRules.begin(), alefTurnRules.end(), [&](const auto& value) {
-                    return applies(value.toObject(), letter);
-                })) {
-                recoverIncomingToothShoulder(context, incoming);
+            if (deferred) {
+                for (const auto& value : finalRules) {
+                    const auto rule = value.toObject();
+                    const auto policy = rule.value("cuts").toObject().value("precedingTooth").toObject()
+                        .value("incomingShoulder").toObject();
+                    if (policy.isEmpty() || !applies(rule, letter)) continue;
+                    if (const auto section = toothShoulderEntry(context, incoming, policy)) incoming = *section;
+                    break;
+                }
             }
             const auto entry = center(incoming);
             const auto ordinaryExit = center(outgoing);
@@ -577,7 +573,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 if (composeSeenTail && !seenRetry->supports(form.value("seenTeeth").toObject())) continue;
                 const auto contour = pairedRouteSettings(form);
                 const auto openHead = openHeadSettings(form);
-                const auto tooth = toothRecognitionSettings(form);
                 const auto bridge = form.value("counterLigature").toObject();
                 const bool internalBody = hasIntrinsicMedialBody(config, form);
                 auto proposals = proposeMedialBodies(context, form, plan, baseText[letter + 1],
@@ -588,19 +583,13 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 auto exit = ordinaryExit;
                 std::optional<Stretching> nextBody;
                 QString nextBodyId;
-                if (!tooth.isEmpty() && letter + 1 == lastIndex) {
+                if (medial.tooth && letter + 1 == lastIndex) {
                     context.pairedStrokeWidth = stroke;
                     for (const auto& ruleValue : finalRules) {
                         const auto rule = ruleValue.toObject();
                         // An independent final stroke walk already specifies its
                         // cut. Keep the tooth candidates on its incoming side.
-                        const bool suppliesExit =
-                            rule.value("pairedOnly").toBool() ||
-                            rule.value("body").toObject().value("shape") == "upright-stem" ||
-                            rule.contains("penWidth") ||
-                            formDescription(config, rule, "body").value("shape") == "terminal-fork" ||
-                            rule.value("strokeSource") == "local";
-                        if (!suppliesExit || !applies(rule, letter) || !probeFinal(rule)) continue;
+                        if (!usesToothEntryProbe(rule) || !applies(rule, letter) || !probeFinal(rule)) continue;
                         nextBody = context.res;
                         nextBodyId = rule.value("id").toString();
                         exit = center(*nextBody);
@@ -608,7 +597,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     }
                     context.pairedStrokeWidth = 0;
                 }
-                if (deferred && tooth.isEmpty()) continue;
+                if (deferred && !medial.tooth) continue;
                 if (medial.tooth)
                     candidates.push_back({*medial.tooth->right, medial.tooth->left});
                 const auto body = formDescription(config, form, "body");
@@ -655,7 +644,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 }
                 if (hasStemFlanks(body)) {
                     const auto declarations = declaredStemBoundaries(context, config, form, incoming,
-                        entry, exit, stroke, open, recoverTeeth, pageIndex >= 0,
+                        entry, exit, stroke, open, recovering, pageIndex >= 0,
                         sharedExit ? std::optional{sharedExit->cut} : std::nullopt);
                     candidates.insert(candidates.end(), declarations.begin(), declarations.end());
                 }
@@ -740,6 +729,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                             if (intrinsicTooth) continue;
                         }
                     }
+                    bool sharesIncoming = false;
                     if (medial.tooth && !before(incoming, right) && before(incoming, left)) {
                         // The preceding body's cut can fall inside this tooth's
                         // incoming margin. Share it only if the actual remaining
@@ -752,6 +742,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                             if (parts.size() == 3 && toSubpaths(parts[1].path).size() == 1 &&
                                 feature.retainedBy(parts[1].path)) {
                                 sharedJoins = true;
+                                sharesIncoming = true;
                                 right = incoming;
                             }
                         }
@@ -836,6 +827,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
 
                     auto finalBoundary = nextBody;
                     auto finalTemplate = nextBodyId;
+                    bool usesFinalSeam = false;
                     if (sharedExit) {
                         finalBoundary = sharedExit->cut;
                         finalTemplate = sharedExit->templateId;
@@ -866,6 +858,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                                 finalBoundary = seam;
                                 finalTemplate = saved->templateId;
                                 sharedExit = *saved;
+                                usesFinalSeam = true;
                             }
                         }
                         if (!finalBoundary && saved && before(left, saved->cut)) {
@@ -910,6 +903,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                                             finalBoundary = context.res;
                                             finalTemplate = rule.value("id").toString();
                                             sharedExit = BodyBoundary{context.res, finalTemplate, true};
+                                            usesFinalSeam = true;
                                             break;
                                         }
                                     }
@@ -917,7 +911,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                                 // A tight final can overlap the proposed exit of
                                 // seen. Keep the final's cut only when it follows
                                 // all three tooth tips and reaches the last tip.
-                                if (recoverTeeth && !teeth.isEmpty() && !foldedFinal) {
+                                if (recovering && !teeth.isEmpty() && !foldedFinal) {
                                     const auto side = getJoinTime(context.res,context.orientation);
                                     const double pitch = QLineF(seenTips.front().point,seenTips.back().point).length()/2;
                                     const auto endpoint = QLineF(context.res.topBaseLine.point,context.res.bottomBaseLine.point);
@@ -954,6 +948,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                                     left = context.res;
                                     finalBoundary = context.res;
                                     finalTemplate = rule.value("id").toString();
+                                    usesFinalSeam = true;
                                     break;
                                 }
                                 trial[exitIndex] = original;
@@ -1061,7 +1056,15 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     }
                     const auto id = form.value("id").toString();
                     bodyTemplateIds[letter] = id;
-                    if (medial.tooth) ownedTeeth.insert(letter, *medial.tooth);
+                    if (medial.tooth) {
+                        ownedTeeth.insert(letter, *medial.tooth);
+                        if (sharedJoins)
+                            sharedToothSeams.insert(letter - 1, sharesIncoming
+                                ? sharedToothSeams.value(letter - 1, bodyTemplateIds[letter - 1]) : id);
+                        if (usesFinalSeam) sharedToothSeams.insert(letter, finalTemplate);
+                        else if (letter + 1 == lastIndex && !finalBoundary && !outgoing.fixedLeftBoundary)
+                            sharedToothSeams.insert(letter, id);
+                    }
                     if (stemCrest) ownedStemCrests.insert(letter, *stemCrest);
                     if (stemFork) matchedStemForks.insert(letter, *stemFork);
                     if (!openHead.isEmpty()) {
@@ -1340,6 +1343,15 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         recordBoundaryTemplate(subWord, 0, false, initialSharedBoundaryTemplate);
         recordBoundaryTemplate(subWord, 1, true, initialSharedBoundaryTemplate);
     }
+    for (auto it = sharedToothSeams.cbegin(); it != sharedToothSeams.cend(); ++it) {
+        const int join = it.key();
+        if (it.value().isEmpty() || join >= int(subWord.kashidaPaths.size()) ||
+            !subWord.kashidaPaths[join].isEmpty() ||
+            bodyTemplateIds[join].isEmpty() || bodyTemplateIds[join + 1].isEmpty())
+            continue;
+        recordBoundaryTemplate(subWord, join, false, it.value());
+        recordBoundaryTemplate(subWord, join + 1, true, it.value());
+    }
     subWord.correct = cut && subWord.joins.size() == lastIndex &&
         std::all_of(bodyTemplateIds.begin(), bodyTemplateIds.end(), [](const auto& id) { return !id.isEmpty(); });
 
@@ -1394,7 +1406,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             alternative.insert(phase, rules);
         }
         auto partial = subWord;
-        if (segmentSubwordPass(pageIndex, lineIndex, wordIndex, subWordIndex, font, true, &alternative, recoverTeeth, outlineCache, plan, seenRetry)) {
+        if (segmentSubwordPass(pageIndex, lineIndex, wordIndex, subWordIndex, font, true, &alternative, recovering, outlineCache, plan, seenRetry)) {
             subWord.templateTrace.prepend(retryRule + " · retried after partial segmentation");
         } else {
             subWord = std::move(partial);

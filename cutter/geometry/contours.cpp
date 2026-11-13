@@ -1027,7 +1027,8 @@ bool anchoredStrokeNormalCut(const SearchContext& context, Stretching& cut, bool
 
 // Bisect the directions of the two outline tangents to estimate the local
 // stroke direction, then intersect its normal with the surrounding ink.
-bool strokeNormalCut(const SearchContext& context, Stretching& cut, double offsetX) {
+bool strokeNormalCut(const SearchContext& context, Stretching& cut, double offsetX, StrokeNormalCache* normals) {
+    if (!normals && context.outlineCache) normals = &context.outlineCache->normalsByCenter;
     const auto& ink = context.transformedPath;
     const auto curves = baseContourCurves(ink);
     const auto tangentAt = [&](const PathExtrema& point) {
@@ -1115,8 +1116,8 @@ bool strokeNormalCut(const SearchContext& context, Stretching& cut, double offse
     const auto orient = [&](Stretching& candidate, double* measuredWidth = nullptr) {
         const auto pivot = center(candidate);
         StrokeNormalSample sample;
-        if (context.outlineCache && std::isfinite(pivot.x()) && std::isfinite(pivot.y())) {
-            auto [it, inserted] = context.outlineCache->normalsByCenter.try_emplace(std::make_pair(pivot.x(), pivot.y()));
+        if (normals && std::isfinite(pivot.x()) && std::isfinite(pivot.y())) {
+            auto [it, inserted] = normals->try_emplace(std::make_pair(pivot.x(), pivot.y()));
             if (inserted) it->second = solve(pivot);
             sample = it->second;
         } else {

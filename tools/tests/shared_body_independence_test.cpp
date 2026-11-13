@@ -359,6 +359,44 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         for (const auto &h : shape.counters)
             hole(h);
     }
+    const auto section = [&](const Stretching& cut) {
+        point(cut.topBaseLine);
+        point(cut.bottomBaseLine);
+        out << cut.referenceWidth;
+    };
+    out << quint64(e.toothPairs.size());
+    for (const auto& tooth : e.toothPairs) {
+        point(tooth.tip);
+        points(tooth.forwardFlank);
+        points(tooth.reverseFlank);
+        out << tooth.reverseIsRight << tooth.entryStroke << tooth.requiredEntry << tooth.minEntryRise
+            << bool(tooth.baselineSection);
+        if (tooth.baselineSection) section(*tooth.baselineSection);
+        out << quint64(tooth.pairs.size());
+        for (const auto& pair : tooth.pairs) {
+            point(pair.bend);
+            section(pair.localSection);
+            for (const auto* scale : {&pair.localScale, &pair.entryScale}) {
+                out << bool(*scale);
+                if (*scale) {
+                    out << (*scale)->stroke;
+                    points((*scale)->flankSamples);
+                }
+            }
+        }
+    }
+    out << e.bentTeeth.refined;
+    points(e.bentTeeth.landmarks);
+    out << quint64(e.bentTeeth.bodies.size());
+    for (const auto& tooth : e.bentTeeth.bodies) {
+        point(tooth.tip);
+        point(tooth.bend);
+        out << tooth.stroke << tooth.axis << quint64(tooth.entries.size());
+        for (const auto& entry : tooth.entries) {
+            point(entry.foot);
+            out << entry.forward;
+        }
+    }
     return bytes;
 }
 
@@ -389,13 +427,8 @@ int main(int argc, char **argv) {
                       "Unknown composition body reference accepted");
                 continue;
             }
-            check(!form.contains("method") && !form.value("cuts").toObject().isEmpty() &&
-                      (sharedShapeDescription(form.value("body").toObject()) ||
-                       toothDescription(form.value("body").toObject())),
-                  "A geometric form was not migrated to body/cuts");
-            if (!sharedShapeDescription(form.value("body").toObject()))
-                continue;
-            check(sharedShapeDescription(form.value("body").toObject()) && !form.contains("method") &&
+            check(sharedShapeDescription(form.value("body").toObject()) &&
+                      !form.value("cuts").toObject().isEmpty() && !form.contains("method") &&
                       !form.contains("loopBoundaries") && !form.contains("counter") && !form.contains("bodyOutline"),
                   "A declared form still dispatches through legacy geometry");
             addForm(form);

@@ -32,6 +32,14 @@ walks or the shared-tip normals, and `forkJunction` allows a chord between
 the incoming turn and that fork. Assembly checks the order of the cuts and
 retains the recognized landmarks. The lām–alef return has its own policy.
 
+A medial tooth's `body` finds its tip, inner bend, flanks and local stroke
+width on the uncut outline. The shared recognition cache keeps that evidence
+available when a `cuts` setting changes. Each form projects both boundaries
+before placement. At a tight join the assembler can share an existing seam
+if both bodies retain their landmarks. The inspection shows which template
+supplied the shared cut. Final forms that declare `cuts.precedingTooth`
+can offer their own entry while placing the tooth.
+
 After assembly and recovery, a tooth-cluster body must own three upper tips
 and the two intervening valleys from the uncut outline. Final clusters must
 own the connected bowl. A pen lift inside the word can end the medial

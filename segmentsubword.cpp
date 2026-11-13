@@ -701,7 +701,7 @@ bool PageAnalysisResult::segmentWithLetterForms(int pageIndex, int lineIndex, in
         }
     };
     const auto searchPlacements = [&](const SeenExitRetry* seenExit) {
-        ToothSearchPlan plan(initial.size());
+        PlacementSearch plan(initial.size());
         std::set<int> stages{1};
         for (const auto& form : forms) {
             const int stage = form.toObject().value("recoveryStage").toInt();
