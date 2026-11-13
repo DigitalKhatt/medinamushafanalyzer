@@ -192,12 +192,13 @@ sources and headers.
 
 ## Fixed anchor search
 
-`anchorSearch` lists sequences of migrated templates in reading order. A
-position can name one template or list variants in priority order. The current
-sequence covers initial lām, medial senna and final kāf, including the normal
-lām exit, bent senna and returning kāf. The transcript selects eligible
-templates for each position. Each form proposes sections on the uncut outline,
-with the landmarks and ink it must retain.
+Set `fixedAnchors: true` on a migrated template. The search uses the transcript
+to look up enabled templates by letter in the `initial`, `medial` and `final`
+lists. Their order in each list sets priority. A subword can use the search
+when every letter has an eligible form. The current forms cover initial lām,
+medial senna, final kāf and final mīm. Each form proposes sections on the uncut
+outline and identifies the landmarks and ink it must retain. A counter form
+can locate the entry at the rounded foot using `cuts.entryRim` before assembly.
 [The search](engine/anchor_search.cpp) builds each form's candidates once per
 outline and backtracks over compatible bodies. Their entry and exit sections
 stay fixed. Coincident sections share a seam. Distinct sections must enclose a
@@ -221,11 +222,10 @@ left exit, and the landmarks and contour sections it must own. An anchor
 identifies a position on a source contour. An initial or final form has one
 free end, and a pen lift can supply a boundary between separate contours.
 
-1. Select templates by letter and position. Try candidates in template order,
-   using the previous exit to find compatible entries. Check contour order
-   on both sides of the stroke and reject a candidate that claims ink already
-   owned by another body. Adjacent bodies may share one seam. Ink between
-   distinct anchors on the same stroke must form a valid connector.
+1. Extend the fixed-anchor search to more forms. Use the previous exit to
+   find compatible entries and reject a candidate that claims ink already
+   owned by another body. Add support for shared ligature seams and pen lifts
+   as their recognizers supply the required contour evidence.
 2. For a complete sequence, try the preferred cuts within the space allowed
    by the bodies. Fall back to the anchor cuts if needed. Backtrack if the
    cuts cannot preserve the required landmarks and partition the source ink.

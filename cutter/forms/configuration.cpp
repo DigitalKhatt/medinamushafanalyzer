@@ -2113,8 +2113,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             if (!problem.isEmpty()) return id + ": " + problem;
         }
     }
-    AnchorSequences anchorSequences;
-    const auto anchorProblem = compileAnchorSequences(config, anchorSequences);
+    AnchorForms anchorForms;
+    const auto anchorProblem = compileAnchorForms(config, anchorForms);
     if (!anchorProblem.isEmpty()) return anchorProblem;
     config.insert("kashidaDefaults", effective);
     return {};

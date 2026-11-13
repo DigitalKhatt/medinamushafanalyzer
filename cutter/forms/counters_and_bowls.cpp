@@ -359,6 +359,12 @@ static double inwardCornerAngle(const std::vector<QBezier>& curves, const PathEx
     return inwardTurnAngle(a, b, orientation);
 }
 
+bool needsCounterRim(const QLineF& entry, const QJsonObject& policy, double penWidth) {
+    const double rise = std::abs(entry.dy());
+    return !policy.isEmpty() && rise >= policy.value("minRiseWidths").toDouble() * penWidth &&
+           std::abs(entry.dx()) <= policy.value("maxSlope").toDouble() * rise;
+}
+
 // An entry projected through the outside of a counter can keep the hole
 // while losing the rounded foot. Use the source rim below the hole to
 // identify the foot and the inward shoulder where it meets the join.

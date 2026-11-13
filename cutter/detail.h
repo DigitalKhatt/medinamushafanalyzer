@@ -748,6 +748,8 @@ std::vector<CounterHole> recognizeCounterHoles(const InkOutline &outline);
 std::vector<Stretching> counterRimEntryCuts(SearchContext &context, const QRectF &counter,
                                            const Stretching &entry);
 
+bool needsCounterRim(const QLineF& entry, const QJsonObject& policy, double penWidth);
+
 bool projectCounterEntry(SearchContext& context, const CounterCornerEvidence& entry,
         const QJsonObject& policy, double x, double y, Stretching& cut,
         const CounterCornerEvidence* lowerEntry = nullptr,
@@ -1257,15 +1259,17 @@ struct AnchoredBody {
     std::optional<Stretching> entry, exit;
     QVector<PathExtrema> landmarks;
     QVector<QPointF> samples;
+    std::optional<size_t> counter;
+    bool retainsCounterRim = false;
 };
 
-using AnchorSequence = std::vector<std::vector<QJsonObject>>;
-using AnchorSequences = std::vector<AnchorSequence>;
+using AnchorForms = std::array<QHash<QChar, std::vector<QJsonObject>>, 3>;
 
-QString compileAnchorSequences(const QJsonObject& config, AnchorSequences& sequences);
-std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form);
+QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms);
+std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
+                                         double penWidth);
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
-        const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorSequences& sequences);
+        const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorForms& forms);
 bool sameAnchoredPartition(const WordResultInfo::SubWordInfo& a, const WordResultInfo::SubWordInfo& b);
 
 bool assembleToothClusterCuts(const Word& word, WordResultInfo::SubWordInfo& sub,

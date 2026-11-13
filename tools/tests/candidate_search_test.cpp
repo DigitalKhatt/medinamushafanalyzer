@@ -80,47 +80,57 @@ static void checkRecoveryPriority(const QJsonObject& config, AFont& font) {
     }
 }
 
-static void checkFixedAnchorSequence(const QJsonObject& config) {
-    auto single = config;
-    single.insert("anchorSearch", QJsonArray{QJsonArray{"lam-init", "beh-tooth-medi", "kaf-bowl-fina"}});
-    check(PageAnalysisResult::prepareLetterForms(single).isEmpty(), "Valid anchor sequence was rejected");
-    auto invalid = config;
-    invalid.insert("anchorSearch", QJsonArray{QJsonArray{"lam-init", "kaf-bowl-fina", "beh-tooth-medi"}});
-    check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Anchor sequence accepted a form in the wrong position");
-    invalid = config;
-    invalid.insert("anchorSearch", QJsonArray{QJsonArray{"lam-init", QJsonArray{}, "kaf-bowl-fina"}});
-    check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Anchor sequence accepted an empty position");
+static void checkFixedAnchors(const QJsonObject& config) {
     auto legacy = config;
-    legacy.remove("anchorSearch");
+    for (const auto* phase : {"initial", "medial", "final"}) {
+        auto forms = config.value(phase).toArray();
+        for (int i = 0; i < forms.size(); ++i) {
+            auto form = forms.at(i).toObject();
+            form.remove("fixedAnchors");
+            forms[i] = form;
+        }
+        legacy.insert(phase, forms);
+    }
+
+    AnchorForms anchors;
+    check(compileAnchorForms(config, anchors).isEmpty(), "Valid fixed anchor templates were rejected");
+    const auto& finalMeem = anchors[2].value(QChar(0x0645));
+    check(!finalMeem.empty() && finalMeem.front().value("id") == "meem-counter-fina",
+          "Fixed anchor forms lost final meem or its template order");
+    auto invalid = legacy;
+    auto forms = invalid.value("initial").toArray();
+    auto form = forms.first().toObject();
+    form.insert("fixedAnchors", "true");
+    forms[0] = form;
+    invalid.insert("initial", forms);
+    check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Fixed anchors accepted a nonboolean selector");
 
     QFile fontFile("input/font.dat");
-    check(fontFile.open(QIODevice::ReadOnly), "Missing anchor sequence font");
+    check(fontFile.open(QIODevice::ReadOnly), "Missing fixed anchor fixture font");
     AFont font;
     QDataStream fontStream(&fontFile); fontStream >> font;
     PageAnalysisResult::initQuranText();
 
-    struct Fixture { int page, line, word, subword; bool singleFormMatch; };
-    for (const auto& f : {Fixture{2, 7, 1, 3, true}, Fixture{2, 6, 1, 2, false},
-                          Fixture{151, 3, 5, 2, false}, Fixture{167, 15, 5, 2, false},
-                          Fixture{411, 7, 9, 3, false}}) {
+    struct Fixture { int page, line, word, subword; };
+    for (const auto& f : {Fixture{2, 7, 1, 3}, Fixture{2, 6, 1, 2}, Fixture{151, 3, 5, 2},
+                          Fixture{167, 15, 5, 2}, Fixture{411, 7, 9, 3}, Fixture{116, 4, 9, 1},
+                          Fixture{128, 10, 1, 2}, Fixture{287, 5, 2, 1}}) {
         QFile pageFile(QString("pages/page%1.dat").arg(f.page));
-        check(pageFile.open(QIODevice::ReadOnly), "Missing anchor sequence fixture");
+        check(pageFile.open(QIODevice::ReadOnly), "Missing fixed anchor fixture");
         PageAnalysisResult analysis;
         QDataStream pageStream(&pageFile); pageStream >> analysis.page;
         analysis.resolveWordBoundaries(f.page, &font);
         auto& word = analysis.page.lines[f.line - 1].words[f.word - 1];
-        const auto segment = [&](const QJsonObject& forms) {
-            return analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &forms);
+        const auto segment = [&](const QJsonObject& declarations) {
+            return analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &declarations);
         };
-        check(segment(legacy), "Missing original partition for anchor search fixture");
+        check(segment(legacy), "Missing original partition for fixed anchor fixture");
         const auto expected = word.wordResultInfo.subWords[f.subword - 1];
-        for (const auto* forms : std::array<const QJsonObject*, 2>{&single, &config}) {
-            check(segment(*forms), "Anchor search lost a complete partition");
-            const auto& actual = word.wordResultInfo.subWords[f.subword - 1];
-            check(sameAnchoredPartition(actual, expected), "Anchor search changed the letter or connector geometry");
-            const bool usedAnchors = !actual.templateTrace.isEmpty() && actual.templateTrace.front().startsWith("Fixed anchors");
-            check(usedAnchors == (forms == &config || f.singleFormMatch), "Anchor search did not select the expected path");
-        }
+        check(segment(config), "Fixed anchors lost a complete partition");
+        const auto& actual = word.wordResultInfo.subWords[f.subword - 1];
+        check(sameAnchoredPartition(actual, expected), "Fixed anchors changed the letter or connector geometry");
+        check(!actual.templateTrace.isEmpty() && actual.templateTrace.front().startsWith("Fixed anchors"),
+              "The fixed anchor fixture fell back to the original cutter");
     }
     checkRecoveryPriority(legacy, font);
 }
@@ -129,7 +139,7 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
     const auto config = PageAnalysisResult::letterForms();
-    checkFixedAnchorSequence(config);
+    checkFixedAnchors(config);
     CutGeometryMemoScope memo;
     cutGeometryMemo->profiling = true;
     int lamPairs = 0, toothPairs = 0;

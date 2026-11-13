@@ -77,14 +77,14 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
             return pageIndex < 0 || assembleToothClusterCuts(word, sub, sourceConfig);
         static thread_local QJsonObject previousConfig, compiledConfig;
         static thread_local QHash<QString, QString> compiledRetryParents;
-        static thread_local AnchorSequences anchorSequences;
+        static thread_local AnchorForms anchorForms;
         if (previousConfig != sourceConfig) {
             previousConfig = compiledConfig = sourceConfig;
-            compileAnchorSequences(sourceConfig, anchorSequences);
+            compileAnchorForms(sourceConfig, anchorForms);
             const auto finals = finalRetryCandidates(sourceConfig.value("final").toArray(), compiledRetryParents);
             if (!compiledRetryParents.isEmpty()) compiledConfig.insert("final", finals);
         }
-        auto anchored = pageIndex >= 0 ? segmentWithAnchors(word, sub, sourceConfig, anchorSequences) : std::nullopt;
+        auto anchored = pageIndex >= 0 ? segmentWithAnchors(word, sub, sourceConfig, anchorForms) : std::nullopt;
         if (anchored && (!cutGeometryMemo->profiling || !qEnvironmentVariableIsSet("MEDINA_COMPARE_ANCHORS"))) {
             sub = std::move(*anchored);
             return true;

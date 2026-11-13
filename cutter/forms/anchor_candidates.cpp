@@ -2,57 +2,51 @@
 
 namespace MedinaCutter {
 
-QString compileAnchorSequences(const QJsonObject& config, AnchorSequences& sequences) {
-    sequences.clear();
-    const auto declared = config.value("anchorSearch");
-    if (declared.isUndefined()) return {};
-    if (!declared.isArray()) return "anchorSearch must be an array of template sequences";
-
-    AnchorSequences compiled;
+QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
+    forms = {};
+    AnchorForms compiled;
     const std::array positions{"initial", "medial", "final"};
-    for (const auto& entry : declared.toArray()) {
-        const auto positionsInSequence = entry.toArray();
-        if (positionsInSequence.size() < 2) return "Each anchorSearch sequence needs an initial and a final template";
-        auto& sequence = compiled.emplace_back();
-        for (int slot = 0; slot < positionsInSequence.size(); ++slot) {
-            const int position = slot == 0 ? 0 : slot + 1 == positionsInSequence.size() ? 2 : 1;
-            const auto declarations = config.value(positions[position]).toArray();
-            const auto selection = positionsInSequence.at(slot);
-            const auto ids = selection.isArray() ? selection.toArray() : QJsonArray{selection};
-            if (ids.isEmpty()) return "Each anchorSearch position needs a template";
-            auto& forms = sequence.emplace_back();
-            for (const auto& value : ids) {
-                const auto id = value.toString();
-                const auto found = std::find_if(declarations.begin(), declarations.end(), [&](const auto& declaration) {
-                    return !id.isEmpty() && declaration.toObject().value("id") == id;
-                });
-                if (found == declarations.end())
-                    return QString("anchorSearch: %1 must name an %2 template").arg(id, positions[position]);
-                const auto form = bodyConstraintForm(config, found->toObject());
-                const auto body = form.value("body").toObject();
-                const auto shape = body.value("shape");
-                const bool supported = position == 0 ? shape == "contour-route" : position == 1 ? toothDescription(body) :
-                    shape == "stemmed-bowl" || shape == "tail-branch";
-                if (!supported)
-                    return QString("anchorSearch: %1 does not supply fixed anchors for this position").arg(id);
-                forms.push_back(form);
-            }
+    for (size_t position = 0; position < positions.size(); ++position) {
+        for (const auto& value : config.value(positions[position]).toArray()) {
+            const auto declaration = value.toObject();
+            const auto enabled = declaration.value("fixedAnchors");
+            const auto id = declaration.value("id").toString();
+            if (enabled.isUndefined()) continue;
+            if (!enabled.isBool()) return id + ": fixedAnchors must be a boolean";
+            if (!enabled.toBool()) continue;
+
+            const auto form = bodyConstraintForm(config, declaration);
+            const auto body = form.value("body").toObject();
+            const auto shape = body.value("shape");
+            const bool supported = position == 0 ? shape == "contour-route" : position == 1 ? toothDescription(body) :
+                shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
+                shape == "counter-neck" || shape == "counter-shoulder";
+            if (!supported)
+                return id + ": this body does not supply fixed anchors for its position";
+            for (const auto letter : form.value("current").toString())
+                compiled[position][letter].push_back(form);
         }
     }
-    sequences = std::move(compiled);
+    forms = std::move(compiled);
     return {};
 }
 
-std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form) {
+std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position, double penWidth) {
     const auto id = form.value("id").toString();
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto shape = body.value("shape");
     std::vector<AnchoredBody> result;
+    InspectFormScope inspection(form, source.transformedPath);
     source.res = {};
     source.nextIter = std::next(source.xSorted.begin());
     if (shape == "contour-route") {
-        if (declaredSharedBoundary(source, form) && matchesBoundaryBody(source, form, source.res, true))
-            result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()}});
+        const bool initial = position == 0;
+        if (declaredSharedBoundary(source, form) && matchesBoundaryBody(source, form, source.res, initial)) {
+            if (initial)
+                result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()}});
+            else
+                result.push_back({.formId = id, .entry = source.res, .landmarks = {*source.xSorted.rbegin()}});
+        }
     } else if (toothDescription(body)) {
         auto teeth = declaredToothBoundaries(source, form);
         // Keep the established reading order among placements of one form.
@@ -78,18 +72,36 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 .samples = {stem.sample, stem.bowlBottom - QPointF(0, .01 * stem.stroke)}});
         }
     } else if (shape == "tail-branch") {
-        InspectFormScope inspection(form, source.transformedPath);
         const auto evidence = recognizedSharedShape(source, body);
         if (!evidence->tail) return result;
         const auto& tail = *evidence->tail;
         const auto settings = shapeSettings(form, "tail");
         for (const auto& branch : tail.branches) {
             Stretching entry{};
-            inspectLandmark("Bowl shoulder", branch.corner);
             if (!cutTailBranches(source, {tail.tip, tail.curveCount, {branch}}, settings, entry)) continue;
-            inspectCandidate("Entry at the bowl shoulder", entry);
             result.push_back({.formId = id, .entry = entry, .landmarks = {tail.tip, branch.corner}});
         }
+    } else if (shape == "counter-neck" || shape == "counter-shoulder") {
+        const auto evidence = recognizedSharedShape(source, body);
+        if (!evidence->boundaryCounter || !declaredSharedBoundary(source, form)) return result;
+        const auto& counter = *evidence->boundaryCounter;
+        const auto entry = source.res;
+        const auto rim = cuts.value("entryRim").toObject();
+        const QLineF section(entry.topBaseLine.point, entry.bottomBaseLine.point);
+        const auto add = [&](const Stretching& boundary, bool retainsRim) {
+            if (matchesBoundaryBody(source, form, boundary, false))
+                result.push_back({.formId = id, .entry = boundary, .landmarks = {*source.xSorted.rbegin()},
+                                  .counter = counter.index, .retainsCounterRim = retainsRim});
+        };
+        if (needsCounterRim(section, rim, penWidth))
+            for (const auto& boundary : counterRimEntryCuts(source, counter.box, entry))
+                add(boundary, true);
+        if (result.empty()) add(entry, false);
+    }
+    if (inspectingForm) for (const auto& candidate : result) {
+        for (const auto& mark : candidate.landmarks) inspectLandmark("Body landmark", mark);
+        if (candidate.entry) inspectCandidate("Entry anchor", *candidate.entry);
+        if (candidate.exit) inspectCandidate("Exit anchor", *candidate.exit);
     }
     return result;
 }

@@ -1,13 +1,6 @@
 {
   "version": 2,
   "strokeWidth": 1,
-  "anchorSearch": [
-    [
-      ["lam-init", "lam-normal-init"],
-      ["beh-tooth-medi", "beh-bent-medi"],
-      ["kaf-bowl-fina", "kaf-return-fina"]
-    ]
-  ],
   "joinDefaults": {
     "lookback": 4,
     "previousOffset": 1,
@@ -502,6 +495,7 @@
     },
     {
       "id": "lam-init",
+      "fixedAnchors": true,
       "current": "ل",
       "tryNext": true,
       "retryOnPartial": true,
@@ -551,6 +545,7 @@
     },
     {
       "id": "lam-normal-init",
+      "fixedAnchors": true,
       "current": "ل",
       "tryNext": true,
       "retryOnPartial": true,
@@ -644,6 +639,7 @@
     },
     {
       "id": "lam-wide-step-init",
+      "fixedAnchors": true,
       "current": "ل",
       "tryNext": true,
       "body": {
@@ -2995,6 +2991,7 @@
     },
     {
       "id": "beh-upright-medi",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "body": {
         "inherit": "beh-tooth-medi",
@@ -3034,6 +3031,7 @@
     },
     {
       "id": "beh-tooth-medi",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "body": {
         "shape": "tooth-pair",
@@ -3098,6 +3096,7 @@
     },
     {
       "id": "beh-bent-medi",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "recoveryStage": 1,
       "body": {
@@ -6430,6 +6429,7 @@
     },
     {
       "id": "meem-counter-fina",
+      "fixedAnchors": true,
       "tryNext": true,
       "current": "م",
       "body": {
@@ -6723,6 +6723,7 @@
     },
     {
       "id": "kaf-bowl-fina",
+      "fixedAnchors": true,
       "current": "ك",
       "retryWithVariants": true,
       "body": {
@@ -6744,6 +6745,7 @@
     },
     {
       "id": "kaf-return-fina",
+      "fixedAnchors": true,
       "current": "ك",
       "ownsLeftTip": true,
       "tryNext": true,
@@ -6770,6 +6772,7 @@
     },
     {
       "id": "meem-upper-neck-fina",
+      "fixedAnchors": true,
       "current": "م",
       "tryNext": true,
       "body": {
@@ -6796,6 +6799,7 @@
     },
     {
       "id": "meem-loop-tail-fina",
+      "fixedAnchors": true,
       "current": "م",
       "tryNext": true,
       "ownsLeftTip": true,
@@ -6829,6 +6833,7 @@
     },
     {
       "id": "meem-shoulder-fina",
+      "fixedAnchors": true,
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,

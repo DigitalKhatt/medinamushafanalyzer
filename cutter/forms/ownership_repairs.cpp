@@ -336,8 +336,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         if (join.counterEntry.pathIndex > 0) continue;
         const auto form = program.forms.constFind(templateId(slot));
         const auto rim = form == program.forms.cend() ? QJsonObject{} : form->cuts.value("entryRim").toObject();
-        if (!rim.isEmpty() && std::abs(cap.dy()) >= rim.value("minRiseWidths").toDouble() * penWidth &&
-            std::abs(cap.dx()) <= rim.value("maxSlope").toDouble() * std::abs(cap.dy()))
+        if (needsCounterRim(cap, rim, penWidth))
             clippedCounterEntries.push_back(slot);
     }
     const auto reorient = terminalCuts.value("reorientEntry").toObject();
