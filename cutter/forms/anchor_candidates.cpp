@@ -13,8 +13,6 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto id = declaration.value("id").toString();
             if (enabled.isUndefined()) continue;
             if (!enabled.isBool()) return id + ": fixedAnchors must be a boolean";
-            if (!enabled.toBool()) continue;
-
             const auto form = bodyConstraintForm(config, declaration);
             const auto body = form.value("body").toObject();
             const auto shape = body.value("shape");
@@ -22,11 +20,13 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 shape == "suspended-loop" || shape == "counter-neck" || shape == "counter-loop" ||
                 shape == "profile-neck" :
                 position == 1 ? toothDescription(body) || shape == "stacked-counters" || shape == "counter-loop" ||
-                shape == "open-head" || shape == "crested-loop" || shape == "paired-route" :
+                shape == "open-head" || shape == "crested-loop" || shape == "paired-route" ||
+                shape == "forked-stem" :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn";
-            if (!supported)
+            if (!supported && enabled.toBool())
                 return id + ": this body does not supply fixed anchors for its position";
+            if (!supported) continue;
             for (const auto letter : form.value("current").toString())
                 compiled[position][letter].push_back(form);
         }
@@ -119,6 +119,38 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
             return Stretching::cmpbyx{}(*a.entry, *b.entry);
         });
+    } else if (shape == "forked-stem") {
+        auto forkBody = body;
+        forkBody.remove("entryRoute");
+        forkBody.remove("exitRoutes");
+        const auto evidence = recognizedSharedShape(source, forkBody);
+        const double offset = cuts.value("forkOffset").toDouble();
+        if (!evidence->medialStem || offset <= 0) return result;
+        const auto& stems = *evidence->medialStem;
+        for (const auto& stem : stems.stems) {
+            for (const auto index : stem.forks) {
+                const auto& fork = stems.features.forks[index];
+                for (const double walk : {offset, 0.}) {
+                    if (walk == 0 && cuts.value("tightJoin") != "tip-normal") continue;
+                    const auto right = cutForkFlank(source, fork.tip, {}, fork.rightForward, 1, walk);
+                    const auto left = cutForkFlank(source, fork.tip, {}, !fork.rightForward, -1, walk);
+                    if (!right || !left) continue;
+                    const auto pieces = cutRegions(source.transformedPath, {}, {*right, *left}, source.orientation, true);
+                    if (pieces.size() != 3) continue;
+                    const auto& mask = pieces[1].path;
+                    const auto bounds = mask.boundingRect();
+                    const double stroke = std::min(right->referenceWidth, left->referenceWidth);
+                    if (stroke <= 1e-6 || std::abs(bounds.top() - stem.crest.point.y()) > .01 ||
+                        fork.tip.point.y() - stem.crest.point.y() < body.value("minRise").toDouble() * stroke ||
+                        bounds.width() > body.value("maxWidthToHeight").toDouble() * bounds.height() ||
+                        (body.contains("counters") && toSubpaths(mask).size() - 1 !=
+                            body.value("counters").toInt())) continue;
+                    result.push_back({.formId = id, .entry = *right, .exit = *left, .landmarks = {stem.crest},
+                                      .preservesTerminalBody = true,
+                                      .sharedFold = cuts.value("sharedFold").toObject()});
+                }
+            }
+        }
     } else if (shape == "paired-route") {
         const auto evidence = recognizedSharedShape(source, body);
         const auto route = body.value("routes").toObject();

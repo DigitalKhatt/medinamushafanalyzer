@@ -201,6 +201,14 @@ forms identify the source contours their body must own.
 Medial heh uses its own stacked counters and outer feet to place both anchors.
 A counter form can locate the entry at the rounded foot using `cuts.entryRim`
 before assembly.
+Medial lām traces both sides of its shaft to the fork and projects the
+two configured contour walks. When there is no room, both normals can
+start at the fork tip. The declared folded return can share final yeh's
+entry if the seam retains the lām shaft.
+During migration an explicitly disabled fixed-anchor form can reserve its
+own contour for the existing cutter. For example, the hanging mīm's upper
+entry and exit corners identify a stacked attachment before an ordinary
+mīm can claim that counter.
 [The search](engine/anchor_search.cpp) builds each form's candidates once per
 outline and backtracks over compatible bodies. Their entry and exit sections
 stay fixed. Coincident sections share a seam. A template with

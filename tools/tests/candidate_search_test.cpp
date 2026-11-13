@@ -118,7 +118,7 @@ static void checkFixedAnchors(const QJsonObject& config) {
                           Fixture{278, 5, 9, 3}, Fixture{286, 11, 10, 4}, Fixture{409, 8, 10, 4},
                           Fixture{3, 7, 1, 2}, Fixture{7, 1, 7, 1}, Fixture{4, 5, 1, 3},
                           Fixture{1, 4, 2, 3}, Fixture{53, 12, 12, 1}, Fixture{5, 13, 5, 2},
-                          Fixture{4, 2, 1, 2}}) {
+                          Fixture{4, 2, 1, 2}, Fixture{2, 3, 4, 2}, Fixture{3, 2, 10, 2}}) {
         QFile pageFile(QString("pages/page%1.dat").arg(f.page));
         check(pageFile.open(QIODevice::ReadOnly), "Missing fixed anchor fixture");
         PageAnalysisResult analysis;
@@ -148,6 +148,21 @@ static void checkFixedAnchors(const QJsonObject& config) {
         }
     }
     checkRecoveryPriority(legacy, font);
+
+    // The normal fork cannot share the final kāf's established bowl entry.
+    QFile pageFile("pages/page42.dat");
+    check(pageFile.open(QIODevice::ReadOnly), "Missing terminal-bowl ownership fixture");
+    PageAnalysisResult analysis;
+    QDataStream pageStream(&pageFile); pageStream >> analysis.page;
+    analysis.resolveWordBoundaries(42, &font);
+    const auto segment = [&](const QJsonObject& forms) {
+        return analysis.segmentSubword(41, 0, 1, 0, &font, true, &forms);
+    };
+    check(segment(legacy), "Missing original terminal-bowl partition");
+    auto& sub = analysis.page.lines[0].words[1].wordResultInfo.subWords[0];
+    const auto expected = sub;
+    check(segment(config) && sameAnchoredPartition(sub, expected),
+          "The fixed fork displaced a recognized terminal bowl");
 }
 
 int main(int argc, char** argv) {

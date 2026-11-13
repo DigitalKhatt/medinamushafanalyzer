@@ -22,9 +22,11 @@ bool sameSection(const Stretching& a, const Stretching& b) {
 
 bool orderedSections(const Stretching& right, const Stretching& left, Orientation orientation) {
     const auto receiving = getJoinTime(left, orientation);
+    const bool atFork = sharesLowerForkTip(right, left);
     return cutPrecedes(right, left, orientation) &&
-           receiving.isStrictRight(right.topBaseLine.time) && receiving.isStrictRight(right.bottomBaseLine.time) &&
-           sectionLine(right).intersects(sectionLine(left), nullptr) != QLineF::BoundedIntersection;
+           receiving.isStrictRight(right.topBaseLine.time) &&
+           (atFork || (receiving.isStrictRight(right.bottomBaseLine.time) &&
+                       sectionLine(right).intersects(sectionLine(left), nullptr) != QLineF::BoundedIntersection));
 }
 
 bool sharesIncomingSection(const Stretching& sending, const AnchoredBody& receiving, Orientation orientation) {
@@ -33,6 +35,16 @@ bool sharesIncomingSection(const Stretching& sending, const AnchoredBody& receiv
     const auto side = getJoinTime(sending, orientation);
     return std::all_of(receiving.landmarks.begin(), receiving.landmarks.end(),
                        [&](const auto& landmark) { return side.isStrictLeft(landmark.time); });
+}
+
+bool retainsLandmarks(const AnchoredBody& body, const Stretching* entry, const Stretching* exit,
+                      Orientation orientation) {
+    const auto first = entry ? std::optional{getJoinTime(*entry, orientation)} : std::nullopt;
+    const auto last = exit ? std::optional{getJoinTime(*exit, orientation)} : std::nullopt;
+    return std::all_of(body.landmarks.begin(), body.landmarks.end(), [&](const auto& point) {
+        return point.pathIndex == 0 && (!first || first->isStrictLeft(point.time)) &&
+               (!last || last->isStrictRight(point.time));
+    });
 }
 
 bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot, size_t count) {
@@ -46,16 +58,12 @@ bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot
     };
     if ((body.entry && !validSection(*body.entry)) || (body.exit && !validSection(*body.exit)) ||
         (body.entry && body.exit && !orderedSections(*body.entry, *body.exit, source.orientation))) return false;
-    const auto entry = body.entry ? std::optional{getJoinTime(*body.entry, source.orientation)} : std::nullopt;
-    const auto exit = body.exit ? std::optional{getJoinTime(*body.exit, source.orientation)} : std::nullopt;
-    return std::all_of(body.landmarks.begin(), body.landmarks.end(), [&](const auto& point) {
-        return point.pathIndex == 0 && (!entry || entry->isStrictLeft(point.time)) &&
-               (!exit || exit->isStrictRight(point.time));
-    });
+    return retainsLandmarks(body, body.entry ? &*body.entry : nullptr, body.exit ? &*body.exit : nullptr,
+                            source.orientation);
 }
 
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
-        const SearchContext& source, const QString& letters, BodySequence bodies) {
+        const SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold) {
     Subword trial{};
     trial.text = sub.text;
     trial.paths = sub.paths;
@@ -70,9 +78,15 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
     std::vector<std::vector<QBezier>> outer;
 
     for (size_t slot = 1; slot < bodies.size(); ++slot) {
-        auto exit = *bodies[slot - 1]->exit;
-        const auto& entry = *bodies[slot]->entry;
-        const bool shared = sameSection(exit, entry) || sharesIncomingSection(exit, *bodies[slot], source.orientation);
+        const auto& sending = *bodies[slot - 1];
+        const auto& receiving = *bodies[slot];
+        auto exit = *sending.exit;
+        const auto& entry = *receiving.entry;
+        if (slot + 1 == bodies.size() && sharesFinalFold) {
+            if (!retainsLandmarks(sending, nullptr, &entry, source.orientation)) return {};
+            exit = entry;
+        }
+        const bool shared = sameSection(exit, entry) || sharesIncomingSection(exit, receiving, source.orientation);
         if (!shared && bodies[slot]->retainsCounterRim) {
             // The saved rim geometry uses the sending cap's source curve
             // parameter. Rebind it without moving either endpoint.
@@ -143,7 +157,7 @@ bool applies(const QJsonObject& form, const QString& letters, int slot) {
 
 std::optional<Subword> searchSequence(const Word& word, const Subword& sub, const Apath& shape,
         SearchContext& source, const QString& letters, const FormChoices& forms, double penWidth,
-        const AnchorPartitionCheck& accept) {
+        const QJsonObject& config, const AnchorPartitionCheck& accept) {
     std::map<QString, std::vector<AnchoredBody>> candidates;
     // Keep each candidate at its original contour sections across backtracking.
     const auto bodiesFor = [&](const QJsonObject& form, size_t slot) -> const std::vector<AnchoredBody>& {
@@ -157,21 +171,61 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
 
     std::vector<const AnchoredBody*> selected;
     selected.reserve(forms.size());
+    std::map<QString, std::optional<Stretching>> folds;
+    const auto sharesFinalFold = [&]() {
+        const auto& sending = *selected[selected.size() - 2];
+        const auto& receiving = *selected.back();
+        const auto& policy = sending.sharedFold;
+        if (!policy.value("letters").toString().contains(letters.back())) return false;
+        const auto descent = sectionLine(*receiving.entry).center() - sectionLine(*sending.exit).center();
+        if (descent.y() < penWidth || std::abs(descent.x()) > policy.value("maxSlope").toDouble() * descent.y())
+            return false;
+        const auto id = policy.value("template").toString();
+        auto [saved, inserted] = folds.try_emplace(id);
+        if (inserted) {
+            const auto receiver = namedLetterForm(config, id);
+            source.res = {};
+            source.nextIter = std::next(source.xSorted.begin());
+            if (!receiver.isEmpty() && declaredSharedBoundary(source, resolvedBodyForm(config, receiver)))
+                saved->second = source.res;
+        }
+        return saved->second && sameSection(*saved->second, *receiving.entry);
+    };
     const auto search = [&](auto&& self, size_t slot) -> std::optional<Subword> {
         if (slot == forms.size()) {
-            auto partition = assemble(word, sub, shape, source, letters, selected);
+            auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold());
             if (partition && accept && !accept(*partition)) return {};
             return partition;
         }
         for (const auto& form : *forms[slot]) {
             if (!applies(form, letters, int(slot))) continue;
+            // An explicitly deferred form can reserve ink for the existing
+            // cutter when its identifying contour belongs to this slot.
+            const bool deferred = !form.value("fixedAnchors").toBool();
+            const bool terminal = slot + 1 == forms.size();
             for (const auto& body : bodiesFor(form, slot)) {
                 if (slot) {
-                    const auto& exit = *selected.back()->exit;
-                    if (!sameSection(exit, *body.entry) && !orderedSections(exit, *body.entry, source.orientation) &&
-                        !sharesIncomingSection(exit, body, source.orientation))
+                    const auto& sending = *selected.back();
+                    const auto& exit = *sending.exit;
+                    // A stacked body's entry can lie within the sending
+                    // stroke. Keep its counter reserved if the shared seam
+                    // would preserve the sending body's own landmarks.
+                    if (deferred && retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr,
+                                                     &*body.entry, source.orientation) &&
+                        (!sending.entry || orderedSections(*sending.entry, *body.entry, source.orientation)))
+                        return {};
+                    if (!sameSection(exit, *body.entry) &&
+                        !orderedSections(exit, *body.entry, source.orientation) &&
+                        !sharesIncomingSection(exit, body, source.orientation)) {
+                        // An overlapping fork can still fit the terminal
+                        // bowl through the existing attachment policy.
+                        if (sending.preservesTerminalBody && terminal &&
+                            form.value("body").toObject().value("shape") == "stemmed-bowl")
+                            return {};
                         continue;
+                    }
                 }
+                if (deferred) return {};
                 selected.push_back(&body);
                 if (auto complete = self(self, slot + 1)) return complete;
                 selected.pop_back();
@@ -197,7 +251,9 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
         const auto& position = forms[letterPosition(slot, letters.size())];
         const auto found = position.constFind(letters[slot]);
         if (found == position.cend() ||
-            std::none_of(found->begin(), found->end(), [&](const auto& form) { return applies(form, letters, slot); }))
+            std::none_of(found->begin(), found->end(), [&](const auto& form) {
+                return form.value("fixedAnchors").toBool() && applies(form, letters, slot);
+            }))
             return {};
         choices.push_back(&found.value());
     }
@@ -214,7 +270,8 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
     SearchContext source{.transformedPath = ink, .bbox = ink.boundingRect(),
                          .subword = geometryOnly, .outlineCache = &cache};
     if (!preparePassOutline(source, cache)) return {};
-    auto result = searchSequence(word, sub, shape, source, letters, choices, config.value("strokeWidth").toDouble(1), accept);
+    auto result = searchSequence(word, sub, shape, source, letters, choices, config.value("strokeWidth").toDouble(1),
+                                 config, accept);
     if (result && cutGeometryMemo && cutGeometryMemo->profiling) cutGeometryMemo->anchorSearch = "matched";
     return result;
 }
