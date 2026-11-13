@@ -117,9 +117,16 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         const auto evidence = recognizedSharedShape(source, body);
         const auto route = body.value("routes").toObject();
         const auto policy = cuts.value("routes").toObject();
-        for (const auto& candidate : evidence->pairedRoutes)
-            for (const auto& [entry, exit] : cutPairedRoutes(source, {candidate}, route, policy))
+        for (const auto& candidate : evidence->pairedRoutes) {
+            for (const auto& [entry, exit] : cutPairedRoutes(source, {candidate}, route, policy)) {
+                if (form.contains("bodyCounters")) {
+                    const auto pieces = cutRegions(source.transformedPath, {}, {entry, exit}, source.orientation, true);
+                    if (pieces.size() != 3 || toSubpaths(pieces[1].path).size() - 1 !=
+                        form.value("bodyCounters").toInt()) continue;
+                }
                 result.push_back({.formId = id, .entry = entry, .exit = exit, .landmarks = {candidate.anchor}});
+            }
+        }
     } else if (toothDescription(body)) {
         auto teeth = declaredToothBoundaries(source, form);
         // Keep the established reading order among placements of one form.
