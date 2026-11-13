@@ -486,13 +486,21 @@ bool cutOpenBowl(SearchContext& context, const OpenBowlBody& body, const QJsonOb
 bool refineContourJunction(SearchContext& context, const QJsonObject& policy);
 
 struct LayeredHeadBody {
+    struct RimExit {
+        PathExtrema corner;
+        bool forward;
+    };
     std::vector<NeckBody> necks;
-    std::vector<QRectF> envelopes;
+    std::optional<QRectF> exitCounter;
+    std::vector<RimExit> rimExits;
 };
 
 LayeredHeadBody recognizeLayeredHeads(const InkOutline &outline, const QJsonObject &body);
 
 bool cutLayeredHead(SearchContext &context, const LayeredHeadBody &body, const QJsonObject &policy);
+
+std::vector<Stretching> cutLayeredHeadRims(const SearchContext& context, const LayeredHeadBody& body,
+                                         const QJsonObject& policy, double strokeWidth);
 
 bool strokeNormalCut(const SearchContext &context, Stretching &cut, double offsetX = 0);
 
@@ -1353,11 +1361,6 @@ struct TurningShaftBody {
 
 std::vector<TurningShaftBody> recognizeTurningShafts(const InkOutline &outline, const QJsonObject &body);
 
-std::vector<std::pair<Stretching, Stretching>> cutTurningShafts(SearchContext& ctx,
-        const std::vector<TurningShaftBody>& bodies, const QJsonObject& shape);
-
-std::vector<std::pair<Stretching, Stretching>> shaftSections(SearchContext& ctx, const QJsonObject& form);
-
 // The free arm of a folded lam-alef is broad at the nib and tapers down
 // and right into the returning bowl. The two inward corners delimit the
 // contact when both are present; a shorter cross-section can clip its tip.
@@ -1568,6 +1571,9 @@ void inspectSharedShape(const SharedShapeEvidence &evidence);
 
 std::vector<std::pair<Stretching, Stretching>>
 declaredOpenHeadCuts(SearchContext &context, const QJsonObject &form, double minX, double maxX);
+
+std::vector<Stretching> declaredExitAlternatives(SearchContext& context, const QJsonObject& config,
+                                                const QString& id);
 
 bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
                                    const SeenExitRetry *retry = nullptr, bool recovering = false,

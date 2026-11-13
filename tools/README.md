@@ -190,7 +190,7 @@ positions in the range, checking the neighboring bodies at each position.
 | Single and paired contour routes | Directional landmarks and retained branches | Probes, walks and shared seams |
 | Stems, forks and returning bowls | Shaft, fork, free tail and turning points | Flank normals and return boundaries |
 | Tooth pairs and seen clusters | Tips, valleys, heights and spacing | Entry/exit projection and tight joins |
-| Hah mouths and layered heads | Lips, nose, throat and attachment corners | Normal cuts or counter probes |
+| Hah mouths and layered heads | Lips, nose, throat and the head's own counter | Lip normals and a fixed counter-edge projection |
 | Kaf blades and counter attachments | Elbows, parallel bands and inner/outer arcs | Margins and bridge ownership |
 | Separate ink components | Original components and their holes | Pen-lift, overhanging-head or arm assembly |
 

@@ -335,10 +335,7 @@ static double inwardTurnAngle(const QPointF& before, const QPointF& after, Orien
     return std::atan2(inward, QPointF::dotProduct(before, after)) * 180 / std::acos(-1.);
 }
 
-static double inwardCornerAngle(const std::vector<QBezier>& curves, const PathExtrema& point,
-                                Orientation orientation) {
-    if (std::abs(point.time - std::round(point.time)) > 1e-6)
-        return 0;
+static std::pair<QPointF, QPointF> cornerTangents(const std::vector<QBezier>& curves, const PathExtrema& point) {
     const size_t index = size_t(std::lround(point.time)) % curves.size();
     const auto& incoming = curves[(index + curves.size() - 1) % curves.size()];
     const auto& outgoing = curves[index];
@@ -351,6 +348,14 @@ static double inwardCornerAngle(const std::vector<QBezier>& curves, const PathEx
         b = control - point.point;
         if (!b.isNull()) break;
     }
+    return {a, b};
+}
+
+static double inwardCornerAngle(const std::vector<QBezier>& curves, const PathExtrema& point,
+                                Orientation orientation) {
+    if (std::abs(point.time - std::round(point.time)) > 1e-6)
+        return 0;
+    const auto [a, b] = cornerTangents(curves, point);
     return inwardTurnAngle(a, b, orientation);
 }
 
@@ -758,16 +763,40 @@ bool cutBowlTurn(SearchContext &context, const BowlTurnBody &body, const QJsonOb
     return true;
 }
 
+static std::vector<LayeredHeadBody::RimExit> layeredHeadRimExits(const InkOutline& outline,
+        const QRectF& counter, const QJsonObject& settings) {
+    const auto curves = baseContourCurves(outline.ink);
+    if (curves.empty()) return {};
+    const double height = counter.height();
+    const double reach = settings.value("maxDistance").toDouble() * height;
+    const double minTurn = settings.value("minCornerAngle").toDouble();
+    std::vector<LayeredHeadBody::RimExit> result;
+    for (const auto& point : outline.time) {
+        const auto p = point.point;
+        if (!point.isSharp || p.x() >= counter.left() || p.x() < counter.left() - reach ||
+            p.y() < counter.top() - height / 2 || p.y() > counter.bottom() + height / 2 ||
+            std::abs(point.time - std::round(point.time)) > 1e-6) continue;
+        const auto [incoming, outgoing] = cornerTangents(curves, point);
+        // The lower lip leaves the corner down and towards the eye. The
+        // other branch continues down on the opposite side of the corner.
+        if (incoming.y() < 0 && outgoing.y() > 0 && incoming.x() * outgoing.x() > 0 &&
+            inwardTurnAngle(incoming, outgoing, outline.orientation) >= minTurn)
+            result.push_back({point, outgoing.x() > 0});
+    }
+    return result;
+}
+
 LayeredHeadBody recognizeLayeredHeads(const InkOutline &outline, const QJsonObject &body) {
     LayeredHeadBody result;
     const auto profile = body.value("head").toObject();
-    QRectF counter;
+    const auto counters = recognizeCounterHoles(outline);
+    const auto headCounter = std::max_element(counters.begin(), counters.end(), [](const auto& a, const auto& b) {
+        return a.box.right() < b.box.right();
+    });
+    const QRectF counter = headCounter != counters.end() ? headCounter->box : QRectF{};
     const auto maxRise = profile.value("maxRiseLeftOfCounter");
-    if (maxRise.isDouble()) {
-        for (const auto& hole : recognizeCounterHoles(outline))
-            if (counter.isEmpty() || hole.box.right() > counter.right())
-                counter = hole.box;
-    }
+    const auto rim = profile.value("exitRim").toObject();
+    if (!rim.isEmpty() && !counter.isEmpty()) result.rimExits = layeredHeadRimExits(outline, counter, rim);
     const double clearance = .75 * counter.height();
     const double crestLimit = counter.top() - maxRise.toDouble() * counter.height();
     auto necks = recognizeNeckBodies(outline, body.value("neck").toObject());
@@ -781,35 +810,68 @@ LayeredHeadBody recognizeLayeredHeads(const InkOutline &outline, const QJsonObje
             ++extrema;
             // A separate crest between the eye and the proposed boundary
             // is past the head's rim. Require a gap on both sides of it.
-            if (!counter.isEmpty() && point.isY && point.point.x() < counter.left() - clearance &&
+            if (maxRise.isDouble() && !counter.isEmpty() && point.isY && point.point.x() < counter.left() - clearance &&
                 point.point.x() > entryX + clearance && point.point.y() < crestLimit)
                 containsShaft = true;
         }
         if (!containsShaft && extrema >= profile.value("minExtrema").toInt(8))
             result.necks.push_back(std::move(neck));
     }
-    const double x = outline.bounds.right() - profile.value("ascenderProbeX").toDouble(6);
-    auto hits = FindInterections(outline.ink, QLineF(x, outline.bounds.top(), x, outline.bounds.bottom()));
-    if (hits.size() >= 2 && hits.size() == profile.value("ascenderCrossings").toInt(4)) {
-        std::sort(hits.begin(), hits.end(), [](const auto &a, const auto &b) { return a.point.y() < b.point.y(); });
-        for (const auto &path : outline.contours)
-            if (path.contains(hits[1].point))
-                result.envelopes.push_back(path.boundingRect());
-    }
+    // The head's rightmost eye locates the exit. A single section verifies
+    // its layered profile before it can supply a projected cut.
+    const double x = outline.bounds.right() - profile.value("sectionInset").toDouble();
+    if (headCounter == counters.end() || x < counter.left() || x > counter.right()) return result;
+    const auto hits = FindInterections(outline.ink, QLineF(x, outline.bounds.top(), x, outline.bounds.bottom()));
+    const auto index = int(headCounter->index);
+    if (hits.size() != 4 || hits[0].pathIndex != 0 || hits[3].pathIndex != 0 ||
+        hits[1].pathIndex != index || hits[2].pathIndex != index) return result;
+    const auto curves = baseContourCurves(outline.contours[headCounter->index]);
+    const auto time = hits[1].time;
+    const auto curveIndex = size_t(time);
+    if (curveIndex >= curves.size()) return result;
+    const auto& curve = curves[curveIndex];
+    const double t = time - curveIndex, u = 1 - t;
+    const auto tangent = u * u * (curve.pt2() - curve.pt1()) +
+        2 * t * u * (curve.pt3() - curve.pt2()) + t * t * (curve.pt4() - curve.pt3());
+    // Read the upper rim towards the right. At this section a layered head's
+    // rim rises into the nose, whereas the other closed heads are descending.
+    if (tangent.x() * tangent.y() < 0) result.exitCounter = counter;
     return result;
 }
 
+std::vector<Stretching> cutLayeredHeadRims(const SearchContext& context, const LayeredHeadBody& body,
+                                         const QJsonObject& policy, double strokeWidth) {
+    std::vector<Stretching> sections;
+    if (body.rimExits.empty() || context.xSorted.empty()) return sections;
+    const int count = static_cast<int>(baseContourCurves(context.transformedPath).size());
+    for (const auto& offset : policy.value("rimWalkWidths").toArray())
+        for (const auto& rim : body.rimExits) {
+            auto limit = rim.corner;
+            limit.time += rim.forward ? count : -count;
+            PathExtrema anchor;
+            QPointF tangent;
+            Stretching cut{};
+            if (!advanceOnContour(context.transformedPath, rim.corner, limit, rim.forward,
+                                  offset.toDouble() * strokeWidth, anchor, tangent) ||
+                !contourNormalCut(context, anchor, rim.forward, false, cut) ||
+                cut.bottomBaseLine.point.y() >= anchor.point.y()) continue;
+            std::swap(cut.topBaseLine, cut.bottomBaseLine);
+            if (getJoinTime(cut, context.orientation).isStrictRight(context.xSorted.begin()->time))
+                sections.push_back(cut);
+        }
+    return sections;
+}
+
 bool cutLayeredHead(SearchContext &context, const LayeredHeadBody &body, const QJsonObject &policy) {
-    for (const auto &envelope : body.envelopes) {
-        const double x = envelope.left() - policy.value("counterProbeX").toDouble(.6);
-        auto hits = FindInterections(context.transformedPath, QLineF(x, context.bbox.top(), x, context.bbox.bottom()));
-        if (hits.size() < 2 || hits.size() != policy.value("counterCrossings").toInt(2))
-            continue;
-        std::sort(hits.begin(), hits.end(), [](const auto &a, const auto &b) { return a.point.y() > b.point.y(); });
-        context.res.bottomBaseLine = context.res.bottomLeft = context.res.bottomRight = hits[0];
-        context.res.topBaseLine = context.res.topLeft = context.res.topRight = hits[1];
-        context.res.length = 0;
-        return true;
+    if (body.exitCounter) {
+        const double x = body.exitCounter->left() - policy.value("counterOffset").toDouble();
+        const auto hits = FindInterections(context.transformedPath, QLineF(x, context.bbox.top(), x, context.bbox.bottom()));
+        if (hits.size() == 2 && hits[0].pathIndex == 0 && hits[1].pathIndex == 0) {
+            context.res.bottomBaseLine = context.res.bottomLeft = context.res.bottomRight = hits[1];
+            context.res.topBaseLine = context.res.topLeft = context.res.topRight = hits[0];
+            context.res.length = 0;
+            return true;
+        }
     }
     return cutProfileNeck(context, body.necks);
 }

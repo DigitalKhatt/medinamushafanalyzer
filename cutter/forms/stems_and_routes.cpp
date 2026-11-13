@@ -659,99 +659,94 @@ bool terminalTailEntry(SearchContext &context, const QJsonObject &settings, Stre
     return cutTailBranches(context, recognizeTailBranches(inkOutline(context), settings), settings, result);
 }
 
+// Follow the descending edge from the cap. The first steep-to-shallow
+// transition is a body landmark, including when it falls within a Bézier.
+static std::optional<PathExtrema> descendingShaftTurn(const std::vector<QBezier>& curves,
+        const PathExtrema& crest, int direction, double minRise, double slope) {
+    const int count = static_cast<int>(curves.size());
+    const int first = direction > 0 ? int(std::floor(crest.time)) : int(std::ceil(crest.time)) - 1;
+    double length = 0;
+    bool descending = false;
+    // The start curve is split at the crest. Its far side bounds the walk
+    // if the contour closes before a turn has been found.
+    for (int n = 0; n <= count; ++n) {
+        const int index = first + direction * n;
+        const int wrapped = (index % count + count) % count;
+        const auto& curve = curves[wrapped];
+        const auto a = direction * (curve.pt2() - curve.pt1());
+        const auto b = direction * (curve.pt3() - curve.pt2());
+        const auto c = direction * (curve.pt4() - curve.pt3());
+        const double start = n == 0 ? crest.time - index : direction > 0 ? 0. : 1.;
+        const double end = n == count ? crest.time - first : direction > 0 ? 1. : 0.;
+        std::array<double, 6> stops{start, end};
+        size_t stopCount = 2;
+        for (int sign : {-1, 1}) {
+            const auto slopeDifference = [&](const QPointF& delta) { return delta.y() + sign * slope * delta.x(); };
+            std::array<double, 3> storage;
+            for (double root : cubicRoots(0, slopeDifference(a - 2 * b + c), 2 * slopeDifference(b - a),
+                                          slopeDifference(a), storage))
+                if (direction * (root - start) > 1e-8 && direction * (end - root) > 1e-8)
+                    stops[stopCount++] = root;
+        }
+        std::sort(stops.begin(), stops.begin() + stopCount,
+                  [=](double lhs, double rhs) { return direction * lhs < direction * rhs; });
+        for (size_t i = 1; i < stopCount; ++i) {
+            const double from = stops[i - 1], to = stops[i];
+            if (std::abs(from - to) <= 1e-8) continue;
+            const auto point = curve.pointAt(from);
+            const double fall = point.y() - crest.point.y();
+            if (length > minRise * 7 || (fall < minRise * .65 && length > minRise * 1.7)) return {};
+            const double t = (from + to) / 2, u = 1 - t;
+            const auto tangent = u * u * a + 2 * t * u * b + t * t * c;
+            if (std::hypot(tangent.x(), tangent.y()) <= 1e-9) continue;
+            const bool steep = tangent.y() > slope * std::abs(tangent.x());
+            if (descending && !steep && fall >= minRise)
+                return PathExtrema{0, std::fmod(wrapped + from, count), point, false, false, false};
+            descending = steep;
+            length += curve.getSubRange(std::min(from, to), std::max(from, to)).length(.01);
+        }
+    }
+    return {};
+}
+
 std::vector<TurningShaftBody> recognizeTurningShafts(const InkOutline &outline, const QJsonObject &body) {
     WordResultInfo::SubWordInfo empty;
-    auto ctx = outline.geometry(empty);
-    std::vector<TurningShaftBody> result;
-    const auto& ink = ctx.transformedPath;
+    auto context = outline.geometry(empty);
+    std::vector<TurningShaftBody> bodies;
+    const auto& ink = context.transformedPath;
     const auto curves = baseContourCurves(ink);
-    const double rise = body.value("minRise").toDouble(3);
-    for (auto cap = ctx.timeSorted.begin(); cap != ctx.timeSorted.end(); ++cap) {
-        if (ctx.prev(cap)->point.y() < cap->point.y() - 1e-7 || ctx.next(cap)->point.y() < cap->point.y() - 1e-7)
-            continue;
-        const double y = cap->point.y() + rise * .5;
-        const auto hits = FindInterections(ink, QLineF(ctx.bbox.left() - 1, y, ctx.bbox.right() + 1, y), true);
-        double width = 0;
-        for (size_t j = 1; j < hits.size(); ++j) {
-            if (hits[j - 1].pathIndex || hits[j].pathIndex) continue;
-            const QLineF l(hits[j - 1].point, hits[j].point);
-            if (l.length() > .06 && l.length() < rise * .6 &&
-                std::abs(l.center().x() - cap->point.x()) < rise * .25 && ink.contains(l.center())) {
-                width = l.length();
-                break;
-            }
-        }
-        if (!width) continue;
-        TurningShaftBody shaft{*cap, width, {}};
-        int k = 0;
-        for (bool forward : {true, false}) {
-            PathExtrema previous = *cap;
-            double run = 0;
-            const int sign = forward ? 1 : -1;
-            for (int j = 1; j <= int(curves.size() * 16); ++j) {
-                double t = std::fmod(cap->time + sign * j / 16. + curves.size(), double(curves.size()));
-                auto point = curves[int(t)].pointAt(t - int(t));
-                const auto delta = point - previous.point;
-                const double fall = point.y() - cap->point.y();
-                run += QLineF(point, previous.point).length();
-                if (run > rise * 7 || (fall < rise * .65 && run > rise * 1.7)) break;
-                if (fall >= rise && (std::abs(delta.x()) >= std::abs(delta.y()) * .85 || delta.y() < 0)) {
-                    shaft.turns[k] = PathExtrema{0, t, point, false, false, false};
-                    break;
-                }
-                previous.point = point;
-            }
-            ++k;
-        }
-        result.push_back(std::move(shaft));
-    }
-    return result;
-}
-
-std::vector<std::pair<Stretching, Stretching>> cutTurningShafts(SearchContext& ctx,
-        const std::vector<TurningShaftBody>& bodies, const QJsonObject& shape) {
-    std::vector<std::pair<Stretching, Stretching>> result;
-    const auto& ink = ctx.transformedPath;
-    const auto count = static_cast<int>(baseContourCurves(ink).size());
-    for (const auto& body : bodies) {
-        std::vector<Stretching> flank[2];
-        for (int k = 0; k < 2; ++k) {
-            if (!body.turns[k]) continue;
-            const bool forward = k == 0;
-            const auto start = *body.turns[k];
-            auto end = start;
-            end.time += (forward ? 1 : -1) * count;
-            for (double offset : {.5, 0.}) {
-                PathExtrema at = start;
-                QPointF tangent;
-                if (offset && !advanceOnContour(ink, start, end, forward, body.stroke * offset, at, tangent)) continue;
-                for (auto section : cornerSections(ctx, at)) {
-                    const QLineF l(section.topBaseLine.point, section.bottomBaseLine.point);
-                    if (l.length() >= body.stroke * .4 && l.length() <= body.stroke * 3.2) flank[k].push_back(section);
-                }
-            }
-        }
-        for (int swap : {0, 1}) for (auto right : flank[swap]) for (auto left : flank[1 - swap]) {
-            orientSection(ctx, right, body.crest.time, true);
-            orientSection(ctx, left, body.crest.time, false);
-            const auto side = getJoinTime(right, ctx.orientation);
-            if (!side.isStrictLeft(left.topBaseLine.time) || !side.isStrictLeft(left.bottomBaseLine.time)) continue;
-            const auto pieces = cutRegions(ink, {}, {right, left}, ctx.orientation, true);
-            if (pieces.size() != 3) continue;
-            const auto& mask = pieces[1].path;
-            const auto box = mask.boundingRect();
-            if (toSubpaths(mask).size() != 1 ||
-                box.width() > box.height() * shape.value("maxWidthToHeight").toDouble(.8) ||
-                std::abs(box.top() - body.crest.point.y()) > 1e-6) continue;
-            result.emplace_back(right, left);
+    const double period = curves.size();
+    if (curves.empty()) return bodies;
+    const double minRise = body.value("minRise").toDouble(3);
+    const double slope = std::tan(qDegreesToRadians(body.value("turnAngle").toDouble(50)));
+    for (auto crest = context.timeSorted.begin(); crest != context.timeSorted.end(); ++crest) {
+        if (context.prev(crest)->point.y() < crest->point.y() - 1e-7 ||
+            context.next(crest)->point.y() < crest->point.y() - 1e-7) continue;
+        const auto forward = descendingShaftTurn(curves, *crest, 1, minRise, slope);
+        const auto backward = descendingShaftTurn(curves, *crest, -1, minRise, slope);
+        if (!forward || !backward) continue;
+        const double rise = std::min(forward->point.y(), backward->point.y()) - crest->point.y();
+        const double y = crest->point.y() + rise / 2;
+        const double forwardEnd = std::fmod(forward->time - crest->time + period, period);
+        const double backwardEnd = std::fmod(crest->time - backward->time + period, period);
+        auto hits = FindInterections(ink, QLineF(context.bbox.left() - 1, y, context.bbox.right() + 1, y),
+                                            true, RootSearch::BracketAllCrossings);
+        std::ranges::sort(hits, {}, [](const auto& hit) { return hit.point.x(); });
+        const auto alongShaft = [&](const PathExtrema& a, const PathExtrema& b) {
+            return std::fmod(a.time - crest->time + period, period) < forwardEnd &&
+                std::fmod(crest->time - b.time + period, period) < backwardEnd;
+        };
+        for (size_t i = 1; i < hits.size(); ++i) {
+            const auto& a = hits[i - 1];
+            const auto& b = hits[i];
+            const double width = QLineF(a.point, b.point).length();
+            if (width <= .06 || width * 2 >= rise || (!alongShaft(a, b) && !alongShaft(b, a)) ||
+                !interiorChord(ink, a, b)) continue;
+            bodies.push_back({*crest, width, {*forward, *backward}});
+            break;
         }
     }
-    return result;
-}
-
-// Adapter for other forms still using the existing shaft description.
-std::vector<std::pair<Stretching, Stretching>> shaftSections(SearchContext& ctx, const QJsonObject& form) {
-    return cutTurningShafts(ctx, recognizeTurningShafts(inkOutline(ctx), form), form);
+    return bodies;
 }
 
 std::vector<TaperedArmBody> recognizeTaperedArms(const InkOutline &outline, const QJsonObject &form) {

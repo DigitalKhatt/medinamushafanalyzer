@@ -84,6 +84,7 @@ int main(int argc, char** argv) {
         Fixture{296, 15, 4, 1, "lam-medi"},   // Closed-loop kāf attachment.
         Fixture{600, 2, 4, 2, "lam-medi"},    // Lām–alef shared return.
         Fixture{360, 6, 3, 3, "lam-turning-flanks-medi"},
+        Fixture{135, 10, 5, 3, "lam-turning-flanks-medi"}, // Former rounded variant.
     };
     int projectedRoutes = 0, recognizedTurns = 0;
     for (const auto& f : fixtures) {
@@ -130,11 +131,12 @@ int main(int argc, char** argv) {
         // same route directly. This also catches stale temporary iterators.
         context.form = {}; context.res = {}; context.pairedStrokeWidth = .5;
         context.nextIter = context.xSorted.begin(); empty.joins.clear();
-        const auto routes = body.value("exitRoutes").toArray();
+        const bool forked = body.value("shape") == "forked-stem";
+        const auto routes = forked ? body.value("exitRoutes").toArray() : QJsonArray{};
         const auto policies = cuts.value("exitRoutes").toArray();
         for (const auto& stem : evidence.stems) {
             for (int r = -1; r < routes.size(); ++r) {
-                if (r < 0 && !body.value("entryRoute").isObject()) continue;
+                if (r < 0 && (!forked || !body.value("entryRoute").isObject())) continue;
                 const auto route = r < 0 ? body.value("entryRoute").toObject() : routes[r].toObject();
                 const auto policy = r < 0 ? cuts.value("entryRoute").toObject() : policies[r].toObject();
                 for (int reverse = 0; reverse < 2; ++reverse) {
@@ -158,7 +160,7 @@ int main(int argc, char** argv) {
         for (const auto& shaft : evidence.turningShafts)
             for (const auto& turn : shaft.turns) recognizedTurns += bool(turn);
 
-        if (!evidence.stems.empty()) {
+        if (forked && !evidence.stems.empty()) {
             // An impossible neighbor placement is rejected by assembly,
             // without removing any of the intrinsic candidates.
             const QPointF impossible(context.bbox.left() - 100, context.bbox.top() - 100);

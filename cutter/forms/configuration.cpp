@@ -643,7 +643,8 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         "normalNeck", "normalValley", "normalCut", "trimExitToNormal", "offset", "baselineOffset", "sideOffset", "entryBelowCounter",
         "required",   "strokeOffsetX", "bottomProbe",      "oppositeCorner", "normalOffset", "normalOffsetTolerance",
         "penWidth",   "strokeSource",  "walkNormalOffset", "anchorSide",     "visibleFrom",  "maxProjectionInset", "maxChordToRun",
-        "returningFoot", "floorExit", "snapOppositeToOrigin", "allowUnshiftedEntry", "normalWalkBack", "normalFrom"};
+        "returningFoot", "floorExit", "snapOppositeToOrigin", "allowUnshiftedEntry", "normalWalkBack", "normalFrom",
+        "rimWalkWidths"};
     const auto checkBody = [&](auto &&self, const QJsonObject &value, bool anchor = false) -> bool {
         for (auto it = value.begin(); it != value.end(); ++it) {
             if (projectionKeys.contains(it.key()) && !(anchor && it.key() == "offset"))
@@ -811,14 +812,34 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
         if (phase != "initial")
             return id + ": layered head requires an initial body";
         const auto head = body.value("head").toObject(), policy = cuts.value("head").toObject();
-        for (const auto *key : {"minExtrema", "ascenderProbeX", "ascenderCrossings"})
-            if (!(head.value(key).toDouble() > 0))
+        for (auto field = head.begin(); field != head.end(); ++field)
+            if (!QStringList{"minExtrema", "sectionInset", "maxRiseLeftOfCounter", "exitRim"}.contains(field.key()))
+                return id + ": unknown layered head measurement " + field.key();
+        for (auto field = policy.begin(); field != policy.end(); ++field)
+            if (!QStringList{"counterOffset", "rimWalkWidths"}.contains(field.key()))
+                return id + ": unknown layered head cut setting " + field.key();
+        for (const auto *key : {"minExtrema", "sectionInset"})
+            if (!head.value(key).isDouble() || !std::isfinite(head.value(key).toDouble()) ||
+                head.value(key).toDouble() <= 0)
                 return id + ": invalid layered head profile";
         if (const auto rise = head.value("maxRiseLeftOfCounter"); !rise.isUndefined() &&
             (!rise.isDouble() || !std::isfinite(rise.toDouble()) || rise.toDouble() <= 0))
             return id + ": maxRiseLeftOfCounter must be a positive counter-height ratio";
-        if (!(policy.value("counterProbeX").toDouble() > 0) || policy.value("counterCrossings").toInt() < 2)
-            return id + ": invalid layered head probe";
+        const auto offset = policy.value("counterOffset");
+        if (!offset.isDouble() || !std::isfinite(offset.toDouble()) || offset.toDouble() <= 0)
+            return id + ": the layered head exit projection needs a positive offset";
+        const auto rim = head.value("exitRim"), walk = policy.value("rimWalkWidths");
+        if (!rim.isUndefined() || !walk.isUndefined()) {
+            const auto settings = rim.toObject();
+            const auto offsets = walk.toArray();
+            const auto reach = settings.value("maxDistance"), angle = settings.value("minCornerAngle");
+            if (settings.size() != 2 || !reach.isDouble() || !std::isfinite(reach.toDouble()) || reach.toDouble() <= 0 ||
+                !angle.isDouble() || !(angle.toDouble() > 0 && angle.toDouble() < 180) ||
+                offsets.isEmpty() || std::any_of(offsets.begin(), offsets.end(), [](const auto& value) {
+                    return !value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= 0;
+                }))
+                return id + ": a layered head rim exit requires a reach, inward corner angle and positive walks";
+        }
     }
     if (shape == "counter-shoulder") {
         const auto shoulder = body.value("shoulder").toObject();
@@ -1613,9 +1634,19 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 if (shape == "terminal-bowl" && (!positive(stem.value("minRise")) || !positive(stem.value("maxNeckDistance")) ||
                     !positive(declaredCuts.value("section").toObject().value("turnAngle"))))
                     return id + ": invalid terminal bowl body / section";
-                if (shape == "turning-shaft" && (!positive(declaredBody.value("shaft").toObject().value("minRise")) ||
-                    !positive(declaredBody.value("shaft").toObject().value("maxWidthToHeight"))))
-                    return id + ": invalid body.shaft";
+                if (shape == "turning-shaft") {
+                    const auto shaft = declaredBody.value("shaft").toObject();
+                    if (shaft.size() != 3 || !positive(shaft.value("minRise")) ||
+                        !positive(shaft.value("maxWidthToHeight")) || !positive(shaft.value("turnAngle")) ||
+                        shaft.value("turnAngle").toDouble() >= 90)
+                        return id + ": body.shaft needs a positive rise, aspect and turn angle below 90 degrees";
+                    const auto policy = declaredCuts.value("shaft").toObject();
+                    const auto walk = policy.value("walkWidths");
+                    if (policy.size() != 3 || !walk.isDouble() || !std::isfinite(walk.toDouble()) ||
+                        walk.toDouble() < 0 || !policy.value("atTurnWhenTight").isBool() ||
+                        !policy.value("forkJunction").isBool())
+                        return id + ": cuts.shaft needs a nonnegative walk and explicit turn and junction policies";
+                }
                 if (shape == "terminal-return") {
                     const auto tail = declaredBody.value("tail").toObject();
                     for (const auto* key : {"minRise", "minRun", "maxRun"})
@@ -1663,6 +1694,19 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                         formDescription(config, partner->toObject(), "body").value("shape") != "counter-shoulder")
                         return id + ": cuts.overlappingExit needs a final counter-shoulder template and positive shift and gap ratios";
                 }
+                if (const auto value = declaredCuts.value("sharedEntryCorner"); !value.isUndefined()) {
+                    const auto settings = value.toObject();
+                    const auto initials = config.value("initial").toArray();
+                    const auto partner = std::find_if(initials.begin(), initials.end(), [&](const auto& value) {
+                        return value.toObject().value("id") == settings.value("initialTemplate");
+                    });
+                    if (QString(phase) != "medial" || settings.size() != 2 || partner == initials.end() ||
+                        !positive(settings.value("maxClipWidths")))
+                        return id + ": cuts.sharedEntryCorner needs a medial body, an initial template and a positive clip limit";
+                    const auto body = formDescription(config, partner->toObject(), "body");
+                    if (body.value("shape") != "contour-route" || body.value("counters").toInt() != 1)
+                        return id + ": cuts.sharedEntryCorner requires an initial contour route enclosing one counter";
+                }
                 if (const auto value = declaredCuts.value("sharedFold"); !value.isUndefined()) {
                     const auto fold = value.toObject();
                     const auto receiver = namedLetterForm(config, fold.value("template").toString());
@@ -1683,9 +1727,13 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 for (const auto& settings : {declaredCuts, terminal.toObject()}) {
                     if (settings.isEmpty()) continue;
                     const auto boundaries = settings.value("boundaries").toObject();
-                    if (!QStringList{"free", "preserve", "fork-normal"}.contains(boundaries.value("right").toString()) ||
-                        !QStringList{"free", "preserve", "fork-normal", "shared-return"}.contains(boundaries.value("left").toString()))
+                    if (!QStringList{"free", "preserve", "fork-normal", "shaft-normal"}.contains(boundaries.value("right").toString()) ||
+                        !QStringList{"free", "preserve", "fork-normal", "shared-return", "shaft-normal"}.contains(boundaries.value("left").toString()))
                         return id + ": cuts.boundaries must declare the right and left cut policies";
+                    const bool shaft = boundaries.value("right") == "shaft-normal" || boundaries.value("left") == "shaft-normal";
+                    if (shaft && (shape != "turning-shaft" || boundaries.value("right") != "shaft-normal" ||
+                                  boundaries.value("left") != "shaft-normal"))
+                        return id + ": shaft-normal needs both flanks of a turning-shaft";
                     if (boundaries.value("left") == "fork-normal" && boundaries.value("right") != "fork-normal")
                         return id + ": an outgoing fork-normal policy currently needs the incoming fork-normal policy";
                     if (boundaries.value("left") == "shared-return" && !settings.contains("letters"))
@@ -1699,7 +1747,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                         if (!QStringList{"boundaries", "forkOffset", "tightJoin", "counterJoin", "beforeFinal",
                                          "letters", "junction", "preserveEntryAfter", "route", "section", "exitRoutes",
                                          "entryRoute", "placement", "shortExit", "overlappingExit", "sharedFold",
-                                         "turnBoundaries"}.contains(key.key()))
+                                         "turnBoundaries", "shaft", "sharedEntryCorner"}.contains(key.key()))
                             return id + ": unknown cuts setting " + key.key();
                 }
             }
@@ -1739,7 +1787,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 return id + ": an ink bridge bend must be within a quarter of its length";
             if (rule.contains("forkRise") && (method != "counter-ligature" || !positive(rule.value("forkRise"))))
                 return id + ": forkRise needs a positive counter-height ratio";
-            for (const auto* name : {"mouth", "blade", "shaft", "enclosedHead"})
+            for (const auto* name : {"mouth", "blade", "enclosedHead"})
                 if (rule.contains(name)) {
                     const auto feature = rule.value(name).toObject();
                     if (QString(phase) != "medial" || feature.isEmpty())
@@ -1885,7 +1933,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 }
                 const bool feature =
                     rule.contains("overhangingEntry") ||
-                    rule.contains("parallelReturn") || rule.contains("enclosedHead") || rule.contains("shaft") ||
+                    rule.contains("parallelReturn") || rule.contains("enclosedHead") ||
                     rule.contains("counterLigature") || rule.contains("mouth") ||
                     rule.contains("blade") || !loopSettings(rule).isEmpty() ||
                     !rule.value("contourBody").toObject().isEmpty() ||

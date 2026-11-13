@@ -1136,15 +1136,18 @@
         },
         "head": {
           "minExtrema": 8,
-          "ascenderProbeX": 6,
-          "ascenderCrossings": 4,
-          "maxRiseLeftOfCounter": 5
+          "sectionInset": 6,
+          "maxRiseLeftOfCounter": 5,
+          "exitRim": {
+            "maxDistance": 2,
+            "minCornerAngle": 110
+          }
         }
       },
       "cuts": {
         "head": {
-          "counterProbeX": 0.6,
-          "counterCrossings": 2
+          "counterOffset": 0.6,
+          "rimWalkWidths": [0.75, 0.875]
         },
         "boundaries": {
           "left": "head-probe",
@@ -4350,18 +4353,36 @@
       "onIncomplete": true,
       "body": {
         "inherit": "lam-medi",
-        "counters": 0,
         "shape": "turning-shaft",
         "shaft": {
           "minRise": 3,
-          "maxWidthToHeight": 0.8
+          "maxWidthToHeight": 0.8,
+          "turnAngle": 50
         }
       },
       "cuts": {
         "inherit": "lam-medi",
         "boundaries": {
-          "right": "fork-normal",
-          "left": "fork-normal"
+          "right": "shaft-normal",
+          "left": "shaft-normal"
+        },
+        "shaft": {
+          "walkWidths": 0.5,
+          "atTurnWhenTight": true,
+          "forkJunction": true
+        },
+        "sharedEntryCorner": {
+          "initialTemplate": "hah-counter-init",
+          "maxClipWidths": 0.5
+        },
+        "beforeFinal": {
+          "letters": "اآأإٱ",
+          "junction": "inward-corners",
+          "preserveEntryAfter": "ك",
+          "boundaries": {
+            "right": "fork-normal",
+            "left": "shared-return"
+          }
         }
       }
     },
@@ -5653,29 +5674,6 @@
       },
       "reclaimEntry": true,
       "sharedFoldWithFinal": "اآأإٱ",
-      "onUnresolvedPartition": true,
-      "onUnresolved": true
-    },
-    {
-      "id": "lam-rounded-turns-medi",
-      "current": "ل",
-      "tightJoin": true,
-      "body": {
-        "inherit": "lam-medi",
-        "counters": 0,
-        "shape": "turning-shaft",
-        "shaft": {
-          "minRise": 2,
-          "maxWidthToHeight": 1.15
-        }
-      },
-      "cuts": {
-        "inherit": "lam-medi",
-        "boundaries": {
-          "right": "fork-normal",
-          "left": "fork-normal"
-        }
-      },
       "onUnresolvedPartition": true,
       "onUnresolved": true
     }

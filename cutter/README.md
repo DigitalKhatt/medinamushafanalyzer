@@ -21,6 +21,15 @@ verifies the fork from the uncut ink and proposes cuts.
 [attachment_policy.cpp](forms/lam/attachment_policy.cpp) applies the chosen
 fork or ligature policy.
 
+`lam-turning-flanks-medi` follows both contour edges from the same shaft cap.
+`body.shaft.turnAngle` locates the first turn on each edge. The width comes
+from a section between those edges. `cuts.shaft.walkWidths` measures a walk
+from each turn in local stroke widths. `atTurnWhenTight` also allows normals
+at the turns. A fork belonging to the same shaft can provide the half-unit
+walks or the shared-tip normals, and `forkJunction` allows a chord between
+the incoming turn and that fork. Assembly checks the order of the cuts and
+retains the recognized landmarks. The lām–alef return has its own policy.
+
 After assembly and recovery, a tooth-cluster body must own three upper tips
 and the two intervening valleys from the uncut outline. Final clusters must
 own the connected bowl. A pen lift inside the word can end the medial
@@ -111,6 +120,24 @@ can name a final template to try at its own counter shoulder. The shift
 limit is relative to the current entry's width. The minimum separation is
 relative to `forkOffset`. Assembly keeps lām's fork anchors fixed and
 checks the replacement against the final body's counter.
+
+A layered head such as `hah-init` can recognize an exit corner on its lower
+lip with `body.head.exitRim`. The distance is relative to the head's counter
+height and the angle measures the inward turn. `cuts.head.rimWalkWidths`
+lists normal cuts at fixed contour distances from that corner in global
+stroke widths. When the head and lām's entry overlap, assembly checks these
+exits in order and retains the head's counter and lām's fixed fork cuts.
+For the standard layered-head exit, recognition takes the rightmost enclosed
+counter and verifies that its upper rim rises at `body.head.sectionInset`
+page units from the right edge of the source. The cut projects once at
+`cuts.head.counterOffset` page units left of the counter. Both endpoints must
+lie on the outer contour.
+
+`cuts.sharedEntryCorner` can name an initial contour template for a tight
+medial join. If the proposed shared cut clips the upper rim by more than
+`maxClipWidths` times the corner cut's length, assembly uses the initial
+template's cut at the corner. The cut must retain the same counter and the
+medial body's crest and fork.
 
 Ordinary medial teeth use local stroke offsets around their tip and inner
 bend. The lower flank can supply the stroke width for those offsets.

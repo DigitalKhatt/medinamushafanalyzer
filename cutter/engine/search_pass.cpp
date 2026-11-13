@@ -110,6 +110,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     const auto& alefTurnRules = preparedRules.alefTurns;
     QVector<QString> bodyTemplateIds(baseText.size());
     QString terminalBoundaryTemplate;
+    QString initialSharedBoundaryTemplate;
     QVector<int> sharedEntries;
     QMap<int, ToothBody> ownedTeeth;
     QMap<int, PathExtrema> ownedLamCrests;
@@ -698,6 +699,31 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                 }
                 const bool allowWalk = !internalBody && !forkedLam && teeth.isEmpty();
                 appendMedialWalks(context, form, entry, exit, stroke, open, allowWalk, candidates);
+                const auto sharedCorner = form.value("cuts").toObject().value("sharedEntryCorner").toObject();
+                std::optional<BodyBoundary> initialCorner;
+                if (letter == 1 && !candidates.empty() && incoming.counterEntry.pathIndex <= 0 &&
+                    !bodyTemplateIds[0].isEmpty() && !sharedCorner.isEmpty()) {
+                    const auto id = sharedCorner.value("initialTemplate").toString();
+                    auto rule = preparedRules.constraints.value(id);
+                    if (rule.value("current").toString().contains(baseText.front())) {
+                        const auto savedForm = context.form;
+                        const auto savedResult = context.res;
+                        rule.insert("bodyBoundary", "current");
+                        if (attempt(rule, 0, false)) {
+                            const auto atCorner = cutRegions(context.transformedPath, {}, {context.res}, context.orientation, true);
+                            const auto atInitial = cutRegions(context.transformedPath, {}, {incoming}, context.orientation, true);
+                            if (atCorner.size() == 2 && atInitial.size() == 2) {
+                                const auto cornerContours = toSubpaths(atCorner.front().path);
+                                const auto initialContours = toSubpaths(atInitial.front().path);
+                                if (cornerContours.size() == 2 && initialContours.size() == 2 &&
+                                    cornerContours.back() == initialContours.back())
+                                    initialCorner = BodyBoundary{context.res, id};
+                            }
+                        }
+                        context.form = savedForm;
+                        context.res = savedResult;
+                    }
+                }
                 bool matched = false;
                 const bool preferFinalBoundary = forkedLam && letter + 1 == lastIndex &&
                     !outgoing.fixedLeftBoundary;
@@ -755,6 +781,23 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                             QLineF(right.topBaseLine.point,right.bottomBaseLine.point).length());
                         sharedJoins = QLineF(center(incoming),center(right)).length() <= width;
                     }
+                    bool usesInitialCorner = false;
+                    if (sharedJoins && right.counterEntry.pathIndex <= 0 && initialCorner) {
+                        const auto& seam = initialCorner->cut;
+                        const double width = QLineF(seam.topBaseLine.point, seam.bottomBaseLine.point).length();
+                        const auto side = getJoinTime(right, context.orientation);
+                        const double shift = QLineF(right.topBaseLine.point, seam.topBaseLine.point).length();
+                        if (side.isStrictLeft(seam.topBaseLine.time) &&
+                            shift > sharedCorner.value("maxClipWidths").toDouble() * width) {
+                            // Keep the recognized shaft and its fork on the receiving side.
+                            // The initial route supplies the entire shared section.
+                            const auto receiving = getJoinTime(seam, context.orientation);
+                            if ((lamCrest && !receiving.isStrictLeft(lamCrest->time)) ||
+                                (lamFork && !receiving.isLeft(lamFork->time))) continue;
+                            right = seam;
+                            usesInitialCorner = true;
+                        }
+                    }
                     if (sharedJoins && !ownedTeeth.isEmpty()) {
                         const auto sides = getJoinTime(right, context.orientation);
                         if (std::any_of(ownedTeeth.cbegin(), ownedTeeth.cend(), [&](const ToothBody& owned) {
@@ -773,7 +816,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     const auto previousLam = ownedLamCrests.constFind(letter - 1);
                     if (sharedJoins && previousLam != ownedLamCrests.cend() &&
                         !getJoinTime(right, context.orientation).isStrictRight(previousLam->time)) continue;
-                    if (sharedJoins && letter == 1 && !preservesBody(bodyTemplateIds[0], right, true)) continue;
+                    if (sharedJoins && letter == 1 && !usesInitialCorner && !preservesBody(bodyTemplateIds[0], right, true)) continue;
                     if ((!sharedJoins && !before(incoming, right)) || !before(right, left) ||
                         (!open && !nextBody && !internalBody && !forkedLam && std::abs(center(left).x() - exit.x()) > 2 * stroke) ||
                         (letter + 1 < static_cast<int>(cuts.size()) && !before(left, cuts[letter + 1]))) continue;
@@ -994,6 +1037,11 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                         incoming.fixedRightBoundary = true;
                         incoming.length = 0;
                         incoming.kashidaOverrides.insert("enabled", false);
+                    }
+                    if (usesInitialCorner) {
+                        initialSharedBoundaryTemplate = initialCorner->templateId;
+                        bodyTemplateIds[0] = initialSharedBoundaryTemplate;
+                        subWord.templateTrace.append(initialSharedBoundaryTemplate + " · shared cut at the initial counter corner");
                     }
                     incoming.topLeft = right.topBaseLine;
                     incoming.bottomLeft = right.bottomBaseLine;
@@ -1308,6 +1356,10 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     }
     if (!terminalBoundaryTemplate.isEmpty() && !bodyTemplateIds[lastIndex].isEmpty())
         recordBoundaryTemplate(subWord, lastIndex - 1, false, terminalBoundaryTemplate);
+    if (!initialSharedBoundaryTemplate.isEmpty()) {
+        recordBoundaryTemplate(subWord, 0, false, initialSharedBoundaryTemplate);
+        recordBoundaryTemplate(subWord, 1, true, initialSharedBoundaryTemplate);
+    }
     subWord.correct = cut && subWord.joins.size() == lastIndex &&
         std::all_of(bodyTemplateIds.begin(), bodyTemplateIds.end(), [](const auto& id) { return !id.isEmpty(); });
 

@@ -18,6 +18,70 @@ static SearchContext geometry(QPainterPath ink, WordResultInfo::SubWordInfo& dum
     return c;
 }
 
+static void checkLayeredHeadExit(const QJsonObject& config) {
+    for (const auto& fixture : {std::array{79, 11, 2, 13}, std::array{502, 9, 11, 29}}) {
+        const auto [page, line, wordIndex, corner] = fixture;
+        QFile file(QString("pages/page%1.dat").arg(page));
+        check(file.open(QIODevice::ReadOnly), "Missing layered-head fixture");
+        PageAnalysisResult analysis;
+        QDataStream stream(&file);
+        stream >> analysis.page;
+        check(analysis.segmentSubword(page - 1, line - 1, wordIndex - 1, 0, nullptr, true),
+              "The layered head and medial lam must both assemble");
+        const auto& word = analysis.page.lines[line - 1].words[wordIndex - 1];
+        const auto& sub = word.wordResultInfo.subWords.front();
+        const auto head = sub.letterDiagnostics.first().toObject();
+        check(head.value("template") == "hah-init" && head.value("exitTemplate") == "hah-init" &&
+              !sub.kashidaPaths.front().isEmpty() && coversOriginalInk(word, sub),
+              "The initial head must supply its own cut and keep the connector");
+        const auto shape = word.bodyShape(sub);
+        WordResultInfo::SubWordInfo empty;
+        SearchContext context{.transformedPath = shape.transform.map(shape.path).translated(shape.pos), .subword = empty};
+        CutGeometryMemoScope scope;
+        check(readTerminalOutline(context), "Missing layered-head outline");
+        const auto form = resolvedLetterForm(config, "hah-init");
+        const auto body = recognizeLayeredHeads(inkOutline(context), form.value("body").toObject());
+        check(body.rimExits.size() == 1 && body.rimExits.front().corner.time == corner,
+              "The layered head must find the corner below its own counter");
+        const auto exits = declaredExitAlternatives(context, config, "hah-init");
+        const auto actual = sub.kashidaCuts.front().first;
+        check(std::any_of(exits.begin(), exits.end(), [&](const auto& cut) {
+                  return QLineF(actual.p1(), cut.topBaseLine.point).length() < 1e-5 &&
+                         QLineF(actual.p2(), cut.bottomBaseLine.point).length() < 1e-5;
+              }),
+              "Assembly must use a declared normal without moving its anchor");
+    }
+}
+
+static void checkSharedCounterCorner(const QJsonObject& form) {
+    for (const auto [page, line, wordIndex, subIndex, corner] :
+         {std::array{350, 4, 3, 2, 28}, std::array{561, 2, 5, 3, 47}}) {
+        QFile file(QString("pages/page%1.dat").arg(page));
+        check(file.open(QIODevice::ReadOnly), "Missing tight counter and lam fixture");
+        PageAnalysisResult analysis;
+        QDataStream stream(&file);
+        stream >> analysis.page;
+        const auto& word = analysis.page.lines[line - 1].words[wordIndex - 1];
+        const auto& sub = word.wordResultInfo.subWords[subIndex - 1];
+        const auto shape = word.bodyShape(sub);
+        WordResultInfo::SubWordInfo dummy;
+        auto source = geometry(shape.transform.map(shape.path).translated(shape.pos), dummy, form);
+        check(declaredSharedBoundary(source, form) && source.res.topBaseLine.time == corner,
+              "Initial counter corner was not recognized independently");
+        check(analysis.segmentSubword(page - 1, line - 1, wordIndex - 1, subIndex - 1, nullptr, true),
+              "Initial counter corner and medial shaft did not assemble");
+        const auto head = sub.letterDiagnostics.first().toObject();
+        const auto lam = sub.letterDiagnostics[1].toObject();
+        const auto& actual = *sub.joins.begin();
+        check(head.value("template") == "hah-counter-init" && head.value("exitTemplate") == "hah-counter-init" &&
+              lam.value("template") == "lam-turning-flanks-medi" && lam.value("entryTemplate") == "hah-counter-init" &&
+              actual.topBaseLine.point == source.res.topBaseLine.point &&
+              QLineF(actual.bottomBaseLine.point, source.res.bottomBaseLine.point).length() < 1e-6 &&
+              sub.kashidaPaths.front().isEmpty() && toSubpaths(sub.baseGlyphs.front().path).size() == 2 &&
+              coversOriginalInk(word, sub), "The shared seam must keep the head's counter and its own corner cut");
+    }
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv); Q_INIT_RESOURCE(application);
     const auto config = PageAnalysisResult::letterForms();
@@ -110,5 +174,7 @@ int main(int argc, char** argv) {
     check(control.segmentSubword(2, 11, 5, 0, nullptr, true) &&
           cs.matchedTemplates.contains("hah-init") && !cs.matchedTemplates.contains("hah-counter-init"),
           "Existing closed-head template precedence changed");
+    checkLayeredHeadExit(config);
+    checkSharedCounterCorner(form);
     qInfo("Closed hah passed: own corner/counter before alef and lam, vertical lower intersection, neighboring-state independence, scale/translation, two bodies/one connector, missing-counter rejection, existing-template precedence, ink conservation and determinism.");
 }

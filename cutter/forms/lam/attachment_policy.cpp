@@ -426,14 +426,12 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
                 return sending ? apply(right, left, seam, next) : apply(right, left, previous, seam);
             };
             if (sending) {
-                // The preceding body can still arrive through the legacy
-                // search without a separate exit at its own landmark.
-                for (double distance = 1.5 * offset; distance <= offset + oldCap.length(); distance += offset / 4) {
-                    const auto seam = cutLamForkFlank(context, tip, std::nullopt, rightForward, 1, distance);
-                    if (seam && accept(*seam, .5, offset / 3)) {
-                        recordBoundaryTemplate(sub, i - 1, false, form);
-                        return true;
-                    }
+                const auto sender = old.letterDiagnostics[i - 1].toObject().value("template").toString();
+                for (const auto& seam : declaredExitAlternatives(context, config, sender)) {
+                    if (!accept(seam, .5, offset / 3)) continue;
+                    recordBoundaryTemplate(sub, i - 1, false, sender);
+                    sub.templateTrace.append(sender + " · alternate declared exit");
+                    return true;
                 }
             }
             if (receiving && i + 2 == letters.size()) {

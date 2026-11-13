@@ -284,14 +284,19 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
     }
     out << bool(e.layeredHead);
     if (e.layeredHead) {
-        out << quint64(e.layeredHead->envelopes.size());
-        for (const auto &box : e.layeredHead->envelopes)
-            out << box;
+        out << bool(e.layeredHead->exitCounter);
+        if (e.layeredHead->exitCounter)
+            out << *e.layeredHead->exitCounter;
         out << quint64(e.layeredHead->necks.size());
         for (const auto &n : e.layeredHead->necks) {
             point(n.cursor);
             point(n.section.topBaseLine);
             point(n.section.bottomBaseLine);
+        }
+        out << quint64(e.layeredHead->rimExits.size());
+        for (const auto& rim : e.layeredHead->rimExits) {
+            point(rim.corner);
+            out << rim.forward;
         }
     }
     out << bool(e.uprightStem);
@@ -422,7 +427,7 @@ int main(int argc, char **argv) {
         int page, line, word, sub;
     };
     const Fixture fixtures[] = {{3, 2, 9, 1}, {6, 15, 4, 1}, {600, 2, 5, 1}, {230, 11, 3, 1}, {6, 9, 8, 2},
-        {3, 13, 3, 1}, {182, 4, 3, 2}, {2, 6, 7, 1}};
+        {3, 13, 3, 1}, {182, 4, 3, 2}, {2, 6, 7, 1}, {79, 11, 2, 1}};
     int checks = 0;
     for (const auto &f : fixtures) {
         QFile file(QString("pages/page%1.dat").arg(f.page));

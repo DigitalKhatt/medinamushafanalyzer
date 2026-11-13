@@ -348,11 +348,14 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
                 inspectLandmark("Fork attachment", point);
         }
     }
-    if (evidence.layeredHead)
+    if (evidence.layeredHead) {
         for (const auto &neck : evidence.layeredHead->necks) {
             inspectLandmark("Head neck", neck.section.topBaseLine);
             inspectLandmark("Head neck", neck.section.bottomBaseLine);
         }
+        for (const auto& rim : evidence.layeredHead->rimExits)
+            inspectLandmark("Lower lip corner", rim.corner);
+    }
     if (evidence.uprightStem) {
         inspectLandmark("Stem tip", evidence.uprightStem->tip);
         for (const auto &turn : evidence.uprightStem->turns)
@@ -445,6 +448,20 @@ declaredOpenHeadCuts(SearchContext &context, const QJsonObject &form, double min
     const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
     return cutOpenHeads(context, selectOpenHeads(evidence->openHeads, minX, maxX),
                         form.value("cuts").toObject().value("head").toObject());
+}
+
+std::vector<Stretching> declaredExitAlternatives(SearchContext& context, const QJsonObject& config,
+                                                const QString& id) {
+    const auto form = resolvedBodyForm(config, namedLetterForm(config, id));
+    const auto body = form.value("body").toObject();
+    const auto policy = form.value("cuts").toObject().value("head").toObject();
+    if (body.value("shape") != "layered-head" || !policy.contains("rimWalkWidths")) return {};
+    InspectFormScope inspection(form, context.transformedPath);
+    const auto evidence = recognizedSharedShape(context, body);
+    inspectSharedShape(*evidence);
+    auto sections = cutLayeredHeadRims(context, *evidence->layeredHead, policy, config.value("strokeWidth").toDouble(1));
+    for (const auto& section : sections) inspectCandidate("Lower lip exit", section);
+    return sections;
 }
 
 bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
@@ -673,7 +690,7 @@ bool supportsOpenMedialBoundary(const QJsonObject& config, const QJsonObject& fo
            shape == "parallel-return" ||
            shape == "returning-lips" ||
            shape == "enclosed-lips" || form.contains("parallelReturn") ||
-           form.contains("enclosedHead") || form.contains("shaft") || form.contains("counterLigature") ||
+           form.contains("enclosedHead") || form.contains("counterLigature") ||
            form.contains("mouth") || form.contains("blade") || !pairedRouteSettings(form).isEmpty() ||
            (resolvedShape == "forked-stem" || resolvedShape == "turning-shaft") ||
            !pairedCounterSettings(form).isEmpty() || !loopSettings(form).isEmpty() ||
@@ -685,7 +702,7 @@ bool supportsOpenMedialBoundary(const QJsonObject& config, const QJsonObject& fo
 
 bool hasIntrinsicMedialBody(const QJsonObject& config, const QJsonObject& form) {
     return formDescription(config, form, "body").value("shape") == "turning-shaft" ||
-        form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") ||
+        form.contains("parallelReturn") || form.contains("enclosedHead") ||
         form.contains("mouth") || form.contains("blade") || !form.value("counterLigature").toObject().isEmpty() ||
         !pairedRouteSettings(form).isEmpty() || !loopSettings(form).isEmpty() ||
         !openHeadSettings(form).isEmpty() || !pairedCounterSettings(form).isEmpty() ||
@@ -722,7 +739,7 @@ std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
         context.form = previousForm;
         context.res = previousResult;
     }
-    if (form.contains("parallelReturn") || form.contains("enclosedHead") || form.contains("shaft") ||
+    if (form.contains("parallelReturn") || form.contains("enclosedHead") ||
         form.contains("blade") || form.contains("mouth")) {
         const auto generate = [&]() {
             if (form.contains("parallelReturn"))
@@ -733,8 +750,6 @@ std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
                 return cutEnclosedLips(
                     context, recognizedSharedShape(context, form.value("body").toObject())->enclosedLips,
                     form.value("cuts").toObject().value("head").toObject(), false);
-            if (form.contains("shaft"))
-                return shaftSections(context, form.value("shaft").toObject());
             if (form.contains("blade"))
                 return cutBlades(context,
                                  recognizedSharedShape(context, form.value("body").toObject())->blades,
