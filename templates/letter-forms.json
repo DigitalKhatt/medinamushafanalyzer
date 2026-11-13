@@ -3247,6 +3247,7 @@
     },
     {
       "id": "kaf-fork-medi",
+      "fixedAnchors": true,
       "current": "ك",
       "body": {
         "shape": "paired-route",
