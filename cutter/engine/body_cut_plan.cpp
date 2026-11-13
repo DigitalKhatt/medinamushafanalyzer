@@ -133,7 +133,7 @@ SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
 }
 
 SubwordCutPlan makeSubwordCutPlan(WordResultInfo::SubWordInfo proposals, const QJsonObject& config) {
-    SubwordCutPlan plan{std::move(proposals), {}};
+    SubwordCutPlan plan{.partition = std::move(proposals)};
     const auto& sub = plan.partition;
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (sub.letterDiagnostics.size() != letters.size()) return plan;
@@ -181,11 +181,14 @@ static bool leavesConnectorRoom(const Stretching& sending, const Stretching& rec
     return gap(receiving.topBaseLine) > minimum && gap(receiving.bottomBaseLine) > minimum;
 }
 
+static QLineF sectionLine(const Stretching& cut) {
+    return {cut.topBaseLine.point, cut.bottomBaseLine.point};
+}
+
 static bool leavesEntryClearance(const Stretching& sending, const Stretching& receiving,
                                  Orientation orientation, double minimumGap) {
     if (!cutPrecedes(sending, receiving, orientation)) return false;
-    const QLineF start(sending.topBaseLine.point, sending.bottomBaseLine.point);
-    const QLineF end(receiving.topBaseLine.point, receiving.bottomBaseLine.point);
+    const auto start = sectionLine(sending), end = sectionLine(receiving);
     if (start.isNull() || end.isNull() || start.intersects(end, nullptr) == QLineF::BoundedIntersection)
         return false;
     // The sending cap can run along a sloping stroke. Measure the gap between
@@ -216,19 +219,23 @@ bool preserveUnchangedOutline(const QPainterPath& original, QPainterPath& rebuil
     return true;
 }
 
-static std::optional<WordResultInfo::SubWordInfo> recutBodyJoin(
-        const Word& word, const WordResultInfo::SubWordInfo& sub, int slot, int bodySlot,
-        const Stretching& sending, const std::optional<Stretching>& receiving, const QJsonObject& config) {
+// Replace one cap of a connector, or both sides of a shared seam.
+static bool placeBodyBoundary(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
+        int bodySlot, bool atEntry, const Stretching& boundary, const std::optional<Stretching>& opposite,
+        const QString& id, const QString& trace, bool oneStroke, const auto& retainsBody) {
+    const int slot = bodySlot - atEntry;
+    const auto& sending = atEntry && opposite ? *opposite : boundary;
+    const auto receiving = atEntry && opposite ? std::optional{boundary} : opposite;
     auto trial = sub;
     const auto current = std::next(trial.joins.begin(), slot);
     const auto original = *current;
     auto join = original;
-    if (join.counterEntry.pathIndex > 0) return {};
+    if (join.counterEntry.pathIndex > 0) return false;
     join.topBaseLine = join.topRight = sending.topBaseLine;
     join.bottomBaseLine = join.bottomRight = sending.bottomBaseLine;
     join.topLeft = receiving ? receiving->topBaseLine : sending.topBaseLine;
     join.bottomLeft = receiving ? receiving->bottomBaseLine : sending.bottomBaseLine;
-    join.referenceWidth = QLineF(sending.topBaseLine.point, sending.bottomBaseLine.point).length();
+    join.referenceWidth = sectionLine(sending).length();
     join.length = 0;
     join.fixedRightBoundary = true;
     join.fixedLeftBoundary = receiving.has_value();
@@ -237,25 +244,28 @@ static std::optional<WordResultInfo::SubWordInfo> recutBodyJoin(
     trial.joins.insert(join);
     if (!assembleBodyPartition(word, trial, config) || trial.baseGlyphs.size() != sub.baseGlyphs.size() ||
         trial.kashidaPaths.size() != sub.kashidaPaths.size() ||
-        trial.kashidaPaths[slot].isEmpty() == receiving.has_value()) return {};
+        trial.kashidaPaths[slot].isEmpty() == receiving.has_value()) return false;
 
     // Keep the other cap of an existing connector and all unrelated regions
     // intact. A shared seam can also move the edge of its immediate neighbor.
-    const bool atEntry = slot < bodySlot;
     const int neighbor = atEntry ? slot : slot + 1;
     const auto unchanged = [&](const QPainterPath& original, QPainterPath& rebuilt) {
         return atEntry ? preserveUnchangedOutline(original, rebuilt) : original == rebuilt;
     };
     for (size_t i = 0; i < sub.baseGlyphs.size(); ++i)
         if (i != size_t(bodySlot) && (receiving || i != size_t(neighbor)) &&
-            !unchanged(sub.baseGlyphs[i].path, trial.baseGlyphs[i].path)) return {};
+            !unchanged(sub.baseGlyphs[i].path, trial.baseGlyphs[i].path)) return false;
     for (size_t i = 0; i < sub.kashidaPaths.size(); ++i)
         if (i != size_t(slot) && (!unchanged(sub.kashidaPaths[i], trial.kashidaPaths[i]) ||
-            trial.kashidaCuts[i] != sub.kashidaCuts[i])) return {};
+            trial.kashidaCuts[i] != sub.kashidaCuts[i])) return false;
     if (receiving) {
         const auto& [start, end] = trial.kashidaCuts[slot];
-        if (start != QLineF(sending.topBaseLine.point, sending.bottomBaseLine.point) ||
-            end != QLineF(receiving->topBaseLine.point, receiving->bottomBaseLine.point)) return {};
+        if (start != sectionLine(sending) || end != sectionLine(*receiving)) return false;
+        if (oneStroke) {
+            const auto shape = word.bodyShape(sub);
+            const auto ribbon = shape.transform.map(trial.kashidaPaths[slot]).translated(shape.pos);
+            if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, start, end)) return false;
+        }
     } else {
         const auto shape = word.bodyShape(sub);
         const auto& before = sub.baseGlyphs[neighbor].path;
@@ -265,24 +275,29 @@ static std::optional<WordResultInfo::SubWordInfo> recutBodyJoin(
         const auto outerEdge = [&](const QRectF& bounds) { return atEntry ? bounds.right() : bounds.left(); };
         constexpr double tolerance = 1e-5;
         if (toSubpaths(before).size() != toSubpaths(after).size() ||
-            std::abs(outerEdge(oldBounds) - outerEdge(newBounds)) > tolerance) return {};
+            std::abs(outerEdge(oldBounds) - outerEdge(newBounds)) > tolerance) return false;
         if (std::abs(oldBounds.top() - newBounds.top()) > tolerance ||
             std::abs(oldBounds.bottom() - newBounds.bottom()) > tolerance) {
             // Moving an incoming shared cut forward can add a sloping
             // connector to the previous body and extend its bounds. Check the
             // ink between the two cuts to distinguish that from adding a head.
             if (!atEntry || !newBounds.adjusted(-tolerance, -tolerance, tolerance, tolerance).contains(oldBounds))
-                return {};
+                return false;
             const auto regions = cutRegions(shape.path, {}, {original, sending}, sub.basePathOrientation, true);
-            if (regions.size() != 3) return {};
+            if (regions.size() != 3) return false;
             const auto ribbon = shape.transform.map(regions[1].path).translated(shape.pos);
-            const QLineF oldCut(original.topBaseLine.point, original.bottomBaseLine.point);
-            const QLineF newCut(sending.topBaseLine.point, sending.bottomBaseLine.point);
-            if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, oldCut, newCut)) return {};
+            if (toSubpaths(ribbon).size() != 1 ||
+                !followsOneStroke(ribbon, sectionLine(original), sectionLine(sending))) return false;
         }
     }
-    if (!coversOriginalInk(word, trial)) return {};
-    return trial;
+    if (!coversOriginalInk(word, trial) || !retainsBody(trial)) return false;
+    InspectFormScope inspection(id);
+    inspectCandidate("Accepted boundary", boundary);
+    recordBoundaryTemplate(trial, bodySlot, atEntry, id);
+    if (!opposite) recordBoundaryTemplate(trial, neighbor, !atEntry, id);
+    trial.templateTrace.append(trace);
+    sub = std::move(trial);
+    return true;
 }
 
 static std::optional<Stretching> assembledJoinCap(const WordResultInfo::SubWordInfo& sub, int join,
@@ -342,22 +357,18 @@ static void shareFoldedStemReturn(const Word& word, WordResultInfo::SubWordInfo&
     const auto receiver = namedLetterForm(config, fold.value("template").toString());
     source.nextIter = std::next(source.xSorted.begin());
     if (receiver.isEmpty() || !declaredSharedBoundary(source, resolvedBodyForm(config, receiver))) return;
-    const auto chord = [](const Stretching& cut) { return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point); };
-    const auto cut = chord(source.res);
+    const auto cut = sectionLine(source.res);
     if (QLineF(cut.p1(), last.p1()).length() > 1e-5 ||
         QLineF(cut.p2(), last.p2()).length() > 1e-5) return;
 
-    auto trial = recutBodyJoin(word, sub, slot, slot + 1, *seam, {}, config);
-    if (!trial || !preserveUnchangedOutline(sub.baseGlyphs.back().path, trial->baseGlyphs.back().path)) return;
     const auto before = inPage(sub.baseGlyphs[slot].path);
-    const auto after = inPage(trial->baseGlyphs[slot].path);
-    if (toSubpaths(before).size() != toSubpaths(after).size() ||
-        std::abs(before.boundingRect().top() - after.boundingRect().top()) > 1e-5) return;
-    const auto receiverId = receiver.value("id").toString();
-    recordBoundaryTemplate(*trial, slot, false, receiverId);
-    recordBoundaryTemplate(*trial, slot + 1, true, receiverId);
-    trial->templateTrace.append(id + " · stem return kept at the final fold");
-    sub = std::move(*trial);
+    placeBodyBoundary(word, sub, config, slot + 1, true, *seam, {}, receiver.value("id").toString(),
+        id + " · stem return kept at the final fold", false, [&](auto& trial) {
+            const auto after = inPage(trial.baseGlyphs[slot].path);
+            return preserveUnchangedOutline(sub.baseGlyphs.back().path, trial.baseGlyphs.back().path) &&
+                toSubpaths(before).size() == toSubpaths(after).size() &&
+                std::abs(before.boundingRect().top() - after.boundingRect().top()) <= 1e-5;
+        });
 }
 
 void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
@@ -462,67 +473,45 @@ void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, 
     sub = std::move(trial);
 }
 
-void applyInitialToothExit(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+static void placeDeclaredFlankExit(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
     if (sub.letterDiagnostics.isEmpty() || sub.joins.empty() || sub.kashidaPaths.empty() ||
         sub.kashidaCuts.empty() || sub.joins.begin()->counterEntry.pathIndex > 0) return;
     const auto id = sub.letterDiagnostics.first().toObject().value("template").toString();
     const auto& forms = bodyCutProgram(config).forms;
     const auto form = forms.constFind(id);
-    if (form == forms.cend()) return;
-    const double angle = form->cuts.value("initialToothTurnAngle").toDouble();
-    if (angle <= 0) return;
-    const auto kashida = config.value("kashidaDefaults").toObject();
-    if (!kashida.value("enabled").toBool(true)) return;
-    const double penWidth = config.value("strokeWidth").toDouble(1);
-    const double clearance = penWidth * kashida.value("sharedCutTolerance").toDouble(.25);
-    const double minSpanWidths = kashida.value("minSpanToStrokeRatio").toDouble(.75);
+    if (form == forms.cend() || !form->cuts.contains("flankExitAngle")) return;
+    const auto settings = config.value("kashidaDefaults").toObject();
+    if (!settings.value("enabled").toBool(true)) return;
+
     const auto shape = word.bodyShape(sub);
-    const auto inPage = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
     WordResultInfo::SubWordInfo geometryOnly{};
-    SearchContext source{.transformedPath = inPage(shape.path), .subword = geometryOnly};
+    SearchContext source{.transformedPath = shape.transform.map(shape.path).translated(shape.pos), .subword = geometryOnly};
     if (!readTerminalOutline(source)) return;
     std::vector<std::vector<QBezier>> curves;
     const auto sending = assembledJoinCap(sub, 0, false, source, curves);
     const auto receiving = assembledJoinCap(sub, 0, true, source, curves);
     if (!sending || !receiving) return;
-    const auto chord = [](const Stretching& cut) { return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point); };
-    const auto oldEnd = chord(*sending), nextStart = chord(*receiving);
-    if (oldEnd.length() < .25 * penWidth || oldEnd.length() > 2.7 * penWidth) return;
-
-    const auto side = getJoinTime(*sending, source.orientation);
-    const auto crest = std::find_if(source.ySorted.rbegin(), source.ySorted.rend(),
-        [&](const auto& point) { return side.isStrictRight(point.time); });
-    const auto outer = source.xSorted.begin();
-    if (crest == source.ySorted.rend() || !side.isStrictRight(outer->time)) return;
-    for (const auto& start : {*crest, *outer}) {
-        auto boundary = strokeFlankTurn(source, start, penWidth, -1, true, angle, .5);
-        if (!boundary) continue;
-        if (boundary->topBaseLine.point.y() > boundary->bottomBaseLine.point.y())
-            std::swap(boundary->topBaseLine, boundary->bottomBaseLine);
-        const auto end = chord(*boundary);
-        const auto span = end.center() - nextStart.center();
-        const auto bodySide = getJoinTime(*boundary, source.orientation);
-        if (!bodySide.isStrictRight(crest->time) || !bodySide.isStrictRight(outer->time) ||
-            !cutPrecedes(*boundary, *sending, source.orientation) ||
-            end.center().x() - oldEnd.center().x() < minSpanWidths * end.length() ||
-            span.x() < minSpanWidths * std::max(end.length(), nextStart.length()) ||
-            std::abs(span.y()) > .6 * span.x() || !leavesEntryClearance(*boundary, *receiving, source.orientation, clearance))
-            continue;
-        auto trial = recutBodyJoin(word, sub, 0, 0, *boundary, receiving, config);
-        if (!trial) continue;
-        const auto ribbon = inPage(trial->kashidaPaths.front());
-        if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, end, nextStart)) continue;
-        InspectFormScope inspection(id);
-        inspectCandidate("Initial tooth exit", *boundary);
-        recordBoundaryTemplate(*trial, 0, false, id);
-        trial->templateTrace.append(id + " · exit at the tooth foot");
-        sub = std::move(*trial);
-        return;
+    const auto start = sectionLine(*sending), end = sectionLine(*receiving);
+    const double penWidth = config.value("strokeWidth").toDouble(1);
+    if (start.length() < .25 * penWidth || start.length() > 2.7 * penWidth) return;
+    const double clearance = penWidth * settings.value("sharedCutTolerance").toDouble(.25);
+    const double spanWidths = settings.value("minSpanToStrokeRatio").toDouble(.75);
+    InspectFormScope inspection(id);
+    for (const auto& boundary : declaredFlankExits(source, form->body, form->cuts, penWidth)) {
+        const auto cut = sectionLine(boundary);
+        const auto span = cut.center() - end.center();
+        if (!cutPrecedes(boundary, *sending, sub.basePathOrientation) ||
+            cut.center().x() - start.center().x() < spanWidths * cut.length() ||
+            span.x() < spanWidths * std::max(cut.length(), end.length()) ||
+            std::abs(span.y()) > .6 * span.x() ||
+            !leavesEntryClearance(boundary, *receiving, sub.basePathOrientation, clearance)) continue;
+        if (placeBodyBoundary(word, sub, config, 0, false, boundary, receiving, id, id + " · exit at the tooth foot",
+                              true, [](const auto&) { return true; })) return;
     }
 }
 
-bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& sub,
-                                 const QJsonObject& config, bool penLiftAtEnd) {
+bool assembleToothClusterCuts(const Word& word, WordResultInfo::SubWordInfo& sub,
+                             const QJsonObject& config, bool penLiftAtEnd) {
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (letters.size() < 2) return true;
     const auto& program = bodyCutProgram(config);
@@ -606,23 +595,25 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                         leavesConnectorRoom(*geometry.exit, *geometry.receiving, sharedTolerance)) return true;
                     // A diagonal through the connector can be both too wide
                     // and too close to the receiving cut. Test the true hollow.
-                    const auto width = [](const Stretching& cut) {
-                        return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point).length();
-                    };
-                    return width(*geometry.exit) > 2 * std::max(penWidth, width(*geometry.receiving));
+                    return sectionLine(*geometry.exit).length() >
+                        2 * std::max(penWidth, sectionLine(*geometry.receiving).length());
                 };
                 attachment.canFitHollow = canFitHollow(attachment);
-                const auto fit = fitToothCluster(source, form->body, form->cuts, mask, hasBowl, penWidth, attachment, true);
+                const auto fitBody = [&](const QPainterPath& candidate, const ToothClusterAttachment& geometry,
+                                         bool proposeBoundaries = false) {
+                    return fitToothCluster(source, form->body, form->cuts, candidate, hasBowl, penWidth,
+                                           geometry, proposeBoundaries);
+                };
+                const auto fit = fitBody(mask, attachment, true);
                 error = fit.error;
-                const auto accept = [&](WordResultInfo::SubWordInfo trial, ToothClusterAttachment revised,
-                                        const Stretching& boundary, const QString& name, const QString& trace) {
-                    if (!fitToothCluster(source, form->body, form->cuts, inPage(trial.baseGlyphs[slot].path),
-                                         hasBowl, penWidth, revised, false).error.isEmpty()) return false;
-                    InspectFormScope inspection(id);
-                    inspectCandidate(name, boundary);
-                    trial.templateTrace.append(id + " · " + trace);
-                    sub = std::move(trial);
-                    attachment = std::move(revised);
+                const auto place = [&](bool entry, const Stretching& boundary, const std::optional<Stretching>& opposite,
+                        const ToothClusterAttachment& revised, const QString& trace, bool openConnector = false) {
+                    if (!placeBodyBoundary(word, sub, config, slot, entry, boundary, opposite, id, id + " · " + trace,
+                            openConnector, [&](const auto& trial) {
+                                return fitBody(inPage(trial.baseGlyphs[slot].path), revised).error.isEmpty();
+                            }))
+                        return false;
+                    attachment = revised;
                     error.clear();
                     return true;
                 };
@@ -633,28 +624,18 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                         ? attachment.receiving : std::nullopt;
                     if ((attachment.separateConnector || openConnector) && !receiving) return false;
                     if (option.atHollow) {
-                        const double width = QLineF(receiving->topBaseLine.point, receiving->bottomBaseLine.point).length();
+                        const double width = sectionLine(*receiving).length();
                         const double gap = openConnector ? minConnectorWidths * std::max({penWidth, boundary.referenceWidth, width})
                                                          : sharedTolerance;
                         if (!leavesConnectorRoom(boundary, *receiving, gap)) return false;
                     }
-                    auto trial = recutBodyJoin(word, sub, slot, slot, boundary, receiving, config);
-                    if (!trial) return false;
-                    if (openConnector) {
-                        const auto ribbon = inPage(trial->kashidaPaths[slot]);
-                        const auto& [sending, entry] = trial->kashidaCuts[slot];
-                        if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, sending, entry)) return false;
-                    }
-                    recordBoundaryTemplate(*trial, slot, false, id);
-                    if (!receiving) recordBoundaryTemplate(*trial, slot + 1, true, id);
                     auto revised = attachment;
                     revised.exit = boundary;
                     revised.receiving = receiving;
                     revised.separateConnector = receiving.has_value();
                     revised.canFitHollow = canFitHollow(revised);
-                    return accept(std::move(*trial), revised, boundary,
-                        option.atHollow ? "Final tooth hollow" : "Third tooth exit",
-                        option.atHollow ? "exit at final tooth hollow" : "exit fitted after the third tooth");
+                    return place(false, boundary, receiving, revised,
+                        option.atHollow ? "exit at final tooth hollow" : "exit fitted after the third tooth", openConnector);
                 };
                 for (const auto& option : fit.exits) {
                     if (!recutExit(option)) continue;
@@ -662,8 +643,7 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                     // room to use the actual lower hollow of the third tooth.
                     if (!option.atHollow && attachment.canFitHollow &&
                         form->cuts.value("cluster").toObject().value("exitAtHollow").toBool()) {
-                        const auto refined = fitToothCluster(source, form->body, form->cuts, inPage(sub.baseGlyphs[slot].path),
-                                                             hasBowl, penWidth, attachment, true);
+                        const auto refined = fitBody(inPage(sub.baseGlyphs[slot].path), attachment, true);
                         for (const auto& exit : refined.exits)
                             if (exit.atHollow && recutExit(exit)) break;
                     }
@@ -671,7 +651,9 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                 }
                 // Finish the outgoing boundary before changing the incoming
                 // one. An entry move must preserve the accepted exit exactly.
-                if (fit.entry) {
+                if (fit.entry && attachment.entry &&
+                    (QLineF(fit.entry->topBaseLine.point, attachment.entry->topBaseLine.point).length() >= 1e-5 ||
+                     QLineF(fit.entry->bottomBaseLine.point, attachment.entry->bottomBaseLine.point).length() >= 1e-5)) {
                     const auto& boundary = *fit.entry;
                     const bool connector = !sub.kashidaPaths[slot - 1].isEmpty();
                     const auto sending = actualCap(slot - 1, false);
@@ -683,13 +665,7 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                     if (fits) {
                         auto revised = attachment;
                         revised.entry = boundary;
-                        auto trial = recutBodyJoin(word, sub, slot - 1, slot, connector ? *sending : boundary,
-                            connector ? fit.entry : std::nullopt, config);
-                        if (trial) {
-                            recordBoundaryTemplate(*trial, slot, true, id);
-                            if (!connector) recordBoundaryTemplate(*trial, slot - 1, false, id);
-                            accept(std::move(*trial), revised, boundary, "First tooth junction", "entry at first tooth junction");
-                        }
+                        place(true, boundary, connector ? sending : std::nullopt, revised, "entry at first tooth junction");
                     }
                 }
             }
@@ -705,6 +681,13 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
         sub.correct = false;
     }
     return sub.correct;
+}
+
+bool finalizeBodyCuts(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+    if (!assembleToothClusterCuts(word, sub, config)) return false;
+    applyTerminalJunction(word, sub, config, TerminalEntryPolicy::LowerShoulder);
+    placeDeclaredFlankExit(word, sub, config);
+    return true;
 }
 
 } // namespace MedinaCutter

@@ -321,8 +321,8 @@ static std::optional<Stretching> seenEntryNormal(SearchContext& context, const T
     return best;
 }
 
-static std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
-                                                        const Stretching& current, double penWidth) {
+std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
+                                                 double penWidth) {
     const auto& tip = cluster.turns.front();
     // Compare all opposing bends. An extrema flag can mark a farther bend
     // on the preceding letter even when a smooth bend faces this tooth.
@@ -333,8 +333,6 @@ static std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, 
     const auto side = getJoinTime(*junction, context.orientation);
     if (!std::all_of(cluster.turns.begin(), cluster.turns.end(),
                      [&](const auto& point) { return side.isStrictLeft(point.time); })) return {};
-    if (QLineF(junction->topBaseLine.point, current.topBaseLine.point).length() < 1e-5 &&
-        QLineF(junction->bottomBaseLine.point, current.bottomBaseLine.point).length() < 1e-5) return {};
     junction->referenceWidth = toothCutLine(*junction).length();
     return junction;
 }
@@ -351,7 +349,7 @@ static std::optional<Stretching> clusterExitAtBend(SearchContext& context, const
 }
 
 static std::optional<Stretching> clusterExitAtHollow(SearchContext& context, const ToothClusterBody& cluster,
-        const Stretching& current, const Stretching& receiving, double penWidth, const QJsonObject& cutSettings) {
+        const Stretching& receiving, double penWidth, const QJsonObject& cutSettings) {
     const auto& tip = cluster.turns.back();
     const double reach = cutSettings.value("maxExitBendDistance").toDouble(2) * meanToothPitch(cluster);
     const double maxWidth = 2 * std::max(penWidth, toothCutLine(receiving).length());
@@ -377,8 +375,6 @@ static std::optional<Stretching> clusterExitAtHollow(SearchContext& context, con
     if (bulge == hollow || bulge->point.x() <= hollow->point.x() ||
         std::abs(bulge->point.x() - tip.point.x()) > stroke) return {};
 
-    if (QLineF(cut.topBaseLine.point, current.topBaseLine.point).length() < 1e-4 &&
-        QLineF(cut.bottomBaseLine.point, current.bottomBaseLine.point).length() < 1e-4) return current;
     return cut;
 }
 
@@ -489,12 +485,12 @@ ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body,
         ToothClusterFit fit{};
         if (!proposeBoundaries) return fit;
         if (attachment.sameContour && attachment.entry && cutSettings.value("entryAtJunction").toBool())
-            fit.entry = clusterEntryAtJunction(context, *accepted, *attachment.entry, penWidth);
+            fit.entry = clusterEntryAtJunction(context, *accepted, penWidth);
         if (!attachment.exit) return fit;
         const auto hollow = attachment.canFitHollow && cutSettings.value("exitAtHollow").toBool()
-            ? clusterExitAtHollow(context, *accepted, *attachment.exit, *attachment.receiving,
-                                  penWidth, cutSettings) : std::nullopt;
-        if (hollow && toothCutLine(*hollow) == toothCutLine(*attachment.exit)) return fit;
+            ? clusterExitAtHollow(context, *accepted, *attachment.receiving, penWidth, cutSettings) : std::nullopt;
+        if (hollow && QLineF(hollow->topBaseLine.point, attachment.exit->topBaseLine.point).length() < 1e-4 &&
+            QLineF(hollow->bottomBaseLine.point, attachment.exit->bottomBaseLine.point).length() < 1e-4) return fit;
         if (attachment.separateConnector)
             fit.exits = nearerConnectorExits(context, *accepted, *attachment.exit, penWidth, clusterSettings, cutSettings);
         if (hollow) fit.exits.insert(fit.exits.begin(), {*hollow, true});

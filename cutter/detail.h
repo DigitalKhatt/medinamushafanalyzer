@@ -390,9 +390,9 @@ QJsonObject mergeShapeSettings(QJsonObject body, const QJsonObject &cuts);
 
 QJsonObject shapeSettings(const QJsonObject &form, const QString &key);
 
-bool hasSeenBody(const QJsonObject &form);
+bool hasToothCluster(const QJsonObject &form);
 
-QJsonObject seenSettings(const QJsonObject &form);
+QJsonObject toothClusterSettings(const QJsonObject &form);
 
 QJsonObject loopSettings(const QJsonObject &form);
 
@@ -660,6 +660,9 @@ struct ToothClusterBody {
 };
 
 std::vector<ToothClusterBody> recognizeToothClusters(const InkOutline &outline, const QJsonObject &form);
+
+std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
+                                                 double penWidth);
 
 struct ToothClusterAttachment {
     std::optional<Stretching> entry, exit, receiving;
@@ -1261,10 +1264,10 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
         const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorSequences& sequences);
 bool sameAnchoredPartition(const WordResultInfo::SubWordInfo& a, const WordResultInfo::SubWordInfo& b);
 
-bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& sub,
-                                 const QJsonObject& config, bool penLiftAtEnd = false);
+bool assembleToothClusterCuts(const Word& word, WordResultInfo::SubWordInfo& sub,
+                             const QJsonObject& config, bool penLiftAtEnd = false);
 
-void applyInitialToothExit(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
+bool finalizeBodyCuts(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 
 void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 
@@ -1570,6 +1573,9 @@ declaredOpenHeadCuts(SearchContext &context, const QJsonObject &form, double min
 
 std::vector<Stretching> declaredExitAlternatives(SearchContext& context, const QJsonObject& config,
                                                 const QString& id);
+
+std::vector<Stretching> declaredFlankExits(SearchContext& context, const QJsonObject& body,
+                                         const QJsonObject& cuts, double stroke);
 
 bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
                                    const SeenExitRetry *retry = nullptr, bool recovering = false,

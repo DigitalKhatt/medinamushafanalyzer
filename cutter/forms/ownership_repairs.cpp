@@ -184,7 +184,7 @@ void PageAnalysisResult::refineLipCuts(int line, int wordIndex, int subIndex, co
                             if (rule.value("body").toObject().value("shape") != "tooth-cluster" ||
                                 rule.value("id") != sub.letterDiagnostics[0].toObject().value("template"))
                                 continue;
-                            rule = seenSettings(rule);
+                            rule = toothClusterSettings(rule);
                             rule.insert("exitBendFirst", true);
                             rule.insert("exitOffset", .25);
                             Stretching tooth{};
@@ -302,7 +302,6 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
     const QLineF terminalChord(lastJoin.topBaseLine.point, lastJoin.bottomBaseLine.point);
     const bool broadShoulder = sub.kashidaPaths.back().isEmpty() && terminalChord.length() > 2.8 * penWidth &&
         terminalCuts.value("route").toObject().contains("range");
-    const bool checkTerminalTeeth = terminal == "seen-fina" && !sub.kashidaPaths.back().isEmpty();
     struct TurnCut { int join; bool incoming; QString policy; };
     std::vector<TurnCut> turnCuts;
     const auto queueTurn = [&](int join, bool incoming, const QLineF& cap, bool connector) {
@@ -365,7 +364,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
     if (!overwideStem && !clippedStem && !clippedSeen && !clippedHah && !clippedTooth && !clippedStackedTooth &&
         !clippedKafDescent && clippedCounterEntries.empty() && !broadShoulder && !clippedEntry &&
         !risingTail && !clippedReh && !clippedKaf && !detachedStroke && !connectedNoon &&
-        turnCuts.empty() && !checkTerminalTeeth)
+        turnCuts.empty())
         return;
 
     WordResultInfo::SubWordInfo trial{};
@@ -452,7 +451,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         return std::pair{sending, receiving};
     };
 
-    if (!turnCuts.empty() || checkTerminalTeeth) {
+    if (!turnCuts.empty()) {
         const auto chord = [](const Stretching& cap) {
             return QLineF(cap.topBaseLine.point, cap.bottomBaseLine.point);
         };
@@ -527,31 +526,6 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                     })) {
                     recordBoundaryTemplate(sub, owner, request.incoming, id);
                     break;
-                }
-            }
-        }
-        if (checkTerminalTeeth) {
-            const auto caps = assembledCaps(last - 1);
-            const auto bowl = resolvedBodyForm(config, form("final", "seen-bowl-entry-fina"));
-            const auto body = bowl.value("body").toObject().value("cluster").toObject();
-            const auto policy = bowl.value("cuts").toObject().value("cluster").toObject();
-            Stretching boundary{};
-            std::array<PathExtrema, 3> tips;
-            if (caps && !body.isEmpty() && cutToothClusters(outline, recognizeToothClusters(inkOutline(outline), body),
-                    mergeShapeSettings(body, policy), outline.bbox.left(), outline.bbox.right(), &boundary,
-                    nullptr, nullptr, &tips)) {
-                const auto& [sending, receiving] = *caps;
-                const auto oldSide = getJoinTime(receiving, outline.orientation);
-                const auto newSide = getJoinTime(boundary, outline.orientation);
-                const auto id = bowl.value("id").toString();
-                if (oldSide.isStrictRight(tips.front().time) && newSide.isStrictLeft(tips.front().time) &&
-                    cutPrecedes(sending, boundary, outline.orientation) &&
-                    cutPrecedes(boundary, receiving, outline.orientation) &&
-                    replace(last - 1, sending, boundary, id + " · first tooth retained", [&] {
-                        return toSubpaths(world(sub.baseGlyphs.back().path)).size() == 1;
-                    })) {
-                    recordAssembledForm(sub, last, id);
-                    recordBoundaryTemplate(sub, last, true, id);
                 }
             }
         }

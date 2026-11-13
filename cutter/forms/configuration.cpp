@@ -329,15 +329,12 @@ QJsonObject ligatureForm(const QJsonObject& config, const QJsonObject& selection
     return form;
 }
 
-bool hasSeenBody(const QJsonObject &form) {
-    return form.value("body").toObject().value("shape") == "tooth-cluster" || form.contains("seenTeeth") ||
-           form.value("method") == "seen-teeth";
+bool hasToothCluster(const QJsonObject& form) {
+    return form.value("body").toObject().value("shape") == "tooth-cluster";
 }
 
-QJsonObject seenSettings(const QJsonObject &form) {
-    return form.value("body").toObject().value("shape") == "tooth-cluster" ? shapeSettings(form, "cluster")
-           : form.contains("seenTeeth")                                    ? form.value("seenTeeth").toObject()
-                                                                           : form;
+QJsonObject toothClusterSettings(const QJsonObject& form) {
+    return hasToothCluster(form) ? shapeSettings(form, "cluster") : QJsonObject{};
 }
 
 QJsonObject loopSettings(const QJsonObject &form) {
@@ -428,12 +425,6 @@ static QJsonObject sharedShapeProjectionForm(QJsonObject form) {
         auto head = shapeSettings(form, "head");
         head.remove("freeEntry");
         form.insert(body.value("head").toObject().value("freeEntry").toBool() ? "head" : "enclosedHead", head);
-    }
-    if (shape == "tooth-cluster") {
-        form = withOverrides(form, seenSettings(form));
-        form.insert("seenTeeth", seenSettings(form));
-        if (form.value("cuts").toObject().value("boundaries").toObject().value("left") == "free")
-            form.insert("side", "right");
     }
     if (shape == "contour-route")
         form = withOverrides(form, shapeSettings(form, "route"));
@@ -798,11 +789,10 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": minConnectorWidths must be positive";
         cutKeys << "minConnectorWidths";
     }
-    if (const auto angle = cuts.value("initialToothTurnAngle"); !angle.isUndefined()) {
-        if (phase != "initial" || shape != "contour-route" || !angle.isDouble() ||
-            !(angle.toDouble() > 0 && angle.toDouble() < 90))
-            return id + ": initialToothTurnAngle needs an initial contour route and an angle between 0 and 90 degrees";
-        cutKeys << "initialToothTurnAngle";
+    if (const auto angle = cuts.value("flankExitAngle"); !angle.isUndefined()) {
+        if (phase != "initial" || shape != "contour-route" || !positive(angle) || angle.toDouble() >= 90)
+            return id + ": flankExitAngle needs an initial contour route and an angle between 0 and 90 degrees";
+        cutKeys << "flankExitAngle";
     }
     if (shape == "rising-return") {
         bodyKeys << "entryRecoveryRoute";
@@ -1230,20 +1220,36 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     }
     if (shape == "tooth-cluster") {
         const auto cluster = body.value("cluster").toObject(), policy = cuts.value("cluster").toObject();
+        const double minPitch = cluster.value("minPitch").toDouble(1);
+        const double maxLastPitch = cluster.value("maxLastPitch").toDouble(cluster.value("maxPitch").toDouble(5));
         for (auto it = cluster.begin(); it != cluster.end(); ++it)
-            if (!QStringList{"minToothRise", "minPitch", "maxPitch", "minLastPitch", "maxLastPitch", "retryMaxLastPitch",
-                             "maxTipHeightSpreadRatio", "convexTips"}
-                     .contains(it.key()))
-                return id + ": unknown tooth-cluster body setting " + it.key();
-        for (auto it = policy.begin(); it != policy.end(); ++it)
-            if (!QStringList{"rightOffset", "maxExitBendDistance", "entryAtJunction", "entryCornerOptional", "allowUnshiftedEntry", "exitBendFirst", "exitOffset",
-                             "exitDrop", "retryBendOffset", "terminalBowl", "roundedEntry", "exitAtHollow"}
-                     .contains(it.key()))
-                return id + ": unknown tooth-cluster cut setting " + it.key();
-        if (policy.contains("exitAtHollow") && (phase == "final" || !policy.value("exitAtHollow").isBool()))
-            return id + ": exitAtHollow must be a boolean on a tooth cluster with an exit cut";
-        if (policy.contains("entryAtJunction") && (phase == "initial" || !policy.value("entryAtJunction").isBool()))
-            return id + ": entryAtJunction must be a boolean on a tooth cluster with an entry cut";
+            if (!(it.key() == "convexTips" ? it.value().isBool() :
+                QStringList{"minToothRise", "minPitch", "maxPitch", "minLastPitch", "maxLastPitch", "retryMaxLastPitch",
+                            "maxTipHeightSpreadRatio"}.contains(it.key()) && positive(it.value())))
+                return id + ": invalid tooth-cluster body setting " + it.key();
+        const double minLastPitch = cluster.value("minLastPitch").toDouble(minPitch);
+        if (minLastPitch < minPitch || minLastPitch > maxLastPitch ||
+            cluster.value("retryMaxLastPitch").toDouble(INFINITY) <= maxLastPitch)
+            return id + ": invalid spacing limits for the last tooth";
+        for (auto it = policy.begin(); it != policy.end(); ++it) {
+            const bool flag = QStringList{"entryAtJunction", "entryCornerOptional", "allowUnshiftedEntry",
+                "exitBendFirst", "terminalBowl", "roundedEntry", "exitAtHollow"}.contains(it.key());
+            const bool distance = QStringList{"rightOffset", "exitOffset", "retryBendOffset", "exitDrop"}.contains(it.key());
+            if (!(flag ? it.value().isBool() : distance ? it.value().isDouble() &&
+                  std::isfinite(it.value().toDouble()) && it.value().toDouble() >= 0 :
+                  it.key() == "maxExitBendDistance" && positive(it.value())))
+                return id + ": invalid tooth-cluster cut setting " + it.key();
+        }
+        if (phase == "final" && (policy.contains("exitAtHollow") || policy.contains("retryBendOffset")))
+            return id + ": this cut setting requires a tooth cluster with an exit";
+        if (phase == "initial" && policy.contains("entryAtJunction"))
+            return id + ": entryAtJunction requires a tooth cluster with an entry";
+        if ((policy.contains("terminalBowl") && phase != "final") ||
+            (policy.contains("roundedEntry") && !policy.value("terminalBowl").toBool()))
+            return id + ": terminalBowl and roundedEntry require a final tooth cluster";
+        if ((policy.contains("entryCornerOptional") && !policy.contains("rightOffset")) ||
+            (policy.contains("allowUnshiftedEntry") && (phase != "medial" || policy.value("rightOffset").toDouble() <= 0)))
+            return id + ": optional and unshifted entries require a configured rightOffset";
     }
     if (shape == "profile-neck") {
         if (phase == "medial")
@@ -1321,8 +1327,6 @@ static QJsonObject sharedShapeValidationForm(QJsonObject form, const QString &ph
         form.insert("method", "stem-entry");
     if (shape == "enclosed-lips" && phase == "initial")
         form.insert("method", "enclosed-head");
-    else if (shape == "tooth-cluster" && phase != "medial")
-        form.insert("method", "seen-teeth");
     else if (shape == "contour-route")
         form.insert("method", "walk");
     else if (shape == "tail-branch")
@@ -1744,12 +1748,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             if (rule.contains("bridge") &&
                 (method != "final-counter" || !positive(rule.value("bridge").toObject().value("maxWidth"))))
                 return id + ": a final counter bridge needs a positive maximum width in counter heights";
-            if (rule.contains("terminalBowl") &&
-                (method != "seen-teeth" || rule.value("side") != "right" || !rule.value("terminalBowl").isBool()))
-                return id + ": terminalBowl requires a final three-tooth form";
-            if (rule.contains("roundedEntry") &&
-                (!rule.value("terminalBowl").toBool() || !rule.value("roundedEntry").isBool()))
-                return id + ": roundedEntry requires a terminal bowl";
             const auto neckWalk = rule.value("head").toObject().value("neckWalk");
             if (!neckWalk.isUndefined()) {
                 if (method != "initial-loop-head" || !neckWalk.isObject() || neckWalk.toObject().value("top").toArray().isEmpty())
@@ -1907,11 +1905,11 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             }
             if (rule.contains("lamPosition") || rule.contains("sameDirectionCheck"))
                 return id + ": put the attachment and contour constraints in body / cuts";
-            const auto teeth = method == "seen-teeth" ? rule : rule.value("seenTeeth").toObject();
             if (rule.contains("sharedFoldWithFinal")) {
-                const bool initialBody = QString(phase) == "initial" && method == "seen-teeth";
+                const bool toothCluster = sharedBody.value("shape") == "tooth-cluster";
+                const bool initialBody = QString(phase) == "initial" && toothCluster;
                 const bool medialBody = QString(phase) == "medial" &&
-                    (!teeth.isEmpty() || !rule.value("contourBody").toObject().isEmpty());
+                    (toothCluster || !rule.value("contourBody").toObject().isEmpty());
                 if ((!initialBody && !medialBody) || !rule.value("sharedFoldWithFinal").isString() ||
                     rule.value("sharedFoldWithFinal").toString().isEmpty())
                     return id + ": sharedFoldWithFinal needs a supported initial or medial body and final letters";
@@ -1929,48 +1927,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 if (!std::all_of(letters.begin(), letters.end(), [&](QChar ch) { return selected.contains(ch); }))
                     return id + ": sharedFoldForm must select the declared final letters";
             }
-            const auto lastPitch = teeth.value("maxLastPitch");
-            if (!lastPitch.isUndefined() && (!lastPitch.isDouble() || !std::isfinite(lastPitch.toDouble()) ||
-                lastPitch.toDouble() < teeth.value("minPitch").toDouble(1)))
-                return id + ": maxLastPitch must be at least minPitch";
-            const auto minLastPitch = teeth.value("minLastPitch");
-            if (!minLastPitch.isUndefined() && (!minLastPitch.isDouble() || !std::isfinite(minLastPitch.toDouble()) ||
-                minLastPitch.toDouble() < teeth.value("minPitch").toDouble(1) ||
-                minLastPitch.toDouble() > lastPitch.toDouble(teeth.value("maxPitch").toDouble(5))))
-                return id + ": minLastPitch must be between minPitch and maxLastPitch";
-            const auto widerPitch = teeth.value("retryMaxLastPitch");
-            if (!widerPitch.isUndefined() && (!widerPitch.isDouble() || !std::isfinite(widerPitch.toDouble()) ||
-                widerPitch.toDouble() <= lastPitch.toDouble(teeth.value("maxPitch").toDouble(5))))
-                return id + ": retryMaxLastPitch must exceed the normal last pitch limit";
-            const auto tipSpread = teeth.value("maxTipHeightSpreadRatio");
-            if (!tipSpread.isUndefined() && (!tipSpread.isDouble() ||
-                !std::isfinite(tipSpread.toDouble()) || tipSpread.toDouble() <= 0))
-                return id + ": maxTipHeightSpreadRatio must be a positive ratio of the mean tooth pitch";
-            const auto entryOffset = teeth.value("rightOffset");
-            if (!entryOffset.isUndefined() && (!entryOffset.isDouble() ||
-                !std::isfinite(entryOffset.toDouble()) || entryOffset.toDouble() < 0))
-                return id + ": rightOffset must be a nonnegative distance in local stroke widths";
-            const auto exitDistance = teeth.value("maxExitBendDistance");
-            if (!exitDistance.isUndefined() && (!exitDistance.isDouble() ||
-                !std::isfinite(exitDistance.toDouble()) || exitDistance.toDouble() <= 0))
-                return id + ": maxExitBendDistance must be a positive ratio of the mean tooth pitch";
-            if (teeth.contains("exitBendFirst") && !teeth.value("exitBendFirst").isBool())
-                return id + ": exitBendFirst must be true or false";
-            const auto retryBend = teeth.value("retryBendOffset");
-            if (!retryBend.isUndefined() && (QString(phase) == "final" || !retryBend.isDouble() ||
-                !std::isfinite(retryBend.toDouble()) || retryBend.toDouble() < 0))
-                return id + ": retryBendOffset needs an outgoing edge and a nonnegative stroke-width offset";
-            if (teeth.contains("entryCornerOptional") &&
-                (!teeth.value("entryCornerOptional").isBool() || !teeth.value("rightOffset").isDouble()))
-                return id + ": entryCornerOptional needs a boolean and rightOffset";
-            if (teeth.contains("allowUnshiftedEntry") && (QString(phase) != "medial" ||
-                !teeth.value("allowUnshiftedEntry").isBool() || entryOffset.toDouble() <= 0))
-                return id + ": allowUnshiftedEntry requires a medial cluster with a positive rightOffset";
-            if (teeth.contains("convexTips") && !teeth.value("convexTips").isBool())
-                return id + ": convexTips must be true or false";
-            const auto exitOffset = teeth.value("exitOffset");
-            if (!exitOffset.isUndefined() && (!exitOffset.isDouble() || !std::isfinite(exitOffset.toDouble()) || exitOffset.toDouble() < 0))
-                return id + ": exitOffset must be nonnegative in local stroke widths";
             const auto head = rule.value("headEdges").toObject();
             if (head.contains("maxExitDistance"))
                 return id + ": headEdges uses its own counter and edges; remove maxExitDistance";
@@ -2013,20 +1969,20 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     rule.contains("blade") || !loopSettings(rule).isEmpty() ||
                     !rule.value("contourBody").toObject().isEmpty() ||
                     !rule.value("pairedCounterCorners").toObject().isEmpty() ||
-                    !rule.value("openHead").toObject().isEmpty() || !rule.value("seenTeeth").toObject().isEmpty() ||
+                    !rule.value("openHead").toObject().isEmpty() ||
                     !sharedBody.isEmpty() || !rule.value("headEdges").toObject().isEmpty() ||
                     (!rule.value("right").toObject().value("walk").toArray().isEmpty() &&
                      !rule.value("left").toObject().value("walk").toArray().isEmpty());
                 if (!feature || rule.contains("method")) return id + ": a medial form must define both body boundaries";
             } else {
-                static const QStringList initialMethods{"enclosed-head","walk","descending-stem", "initial-counter", "initial-loop-head", "initial-loop-body", "heh-initial-counters", "seen-teeth", "kaf", "kaf-zigzag", "hah", "counter-ligature"};
+                static const QStringList initialMethods{"enclosed-head","walk","descending-stem", "initial-counter", "initial-loop-head", "initial-loop-body", "heh-initial-counters", "kaf", "kaf-zigzag", "hah", "counter-ligature"};
                 static const QStringList finalMethods{"rising-tail", "folded-bowl", "bowl-fork",
                                                       "tail-entry",  "walk",        "qaf",
                                                       "alef-stem",   "stem-entry",
-                                                      "waw",         "sad-tah",     "final-counter", "seen-teeth"};
+                                                      "waw",         "sad-tah",     "final-counter"};
                 const auto shape = sharedBody.value("shape");
                 if (declaredBody.isEmpty() && shape != "component-arm" && shape != "tapered-arm" && shape != "open-bowl" &&
-                    shape != "terminal-fork" &&
+                    shape != "terminal-fork" && shape != "tooth-cluster" &&
                     !(QString(phase) == "initial" ? initialMethods : finalMethods).contains(method))
                     return id + ": an explicit body method for this position is required; generic join rules are unsupported";
             }

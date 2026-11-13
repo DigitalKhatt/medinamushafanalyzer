@@ -313,9 +313,9 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
         inspectLandmark("Bowl neck", neck.section.topBaseLine);
         inspectLandmark("Bowl neck", neck.section.bottomBaseLine);
     }
-    for (const auto &cluster : evidence.clusters)
-        for (int i : {0, 2, 4})
-            inspectLandmark("Tooth tip", cluster.turns[i]);
+    for (const auto& cluster : evidence.clusters)
+        for (size_t i = 0; i < cluster.turns.size(); ++i)
+            inspectLandmark(i % 2 == 0 ? "Tooth tip" : "Tooth valley", cluster.turns[i]);
     for (const auto &head : evidence.enclosedLips) {
         inspectLandmark("Head nose", head.nose);
         for (const auto &side : head.corners)
@@ -491,6 +491,39 @@ std::vector<Stretching> declaredExitAlternatives(SearchContext& context, const Q
     return sections;
 }
 
+std::vector<Stretching> declaredFlankExits(SearchContext& context, const QJsonObject& body,
+                                         const QJsonObject& cuts, double stroke) {
+    const auto angle = cuts.value("flankExitAngle");
+    if (body.value("shape") != "contour-route" || !angle.isDouble()) return {};
+    const auto evidence = recognizedSharedShape(context, body);
+    if (!evidence->route) return {};
+
+    const auto& route = *evidence->route;
+    const auto advance = route.topPrevious ? &SearchContext::prev : &SearchContext::next;
+    const auto origin = context.timeSorted.find(route.origin);
+    const auto end = context.timeSorted.find(route.topEnd);
+    if (origin == context.timeSorted.end() || end == context.timeSorted.end()) return {};
+    auto crest = *origin;
+    for (auto point = origin; point != end; point = (context.*advance)(point))
+        if (ByDescendingY{}(crest, *point)) crest = *point;
+    const auto outer = *context.xSorted.begin();
+    inspectLandmark("Flank crest", crest);
+    inspectLandmark("Outer turn", outer);
+
+    std::vector<Stretching> exits;
+    for (const auto& start : {crest, outer}) {
+        auto section = strokeFlankTurn(context, start, stroke, -1, true, angle.toDouble(), .5);
+        if (!section) continue;
+        if (section->topBaseLine.point.y() > section->bottomBaseLine.point.y())
+            std::swap(section->topBaseLine, section->bottomBaseLine);
+        const auto side = getJoinTime(*section, context.orientation);
+        if (!side.isStrictRight(crest.time) || !side.isStrictRight(outer.time)) continue;
+        inspectCandidate("Flank exit proposal", *section);
+        exits.push_back(*section);
+    }
+    return exits;
+}
+
 bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
                                    const SeenExitRetry *retry, bool recovering, const Stretching *finalFold,
                                    ContourRouteSearch* routeSearch) {
@@ -573,7 +606,7 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
         if (found)
             context.res = proposals.front().second;
     } else if (shape == "tooth-cluster") {
-        const auto settings = seenSettings(form);
+        const auto settings = toothClusterSettings(form);
         const bool final = cuts.value("boundaries").toObject().value("left") == "free";
         const double maxX = context.subword.joins.empty() ? context.bbox.right() + 1e-6
                                                           : context.subword.joins.rbegin()->bottomBaseLine.point.x();
@@ -724,7 +757,7 @@ bool supportsOpenMedialBoundary(const QJsonObject& config, const QJsonObject& fo
            form.contains("mouth") || form.contains("blade") || !pairedRouteSettings(form).isEmpty() ||
            (resolvedShape == "forked-stem" || resolvedShape == "turning-shaft") ||
            !pairedCounterSettings(form).isEmpty() || !loopSettings(form).isEmpty() ||
-           !openHeadSettings(form).isEmpty() || hasToothBody(form) || hasSeenBody(form) ||
+           !openHeadSettings(form).isEmpty() || hasToothBody(form) || hasToothCluster(form) ||
            !loopHeadSettings(form).isEmpty() || form.value("pairedCounters").toBool() ||
            (!form.value("right").toObject().value("walk").toArray().isEmpty() &&
             !form.value("left").toObject().value("walk").toArray().isEmpty());
@@ -737,7 +770,7 @@ bool hasIntrinsicMedialBody(const QJsonObject& config, const QJsonObject& form) 
         !pairedRouteSettings(form).isEmpty() || !loopSettings(form).isEmpty() ||
         !openHeadSettings(form).isEmpty() || !pairedCounterSettings(form).isEmpty() ||
         hasToothBody(form) || !loopHeadSettings(form).isEmpty() ||
-        (form.value("sharedEntry").toBool() && !form.value("seenTeeth").toObject().isEmpty());
+        (form.value("sharedEntry").toBool() && hasToothCluster(form));
 }
 
 bool usesToothEntryProbe(const QJsonObject& form) {

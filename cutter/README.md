@@ -40,20 +40,18 @@ if both bodies retain their landmarks. The inspection shows which template
 supplied the shared cut. Final forms that declare `cuts.precedingTooth`
 can offer their own entry while placing the tooth.
 
-After assembly and recovery, a tooth-cluster body must own three upper tips
-and the two intervening valleys from the uncut outline. Final clusters must
-own the connected bowl. A pen lift inside the word can end the medial
-cluster on its own contour. The `cuts.cluster.entryAtJunction` policy
-joins the opposing bends where the incoming stroke meets the first tooth.
-It keeps the other cap of a separate connector and checks that the body
-still owns all three teeth. The `cuts.cluster.exitAtHollow` policy
-uses the inward turn just past the lower bulge of the third tooth. The cut
-follows the normal at that turn and meets the tooth's descending upper flank.
-Assembly checks clearance for the connector and verifies the tooth landmarks,
-the neighboring body and the ink partition before accepting the cut. A cut
-recovered by walking the configured distance along the contour keeps that offset.
-An initial cluster can keep a separate connector when the ink between its cut
-and the next letter follows one stroke and meets `cuts.minConnectorWidths`.
+A tooth-cluster body identifies three tips and two valleys on the uncut
+outline. Final clusters also need to retain the bowl. A pen lift inside
+the word can end the medial cluster on its own contour. The template
+projects its entry at the opposing bends of the first tooth when
+`cuts.cluster.entryAtJunction` is set. With `cuts.cluster.exitAtHollow`,
+it proposes normals at the lower bend beyond the last tooth. Assembly
+checks those sections against the receiving width and the lower bulge
+of the tooth. It keeps the other cap of an existing connector and checks
+landmark ownership before accepting the partition. An initial cluster
+can open a connector when it follows one stroke and meets
+`cuts.minConnectorWidths`. An exit placed at the declared contour
+offset keeps that offset.
 
 The `initial`, `medial` and `final` arrays set template order within each
 priority. One search tries ordinary placements and eligible `onIncomplete`
@@ -91,10 +89,10 @@ run from a final stem. `cuts.skipEntryTurnAfter` lists preceding letters
 whose attachment calls for retaining the original entry. Assembly checks the other cap and keeps the
 recognized tooth tips and the ink partition intact.
 
-For an initial tooth, `cuts.initialToothTurnAngle` sets the angle in degrees
-where its descending flank becomes a connector. The cutter places the exit
-normal to the flank if the ink between that exit and the next letter's entry
-forms a distinct stroke.
+For an initial tooth, `cuts.flankExitAngle` sets the angle in degrees
+where its descending flank becomes a connector. The template proposes the
+normal from its own contour route. Assembly can use it when it preserves
+the receiving body and the intervening ink forms a distinct stroke.
 An initial route with `body.route.start: "lower-right"` starts at the
 rightmost outward turn in the lower half of the outline when another
 stroke extends farther right above it. The usual route and body checks

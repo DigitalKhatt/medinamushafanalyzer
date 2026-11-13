@@ -759,7 +759,7 @@
         }
       },
       "cuts": {
-        "initialToothTurnAngle": 20,
+        "flankExitAngle": 20,
         "route": {
           "bottomProbe": "down"
         },
@@ -792,7 +792,7 @@
         }
       },
       "cuts": {
-        "initialToothTurnAngle": 20,
+        "flankExitAngle": 20,
         "route": {
           "bottomProbe": "down"
         },
@@ -830,7 +830,7 @@
         }
       },
       "cuts": {
-        "initialToothTurnAngle": 20,
+        "flankExitAngle": 20,
         "route": {
           "bottomProbe": "normal"
         },
@@ -858,7 +858,7 @@
         }
       },
       "cuts": {
-        "initialToothTurnAngle": 20,
+        "flankExitAngle": 20,
         "turnBoundaries": {
           "left": "trim"
         },
@@ -1977,7 +1977,7 @@
         }
       },
       "cuts": {
-        "initialToothTurnAngle": 20,
+        "flankExitAngle": 20,
         "turnBoundaries": {
           "left": "trim"
         },

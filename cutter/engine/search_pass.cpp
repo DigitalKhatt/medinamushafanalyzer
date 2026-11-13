@@ -118,8 +118,9 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         context.res = {};
         const int owner = rule.value("bodyBoundary") == "current" ? 0 : lastIndex;
         bodyAttempted[owner] = true;
+        const auto retry = seenRetry && seenRetry->slot == owner ? seenRetryFor(owner, toothClusterSettings(rule)) : nullptr;
         bool found = proposeTemplateBoundary(context, config, rule, owner == lastIndex, recovering,
-                                              seenRetryFor(owner, rule), finalFold,
+                                              retry, finalFold,
                                               plan ? &plan->routeSearches[owner] : nullptr);
         QString rejectionReason;
         const bool bodyRejected = found && !matchesBoundaryBody(context, rule, context.res, owner == 0,
@@ -570,7 +571,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             for (const auto& medial : attempts) {
                 const auto form = preparedRules.constraints.value(medial.form.value("id").toString());
                 const bool composeSeenTail = plan && seenRetry && seenRetry->slot == letter;
-                if (composeSeenTail && !seenRetry->supports(form.value("seenTeeth").toObject())) continue;
+                const auto teeth = toothClusterSettings(form);
+                if (composeSeenTail && !seenRetry->supports(teeth)) continue;
                 const auto contour = pairedRouteSettings(form);
                 const auto openHead = openHeadSettings(form);
                 const auto bridge = form.value("counterLigature").toObject();
@@ -648,7 +650,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                         sharedExit ? std::optional{sharedExit->cut} : std::nullopt);
                     candidates.insert(candidates.end(), declarations.begin(), declarations.end());
                 }
-                const auto teeth = form.value("seenTeeth").toObject();
                 std::array<PathExtrema,3> seenTips{};
                 if (!teeth.isEmpty()) {
                     Stretching right{}, left{};
@@ -723,7 +724,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                             const bool intrinsicTooth = std::any_of(rules.begin(), rules.end(), [&](const auto& value) {
                                 const auto prior = value.toObject();
                                 return prior.value("id") == bodyTemplateIds[letter - 1] &&
-                                       (hasToothBody(prior) || hasSeenBody(prior) ||
+                                       (hasToothBody(prior) || hasToothCluster(prior) ||
                                         loopSettings(prior).contains("exitTooth"));
                             });
                             if (intrinsicTooth) continue;
@@ -1330,7 +1331,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         }
         if (status == "matched" && seenRetry && seenRetry->slot == letter && seenRetry->mode == SeenExitMode::AlongContour) {
             const auto rule = preparedRules.constraints.value(bodyTemplateIds[letter]);
-            if (hasSeenBody(rule) && seenRetry->supports(seenSettings(rule)))
+            if (hasToothCluster(rule) && seenRetry->supports(toothClusterSettings(rule)))
                 diagnostic.insert("cutPolicy", "tooth-exit-walk");
         }
         if (status != "matched") subWord.templateTrace.append(QString("%1 %2 · %3")

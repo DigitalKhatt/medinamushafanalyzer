@@ -441,7 +441,7 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
         analysis.segmentSubword(-2, 0, 0, 0, nullptr, true, &forms);
         if (penLiftAtEnd && local.correct) {
             auto refined = local;
-            if (verifyBodyLandmarkOwnership(localWord, refined, forms, true)) local = std::move(refined);
+            if (assembleToothClusterCuts(localWord, refined, forms, true)) local = std::move(refined);
         }
         return std::move(local);
     };

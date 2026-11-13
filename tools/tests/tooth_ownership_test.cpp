@@ -11,8 +11,8 @@ static void checkInitialToothExits(const QJsonObject& config) {
     for (qsizetype i = 0; i < initial.size(); ++i) {
         auto form = initial[i].toObject();
         auto cuts = form.value("cuts").toObject();
-        if (!cuts.contains("initialToothTurnAngle")) continue;
-        cuts.remove("initialToothTurnAngle");
+        if (!cuts.contains("flankExitAngle")) continue;
+        cuts.remove("flankExitAngle");
         form.insert("cuts", cuts);
         initial[i] = form;
     }

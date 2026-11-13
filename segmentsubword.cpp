@@ -74,7 +74,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         const auto ligature = segmentDeclaredLigature(word, sub, sourceConfig);
         if (ligature == LigatureMatch::Failed) return false;
         if (ligature == LigatureMatch::SharedCut)
-            return pageIndex < 0 || verifyBodyLandmarkOwnership(word, sub, sourceConfig);
+            return pageIndex < 0 || assembleToothClusterCuts(word, sub, sourceConfig);
         static thread_local QJsonObject previousConfig, compiledConfig;
         static thread_local QHash<QString, QString> compiledRetryParents;
         static thread_local AnchorSequences anchorSequences;
@@ -112,15 +112,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
             if (valid && ligature != LigatureMatch::SeparateConnector)
                 applySharedReturnEntry(word, plan.partition, requested);
         }
-        // Verify the assembled masks on the source artwork, including bodies
-        // matched on separate or split components.
-        if (valid && pageIndex >= 0) {
-            valid = verifyBodyLandmarkOwnership(word, plan.partition, requested);
-            if (valid) {
-                applyTerminalJunction(word, plan.partition, requested, TerminalEntryPolicy::LowerShoulder);
-                applyInitialToothExit(word, plan.partition, requested);
-            }
-        }
+        if (valid && pageIndex >= 0) valid = finalizeBodyCuts(word, plan.partition, requested);
         sub = std::move(plan.partition);
         reportFinalRetry(sub, retryParents);
         if (anchored) {
@@ -655,7 +647,7 @@ bool PageAnalysisResult::segmentWithLetterForms(int pageIndex, int lineIndex, in
                 const bool reconsiderForm = unresolved || wideLastPitch || mode == SeenExitMode::AlongContour;
                 if (reconsiderForm ? !slot.value("candidates").toArray().contains(id) : slot.value("template") != id)
                     continue;
-                if (!retry.supports(seenSettings(form)))
+                if (!retry.supports(toothClusterSettings(form)))
                     continue;
                 eligible.append(id);
                 if (mode == SeenExitMode::ShiftedBend && !wideLastPitch) break;
@@ -757,7 +749,7 @@ bool PageAnalysisResult::segmentWithLetterForms(int pageIndex, int lineIndex, in
                          return applicable(rule, slot + 1) && rule.toObject().value("ownsLeftTip").toBool();
                      }) ||
         !std::any_of(forms.begin(), forms.end(), [&](const auto &rule) {
-            return applicable(rule, slot) && seenExit.supports(seenSettings(rule.toObject()));
+            return applicable(rule, slot) && seenExit.supports(toothClusterSettings(rule.toObject()));
         }))
         return false;
     auto previous = sub;

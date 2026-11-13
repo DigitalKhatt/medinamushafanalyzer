@@ -204,7 +204,7 @@ static void checkFinalSeenLandmarkOwnership(const QJsonObject& config) {
     check(assembleBodyPartition(word, wrong, config) && coversOriginalInk(word, wrong) &&
           wrong.kashidaCuts.back().second == QLineF(hits[0].point, hits[1].point),
           "The invalid receiving cap must still partition every source pixel");
-    check(!verifyBodyLandmarkOwnership(word, wrong, config) && !wrong.correct &&
+    check(!assembleToothClusterCuts(word, wrong, config) && !wrong.correct &&
           wrong.letterDiagnostics.last().toObject().value("status") == "no-match",
           "A complete partition with a first tooth in the connector was certified");
 }
@@ -585,7 +585,7 @@ int main(int argc, char** argv) {
     }
     QJsonObject settings;
     for (const auto& value : config.value("medial").toArray())
-        if (value.toObject().value("id") == "seen-medi") settings = seenSettings(value.toObject());
+        if (value.toObject().value("id") == "seen-medi") settings = toothClusterSettings(value.toObject());
     check(!settings.isEmpty(), "Missing seen-medi settings");
     QFile file("pages/page600.dat");
     check(file.open(QIODevice::ReadOnly), "Page 600 fixture is required");
@@ -600,6 +600,14 @@ int main(int argc, char** argv) {
     source.translate(shape.pos);
     WordResultInfo::SubWordInfo dummy;
     auto context = geometry(source, dummy);
+    const auto declaration = resolvedLetterForm(config, "seen-medi");
+    const auto body = declaration.value("body").toObject();
+    const auto evidence = recognizedSharedShape(context, body);
+    const double stroke = config.value("strokeWidth").toDouble(1);
+    check(std::any_of(evidence->clusters.begin(), evidence->clusters.end(), [&](const auto& cluster) {
+        const auto junction = clusterEntryAtJunction(context, cluster, stroke);
+        return junction && junction->topBaseLine.time == 6 && junction->bottomBaseLine.time == 38;
+    }), "The declared first-tooth junction depends on a placed join");
     Stretching right{}, left{};
     check(seenTeethBoundaries(context, settings, context.bbox.left(), context.bbox.right(), &right, &left),
           "Three-tooth sheen was not detected independently");
