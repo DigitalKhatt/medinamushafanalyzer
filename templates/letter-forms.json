@@ -4090,6 +4090,7 @@
     },
     {
       "id": "kaf-flat-medi",
+      "fixedAnchors": true,
       "current": "ك",
       "body": {
         "shape": "paired-route",
