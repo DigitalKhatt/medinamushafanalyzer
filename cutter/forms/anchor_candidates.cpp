@@ -20,7 +20,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto shape = body.value("shape");
             const bool supported = position == 0 ? shape == "contour-route" || shape == "horizontal-counters" ||
                 shape == "suspended-loop" || shape == "counter-neck" :
-                position == 1 ? toothDescription(body) || shape == "stacked-counters" :
+                position == 1 ? toothDescription(body) || shape == "stacked-counters" || shape == "counter-loop" :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn";
             if (!supported)
@@ -78,6 +78,23 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             if (const auto sections = cutStackedPair(source, pair, policy))
                 result.push_back({.formId = id, .entry = sections->first, .exit = sections->second,
                                   .counters = {pair.upper.index, pair.lower.index}});
+    } else if (position == 1 && shape == "counter-loop") {
+        const auto evidence = recognizedSharedShape(source, body);
+        const auto settings = shapeSettings(form, "loop");
+        auto loops = evidence->loops;
+        std::stable_sort(loops.begin(), loops.end(), [](const auto& a, const auto& b) {
+            return a.anchor.box.center().x() > b.anchor.box.center().x();
+        });
+        for (const auto& loop : loops) {
+            if (settings.value("counterPair") == "vertical" && !loop.stackedFeet) continue;
+            const auto sections = cutLoopBody(source, loop, settings, true);
+            if (!sections) continue;
+            QVector<size_t> counters{loop.anchor.index};
+            if (loop.horizontalPartner) counters.append(*loop.horizontalPartner);
+            if (loop.stackedFeet) counters = {loop.stackedFeet->upper.index, loop.stackedFeet->lower.index};
+            result.push_back({.formId = id, .entry = sections->first, .exit = sections->second,
+                              .counters = std::move(counters)});
+        }
     } else if (toothDescription(body)) {
         auto teeth = declaredToothBoundaries(source, form);
         // Keep the established reading order among placements of one form.
