@@ -1650,6 +1650,7 @@
     },
     {
       "id": "heh-stacked-bridge-init",
+      "fixedAnchors": true,
       "current": "ه",
       "tryNext": true,
       "onIncomplete": true,
