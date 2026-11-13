@@ -200,15 +200,19 @@ uncut outline and identifies the landmarks and ink it must retain. Counter
 forms identify the source contours their body must own.
 Medial heh uses its own stacked counters and outer feet to place both anchors.
 A counter form can locate the entry at the rounded foot using `cuts.entryRim`
-before assembly.
+before assembly. A hanging mīm recognizes its own upper entry and exit
+corners and keeps its counter, regardless of the preceding letter. When
+a rim entry meets the sending section at a tight join, assembly can use
+the rim as the shared seam if both bodies retain their landmarks and counters.
 Medial lām traces both sides of its shaft to the fork and projects the
 two configured contour walks. When there is no room, both normals can
 start at the fork tip. The declared folded return can share final yeh's
 entry if the seam retains the lām shaft.
-During migration an explicitly disabled fixed-anchor form can reserve its
-own contour for the existing cutter. For example, the hanging mīm's upper
-entry and exit corners identify a stacked attachment before an ordinary
-mīm can claim that counter.
+An initial contour route can set `cuts.preferFlankExit` to try the normal
+at its own turn before the route's longer exit. A final counter with
+`cuts.tightEntryAfter` can share its entry with the named sending form
+where the proposed cuts meet at one flank. Both bodies must still retain
+their defining landmarks and counters.
 [The search](engine/anchor_search.cpp) builds each form's candidates once per
 outline and backtracks over compatible bodies. Their entry and exit sections
 stay fixed. Coincident sections share a seam. A template with

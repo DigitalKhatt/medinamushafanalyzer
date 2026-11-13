@@ -37,6 +37,16 @@ bool sharesIncomingSection(const Stretching& sending, const AnchoredBody& receiv
                        [&](const auto& landmark) { return side.isStrictLeft(landmark.time); });
 }
 
+bool sharesTightEntry(const AnchoredBody& sending, const AnchoredBody& receiving, double tolerance) {
+    if (receiving.tightEntryAfter != sending.formId) return false;
+    const auto& exit = *sending.exit;
+    const auto& entry = *receiving.entry;
+    // A triangular remnant at a stacked join has one nearly coincident
+    // endpoint. The other end of the receiving seam stays on the loop rim.
+    return std::min(QLineF(exit.topBaseLine.point, entry.topBaseLine.point).length(),
+                    QLineF(exit.bottomBaseLine.point, entry.bottomBaseLine.point).length()) <= tolerance;
+}
+
 bool retainsLandmarks(const AnchoredBody& body, const Stretching* entry, const Stretching* exit,
                       Orientation orientation) {
     const auto first = entry ? std::optional{getJoinTime(*entry, orientation)} : std::nullopt;
@@ -63,7 +73,8 @@ bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot
 }
 
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
-        const SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold) {
+        const SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
+        double tightTolerance) {
     Subword trial{};
     trial.text = sub.text;
     trial.paths = sub.paths;
@@ -82,8 +93,13 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         const auto& receiving = *bodies[slot];
         auto exit = *sending.exit;
         const auto& entry = *receiving.entry;
-        if (slot + 1 == bodies.size() && sharesFinalFold) {
-            if (!retainsLandmarks(sending, nullptr, &entry, source.orientation)) return {};
+        const bool sharesRim = receiving.sharesRimEntry &&
+            (!orderedSections(exit, entry, source.orientation) ||
+             QLineF(sectionLine(exit).center(), sectionLine(entry).center()).length() <= tightTolerance);
+        if (sharesRim || (slot + 1 == bodies.size() &&
+                         (sharesFinalFold || sharesTightEntry(sending, receiving, tightTolerance)))) {
+            if (!retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &entry, source.orientation))
+                return {};
             exit = entry;
         }
         const bool shared = sameSection(exit, entry) || sharesIncomingSection(exit, receiving, source.orientation);
@@ -171,6 +187,8 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
 
     std::vector<const AnchoredBody*> selected;
     selected.reserve(forms.size());
+    const double tightTolerance = penWidth * config.value("kashidaDefaults").toObject()
+        .value("sharedCutTolerance").toDouble(.25);
     std::map<QString, std::optional<Stretching>> folds;
     const auto sharesFinalFold = [&]() {
         const auto& sending = *selected[selected.size() - 2];
@@ -193,30 +211,21 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
     };
     const auto search = [&](auto&& self, size_t slot) -> std::optional<Subword> {
         if (slot == forms.size()) {
-            auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold());
+            auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(), tightTolerance);
             if (partition && accept && !accept(*partition)) return {};
             return partition;
         }
         for (const auto& form : *forms[slot]) {
             if (!applies(form, letters, int(slot))) continue;
-            // An explicitly deferred form can reserve ink for the existing
-            // cutter when its identifying contour belongs to this slot.
-            const bool deferred = !form.value("fixedAnchors").toBool();
             const bool terminal = slot + 1 == forms.size();
             for (const auto& body : bodiesFor(form, slot)) {
                 if (slot) {
                     const auto& sending = *selected.back();
                     const auto& exit = *sending.exit;
-                    // A stacked body's entry can lie within the sending
-                    // stroke. Keep its counter reserved if the shared seam
-                    // would preserve the sending body's own landmarks.
-                    if (deferred && retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr,
-                                                     &*body.entry, source.orientation) &&
-                        (!sending.entry || orderedSections(*sending.entry, *body.entry, source.orientation)))
-                        return {};
+                    if (body.stemFootCandidate && !sending.sharesIncoming) continue;
                     if (!sameSection(exit, *body.entry) &&
                         !orderedSections(exit, *body.entry, source.orientation) &&
-                        !sharesIncomingSection(exit, body, source.orientation)) {
+                        !sharesIncomingSection(exit, body, source.orientation) && !body.sharesRimEntry) {
                         // An overlapping fork can still fit the terminal
                         // bowl through the existing attachment policy.
                         if (sending.preservesTerminalBody && terminal &&
@@ -225,7 +234,6 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
                         continue;
                     }
                 }
-                if (deferred) return {};
                 selected.push_back(&body);
                 if (auto complete = self(self, slot + 1)) return complete;
                 selected.pop_back();
@@ -251,9 +259,7 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
         const auto& position = forms[letterPosition(slot, letters.size())];
         const auto found = position.constFind(letters[slot]);
         if (found == position.cend() ||
-            std::none_of(found->begin(), found->end(), [&](const auto& form) {
-                return form.value("fixedAnchors").toBool() && applies(form, letters, slot);
-            }))
+            std::none_of(found->begin(), found->end(), [&](const auto& form) { return applies(form, letters, slot); }))
             return {};
         choices.push_back(&found.value());
     }

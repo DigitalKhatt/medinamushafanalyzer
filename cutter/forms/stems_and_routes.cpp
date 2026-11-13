@@ -81,6 +81,17 @@ bool cutUprightStem(const SearchContext &context, const UprightStemBody &body, c
     return true;
 }
 
+std::optional<Stretching> uprightStemFoot(const SearchContext& context, const Stretching& entry, double penWidth) {
+    const QLineF cap(entry.topBaseLine.point, entry.bottomBaseLine.point);
+    const double width = cap.length();
+    if (width < .25 * penWidth || width > .83 * penWidth || std::abs(cap.dy()) > .05 * width) return {};
+    auto foot = strokeFlankTurn(context, entry.bottomBaseLine, width, 1, true, 43, 2.6);
+    if (!foot) return {};
+    std::swap(foot->topBaseLine, foot->bottomBaseLine);
+    if (!cutPrecedes(*foot, entry, context.orientation)) return {};
+    return foot;
+}
+
 std::optional<PathExtrema> horizontalOpposite(const SearchContext& context,
                                                      const PathExtrema& anchor, bool left) {
     const double edge = left ? context.bbox.left() - 1 : context.bbox.right() + 1;

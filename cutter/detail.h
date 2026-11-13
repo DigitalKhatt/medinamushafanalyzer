@@ -530,6 +530,7 @@ std::optional<UprightStemBody> recognizeUprightStem(const InkOutline &outline);
 
 bool cutUprightStem(const SearchContext &context, const UprightStemBody &body, const QJsonObject &form,
                            Stretching &result);
+std::optional<Stretching> uprightStemFoot(const SearchContext& context, const Stretching& entry, double penWidth);
 
 std::optional<PathExtrema> horizontalOpposite(const SearchContext& context,
                                                      const PathExtrema& anchor, bool left);
@@ -1261,8 +1262,11 @@ struct AnchoredBody {
     QVector<QPointF> samples;
     QVector<size_t> counters;
     bool retainsCounterRim = false;
+    bool sharesRimEntry = false;
     bool sharesIncoming = false;
+    QString tightEntryAfter;
     bool preservesTerminalBody = false;
+    bool stemFootCandidate = false;
     QJsonObject sharedFold;
 };
 

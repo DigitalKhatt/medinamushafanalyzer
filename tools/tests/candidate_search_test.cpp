@@ -164,6 +164,38 @@ static void checkFixedAnchors(const QJsonObject& config) {
     const auto expected = sub;
     check(segment(config) && sameAnchoredPartition(sub, expected),
           "The fixed fork displaced a recognized terminal bowl");
+
+    for (const auto& f : {Fixture{36, 14, 10, 1}, Fixture{313, 8, 3, 2}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing final alif foot fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file); stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        check(page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &config),
+              "Fixed anchors lost the final alif");
+        const auto& alif = page.page.lines[f.line - 1].words[f.word - 1].wordResultInfo.subWords[f.subword - 1];
+        check(alif.templateTrace.value(0).startsWith("Fixed anchors") && !alif.kashidaCuts.empty(),
+              "Final alif foot fell back to the original cutter");
+        const auto cap = alif.kashidaCuts.back().second;
+        check(!cap.isNull() && std::abs(cap.dy()) > .6 * cap.length(), "Final alif cut through the shaft above the foot");
+    }
+
+    for (const auto& f : {Fixture{287, 2, 1, 4}, Fixture{323, 13, 6, 1}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing mīm rim fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file); stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        const int line = f.line - 1, word = f.word - 1, index = f.subword - 1;
+        check(page.segmentSubword(f.page - 1, line, word, index, &font, true, &config),
+              "Mīm rim did not segment");
+        const auto& result = page.page.lines[line].words[word].wordResultInfo.subWords[index];
+        check(result.templateTrace.value(0).startsWith("Fixed anchors"), "Mīm rim required the previous cutter");
+        const bool shared = result.kashidaPaths.front().isEmpty();
+        const QLineF entry = shared ? result.joins.begin()->cutSegments().front() : result.kashidaCuts.front().second;
+        check(shared == (f.page == 287) && entry.length() > .5 && entry.length() < 1.5,
+              "Mīm entry cut through the full height of the rim");
+    }
 }
 
 int main(int argc, char** argv) {

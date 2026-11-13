@@ -868,6 +868,7 @@
         }
       },
       "cuts": {
+        "preferFlankExit": true,
         "flankExitAngle": 20,
         "turnBoundaries": {
           "left": "trim"
@@ -2649,7 +2650,7 @@
     },
     {
       "id": "meem-hanging-medi",
-      "fixedAnchors": false,
+      "fixedAnchors": true,
       "current": "م",
       "sharedEntry": true,
       "body": {
@@ -6838,6 +6839,7 @@
         }
       },
       "cuts": {
+        "tightEntryAfter": "heh-stacked-bridge-init",
         "counter": {
           "entryCorner": {
             "normalCut": true,
@@ -7404,6 +7406,10 @@
         "counters": 1
       },
       "cuts": {
+        "entryRim": {
+          "minRiseWidths": 2.5,
+          "maxSlope": 0.15
+        },
         "counter": {
           "entryCorner": {
             "normalCut": true

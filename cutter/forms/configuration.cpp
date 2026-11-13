@@ -789,6 +789,11 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": flankExitAngle needs an initial contour route and an angle between 0 and 90 degrees";
         cutKeys << "flankExitAngle";
     }
+    if (const auto prefer = cuts.value("preferFlankExit"); !prefer.isUndefined()) {
+        if (!cutKeys.contains("flankExitAngle") || !prefer.isBool())
+            return id + ": preferFlankExit needs a flank exit angle and a boolean";
+        cutKeys << "preferFlankExit";
+    }
     if (shape == "rising-return") {
         bodyKeys << "entryRecoveryRoute";
         cutKeys << "entryRecoveryRoute";
@@ -887,6 +892,12 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
         bodyKeys << "shoulder";
         cutKeys << "shoulder" << "bridge";
+        if (const auto tight = cuts.value("tightEntryAfter"); !tight.isUndefined()) {
+            const auto sender = tight.toString();
+            if (phase != "final" || sender.isEmpty() || namedLetterForm(config, sender).isEmpty())
+                return id + ": tightEntryAfter needs a final counter and a sending template";
+            cutKeys << "tightEntryAfter";
+        }
     }
     if (shape == "counter-bridge" && (phase != "final" || !positive(cuts.value("bridge").toObject().value("maxWidth"))))
         return id + ": a final counter bridge needs a positive maximum width in counter heights";
