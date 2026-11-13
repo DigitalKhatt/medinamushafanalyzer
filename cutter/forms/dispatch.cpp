@@ -882,9 +882,10 @@ std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
     }
     if (!pairedCorners.isEmpty()) {
         const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
-        for (const auto &[right, left] : cutStackedPairs(
-                 context, evidence->stackedPairs, form.value("cuts").toObject().value("pair").toObject()))
-            candidates.emplace_back(right, left);
+        const auto policy = form.value("cuts").toObject().value("pair").toObject();
+        for (const auto& pair : evidence->stackedPairs)
+            if (auto cuts = cutStackedPair(context, pair, policy))
+                candidates.emplace_back(cuts->first, cuts->second);
     }
     if (!head.isEmpty()) {
         const auto evidence = recognizedSharedShape(context, form.value("body").toObject());

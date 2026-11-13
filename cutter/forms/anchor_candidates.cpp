@@ -19,7 +19,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto body = form.value("body").toObject();
             const auto shape = body.value("shape");
             const bool supported = position == 0 ? shape == "contour-route" || shape == "horizontal-counters" :
-                position == 1 ? toothDescription(body) :
+                position == 1 ? toothDescription(body) || shape == "stacked-counters" :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder";
             if (!supported)
@@ -56,6 +56,13 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()},
                               .counters = {pair.right.index, pair.left.index}});
         }
+    } else if (shape == "stacked-counters") {
+        const auto evidence = recognizedSharedShape(source, body);
+        const auto policy = cuts.value("pair").toObject();
+        for (const auto& pair : evidence->stackedPairs)
+            if (const auto sections = cutStackedPair(source, pair, policy))
+                result.push_back({.formId = id, .entry = sections->first, .exit = sections->second,
+                                  .counters = {pair.upper.index, pair.lower.index}});
     } else if (toothDescription(body)) {
         auto teeth = declaredToothBoundaries(source, form);
         // Keep the established reading order among placements of one form.

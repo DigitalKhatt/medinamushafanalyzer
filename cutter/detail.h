@@ -830,7 +830,7 @@ struct CounterFoot {
 };
 
 struct StackedCounterPair {
-    QRectF upper, lower;
+    CounterHole upper, lower;
     std::vector<CounterFoot> right, left;
 };
 
@@ -1001,8 +1001,8 @@ std::vector<ToothBody> declaredToothBoundaries(SearchContext& context, const QJs
 
 std::vector<StackedCounterPair> recognizeStackedPairs(const InkOutline &outline, const QJsonObject &settings);
 
-std::vector<std::pair<Stretching, Stretching>>
-cutStackedPairs(SearchContext &context, const std::vector<StackedCounterPair> &bodies, const QJsonObject &policy);
+std::optional<std::pair<Stretching, Stretching>>
+cutStackedPair(SearchContext &context, const StackedCounterPair &body, const QJsonObject &policy);
 
 timesortedtype::iterator headFlank(SearchContext& context, timesortedtype::iterator crest,
                                          bool increasingTime);

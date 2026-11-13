@@ -196,10 +196,12 @@ Set `fixedAnchors: true` on a migrated template. The search uses the transcript
 to look up enabled templates by letter in the `initial`, `medial` and `final`
 lists. Their order in each list sets priority. A subword can use the search
 when every letter has an eligible form. The current forms cover initial lām
-and heh, medial senna, final kāf and final mīm. Each form proposes sections on
-the uncut outline and identifies the landmarks and ink it must retain. Counter
-forms identify the source contours their body must own. A counter form can
-locate the entry at the rounded foot using `cuts.entryRim` before assembly.
+and heh, medial senna and heh, and final kāf and mīm. Each form proposes
+sections on the uncut outline and identifies the landmarks and ink it must
+retain. Counter forms identify the source contours their body must own.
+Medial heh uses its own stacked counters and outer feet to place both anchors.
+A counter form can locate the entry at the rounded foot using `cuts.entryRim`
+before assembly.
 [The search](engine/anchor_search.cpp) builds each form's candidates once per
 outline and backtracks over compatible bodies. Their entry and exit sections
 stay fixed. Coincident sections share a seam. Distinct sections must enclose a

@@ -1459,7 +1459,7 @@ std::vector<LoopBodyEvidence> recognizeLoopBodies(const InkOutline &outline, con
         auto loop = recognizeLoopBody(outline, body, hole, teeth);
         if (loop.valid) {
             const auto pair = std::find_if(pairs.begin(), pairs.end(), [&](const auto &candidate) {
-                return candidate.upper.united(candidate.lower) == loop.hole;
+                return candidate.upper.box.united(candidate.lower.box) == loop.hole;
             });
             if (pair != pairs.end()) loop.stackedFeet = *pair;
         }
@@ -1487,7 +1487,7 @@ static std::optional<Stretching> counterFootCut(const QPainterPath &ink, const S
     const auto p = corner.point;
     QPointF normal = normalCut ? QPointF(foot.tangent.y(), -foot.tangent.x()) : QPointF(0, -1);
     if (normal.y() > 0) normal = -normal;
-    const double reach = body.upper.united(body.lower).height() + 2 * body.lower.height();
+    const double reach = body.upper.box.united(body.lower.box).height() + 2 * body.lower.box.height();
     const auto hits = FindInterections(ink, QLineF(p, p + normal * reach), true);
     for (const auto &top : hits) {
         if (top.pathIndex != 0 || top.point.y() >= p.y() || !interiorChord(ink, top, corner)) continue;
@@ -1670,12 +1670,10 @@ std::vector<StackedCounterPair> recognizeStackedPairs(const InkOutline &outline,
     std::vector<StackedCounterPair> results;
     if (curves.empty()) return results;
     const double footInwardTolerance = std::sin(settings.value("maxFootInwardAngle").toDouble(10) * M_PI / 180);
-    std::vector<QRectF> holes;
-    for (size_t i = 1; i < outline.contours.size(); ++i) {
-        const auto hole = outline.contours[i].boundingRect();
-        if (hole.width() > 0 && hole.height() > 0 && !ink.contains(hole.center())) holes.push_back(hole);
-    }
-    for (const auto& upper : holes) for (const auto& lower : holes) {
+    const auto holes = recognizeCounterHoles(outline);
+    for (const auto& upperHole : holes) for (const auto& lowerHole : holes) {
+        const auto& upper = upperHole.box;
+        const auto& lower = lowerHole.box;
         const double scale = lower.height();
         if (upper.bottom() >= lower.top() ||
             std::min(upper.right(), lower.right()) <= std::max(upper.left(), lower.left()) ||
@@ -1730,8 +1728,8 @@ std::vector<StackedCounterPair> recognizeStackedPairs(const InkOutline &outline,
             }
             return found;
         };
-        results.push_back({upper, lower, corners(true), corners(false)});
-        }
+        results.push_back({upperHole, lowerHole, corners(true), corners(false)});
+    }
     return results;
 }
 
@@ -1741,7 +1739,7 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
         const Stretching &right, const Stretching &inner, double width, double maxWidthRatio) {
     const double innerWidth = QLineF(inner.topBaseLine.point, inner.bottomBaseLine.point).length();
     const double maxWidth = maxWidthRatio * width;
-    if (width <= 0 || (innerWidth <= maxWidth && inner.topBaseLine.point.y() >= body.upper.bottom()))
+    if (width <= 0 || (innerWidth <= maxWidth && inner.topBaseLine.point.y() >= body.upper.box.bottom()))
         return {};
     const auto &foot = inner.bottomBaseLine;
     if (context.timeSorted.empty()) return {};
@@ -1758,7 +1756,7 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
         if (!contourNormalCut(context, anchor, forward, false, cut, true)) return {};
         std::swap(cut.topBaseLine, cut.bottomBaseLine);
         if (cut.referenceWidth > std::min(maxWidth, innerWidth) ||
-            cut.topBaseLine.point.y() < body.upper.bottom() || !outside.isStrictLeft(cut.topBaseLine.time) ||
+            cut.topBaseLine.point.y() < body.upper.box.bottom() || !outside.isStrictLeft(cut.topBaseLine.time) ||
             !getJoinTime(cut, context.orientation).isStrictLeft(exitTip->time)) return {};
         const auto pieces = cutRegions(context.transformedPath, {}, {right, cut}, context.orientation, true);
         if (pieces.size() != 3) return {};
@@ -1768,7 +1766,7 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
                 return outline.boundingRect() == counter;
             });
         };
-        if (!retains(body.upper) || !retains(body.lower)) return {};
+        if (!retains(body.upper.box) || !retains(body.lower.box)) return {};
         return cut;
     };
     std::optional<Stretching> roundedExit;
@@ -1820,55 +1818,47 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
     return {};
 }
 
-std::vector<std::pair<Stretching, Stretching>>
-cutStackedPairs(SearchContext &context, const std::vector<StackedCounterPair> &bodies, const QJsonObject &policy) {
+std::optional<std::pair<Stretching, Stretching>>
+cutStackedPair(SearchContext &context, const StackedCounterPair &body, const QJsonObject &policy) {
     const auto &ink = context.transformedPath;
-    std::vector<std::pair<Stretching, Stretching>> results;
-    for (const auto &body : bodies) {
-        const auto &upper = body.upper;
-        const auto &lower = body.lower;
-        const auto cornerCut = [&](bool rightSide) -> std::optional<Stretching> {
-            double closest = std::numeric_limits<double>::infinity();
-            std::optional<Stretching> best;
-            bool bestHasFoot = false;
-            for (const auto &foot : rightSide ? body.right : body.left) {
-                const auto p = foot.anchor.point;
-                const auto distance = foot.distance;
-                const bool hasFoot = foot.hasFoot;
-                if (best) {
-                    if (bestHasFoot && !hasFoot)
+    const auto cornerCut = [&](bool rightSide) -> std::optional<Stretching> {
+        double closest = std::numeric_limits<double>::infinity();
+        std::optional<Stretching> best;
+        bool bestHasFoot = false;
+        for (const auto &foot : rightSide ? body.right : body.left) {
+            const auto p = foot.anchor.point;
+            const auto distance = foot.distance;
+            const bool hasFoot = foot.hasFoot;
+            if (best) {
+                if (bestHasFoot && !hasFoot)
+                    continue;
+                if (bestHasFoot == hasFoot) {
+                    // Keep the outside step when both corners pass the angle tolerance.
+                    const double outward = (rightSide ? 1 : -1) *
+                        (p.x() - best->bottomBaseLine.point.x());
+                    if (hasFoot ? outward <= 0 : distance >= closest)
                         continue;
-                    if (bestHasFoot == hasFoot) {
-                        // Both the outside step and its inner attachment can
-                        // pass the angle tolerance. Keep the outside step,
-                        // rather than the corner nearest the counter.
-                        const double outward = (rightSide ? 1 : -1) *
-                            (p.x() - best->bottomBaseLine.point.x());
-                        if (hasFoot ? outward <= 0 : distance >= closest)
-                            continue;
-                    }
-                }
-                if (auto cut = counterFootCut(ink, body, foot, policy.value("normalCut").toBool())) {
-                    best = cut;
-                    closest = distance;
-                    bestHasFoot = hasFoot;
                 }
             }
-            return best;
-        };
-        const auto right = cornerCut(true);
-        auto left = cornerCut(false);
-        if (!right || !left || !Stretching::cmpbyx{}(*right, *left)) continue;
-        const auto widthRatio = policy.value("maxExitWidthRatio").toDouble();
-        if (widthRatio > 0) {
-            if (auto exit = stackedPairExit(context, body, *right, *left, right->referenceWidth, widthRatio)) left = exit;
+            if (auto cut = counterFootCut(ink, body, foot, policy.value("normalCut").toBool())) {
+                best = cut;
+                closest = distance;
+                bestHasFoot = hasFoot;
+            }
         }
-        const auto pieces = cutRegions(ink, {}, {*right, *left}, context.orientation, true);
-        if (pieces.size() != 3 || !pieces[1].path.boundingRect().contains(upper) ||
-            !pieces[1].path.boundingRect().contains(lower)) continue;
-        results.emplace_back(*right, *left);
+        return best;
+    };
+    const auto right = cornerCut(true);
+    auto left = cornerCut(false);
+    if (!right || !left || !Stretching::cmpbyx{}(*right, *left)) return {};
+    const auto widthRatio = policy.value("maxExitWidthRatio").toDouble();
+    if (widthRatio > 0) {
+        if (auto exit = stackedPairExit(context, body, *right, *left, right->referenceWidth, widthRatio)) left = exit;
     }
-    return results;
+    const auto pieces = cutRegions(ink, {}, {*right, *left}, context.orientation, true);
+    if (pieces.size() != 3 || !pieces[1].path.boundingRect().contains(body.upper.box) ||
+        !pieces[1].path.boundingRect().contains(body.lower.box)) return {};
+    return std::pair{*right, *left};
 }
 
 // A tapered terminal tail turns upward into two close corners at the head.

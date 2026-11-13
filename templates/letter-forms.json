@@ -3150,6 +3150,7 @@
     },
     {
       "id": "heh-body-medi",
+      "fixedAnchors": true,
       "current": "ه",
       "body": {
         "shape": "stacked-counters",

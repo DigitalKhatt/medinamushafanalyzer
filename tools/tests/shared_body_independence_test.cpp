@@ -163,7 +163,8 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
     }
     out << quint64(e.stackedPairs.size());
     for (const auto &pair : e.stackedPairs) {
-        out << pair.upper << pair.lower;
+        hole(pair.upper);
+        hole(pair.lower);
         for (const auto *feet : {&pair.right, &pair.left}) {
             out << quint64(feet->size());
             for (const auto &foot : *feet) {

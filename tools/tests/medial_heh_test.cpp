@@ -28,7 +28,10 @@ static SearchContext geometry(QPainterPath path, WordResultInfo::SubWordInfo& du
 static std::vector<std::pair<Stretching, Stretching>> hehCuts(SearchContext& context, QJsonObject settings) {
     QJsonObject policy{{"normalCut", settings.take("normalCut")}};
     const auto evidence = recognizeStackedPairs(inkOutline(context), settings);
-    return cutStackedPairs(context, evidence, policy);
+    std::vector<std::pair<Stretching, Stretching>> cuts;
+    for (const auto& pair : evidence)
+        if (auto sections = cutStackedPair(context, pair, policy)) cuts.push_back(*sections);
+    return cuts;
 }
 
 int main(int argc, char** argv) {
