@@ -3828,6 +3828,7 @@
     },
     {
       "id": "hah-compact-medi",
+      "fixedAnchors": true,
       "current": "جحخ",
       "body": {
         "shape": "paired-route",
