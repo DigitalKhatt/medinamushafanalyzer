@@ -5888,6 +5888,7 @@
     },
     {
       "id": "tah-tapered-entry-fina",
+      "fixedAnchors": true,
       "current": "طظ",
       "tryNext": true,
       "body": {
