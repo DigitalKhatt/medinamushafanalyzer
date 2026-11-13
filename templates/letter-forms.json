@@ -2740,6 +2740,7 @@
     },
     {
       "id": "ain-medi",
+      "fixedAnchors": true,
       "current": "عغ",
       "body": {
         "shape": "open-head",
