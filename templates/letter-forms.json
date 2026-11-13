@@ -6607,6 +6607,7 @@
     },
     {
       "id": "alef-fina",
+      "fixedAnchors": true,
       "current": "اآأإٱ",
       "tryNext": true,
       "body": {

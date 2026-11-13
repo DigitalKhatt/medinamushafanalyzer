@@ -23,7 +23,8 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 shape == "open-head" || shape == "crested-loop" || shape == "paired-route" ||
                 shape == "forked-stem" :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
-                shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn";
+                shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn" ||
+                shape == "upright-stem";
             if (!supported && enabled.toBool())
                 return id + ": this body does not supply fixed anchors for its position";
             if (!supported) continue;
@@ -178,6 +179,10 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 tooth.curvedAxis.isEmpty() ? QVector<QPointF>{axis.pointAt(.05), axis.pointAt(.95)} : tooth.curvedAxis});
             result.back().sharesIncoming = cuts.value("tightJoin") == "shared-boundary";
         }
+    } else if (shape == "upright-stem") {
+        const auto evidence = recognizedSharedShape(source, body);
+        if (evidence->uprightStem && declaredSharedBoundary(source, form))
+            result.push_back({.formId = id, .entry = source.res, .landmarks = {evidence->uprightStem->tip}});
     } else if (shape == "stemmed-bowl") {
         const auto evidence = recognizedSharedShape(source, body);
         auto stems = evidence->terminalStems;
