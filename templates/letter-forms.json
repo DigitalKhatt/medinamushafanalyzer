@@ -6647,6 +6647,7 @@
     },
     {
       "id": "beh-return-fina",
+      "fixedAnchors": true,
       "current": "بتث",
       "ownsLeftTip": true,
       "tryNext": true,
