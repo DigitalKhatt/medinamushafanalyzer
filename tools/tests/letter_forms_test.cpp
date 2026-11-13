@@ -398,8 +398,20 @@ int main(int argc, char** argv) {
     const auto& ligature = analysis.page.lines[1].words[0].wordResultInfo.subWords[0];
     check(ligature.joins.begin()->topBaseLine.time == 4 && ligature.joins.begin()->bottomBaseLine.time == 12,
           "Reviewed lam-alef boundary moved away from corners 4 and 12");
+    auto independentLamCuts = withoutFork;
+    auto independentMedialForms = independentLamCuts.value("medial").toArray();
+    for (auto entry = independentMedialForms.begin(); entry != independentMedialForms.end(); ++entry) {
+        auto rule = entry->toObject();
+        if (rule.value("id") != "lam-medi") continue;
+        auto cuts = rule.value("cuts").toObject();
+        cuts.remove("sharedFold");
+        rule.insert("cuts", cuts);
+        *entry = rule;
+        break;
+    }
+    independentLamCuts.insert("medial", independentMedialForms);
     for (const auto& location : {std::array{2, 6, 1}, std::array{2, 8, 2}, std::array{2, 10, 2}}) {
-        check(analysis.segmentSubword(2, location[0] - 1, location[1] - 1, location[2] - 1, nullptr, true, &withoutFork),
+        check(analysis.segmentSubword(2, location[0] - 1, location[1] - 1, location[2] - 1, nullptr, true, &independentLamCuts),
               "Leaning medial lam is still partial");
         const auto& word = analysis.page.lines[location[0] - 1].words[location[1] - 1];
         const auto& sub = word.wordResultInfo.subWords[location[2] - 1];

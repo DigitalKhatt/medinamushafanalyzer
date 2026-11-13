@@ -64,11 +64,21 @@ int main(int argc, char** argv) {
         // The rising entry and folded shoulder each need a normal through their own anchor.
         {17, 9, 9, 1, {}, {}, {{1, true, {76.822, 303.395}, {75.948, 304.306}}}},
         {204, 6, 3, 1, {}, {}, {{2, true, {261.547, 223.941}, {260.987, 224.213}}}},
-        // The crest belongs to ṣād/ḍād. Both ends of the tapered ṣād–ṭāʾ join follow the stroke.
-        {39, 15, 4, 2, {{3, {162.0, 464.18}}}, {},
+        // The tooth and its descending edge belong to ṣād/ḍād, including on a folded join.
+        {37, 11, 9, 1, {{2, {59.20, 358.10}}, {2, {59.08, 358.14}}}},
+        {88, 4, 1, 1, {{1, {326.42, 171.50}}, {1, {326.58, 171.67}}}},
+        {173, 12, 8, 2, {{2, {63.73, 384.45}}, {2, {63.35, 384.75}}}},
+        // Keep ṣād's exit and put the approach to final ṭāʾ into the connector.
+        {39, 15, 4, 2, {{3, {162.0, 464.18}}, {4, {159.90, 465.58}}},
+         ConnectorWitness{3, {160.26, 465.30}, .864},
          {{3, false, {160.866, 464.626}, {161.336, 465.269}},
-          {3, true, {160.381, 464.860}, {160.830, 465.676}}}},
+          {3, true, {160.027, 465.003}, {160.447, 465.911}}}},
         {412, 15, 1, 3, {{2, {313.04, 464.45}}}},
+        // The cut at the lower shoulder keeps the raised part of final reh.
+        {315, 7, 3, 1, {{3, {223.27, 250.22}}, {4, {222.45, 249.80}}, {4, {222.32, 250.34}}}},
+        // The descending stem owns its arm up to the shared yeh fold.
+        {286, 6, 2, 2, {{3, {277.77, 225.64}}, {4, {278.50, 227.65}}}},
+        {154, 15, 5, 1, {{2, {231.27, 465.60}}, {3, {232.26, 467.80}}}},
         // A rounded lām foot can be farther from the curve endpoint than snapping permits.
         {424, 12, 8, 2, {}, {}, {{1, false, {168.683, 383.618}, {168.683, 385.230}}}},
         {425, 7, 10, 2, {}, {}, {{1, false, {59.423, 251.113}, {59.423, 252.615}}}},
@@ -262,6 +272,9 @@ int main(int argc, char** argv) {
         if (e.page == 220)
             require(sub.kashidaPaths.size() == 3 && sub.kashidaPaths.back().isEmpty(),
                     id + " expected a shared fold between jim and yeh");
+        if (e.page == 286 || e.page == 154)
+            require(sub.kashidaPaths.size() + 1 == sub.baseGlyphs.size() && sub.kashidaPaths.back().isEmpty(),
+                    id + " expected a shared lam and yeh fold");
         if ((e.page == 12 && e.line == 10 && e.word == 7 && e.subword == 2) ||
             (e.page == 101 && e.line == 12 && e.word == 4 && e.subword == 3)) {
             const int lam = e.page == 12 ? 2 : 1;

@@ -535,10 +535,18 @@ static QString validateSharedShape(const QJsonObject &form, const QString &phase
     if (cuts.contains("shoulderEntry")) {
         const auto shoulder = cuts.value("shoulderEntry").toObject();
         const auto depth = shoulder.value("maxWidthToDepth"), shift = shoulder.value("maxShiftWidths");
+        const auto corners = shoulder.value("sharedCorners").toObject();
+        const auto sharedShift = corners.value("maxShiftWidths");
+        const bool hasCorners = shoulder.contains("sharedCorners");
         if (phase != "final" || (shape != "contour-route" && shape != "rising-return") ||
-            shoulder.size() != 2 || !depth.isDouble() || !(depth.toDouble() > 0 && depth.toDouble() < 1) ||
+            shoulder.size() != 2 + int(hasCorners) ||
+            !depth.isDouble() || !(depth.toDouble() > 0 && depth.toDouble() < 1) ||
             !shift.isDouble() || !std::isfinite(shift.toDouble()) || shift.toDouble() <= 0)
             return id + ": shoulderEntry requires a final contour route or return and valid width and shift limits";
+        if (hasCorners && (!form.value("sharedBoundary").toBool() || corners.size() != 2 ||
+            corners.value("after").toString().isEmpty() ||
+            !sharedShift.isDouble() || !std::isfinite(sharedShift.toDouble()) || sharedShift.toDouble() <= 0))
+            return id + ": shoulderEntry.sharedCorners needs preceding letters and a positive shift limit";
         cutKeys << "shoulderEntry";
     }
     if (shape == "upright-stem")
@@ -1643,6 +1651,16 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 const auto forkOffset = declaredCuts.value("forkOffset");
                 if (!forkOffset.isUndefined() && !positive(forkOffset))
                     return id + ": cuts.forkOffset must be positive in page units";
+                if (const auto value = declaredCuts.value("sharedFold"); !value.isUndefined()) {
+                    const auto fold = value.toObject();
+                    const auto receiver = namedLetterForm(config, fold.value("template").toString());
+                    const auto letters = fold.value("letters").toString();
+                    const auto selects = receiver.value("current").toString();
+                    if (fold.size() != 3 || letters.isEmpty() || !positive(fold.value("maxSlope")) ||
+                        formDescription(config, receiver, "body").value("shape") != "folded-return" ||
+                        !std::ranges::all_of(letters, [&](QChar letter) { return selects.contains(letter); }))
+                        return id + ": cuts.sharedFold needs a final folded-return template, its letters and a positive slope";
+                }
                 if (!QStringList{"tip-normal", "preserve"}.contains(declaredCuts.value("tightJoin").toString()) ||
                     declaredCuts.value("counterJoin") != "preserve-entry")
                     return id + ": cuts needs a tightJoin policy and counterJoin: preserve-entry";
@@ -1668,7 +1686,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     for (auto key = settings.begin(); key != settings.end(); ++key)
                         if (!QStringList{"boundaries", "forkOffset", "tightJoin", "counterJoin", "beforeFinal",
                                          "letters", "junction", "preserveEntryAfter", "route", "section", "exitRoutes",
-                                         "entryRoute", "placement", "shortExit", "turnBoundaries"}.contains(key.key()))
+                                         "entryRoute", "placement", "shortExit", "sharedFold", "turnBoundaries"}.contains(key.key()))
                             return id + ": unknown cuts setting " + key.key();
                 }
             }

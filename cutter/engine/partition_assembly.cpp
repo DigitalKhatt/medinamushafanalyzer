@@ -320,7 +320,7 @@ static bool matchAssembledBody(SearchContext& source, const Apath& shape, const 
 }
 
 static bool projectTerminalShoulder(SearchContext& context, const QJsonObject& form,
-        const QJsonObject& policy, Stretching current, double bodyFloor);
+        const QJsonObject& policy, Stretching current, double bodyFloor, std::optional<double> sharedShift = {});
 
 static bool assembleSharedTerminalEntry(SearchContext& source, const Apath& shape, const QJsonObject& config,
         const QJsonObject& receiver, const QString& letters, WordResultInfo::SubWordInfo& trial) {
@@ -517,7 +517,7 @@ bool completeBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subwor
 // An oblique cut at the lower shoulder can leave the upper stroke outside the
 // body. Project from the selected form's own shoulder on the uncut outline.
 static bool projectTerminalShoulder(SearchContext& context, const QJsonObject& form,
-        const QJsonObject& policy, Stretching current, double bodyFloor) {
+        const QJsonObject& policy, Stretching current, double bodyFloor, std::optional<double> sharedShift) {
     const auto& tip = *context.xSorted.rbegin();
     context.nextIter = std::next(context.xSorted.begin());
     if (!declaredSharedBoundary(context, form)) return false;
@@ -531,12 +531,14 @@ static bool projectTerminalShoulder(SearchContext& context, const QJsonObject& f
     const auto& cut = context.res;
     const QLineF section(cut.topBaseLine.point, cut.bottomBaseLine.point);
     const double depth = bodyFloor - section.p1().y();
-    const double reach = policy.value("maxShiftWidths").toDouble() * section.length();
+    const double reach = sharedShift.value_or(policy.value("maxShiftWidths").toDouble()) * section.length();
     const auto side = getJoinTime(cut, context.orientation);
-    // Expand only a clipped entry of this bowl. Both ends of the old section
-    // must be nearby and inside the final body with the new cut.
+    // A shared seam can already have the correct lower endpoint and still
+    // clip the upper shoulder. Keep that lower point when replacing the seam.
+    const bool keepsShoulder = sharedShift ? QLineF(section.p2(), current.bottomBaseLine.point).length() <= 1e-5 :
+        side.isLeft(current.topBaseLine.time) && side.isLeft(current.bottomBaseLine.time);
     return section.dy() > 0 && section.length() <= policy.value("maxWidthToDepth").toDouble() * depth &&
-        side.isStrictLeft(tip.time) && side.isLeft(current.topBaseLine.time) && side.isLeft(current.bottomBaseLine.time) &&
+        side.isStrictLeft(tip.time) && keepsShoulder &&
         cut.topBaseLine.point.y() < current.topBaseLine.point.y() - 1e-5 &&
         QLineF(section.p1(), current.topBaseLine.point).length() <= reach &&
         QLineF(section.p2(), current.bottomBaseLine.point).length() <= reach;
@@ -571,8 +573,15 @@ void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub,
     const bool connector = !sub.kashidaPaths.back().isEmpty();
     // Two contour corners can define the actual shared seam of a ligature.
     // Projecting past it would take the upper stroke of the preceding body.
-    if (atShoulder && !connector && form.value("sharedBoundary").toBool() &&
-        join.topBaseLine.isSharp && join.bottomBaseLine.isSharp) return;
+    const bool sharedCorners = atShoulder && !connector && form.value("sharedBoundary").toBool() &&
+        join.topBaseLine.isSharp && join.bottomBaseLine.isSharp;
+    std::optional<double> sharedShift;
+    if (sharedCorners) {
+        const auto rule = settings.value("sharedCorners").toObject();
+        const auto previous = sub.letterDiagnostics[int(last) - 1].toObject().value("character").toString();
+        if (previous.isEmpty() || !rule.value("after").toString().contains(previous)) return;
+        sharedShift = rule.value("maxShiftWidths").toDouble();
+    }
     if (connector) {
         const auto& [sending, receiving] = sub.kashidaCuts.back();
         const std::vector<std::vector<QBezier>> outer{baseContourCurves(context.transformedPath)};
@@ -589,7 +598,7 @@ void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub,
     }
     if (atShoulder) {
         const double floor = inPage(sub.baseGlyphs.back().path).boundingRect().bottom();
-        if (!projectTerminalShoulder(context, form, settings, context.res, floor)) return;
+        if (!projectTerminalShoulder(context, form, settings, context.res, floor, sharedShift)) return;
     } else if (!refineContourJunction(context, settings)) return;
     if (!matchesBoundaryBody(context, form, context.res, false)) return;
     const bool separate = connector && cutPrecedes(join, context.res, context.orientation);

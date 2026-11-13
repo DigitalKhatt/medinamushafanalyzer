@@ -311,11 +311,65 @@ static std::optional<Stretching> assembledJoinCap(const WordResultInfo::SubWordI
     return cap;
 }
 
+static void shareFoldedStemReturn(const Word& word, WordResultInfo::SubWordInfo& sub,
+                                  const QJsonObject& config, const QString& letters) {
+    const int slot = letters.size() - 2;
+    if (slot < 1 || sub.joins.size() + 1 != sub.baseGlyphs.size() ||
+        sub.baseGlyphs.size() != size_t(letters.size()) || sub.letterDiagnostics.size() != letters.size() ||
+        sub.kashidaPaths.size() != sub.joins.size() || sub.kashidaCuts.size() != sub.joins.size() ||
+        sub.kashidaPaths.back().isEmpty() || hasTatweelBeforeFinal(sub.text)) return;
+    const auto id = sub.letterDiagnostics[slot].toObject().value("template").toString();
+    const auto& forms = bodyCutProgram(config).forms;
+    const auto form = forms.constFind(id);
+    if (form == forms.cend()) return;
+    const auto fold = form->cuts.value("sharedFold").toObject();
+    if (!fold.value("letters").toString().contains(letters.back()) ||
+        sub.joins.rbegin()->counterEntry.pathIndex > 0) return;
+    const auto& [first, last] = sub.kashidaCuts.back();
+    const double width = config.value("strokeWidth").toDouble(1);
+    const auto descent = last.center() - first.center();
+    if (descent.y() < width || std::abs(descent.x()) > fold.value("maxSlope").toDouble() * descent.y())
+        return;
+
+    const auto shape = word.bodyShape(sub);
+    const auto inPage = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
+    WordResultInfo::SubWordInfo geometryOnly{};
+    SearchContext source{.transformedPath = inPage(shape.path), .subword = geometryOnly, .baseText = letters};
+    if (!readTerminalOutline(source)) return;
+    std::vector<std::vector<QBezier>> curves;
+    const auto seam = assembledJoinCap(sub, slot, true, source, curves);
+    if (!seam || !interiorChord(source.transformedPath, seam->topBaseLine, seam->bottomBaseLine)) return;
+
+    // Walk out of the bowl on both flanks. The first turn on each side is
+    // the shared cut of this ligature. The upper end of the stem is earlier
+    // on the same contour, where a fork cut would split the descending arm.
+    const auto receiver = namedLetterForm(config, fold.value("template").toString());
+    source.nextIter = std::next(source.xSorted.begin());
+    if (receiver.isEmpty() || !declaredSharedBoundary(source, resolvedBodyForm(config, receiver))) return;
+    const auto chord = [](const Stretching& cut) { return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point); };
+    const auto cut = chord(source.res);
+    if (QLineF(cut.p1(), last.p1()).length() > 1e-5 ||
+        QLineF(cut.p2(), last.p2()).length() > 1e-5) return;
+
+    auto trial = recutBodyJoin(word, sub, slot, slot + 1, *seam, {}, config);
+    if (!trial || !preserveUnchangedOutline(sub.baseGlyphs.back().path, trial->baseGlyphs.back().path)) return;
+    const auto before = inPage(sub.baseGlyphs[slot].path);
+    const auto after = inPage(trial->baseGlyphs[slot].path);
+    if (toSubpaths(before).size() != toSubpaths(after).size() ||
+        std::abs(before.boundingRect().top() - after.boundingRect().top()) > 1e-5) return;
+    trial->templateTrace.append(id + " · stem return kept at the final fold");
+    sub = std::move(*trial);
+}
+
 void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+    const auto letters = PageAnalysisResult::bodyLetters(sub.text);
+    if (letters.size() > 2) {
+        shareFoldedStemReturn(word, sub, config, letters);
+        return;
+    }
     if (sub.baseGlyphs.size() != 2 || sub.letterDiagnostics.size() != 2 || sub.joins.size() != 1 ||
         sub.kashidaPaths.size() != 1 || sub.kashidaCuts.size() != 1 ||
         sub.joins.begin()->counterEntry.pathIndex > 0 || sub.text.contains(QChar(0x0640))) return;
-    const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (letters.size() != 2) return;
     const auto line = [](const Stretching& cut) { return QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point); };
     const bool hasConnector = !sub.kashidaPaths.front().isEmpty();

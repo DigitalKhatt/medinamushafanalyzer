@@ -2087,7 +2087,7 @@
       "cuts": {
         "route": {
           "bottomProbe": "down",
-          "walkNormalOffset": 0.6
+          "walkNormalOffset": 0.95
         },
         "boundaries": {
           "right": "free",
@@ -2840,6 +2840,11 @@
         "forkOffset": 0.5,
         "tightJoin": "tip-normal",
         "counterJoin": "preserve-entry",
+        "sharedFold": {
+          "letters": "يئى",
+          "template": "yeh-first-turn-fina",
+          "maxSlope": 0.7
+        },
         "beforeFinal": {
           "letters": "اآأإٱ",
           "boundaries": {
@@ -5336,17 +5341,28 @@
           "left": {
             "anchor": {
               "offset": {
-                "minX": -10,
-                "maxX": -7,
-                "minY": 1.2,
-                "maxY": 3.1
+                "minX": -9,
+                "maxX": -8,
+                "minY": 2.85,
+                "maxY": 3.45
               },
+              "sharp": true,
               "yExtremum": true
             },
-            "topAtAnchor": true,
-            "topTraversal": "forward"
+            "topAtAnchor": true
           },
           "retain": [
+            {
+              "offset": {
+                "minX": -9.5,
+                "maxX": -8.2,
+                "minY": 1.6,
+                "maxY": 2.3
+              },
+              "sharp": false,
+              "yExtremum": true,
+              "flanks": {}
+            },
             {
               "offset": {
                 "minX": -10.3,
@@ -5369,7 +5385,10 @@
             "bottomProbe": "down"
           },
           "left": {
-            "bottomProbe": "down"
+            "bottomProbe": "normal",
+            "anchorSide": "bottom",
+            "normalCut": true,
+            "normalFrom": "receiving"
           },
           "orientToBody": true
         },
@@ -5420,13 +5439,26 @@
               "offset": {
                 "minX": -8.4,
                 "maxX": -6,
-                "minY": 2.2,
+                "minY": 3.4,
                 "maxY": 4.5
               },
-              "yExtremum": true
+              "sharp": true
             },
             "topAtAnchor": true
-          }
+          },
+          "retain": [
+            {
+              "offset": {
+                "minX": -8.4,
+                "maxX": -6.1,
+                "minY": 1.95,
+                "maxY": 3.05
+              },
+              "flanks": {
+                "minY": -0.03
+              }
+            }
+          ]
         },
         "counters": 1
       },
@@ -5436,7 +5468,10 @@
             "bottomProbe": "down"
           },
           "left": {
-            "bottomProbe": "normal"
+            "bottomProbe": "normal",
+            "anchorSide": "bottom",
+            "normalCut": true,
+            "normalFrom": "receiving"
           },
           "orientToBody": true
         },
@@ -5779,7 +5814,7 @@
       "cuts": {
         "route": {
           "bottomProbe": "up",
-          "normalWalkBack": 0.65
+          "normalWalkBack": 1.1
         },
         "boundaries": {
           "right": "contour-route",
@@ -5870,7 +5905,11 @@
         },
         "shoulderEntry": {
           "maxWidthToDepth": 0.34,
-          "maxShiftWidths": 1.5
+          "maxShiftWidths": 1.5,
+          "sharedCorners": {
+            "after": "جحخ",
+            "maxShiftWidths": 2
+          }
         },
         "boundaries": {
           "left": "free",
