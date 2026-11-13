@@ -34,7 +34,7 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         hole(h);
     out << bool(e.initialNeck);
     if (e.initialNeck) {
-        out << e.initialNeck->counter;
+        hole(e.initialNeck->counter);
         points(e.initialNeck->valleys);
         points(e.initialNeck->normalAnchors);
     }
@@ -124,7 +124,8 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
     }
     out << bool(e.head);
     if (e.head) {
-        out << e.head->counter << bool(e.head->edge);
+        hole(e.head->counter);
+        out << bool(e.head->edge);
         if (e.head->edge)
             point(*e.head->edge);
         out << quint64(e.head->necks.size());

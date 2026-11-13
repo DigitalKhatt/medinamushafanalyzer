@@ -18,7 +18,8 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto form = bodyConstraintForm(config, declaration);
             const auto body = form.value("body").toObject();
             const auto shape = body.value("shape");
-            const bool supported = position == 0 ? shape == "contour-route" || shape == "horizontal-counters" :
+            const bool supported = position == 0 ? shape == "contour-route" || shape == "horizontal-counters" ||
+                shape == "suspended-loop" || shape == "counter-neck" :
                 position == 1 ? toothDescription(body) || shape == "stacked-counters" :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder";
@@ -48,13 +49,22 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             else
                 result.push_back({.formId = id, .entry = source.res, .landmarks = {*source.xSorted.rbegin()}});
         }
-    } else if (shape == "horizontal-counters") {
+    } else if (shape == "horizontal-counters" || shape == "suspended-loop" ||
+               (position == 0 && shape == "counter-neck")) {
         const auto evidence = recognizedSharedShape(source, body);
-        if (evidence->horizontalPair && declaredSharedBoundary(source, form) &&
-            matchesBoundaryBody(source, form, source.res, true)) {
+        QVector<size_t> counters;
+        if (evidence->horizontalPair) {
             const auto& pair = *evidence->horizontalPair;
+            counters = {pair.right.index, pair.left.index};
+        } else if (evidence->head) {
+            counters = {evidence->head->counter.index};
+        } else if (evidence->initialNeck) {
+            counters = {evidence->initialNeck->counter.index};
+        }
+        if (!counters.isEmpty() && declaredSharedBoundary(source, form) &&
+            matchesBoundaryBody(source, form, source.res, true)) {
             result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()},
-                              .counters = {pair.right.index, pair.left.index}});
+                              .counters = std::move(counters)});
         }
     } else if (shape == "stacked-counters") {
         const auto evidence = recognizedSharedShape(source, body);

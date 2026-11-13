@@ -72,8 +72,8 @@ LigatureMatch segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordI
         inspectSharedShape(*evidence);
         const auto parts = cutRegions(context.transformedPath, {}, {seam}, context.orientation, true);
         if (!evidence->head || parts.size() != 2 ||
-            !parts.front().path.boundingRect().contains(evidence->head->counter) ||
-            parts.back().path.boundingRect().intersects(evidence->head->counter))
+            !parts.front().path.boundingRect().contains(evidence->head->counter.box) ||
+            parts.back().path.boundingRect().intersects(evidence->head->counter.box))
             return fail(initialId + " · shared cut loses the loop");
     } else {
         if (!proposeTemplateBoundary(context, config, initial, false, false, nullptr, &seam))

@@ -1133,7 +1133,7 @@ std::optional<InitialCounterBody> recognizeInitialCounterBody(const InkOutline &
     const auto &counter = found->box;
     if (outline.bounds.right() - counter.right() > settings.value("maxOuterDistance").toDouble(1) * counter.height())
         return {};
-    InitialCounterBody result{counter, {}, {}};
+    InitialCounterBody result{*found, {}, {}};
     WordResultInfo::SubWordInfo empty;
     const auto geometry = outline.geometry(empty);
     const double radius = settings.value("maxNeckDistance").toDouble(1.5) * counter.height();
@@ -1152,7 +1152,7 @@ std::optional<InitialCounterBody> recognizeInitialCounterBody(const InkOutline &
 
 bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &body, const QJsonObject &settings) {
     const auto &ink = context.transformedPath;
-    const auto &counter = body.counter;
+    const auto &counter = body.counter.box;
     const double radius = settings.value("maxNeckDistance").toDouble(1.5) * counter.height();
     const auto retainsCounter = [&](const Stretching &cut) {
         const auto pieces = cutRegions(ink, {}, {cut}, context.orientation, true);
@@ -1229,8 +1229,8 @@ std::optional<LoopHeadBody> recognizeLoopHead(const InkOutline &outline, const Q
     const auto selected = std::max_element(holes.begin(), holes.end(), [](const auto &a, const auto &b) {
         return a.box.center().x() < b.box.center().x();
     });
-    LoopHeadBody result{selected->box};
-    const auto *counter = &result.counter;
+    LoopHeadBody result{*selected};
+    const auto *counter = &result.counter.box;
     const double scale = counter->height();
     WordResultInfo::SubWordInfo empty;
     auto geometry = outline.geometry(empty);
@@ -1265,7 +1265,7 @@ bool cutLoopHead(SearchContext &context, const LoopHeadBody &evidence, const QJs
                         const QJsonObject &policy) {
     const auto &ink = context.transformedPath;
     const auto settings = mergeShapeSettings(bodySettings, policy);
-    const auto *counter = &evidence.counter;
+    const auto *counter = &evidence.counter.box;
     const double scale = counter->height();
     const auto neckWalk = bodySettings.value("neckWalk").toObject();
     if (!neckWalk.isEmpty()) {

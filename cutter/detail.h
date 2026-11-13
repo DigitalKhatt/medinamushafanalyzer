@@ -758,7 +758,7 @@ bool projectCounterEntry(SearchContext& context, const CounterCornerEvidence& en
 // The initial loop ends at the inward corner below and to the left of its
 // counter. Locate that corner from the loop itself, independent of the next letter.
 struct InitialCounterBody {
-    QRectF counter;
+    CounterHole counter;
     std::vector<PathExtrema> valleys, normalAnchors;
 };
 
@@ -772,7 +772,7 @@ bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &bod
 // outgoing boundary. Neither the following letter nor its cut supplies a
 // landmark, baseline, or measurement scale.
 struct LoopHeadBody {
-    QRectF counter;
+    CounterHole counter;
     std::optional<PathExtrema> edge;
     struct Neck {
         PathExtrema crest;

@@ -284,6 +284,7 @@
     },
     {
       "id": "meem-init",
+      "fixedAnchors": true,
       "current": "م",
       "tryNext": true,
       "retryOnPartial": true,
