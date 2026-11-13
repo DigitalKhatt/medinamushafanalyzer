@@ -503,13 +503,11 @@ private:
     bool collectLegacyCutProposals(int pageIndex, int line, int word, int subword, AFont* font,
                                    QJsonObject& config);
     void refineBodyOwnership(int line, int word, int subword, const QJsonObject& config);
-    bool segmentWithRecovery(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                             const QJsonObject& config);
-    bool segmentConfigured(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                           const QJsonObject& config);
+    bool searchSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
+                       const QJsonObject& config);
     static bool recoverFoldedArm(Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config, bool attached);
     bool segmentWithLetterForms(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                                const QJsonObject& config, bool expand);
+                                const QJsonObject& config, OutlineSearchCache& outlineCache, bool expand);
     bool segmentSubwordPass(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
                             bool refresh, const QJsonObject* draft, bool recoverTeeth, OutlineSearchCache& outlineCache,
                             ToothSearchPlan* plan = nullptr,

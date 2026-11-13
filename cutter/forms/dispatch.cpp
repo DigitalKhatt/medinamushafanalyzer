@@ -196,12 +196,7 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
         result.clusters = recognizeToothClusters(outline, body.value("cluster").toObject());
     else if (shape == "profile-neck")
         result.bowlNecks = recognizeProfileNecks(outline, body);
-    else if (shape == "bowl-neck") {
-        const auto neck = body.value("neck").toObject();
-        result.bowlNecks = recognizeNeckBodies(outline, neck);
-        for (auto &candidate : result.bowlNecks)
-            candidate.probe = recognizeBowlProbe(outline, candidate.section, neck.value("lookahead").toInt(14));
-    } else if (shape == "paired-route")
+    else if (shape == "paired-route")
         result.pairedRoutes = recognizePairedRoutes(outline, body.value("routes").toObject());
     else if (shape == "tail-branch") {
         auto tail = body.value("tail").toObject();
@@ -306,8 +301,6 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
     for (const auto &neck : evidence.bowlNecks) {
         inspectLandmark("Bowl neck", neck.section.topBaseLine);
         inspectLandmark("Bowl neck", neck.section.bottomBaseLine);
-        if (neck.probe)
-            inspectLandmark("Bowl turn", neck.probe->extremum);
     }
     for (const auto &cluster : evidence.clusters)
         for (int i : {0, 2, 4})
@@ -586,9 +579,7 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
                 context.res.length = 0;
             }
         }
-    } else if (shape == "bowl-neck")
-        found = cutBowlNecks(context, evidence->bowlNecks, cuts.value("probe").toObject());
-    else if (shape == "bowl-turn")
+    } else if (shape == "bowl-turn")
         found = evidence->bowlTurn && cutBowlTurn(context, *evidence->bowlTurn, cuts);
     else if (shape == "counter-neck") {
         const auto settings = shapeSettings(form, "counter");
@@ -721,10 +712,11 @@ std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
         const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
         const CounterAttachmentLoop *loop = nullptr;
         if (evidence->attachment && cutCounterAttachments(context, *evidence->attachment, bridge, &loop)) {
-            auto left = context.res;
-            Stretching right{};
-            if (cutLoopShoulder(context, loop->box, loop->shoulders, bridge.value("shoulder").toObject(),
-                                left.topBaseLine.time, false, right))
+            const auto left = context.res;
+            // A shoulder that owns the counter on its own may still wrap
+            // around a preceding cut. Let assembly check the ordered options.
+            for (const auto& right : loopShoulderCuts(context, loop->box, loop->shoulders,
+                     bridge.value("shoulder").toObject(), left.topBaseLine.time, false))
                 candidates.emplace_back(right, left);
         }
         context.form = previousForm;
@@ -835,9 +827,10 @@ std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
             if (body) candidates.emplace_back(body->first, body->second);
         }
     }
-    if (!openHead.isEmpty())
+    if (!openHead.isEmpty()) {
         for (const auto &[right, left] : declaredOpenHeadCuts(context, form, bodyMinX, entryX))
             candidates.emplace_back(right, left);
+    }
     return candidates;
 }
 

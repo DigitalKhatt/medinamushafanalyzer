@@ -72,15 +72,21 @@ std::optional<Stretching> seenEntryCornerPair(SearchContext& context, const Path
 static bool seenExitBendCut(SearchContext& context, const PathExtrema& tip,
                             bool increasingTime, double maxDistance, Stretching& cut,
                             double alongContour = 0,
-                            double maxSectionWidth = std::numeric_limits<double>::infinity()) {
+                            double maxSectionWidth = std::numeric_limits<double>::infinity(),
+                            double crestTolerance = 0) {
     const auto advance = increasingTime ? &SearchContext::prev : &SearchContext::next;
     auto end = context.timeSorted.find(tip);
     if (end == context.timeSorted.end()) return false;
+    bool subdividedCrest = false;
     for (size_t step = 0; step < context.timeSorted.size(); ++step) {
         const auto next = (context.*advance)(end);
-        if (next->point.y() <= end->point.y()) break;
+        if (next->point.y() <= end->point.y()) {
+            if (crestTolerance <= 0 || QLineF(tip.point, next->point).length() > crestTolerance) break;
+            subdividedCrest = true;
+        }
         end = next;
     }
+    if (crestTolerance > 0 && !subdividedCrest) return false;
     const double count = baseContourCurves(context.transformedPath).size();
     const auto distanceOnFlank = [&](double time) {
         const double delta = increasingTime ? time - tip.time : tip.time - time;
@@ -652,11 +658,18 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
             if (entry) {
                 const QLineF edge(entry->topBaseLine.point, entry->bottomBaseLine.point);
                 const double stroke = edge.length();
-                const auto pivot = edge.center();
-                // Shift into the incoming join by a fraction of the width
-                // between these two landmarks, then use the local stroke normal.
-                const double x = pivot.x() + form.value("rightOffset").toDouble() * stroke;
-                cornerEntry = medialChordAt(context, x, pivot.y(), 2 * stroke, r) && strokeNormalCut(context, r);
+                const double offset = form.value("rightOffset").toDouble();
+                if (offset == 0) {
+                    r = *entry;
+                    orientSection(context, r, turns[0].time, true);
+                    cornerEntry = true;
+                } else {
+                    const auto pivot = edge.center();
+                    // Shift into the incoming join by a fraction of the width
+                    // between these landmarks, then use the local stroke normal.
+                    cornerEntry = medialChordAt(context, pivot.x() + offset * stroke, pivot.y(), 2 * stroke, r) &&
+                        strokeNormalCut(context, r);
+                }
                 if (cornerEntry)
                     r.referenceWidth = stroke;
             }
@@ -703,8 +716,12 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
             const double y = foot->point.y() - form.value("exitDrop").toDouble(.05);
             if (y <= turns[4].point.y() || !project(turns[4], y, false, l)) {
                 const double radius = form.value("maxExitBendDistance").toDouble() * (pitch1 + pitch2) / 2;
-                if (!seenExitBendCut(context, turns[4], advance == &SearchContext::prev, radius, l))
-                    continue;
+                if (!seenExitBendCut(context, turns[4], advance == &SearchContext::prev, radius, l)) {
+                    // The end of a rounded crest can have two nearly
+                    // coincident extrema before its descending flank.
+                    if (!seenExitBendCut(context, turns[4], advance == &SearchContext::prev,
+                            pitch1 + pitch2, l, 0, (pitch1 + pitch2) / 2, rise * .05)) continue;
+                }
             }
         }
         // A closed loop can have a crest resembling a third tooth. Check
@@ -731,7 +748,15 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
             *matchedTips = {turns[0], turns[2], turns[4]};
         match = std::pair{r, l};
     }
-    if (!match) return false;
+    if (!match) {
+        // A shifted normal can cross the tip of a tight first tooth. The
+        // original facing corners define a second, unshifted entry.
+        if (!right || !left || !form.value("allowUnshiftedEntry").toBool() ||
+            form.value("rightOffset").toDouble() <= 0) return false;
+        auto unshifted = form;
+        unshifted.insert("rightOffset", 0);
+        return cutToothClusters(context, bodies, unshifted, minX, maxX, right, left, finalFold, matchedTips, retry);
+    }
     if (right) *right = match->first;
     if (left) *left = match->second;
     return true;
@@ -1216,6 +1241,12 @@ std::vector<ToothBodyEvidence> recognizeToothBodies(
     return results;
 }
 
+static bool retainsTooth(const SearchContext& context, const Stretching& cut, QPointF tip, QPointF bend) {
+    const auto pieces = cutRegions(context.transformedPath, {}, {cut}, context.orientation, true);
+    return pieces.size() == 2 && pieces[0].path.contains(tip + .05 * (bend - tip)) &&
+        pieces[0].path.contains(tip + .95 * (bend - tip));
+}
+
 // Only this stage places the normal sections and chooses an accepted pair of
 // boundaries. Candidate order and all offsets retain the previous geometry.
 std::vector<ToothBody> cutToothBodies(SearchContext& context,
@@ -1347,12 +1378,8 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
                     if (offset < 0 && strokeNormalCut(context, left, offset)) { normalLeft = true; break; }
                 }
             }
-            const auto ownsTooth = [&](const Stretching& cut) {
-                const auto pieces = cutRegions(ink, {}, {cut}, context.orientation, true);
-                return pieces.size() == 2 && pieces[0].path.contains(tip + .05 * (inner.point - tip)) &&
-                    pieces[0].path.contains(tip + .95 * (inner.point - tip));
-            };
-            normalLeft = normalLeft && (bothSides || onFlank(left.topBaseLine, leftFlank)) && ownsTooth(left);
+            normalLeft = normalLeft && (bothSides || onFlank(left.topBaseLine, leftFlank)) &&
+                retainsTooth(context, left, tip, inner.point);
             const bool remote = bothSides && normalLeft &&
                 QLineF(inner.point, left.bottomBaseLine.point).length() > 1.5 * stroke;
             if (!normalLeft || remote) {
@@ -1370,7 +1397,8 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
                             Stretching proposal{};
                             if (contourNormalCut(context, anchor, advance == &SearchContext::prev, false, proposal)) {
                                 std::swap(proposal.topBaseLine, proposal.bottomBaseLine);
-                                if ((bothSides || onFlank(proposal.topBaseLine, leftFlank)) && ownsTooth(proposal)) {
+                                if ((bothSides || onFlank(proposal.topBaseLine, leftFlank)) &&
+                                    retainsTooth(context, proposal, tip, inner.point)) {
                                     left = proposal;
                                     walked = true;
                                 }
@@ -1480,9 +1508,26 @@ std::shared_ptr<const LoopTeeth> recognizeLoopTeeth(const InkOutline &outline, c
     return std::make_shared<const LoopTeeth>(recognizeToothBodies(geometry, body));
 }
 
-std::vector<ToothBody> cutLoopTeeth(SearchContext &context, const std::shared_ptr<const LoopTeeth> &bodies,
-                                           const QJsonObject &policy) {
-    return bodies ? cutToothBodies(context, *bodies, policy, false) : std::vector<ToothBody>{};
+std::vector<ToothBody> cutLoopReturningTeeth(const SearchContext& context, const LoopTeeth& bodies) {
+    std::vector<ToothBody> result;
+    for (const auto& body : bodies) {
+        // A descending return can leave the tooth's outer tip on the lower
+        // edge of the connector. The inward bend then points into the return.
+        const auto& rightFlank = body.reverseIsRight ? body.reverseFlank : body.forwardFlank;
+        const auto foot = std::ranges::max_element(rightFlank, {}, [](const auto& p) { return p.point.y(); });
+        for (const auto& pair : body.pairs) {
+            if (!pair.localScale || foot->point.y() - pair.bend.point.y() <= pair.localScale->stroke) continue;
+            Stretching exit{};
+            if (!contourNormalCut(context, body.tip, body.reverseIsRight, false, exit, true)) break;
+            std::swap(exit.topBaseLine, exit.bottomBaseLine);
+            const auto interval = getJoinTime(exit, context.orientation);
+            if (!interval.isStrictRight(foot->time) || !interval.isStrictRight(pair.bend.time) ||
+                !retainsTooth(context, exit, body.tip.point, pair.bend.point)) continue;
+            result.push_back({body.tip, pair.bend, exit, {}});
+            break;
+        }
+    }
+    return result;
 }
 
 std::vector<ToothBody> computeToothBoundaries(SearchContext& context, const QJsonObject& form) {

@@ -106,7 +106,6 @@ static void checkToothBeforeMeem(const QJsonObject& config) {
         if (!hasToothBody(form) || form.value("id") == "beh-tooth-medi") medial.append(value);
     }
     withoutBentTooth.insert("medial", medial);
-    withoutBentTooth.remove("unresolvedShapeFrames");
     check(!analysis.segmentSubword(259, 0, 4, 1, &font, true, &withoutBentTooth) && !sub.correct &&
         sub.letterDiagnostics.at(2).toObject().value("status") == "no-match",
         "The false tooth and partial meem were accepted without a compatible tooth form");

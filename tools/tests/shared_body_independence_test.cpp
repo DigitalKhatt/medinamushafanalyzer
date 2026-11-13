@@ -216,13 +216,7 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         point(b.section.topRight);
         point(b.section.bottomLeft);
         point(b.section.bottomRight);
-        out << b.section.clockWise << b.section.length << bool(b.probe);
-        if (b.probe) {
-            point(b.probe->extremum);
-            out << bool(b.probe->smooth);
-            if (b.probe->smooth)
-                point(*b.probe->smooth);
-        }
+        out << b.section.clockWise << b.section.length;
     }
     out << quint64(e.clusters.size());
     for (const auto &c : e.clusters) {
@@ -370,6 +364,10 @@ int main(int argc, char **argv) {
     check(PageAnalysisResult::prepareLetterForms(config).isEmpty(), "Invalid declared forms");
     QVector<QJsonObject> forms;
     QSet<QString> shapes;
+    const auto addForm = [&](const QJsonObject& form) {
+        forms.append(form);
+        shapes.insert(form.value("body").toObject().value("shape").toString());
+    };
     for (const auto *phase : {"initial", "medial", "final"})
         for (const auto &value : config.value(phase).toArray()) {
             const auto form = resolvedBodyForm(config, value.toObject());
@@ -396,8 +394,7 @@ int main(int argc, char **argv) {
             check(sharedShapeDescription(form.value("body").toObject()) && !form.contains("method") &&
                       !form.contains("loopBoundaries") && !form.contains("counter") && !form.contains("bodyOutline"),
                   "A declared form still dispatches through legacy geometry");
-            forms.append(form);
-            shapes.insert(form.value("body").toObject().value("shape").toString());
+            addForm(form);
             auto invalid = config, bad = form, body = form.value("body").toObject();
             body.insert("normalCut", true);
             bad.insert("body", body);
@@ -412,10 +409,14 @@ int main(int argc, char **argv) {
             invalid.insert(phase, QJsonArray{bad});
             check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
         }
+    QHash<QString, QString> retryParents;
+    for (const auto& candidate : finalRetryCandidates(config.value("final").toArray(), retryParents)) {
+        const auto form = resolvedBodyForm(config, candidate.toObject());
+        if (retryParents.contains(form.value("id").toString())) addForm(form);
+    }
     const auto& schemas = sharedShapeSchemas();
     for (auto schema = schemas.cbegin(); schema != schemas.cend(); ++schema)
-        // The former noon body is still supported for saved template drafts.
-        if (schema.key() != "bowl-neck" && !shapes.contains(schema.key()))
+        if (!shapes.contains(schema.key()))
             qFatal("No configured template exercises shared shape %s", qPrintable(schema.key()));
     struct Fixture {
         int page, line, word, sub;

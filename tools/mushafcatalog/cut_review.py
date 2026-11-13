@@ -37,9 +37,10 @@ def compare_page(db, pid, folder):
         spec = expected[sid]
         if data['keys'][sid] != spec['body_key']:
             issues.append(dict(id=sid, issue='source-key-changed'))
-        if result['status'] != 'template':
+        complete = result['status'] == 'template'
+        if not complete:
             issues.append(dict(id=sid, issue='unresolved', status=result['status']))
-        if sum(p['role']=='body' for p in result.get('parts', [])) != spec['letter_count']:
+        elif sum(p['role']=='body' for p in result.get('parts', [])) != spec['letter_count']:
             issues.append(dict(id=sid, issue='letter-count'))
         keys = [o['id']+'/'+role for o in owners[sid] for role in ('body','kashida')]
         a = {k:before['parts'][k] for k in keys if k in before['parts']}
@@ -49,11 +50,12 @@ def compare_page(db, pid, folder):
         altered = {k:v for k,v in altered.items() if v or (k in a)!=(k in b)}
         if not altered:
             continue
-        try:
-            partition_rows(db, dict(version=VERSION, subword=sid, sourceKey=data['keys'][sid],
-                                    producer='cut-review', parts=result.get('parts', [])))
-        except ValueError as error:
-            issues.append(dict(id=sid, issue='invalid-partition', error=str(error)))
+        if complete:
+            try:
+                partition_rows(db, dict(version=VERSION, subword=sid, sourceKey=data['keys'][sid],
+                                        producer='cut-review', parts=result.get('parts', [])))
+            except ValueError as error:
+                issues.append(dict(id=sid, issue='invalid-partition', error=str(error)))
         changes.append(dict(id=sid, text=spec['text'], status=result['status'], changedParts=altered,
                             owners=owners[sid], before=a, after=b))
     return changes, issues
@@ -72,6 +74,9 @@ def render_report(folder, report):
         panels = []
         changed = change['changedParts']
         for side in ('before','after'):
+            if side == 'after' and change['status'] != 'template':
+                panels.append('<section><h3>After</h3><p>Unresolved</p></section>')
+                continue
             paths, cuts = [], []
             for key,p in change[side].items():
                 color = '#ce9c31' if key.endswith('/kashida') else '#057f91' if key in changed else '#adb8be'
@@ -106,14 +111,18 @@ pre{white-space:pre-wrap}input{padding:10px;width:300px}table{border-collapse:co
 <h1>Cutter changes</h1><p>__SUMMARY__</p><p>Teal: changed letter bodies · gray: unchanged letters · gold: kashidas · pink: cut endpoints. Click an image to enlarge.</p>
 <input placeholder="Filter by subword ID" oninput="document.querySelectorAll('article').forEach(e=>e.hidden=!e.dataset.id.includes(this.value))">
 __CANDIDATES__<details><summary>Verification and timing</summary><pre>__JSON__</pre></details><main class="grid">__CARDS__</main></html>'''
+    unresolved = sum(issue['issue']=='unresolved' for issue in report['issues'])
+    changed = sum(change['status']=='template' for change in report['changes'])
+    failures = len(report['issues']) - unresolved
     (folder/'index.html').write_text(html.replace('__SUMMARY__',escape(
-        f"{report['pages']} pages · {report['subwords']:,} multi-letter subwords · {len(cards)} changed · {len(report['issues'])} structural issues"))
+        f"{report['pages']} pages · {report['subwords']:,} multi-letter subwords · {changed} changed complete cuts · "
+        f"{unresolved} unresolved · {failures} validation issues"))
         .replace('__JSON__',escape(json.dumps(summary,ensure_ascii=False,indent=2)))
         .replace('__CANDIDATES__',candidates)
         .replace('__CARDS__',''.join(cards)))
 
 
-def review(database, destination, pages, workers, templates):
+def review(database, destination, pages, workers, templates, *, compare_anchors=False):
     started = time.perf_counter()
     folder = destination.resolve()
     require(not folder.exists() or not any(folder.iterdir()), 'Choose an empty review directory')
@@ -131,14 +140,14 @@ def review(database, destination, pages, workers, templates):
         for sid,pid in db.execute("SELECT id,page_id FROM catalog_subwords WHERE kind='text' AND letter_count>1"):
             if pid in chosen:
                 targets[pid].add(sid)
-    counts, stages, python = Counter(), Counter(), Counter()
+    counts, stages, python, anchors = Counter(), Counter(), Counter(), Counter()
     candidate_totals, candidate_forms = Counter(), defaultdict(Counter)
     changes, issues, slowest = [], [], []
     revisions, cache_hits = set(), 0
     cut_started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=workers) as pool, (folder/'cutter.log').open('w') as log:
         jobs = {pool.submit(prepare_page,folder/'reference.sqlite',pid,binary,folder/'pages',
-                            targets[pid],folder/'letter-forms.json',profile=True):pid for pid in chosen}
+                            targets[pid],folder/'letter-forms.json',profile=True,compare_anchors=compare_anchors):pid for pid in chosen}
         for n,job in enumerate(as_completed(jobs),1):
             pid = jobs[job]
             revisions.add(job.result())
@@ -150,7 +159,11 @@ def review(database, destination, pages, workers, templates):
             slowest.extend(timing['subwords'])
             for subword in timing['subwords']:
                 search = subword.get('search', {})
-                candidate_totals.update({k:v for k,v in search.items() if k!='forms'})
+                candidate_totals.update({k:v for k,v in search.items() if k not in ('forms','anchorSearch')})
+                if status := search.get('anchorSearch'):
+                    anchors[status] += 1
+                    if status == 'different-cuts':
+                        issues.append(dict(id=subword['id'], issue='anchor-search-difference'))
                 for form, statistics in search.get('forms', {}).items():
                     candidate_forms[form].update(statistics)
             if n%25==0 or n==len(chosen):
@@ -163,6 +176,7 @@ def review(database, destination, pages, workers, templates):
             altered, errors = compare_page(db,pid,folder/'pages')
             changes.extend(altered); issues.extend(errors)
     report = dict(pages=len(chosen), subwords=sum(counts.values()), statusCounts=counts,
+                  anchorSearch=dict(sorted(anchors.items())),
                   changes=changes, issues=issues, inputCacheHits=cache_hits,
                   cutSeconds=cut_seconds, elapsedSeconds=time.perf_counter()-started,
                   stageSeconds={k:v/1000 for k,v in stages.items()}, pythonSeconds=python,
@@ -175,4 +189,5 @@ def review(database, destination, pages, workers, templates):
     (folder/'comparison.json').write_text(encoded(report))
     render_report(folder,report)
     return dict(report=str(folder/'index.html'),pages=len(chosen),subwords=report['subwords'],
-                changed=len(changes),issues=issues,cutSeconds=cut_seconds,elapsedSeconds=report['elapsedSeconds'])
+                changed=len(changes),issues=issues,anchorSearch=report['anchorSearch'],
+                cutSeconds=cut_seconds,elapsedSeconds=report['elapsedSeconds'])

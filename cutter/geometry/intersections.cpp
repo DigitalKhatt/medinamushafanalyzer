@@ -4,9 +4,53 @@ using namespace MedinaCutter;
 
 namespace MedinaCutter {
 
+static bool oppositeSigns(double a, double b) {
+    return (a < 0 && b > 0) || (a > 0 && b < 0);
+}
+
+static std::span<double> bracketCubicRoots(double a, double b, double c, double d,
+        double tolerance, int iterations, std::array<double, 3>& storage) {
+    std::array<double, 3> stationary{};
+    const auto turns = cubicRoots(0, 3 * a, 2 * b, c, stationary);
+    const auto value = [&](double t) {
+        if (tolerance == 0) return ((a * t + b) * t + c) * t + d;
+        return std::fma(std::fma(std::fma(a, t, b), t, c), t, d);
+    };
+    size_t count = 0;
+    const auto add = [&](double t) {
+        if (count < storage.size() && (!count || t - storage[count - 1] > 1e-12))
+            storage[count++] = t;
+    };
+    double left = 0;
+    double leftValue = d;
+    if (std::abs(d) <= tolerance) add(0);
+    for (size_t i = 0; i <= turns.size(); ++i) {
+        const double right = i < turns.size() ? turns[i] : 1.;
+        if (right == left) continue;
+        const double rightValue = value(right);
+        if (std::abs(rightValue) <= tolerance) {
+            add(right);
+        } else if (std::abs(leftValue) > tolerance && oppositeSigns(leftValue, rightValue)) {
+            double lo = left, hi = right;
+            for (int step = 0; step < iterations; ++step) {
+                const double mid = (lo + hi) / 2;
+                const double midValue = value(mid);
+                if (midValue == 0) { lo = hi = mid; break; }
+                if (oppositeSigns(leftValue, midValue)) hi = mid;
+                else lo = mid;
+            }
+            add((lo + hi) / 2);
+        }
+        left = right;
+        leftValue = rightValue;
+    }
+    return std::span(storage).first(count);
+}
+
 /*based on https://www.particleincell.com/2013/cubic-line-intersection/
 and http://mysite.verizon.net/res148h4j/javascript/script_exact_cubic.html#the%20source%20code */
-std::span<double> cubicRoots(double a, double b, double c, double d, std::array<double, 3>& storage) {
+std::span<double> cubicRoots(double a, double b, double c, double d, std::array<double, 3>& storage,
+        RootSearch search) {
 
 	size_t count = 0;
 	const auto roots = [&] { return std::span(storage).first(count); };
@@ -40,6 +84,8 @@ std::span<double> cubicRoots(double a, double b, double c, double d, std::array<
 		std::sort(result.begin(), result.end());
 		return result;
 	}
+    if (search == RootSearch::BracketAllCrossings)
+        return bracketCubicRoots(a, b, c, d, tolerance, 42, storage);
 	auto sgn = [](double x)
 	{
 		if (x < 0.0) return -1;
@@ -92,11 +138,16 @@ std::span<double> cubicRoots(double a, double b, double c, double d, std::array<
 		storage[count++] = t[i];
 	}
 
+	// Cardano's formula can lose a real root when a Bézier's projected
+	// cubic term nearly vanishes. Opposite endpoint signs prove that
+	// the original curve crosses the probe. Bracket it on monotone spans.
+    if (search == RootSearch::BracketMissedCrossing && count == 0 && oppositeSigns(d, ((a + b) + c) + d))
+        return bracketCubicRoots(a, b, c, d, 0, 50, storage);
 	return roots();
 }
 
 void FindInterections(const QBezier& b, const QLineF& line, int pathIndex, int curveIndex,
-                             std::vector<PathExtrema>& intersections, const ProbeBounds* probeBounds) {
+        std::vector<PathExtrema>& intersections, const ProbeBounds* probeBounds, RootSearch search) {
 
 	auto C0 = b.pt1();
 	auto C1 = b.pt2();
@@ -150,7 +201,7 @@ void FindInterections(const QBezier& b, const QLineF& line, int pathIndex, int c
 	auto result = cubicRoots(vx * Ax + vy * Ay,
 		vx * Bx + vy * By,
 		vx * Cx + vy * Cy,
-		vx * Dx + vy * Dy - d, roots);
+		vx * Dx + vy * Dy - d, roots, search);
 
 	for (auto t : result) {
 		if (0 > t || t > 1) continue;
@@ -170,8 +221,9 @@ void FindInterections(const QBezier& b, const QLineF& line, int pathIndex, int c
 	}
 }
 
-std::vector<PathExtrema> FindInterections(const QPainterPath& path, const QLineF& line, bool segment) {
+std::vector<PathExtrema> FindInterections(const QPainterPath& path, const QLineF& line, bool segment, RootSearch search) {
 
+	if (cutGeometryMemo && cutGeometryMemo->verifyContourGeometry) search = RootSearch::BracketAllCrossings;
 	std::vector<PathExtrema> res;
     constexpr double tolerance = 1e-9;
     const ProbeBounds bounds{std::min(line.x1(), line.x2()) - tolerance, std::max(line.x1(), line.x2()) + tolerance,
@@ -207,7 +259,7 @@ std::vector<PathExtrema> FindInterections(const QPainterPath& path, const QLineF
 				path.elementAt(i + 1),
 				path.elementAt(i + 2));
 			i += 2;
-			FindInterections(b, line, pathIndex, curveIndex, res, segment ? &bounds : nullptr);
+			FindInterections(b, line, pathIndex, curveIndex, res, segment ? &bounds : nullptr, search);
 			break;
 		}
 		case QPainterPath::CurveToDataElement:

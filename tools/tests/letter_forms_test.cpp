@@ -82,10 +82,6 @@ int main(int argc, char** argv) {
         shortExit.insert("minLengthRatio", 1);
         draft = withShortExit(shortExit);
         check(!PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Invalid short lam exit ratio accepted");
-        shortExit.insert("minLengthRatio", 2);
-        shortExit.insert("retryOnUnresolved", "yes");
-        draft = withShortExit(shortExit);
-        check(!PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Invalid short lam exit retry accepted");
     }
     // Lām forms cannot silently re-enter the old method dispatcher.
     for (const auto* key : {"method", "legacyLamRoutes"}) {
@@ -101,18 +97,30 @@ int main(int argc, char** argv) {
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Legacy lām matcher configuration accepted");
     }
     check(!config.value("kashidaDefaults").toObject().value("trackingEnabled").toBool(), "Tracker was enabled");
-    for (const auto& invalidRange : {QJsonArray{-30, 0}, QJsonArray{"6"}}) {
-        auto invalid = config;
-        invalid.insert("unresolvedTiltAngles", invalidRange);
-        check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Invalid contour tilt accepted");
-    }
     {
         auto invalid = config;
         auto forms = invalid.value("final").toArray();
+        const auto rim = QJsonObject{{"top", QJsonArray{0, 1}}, {"bottom", QJsonArray{0, 1}},
+                                     {"left", QJsonArray{0, 1}}, {"right", QJsonArray{0, 1}}};
         forms.append(QJsonObject{{"id", "missing-rim-attachment"}, {"current", "م"}, {"onUnresolved", true},
-                                 {"bodyOutline", QJsonObject{{"aspect", QJsonArray{1, 2}}, {"counters", 1}}}});
+            {"body", QJsonObject{{"shape", "counter-outline"}, {"counters", 1},
+                                 {"outline", QJsonObject{{"aspect", QJsonArray{1, 2}}, {"rim", rim}}}}},
+            {"cuts", QJsonObject{{"boundaries", QJsonObject{{"left", "free"}, {"right", "outline-entry"}}}}}});
         invalid.insert("final", forms);
         check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "An unbounded counter outline was accepted");
+    }
+    {
+        auto invalid = config;
+        auto finals = invalid.value("final").toArray();
+        for (auto entry = finals.begin(); entry != finals.end(); ++entry) {
+            auto form = entry->toObject();
+            if (form.value("id") != "yeh-first-turn-fina") continue;
+            form.remove("sharedBoundary");
+            *entry = form;
+        }
+        invalid.insert("final", finals);
+        check(PageAnalysisResult::prepareLetterForms(invalid).contains("shareEntryWhenUnresolved"),
+              "A terminal assembly without a declared shared boundary was accepted");
     }
     for (int scenario = 0; scenario < 30; ++scenario) {
         auto invalid = config;

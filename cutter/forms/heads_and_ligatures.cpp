@@ -70,9 +70,10 @@ cutOpenHeads(SearchContext &context, const std::vector<OpenHeadBody> &bodies, co
         const double depth = body.height * policy.value("depth").toDouble(1),
                      reach = body.height * policy.value("reach").toDouble(2);
         Stretching right{}, left{};
-        if (medialChordAt(context, r.x(), r.y() + depth, reach, right) &&
-            medialChordAt(context, l.x(), l.y() + depth, reach, left) && right.topBaseLine.point.y() >= r.y() &&
-            left.topBaseLine.point.y() >= l.y())
+        // The crest and both lips are already fixed on the source. Find the
+        // sections below them, including crossings lost by the cubic solver.
+        if (medialChordAt(context, r.x(), r.y() + depth, reach, right, false, r.y(), RootSearch::BracketMissedCrossing) &&
+            medialChordAt(context, l.x(), l.y() + depth, reach, left, false, l.y(), RootSearch::BracketMissedCrossing))
             candidates.emplace_back(right, left);
     }
     std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
@@ -122,8 +123,10 @@ cutCrestedLoops(SearchContext &context, const std::vector<CrestedLoopBody> &bodi
         const double scale = counter.height();
         Stretching right{}, left{};
         const double distance = policy.value("maxNeckDistance").toDouble(2) * scale;
-        if (!medialChordAt(context, r.x(), counter.bottom(), distance, right, false, counter.bottom()) ||
-            !medialChordAt(context, l.x(), counter.bottom(), distance, left, false, counter.bottom()))
+        if (!medialChordAt(context, r.x(), counter.bottom(), distance, right, false, counter.bottom(),
+                            RootSearch::BracketMissedCrossing) ||
+            !medialChordAt(context, l.x(), counter.bottom(), distance, left, false, counter.bottom(),
+                            RootSearch::BracketMissedCrossing))
             continue;
         const auto pieces = cutRegions(ink, {}, {right, left}, context.orientation, true);
         if (pieces.size() != 3 || !pieces[1].path.boundingRect().contains(counter) ||
@@ -425,18 +428,45 @@ std::optional<Stretching> restoreNoonBowlEntry(SearchContext& ctx, Stretching en
     return {};
 }
 
-bool cutReturnSeam(SearchContext &ctx, const ReturnSeamBody &body, const QJsonObject &policy, Stretching &cut,
-                          double *shoulderX) {
+bool cutReturnSeam(SearchContext& ctx, const ReturnSeamBody& body, const QJsonObject& policy, Stretching& cut) {
     if (QLineF(body.first.point, body.second.point).length() > policy.value("maxChord").toDouble() ||
         !interiorChord(ctx.transformedPath, body.first, body.second))
         return false;
     cut.topBaseLine = body.first;
     cut.bottomBaseLine = body.second;
     orientSection(ctx, cut, body.tip.time, true);
+    if (const double walk = policy.value("upperWalkWidths").toDouble(); walk > 0) {
+        const auto top = cut.topBaseLine;
+        const auto side = getJoinTime(cut, ctx.orientation);
+        // Follow the upper return away from the tail, keeping the lower
+        // shoulder fixed and both recognized corners with the body.
+        const bool forward = (top.time < cut.bottomBaseLine.time) == side.startAtLeft;
+        auto limit = cut.bottomBaseLine;
+        const int curves = static_cast<int>(baseContourCurves(ctx.transformedPath).size());
+        if (forward && limit.time <= top.time) limit.time += curves;
+        if (!forward && limit.time >= top.time) limit.time -= curves;
+        QPointF tangent;
+        PathExtrema shifted;
+        const double width = QLineF(top.point, cut.bottomBaseLine.point).length();
+        if (!advanceOnContour(ctx.transformedPath, top, limit, forward, walk * width, shifted, tangent) ||
+            !interiorChord(ctx.transformedPath, shifted, cut.bottomBaseLine) ||
+            QLineF(shifted.point, cut.bottomBaseLine.point).length() > policy.value("maxChord").toDouble()) return false;
+        cut.topBaseLine = shifted;
+    }
     cut.fixedLeftBoundary = cut.fixedRightBoundary = true;
-    if (shoulderX)
-        *shoulderX = body.shoulderX;
     return true;
+}
+
+bool retainsTerminalReturn(SearchContext& context, const QJsonObject& form, const QPainterPath& body) {
+    const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
+    const auto policy = form.value("cuts").toObject().value("return").toObject();
+    Stretching seam{};
+    if (!evidence->returnSeam || !cutReturnSeam(context, *evidence->returnSeam, policy, seam)) return true;
+    const double width = QLineF(seam.topBaseLine.point, seam.bottomBaseLine.point).length();
+    const double margin = policy.value("maxClipWidths").toDouble() * width;
+    const auto bounds = body.boundingRect();
+    return bounds.left() <= evidence->returnSeam->tip.point.x() + margin &&
+           bounds.right() >= evidence->returnSeam->shoulderX - margin;
 }
 
 std::optional<ReturnSeamBody> recognizeFoldedReturn(const InkOutline &outline, const QJsonObject &spec) {
@@ -497,7 +527,7 @@ bool readTerminalOutline(SearchContext& context) {
     context.transformedPath.setFillRule(Qt::WindingFill);
     context.bbox = context.transformedPath.boundingRect();
     QVector<PathExtrema> landmarks;
-    ShapeItem::getExtrema(context.transformedPath, context.subPaths, landmarks);
+    readContourLandmarks(context.transformedPath, context.subPaths, landmarks);
     for (const auto& point : landmarks) if (point.pathIndex == 0) {
         context.timeSorted.insert(point);
         context.xSorted.insert(point);
@@ -870,7 +900,7 @@ std::optional<ComponentArmBody> recognizeArmEnvelope(const QPainterPath &ink, do
         return {};
     QVector<PathExtrema> extrema;
     std::vector<QPainterPath> outlines;
-    ShapeItem::getExtrema(ink, outlines, extrema);
+    readContourLandmarks(ink, outlines, extrema);
     if (extrema.isEmpty())
         return {};
     const auto byY = [](const auto &a, const auto &b) { return a.point.y() < b.point.y(); };

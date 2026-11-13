@@ -17,7 +17,7 @@ bool preparePassOutline(SearchContext& context, OutlineSearchCache& cache) {
         auto prepared = std::make_shared<PreparedPassOutline>();
         prepared->ink = context.transformedPath;
         QVector<PathExtrema> raw;
-        ShapeItem::getExtrema(prepared->ink, prepared->contours, raw);
+        readContourLandmarks(prepared->ink, prepared->contours, raw);
         for (const auto& point : raw) {
             auto existing = std::find_if(prepared->extrema.begin(), prepared->extrema.end(), [&](const auto& other) {
                 const double dx = std::abs(other.point.x() - point.point.x());
@@ -506,21 +506,23 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
         QString error = QStringLiteral("no tooth-cluster landmark evidence");
         if (form != program.forms.cend() && form->body.value("shape") == "tooth-cluster") {
             const auto mask = inPage(sub.baseGlyphs[slot].path);
+            const bool requiresBowl = form->cuts.value("cluster").toObject().value("terminalBowl").toBool();
             if (!component.isEmpty()) {
                 // The pen lift ends the component inside the word.
-                // Verify the medial body's teeth on that original component.
+                // Verify its teeth with the same bowl requirement used to cut
+                // the component. A loose cluster can fit part of the free rim.
                 int matches = 0;
                 for (const auto& part : recognizeSourceComponents(shape.path)) {
                     SearchContext context{.transformedPath = inPage(part.ink), .subword = geometryOnly};
                     if (readTerminalOutline(context) &&
-                        fitToothCluster(context, form->body, form->cuts, mask, false, penWidth, {}, false)
+                        fitToothCluster(context, form->body, form->cuts, mask, requiresBowl, penWidth, {}, false)
                             .error.isEmpty()) ++matches;
                 }
                 error = matches == 1 ? QString{} : QStringLiteral("cannot verify a unique tooth cluster on the pen-lift component");
             } else if (hasOutline) {
                 ToothClusterAttachment attachment;
                 const bool terminal = slot + 1 == letters.size();
-                const bool hasBowl = terminal && !penLiftAtEnd;
+                const bool hasBowl = terminal && (!penLiftAtEnd || requiresBowl);
                 const double minConnectorWidths = slot == 0 ? form->cuts.value("minConnectorWidths").toDouble() : 0;
                 if (alignedJoins) {
                     if (slot > 0) attachment.entry = actualCap(slot - 1, true);

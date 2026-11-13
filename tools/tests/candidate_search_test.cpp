@@ -37,10 +37,93 @@ static QByteArray snapshot(const std::vector<ToothBody>& candidates) {
     return bytes;
 }
 
+static void checkRecoveryPriority(const QJsonObject& config, AFont& font) {
+    struct Fixture {
+        int page, line, word, subword;
+        QStringList forms;
+        int join = -1;
+        bool hasConnector = false;
+    };
+    const Fixture fixtures[] = {
+        {29, 14, 6, 1, {"seen-init", "beh-upright-medi", "beh-tooth-medi", "lam-bowl-fina"}},
+        {416, 7, 8, 2, {"seen-init", "beh-tooth-medi", "hah-flat-medi", "waw-fina"}},
+        {411, 7, 9, 3, {"lam-init", "beh-bent-medi", "kaf-bowl-fina"}},
+        {6, 6, 10, 2, {"lam-hah-stacked-init", "hah-returning-lips-medi", "kaf-zigzag-medi", "beh-tooth-medi",
+                       "meem-counter-fina"}, 0, true},
+        {293, 7, 2, 2, {"lam-hah-stacked-init", "hah-compact-medi", "seen-compact-medi", "beh-tooth-medi",
+                        "yeh-first-turn-fina"}, 0},
+        {527, 14, 3, 2, {"lam-hah-stacked-init", "hah-compact-medi", "reh-rising-tail-fina"}, 0},
+        {92, 6, 7, 3, {"heh-init", "meem-tailed-rim-fina"}, 0},
+        {103, 6, 3, 1, {"lam-init", "feh-descending-rim-medi", "yeh-first-turn-fina"}, 1},
+        {161, 4, 7, 2, {"lam-init", "meem-medi", "hah-flat-medi", "reh-rising-tail-fina"}, 2},
+    };
+    for (const auto& f : fixtures) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing recovery priority fixture");
+        PageAnalysisResult analysis;
+        QDataStream stream(&file);
+        stream >> analysis.page;
+        analysis.resolveWordBoundaries(f.page, &font);
+        auto& word = analysis.page.lines[f.line - 1].words[f.word - 1];
+        if (word.wordResultInfo.subWords.empty())
+            analysis.detectSubWords(f.page - 1, f.line - 1, f.word - 1, &font);
+        check(analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &config),
+              "Recovery priority lost a complete partition");
+        const auto& sub = word.wordResultInfo.subWords[f.subword - 1];
+        QStringList selected;
+        for (const auto& letter : sub.letterDiagnostics) selected.append(letter.toObject().value("template").toString());
+        check(selected == f.forms, "Recovery priority changed the selected body forms");
+        if (f.join >= 0)
+            check(sub.kashidaPaths.size() > size_t(f.join) &&
+                  (!sub.kashidaPaths[f.join].isEmpty()) == f.hasConnector,
+                  "Recovery priority changed the connector at the checked join");
+    }
+}
+
+static void checkFixedAnchorSequence(const QJsonObject& config) {
+    auto draft = config;
+    draft.insert("anchorSearch", QJsonArray{QJsonArray{"lam-init", "beh-tooth-medi", "kaf-bowl-fina"}});
+    check(PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Valid anchor sequence was rejected");
+    auto invalid = draft;
+    invalid.insert("anchorSearch", QJsonArray{QJsonArray{"lam-init", "kaf-bowl-fina", "beh-tooth-medi"}});
+    check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Anchor sequence accepted a form in the wrong position");
+    auto legacy = draft;
+    legacy.remove("anchorSearch");
+
+    QFile fontFile("input/font.dat"), pageFile("pages/page2.dat");
+    check(fontFile.open(QIODevice::ReadOnly) && pageFile.open(QIODevice::ReadOnly), "Missing anchor sequence fixtures");
+    AFont font;
+    QDataStream fontStream(&fontFile); fontStream >> font;
+    PageAnalysisResult::initQuranText();
+    PageAnalysisResult analysis;
+    QDataStream pageStream(&pageFile); pageStream >> analysis.page;
+    analysis.resolveWordBoundaries(2, &font);
+
+    struct Fixture { int line, word, subword; bool anchored; };
+    for (const auto& f : {Fixture{7, 1, 3, true}, Fixture{6, 1, 2, false}}) {
+        auto& word = analysis.page.lines[f.line - 1].words[f.word - 1];
+        const auto segment = [&](const QJsonObject& forms) {
+            return analysis.segmentSubword(1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &forms);
+        };
+        check(segment(legacy), "Missing original partition for anchor search fixture");
+        const auto expected = word.wordResultInfo.subWords[f.subword - 1];
+        if (!f.anchored)
+            check(expected.letterDiagnostics.last().toObject().value("template") == "kaf-return-fina",
+                  "Deferred final form was not reached");
+        check(segment(draft), "Anchor search lost a complete partition");
+        const auto& actual = word.wordResultInfo.subWords[f.subword - 1];
+        check(sameAnchoredPartition(actual, expected), "Anchor search changed the letter or connector geometry");
+        const bool usedAnchors = !actual.templateTrace.isEmpty() && actual.templateTrace.front().startsWith("Fixed anchors");
+        check(usedAnchors == f.anchored, "Anchor search did not select the expected path");
+    }
+    checkRecoveryPriority(legacy, font);
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
     const auto config = PageAnalysisResult::letterForms();
+    checkFixedAnchorSequence(config);
     CutGeometryMemoScope memo;
     cutGeometryMemo->profiling = true;
     int lamPairs = 0, toothPairs = 0;
@@ -97,7 +180,18 @@ int main(int argc, char** argv) {
             auto edited = form;
             auto cuts = edited.value("cuts").toObject(); cuts.insert("forkOffset",.35); edited.insert("cuts",cuts);
             verify(config,edited,incoming,entry,stroke,false,true,{});
-            auto rules = config; rules.insert("_disableLamShortExit",true);
+            auto rules = config;
+            auto medial = rules.value("medial").toArray();
+            for (auto entry = medial.begin(); entry != medial.end(); ++entry) {
+                auto rule = entry->toObject();
+                if (rule.value("id") != "lam-medi") continue;
+                auto policy = rule.value("cuts").toObject();
+                policy.insert("shortExit", false);
+                rule.insert("cuts", policy);
+                *entry = rule;
+                break;
+            }
+            rules.insert("medial", medial);
             verify(rules,form,incoming,entry,stroke,false,true,{});
             context.pairedStrokeWidth = .7;
             verify(config,form,incoming,entry,stroke,false,true,{});

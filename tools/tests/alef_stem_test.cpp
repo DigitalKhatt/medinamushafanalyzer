@@ -29,9 +29,10 @@ static bool same(const Stretching& a, const Stretching& b, const QTransform& map
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
-    const auto rootsAre = [](double a, double b, double c, double d, std::vector<double> expected) {
+    const auto rootsAre = [](double a, double b, double c, double d, std::vector<double> expected,
+                             RootSearch search = RootSearch::Standard) {
         std::array<double, 3> storage;
-        auto roots = cubicRoots(a, b, c, d, storage);
+        auto roots = cubicRoots(a, b, c, d, storage, search);
         std::sort(roots.begin(), roots.end());
         check(roots.size() == expected.size(), "Wrong number of polynomial intersections");
         for (size_t i = 0; i < roots.size(); ++i)
@@ -48,7 +49,27 @@ int main(int argc, char** argv) {
         rootsAre(0, 0, 0, scale, {});
         rootsAre(scale, -1.5 * scale, .66 * scale, -.08 * scale, {.2, .5, .8});
     }
+    // The vertical probe through the left lip of a medial ain crosses a
+    // nearly quadratic Bézier. The analytic cubic solver loses this crossing.
+    rootsAre(1.1368683772161603e-13, -.018000000000256478, -3.4799999999999045,
+             1.9740053218317826, {.5655883044509782}, RootSearch::BracketMissedCrossing);
+    rootsAre(1e-12, 1, -1, .1875, {.25, .75}, RootSearch::BracketAllCrossings);
     rootsAre(0, 0, 0, 0, {});
+    QPainterPath shoulder;
+    shoulder.moveTo(0, 0);
+    shoulder.cubicTo(1, 0, 2, 2, 2, 2);
+    shoulder.cubicTo(1, 3, 0, 4, 0, 4);
+    shoulder.closeSubpath();
+    std::vector<QPainterPath> contours;
+    QVector<PathExtrema> landmarks;
+    {
+        CutGeometryMemoScope memo;
+        memo.owned->verifyContourGeometry = true;
+        readContourLandmarks(shoulder, contours, landmarks);
+    }
+    check(std::any_of(landmarks.begin(), landmarks.end(), [](const auto& point) {
+        return point.time == 1 && point.isSharp && point.isX;
+    }), "Missing contour corner at a repeated control point");
     const auto config = PageAnalysisResult::letterForms();
     QJsonObject form;
     for (const auto& value : config.value("final").toArray())

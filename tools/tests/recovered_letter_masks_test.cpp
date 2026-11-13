@@ -17,10 +17,17 @@ struct ConnectorWitness {
     double horizontalSpan;
 };
 
+struct ConnectorCap {
+    size_t afterLetter;
+    bool receiving;
+    QPointF top, bottom;
+};
+
 struct Example {
     int page, line, word, subword;
     std::vector<Witness> witnesses;
     std::optional<ConnectorWitness> connector{};
+    std::vector<ConnectorCap> caps{};
 };
 
 void require(bool condition, const QString& reason) {
@@ -40,6 +47,37 @@ int main(int argc, char** argv) {
     PageAnalysisResult::initQuranText();
 
     const Example examples[] = {
+        // The tight attachment keeps the hah lip and the qaf bowl on their own sides.
+        {23, 6, 7, 1, {{3, {91.59, 223.58}}, {4, {85.97, 228.26}}}},
+        // Both lips belong to medial hah, with its neighboring tooth and waw intact.
+        {169, 7, 6, 2, {{2, {163.03, 247.39}}, {2, {162.65, 251.14}},
+                         {3, {155.71, 249.64}}, {4, {149.53, 255.26}}}},
+        // The folded jim–yeh attachment keeps the head and bowl with a single seam.
+        {220, 9, 9, 1, {{3, {109.40, 300.26}}, {3, {111.28, 302.51}}, {4, {103.03, 308.13}}}},
+        // Initial jim ends at its lip. Final noon keeps the full bowl.
+        {422, 5, 4, 2, {{1, {250.96, 194.14}}, {1, {253.77, 195.83}}, {2, {243.09, 202.02}}}},
+        // The three teeth share one seen body even when the final crest has a tiny subdivision.
+        {510, 9, 3, 2, {{2, {276.46, 306.45}}, {2, {274.77, 305.70}}, {2, {271.59, 305.88}}}},
+        // The counter projection still needs to be normal when there is no corner pair.
+        {583, 11, 8, 2, {{2, {109.03, 355.01}}, {2, {103.03, 359.69}}}, {},
+         {{1, true, {109.844, 358.149}, {109.579, 359.355}}}},
+        // The rising entry and folded shoulder each need a normal through their own anchor.
+        {17, 9, 9, 1, {}, {}, {{1, true, {76.822, 303.395}, {75.948, 304.306}}}},
+        {204, 6, 3, 1, {}, {}, {{2, true, {261.547, 223.941}, {260.987, 224.213}}}},
+        // The crest belongs to ṣād/ḍād. Both ends of the tapered ṣād–ṭāʾ join follow the stroke.
+        {39, 15, 4, 2, {{3, {162.0, 464.18}}}, {},
+         {{3, false, {160.866, 464.626}, {161.336, 465.269}},
+          {3, true, {160.381, 464.860}, {160.830, 465.676}}}},
+        {412, 15, 1, 3, {{2, {313.04, 464.45}}}},
+        // A rounded lām foot can be farther from the curve endpoint than snapping permits.
+        {424, 12, 8, 2, {}, {}, {{1, false, {168.683, 383.618}, {168.683, 385.230}}}},
+        {425, 7, 10, 2, {}, {}, {{1, false, {59.423, 251.113}, {59.423, 252.615}}}},
+        {433, 4, 2, 1, {}, {}, {{1, false, {255.473, 169.659}, {255.473, 170.821}}}},
+        // A terminal shoulder must leave space for connecting ink after a matched medial body.
+        {481, 5, 8, 1, {}, ConnectorWitness{2, {132.10, 198.22}, 3.956}},
+        {522, 2, 1, 1, {}, ConnectorWitness{2, {326.95, 116.94}, 1.139}},
+        {537, 2, 1, 2, {}, ConnectorWitness{4, {260.15, 116.89}, 3.271},
+         {{3, false, {269.056, 116.754}, {269.056, 118.126}}}},
         // A successful generic walk must not give the stacked head to lām.
         {134, 10, 4, 2, {{1, {241.775, 319.946}}, {2, {244.212, 329.320}}}},
         {219, 12, 4, 2, {{1, {211.213, 373.192}}, {2, {214.400, 383.316}}}},
@@ -170,6 +208,14 @@ int main(int argc, char** argv) {
         {304, 9, 10, 4, {{1, {124.18, 300.82}}, {1, {125.33, 304.99}}}},
         // A later shared hah boundary must leave the cap and shaft on initial lam.
         {94, 3, 8, 2, {{1, {163.83, 134.34}}, {1, {164.27, 136.56}}}},
+        // A low inward turn must not hide the fork belonging to the real shaft.
+        {163, 15, 8, 2, {}},
+        // A subdivided third crest still owns its descending flank.
+        {285, 10, 5, 2, {}},
+        // The neck below the two eyes is the heh exit.
+        {413, 8, 2, 1, {}},
+        // A normal just before the outer turn must end on that turn.
+        {537, 5, 3, 2, {}},
         // Final ain keeps both the raised head and the descending bowl.
         {76, 1, 6, 2, {{3, {188, 88.5}}, {3, {190.7, 101.27}}}},
         {597, 7, 4, 2, {{1, {207.15, 243.48}}, {1, {205.1, 245.22}}}},
@@ -188,6 +234,15 @@ int main(int argc, char** argv) {
         // Only the descending lam is above the heh. The folded kaf owns its blade.
         {600, 13, 1, 2, {{1, {330.56, 399.88}}, {2, {331.22, 408.06}}, {3, {325.31, 409.61}},
                          {4, {317.82, 399.93}}, {5, {311.78, 415.6}}}},
+        // The khāʾ loop ends before either lām shaft.
+        {194, 14, 6, 1, {{1, {172.20, 439.70}}, {2, {168.45, 431.00}}, {3, {162.32, 431.25}}}},
+        // The final tāʾ keeps its right tip, and the short approach remains a connector.
+        {565, 2, 11, 2, {{4, {53.80, 114.26}}}, ConnectorWitness{3, {54.20, 115.15}, .559}},
+        // The entry at the lower rim keeps the ḍād's eye and exposes the preceding connector.
+        {560, 6, 10, 1, {{3, {121.02, 225.22}}, {3, {122.50, 223.15}}},
+                         ConnectorWitness{2, {122.40, 225.05}, 2.433}},
+        // The lower lip of jīm runs almost to hāʾ; only the short join is separate.
+        {579, 9, 8, 3, {{1, {128.40, 303.00}}}, ConnectorWitness{1, {126.54, 303.72}, .421}},
     };
     for (const auto& e : examples) {
         const auto id = QString("page%1:l%2-w%3-s%4").arg(e.page).arg(e.line).arg(e.word).arg(e.subword);
@@ -204,6 +259,9 @@ int main(int argc, char** argv) {
                 id + " incomplete");
         const auto& sub = word.wordResultInfo.subWords[e.subword - 1];
         const auto shape = word.bodyShape(sub);
+        if (e.page == 220)
+            require(sub.kashidaPaths.size() == 3 && sub.kashidaPaths.back().isEmpty(),
+                    id + " expected a shared fold between jim and yeh");
         if ((e.page == 12 && e.line == 10 && e.word == 7 && e.subword == 2) ||
             (e.page == 101 && e.line == 12 && e.word == 4 && e.subword == 3)) {
             const int lam = e.page == 12 ? 2 : 1;
@@ -255,6 +313,7 @@ int main(int argc, char** argv) {
                     id + " expected both half-unit cuts and separate adjacent connectors");
         };
         if (e.page == 140) expectHalfWalk(1, {116.150, 384.988}, {115.813, 384.971});
+        if (e.page == 163) expectHalfWalk(2, {82.075, 462.562}, {81.787, 462.523});
         if (e.page == 184 && e.line == 14) {
             expectHalfWalk(3, {99.465, 436.310}, {99.260, 436.293});
             require(sub.letterDiagnostics.last().toObject().value("template") == "meem-shoulder-fina",
@@ -290,6 +349,15 @@ int main(int argc, char** argv) {
                             .arg(witness.point.x()).arg(witness.point.y()).arg(witness.letter).arg(slot + 1));
             for (const auto& connector : sub.kashidaPaths)
                 require(!connector.contains(local), id + " letter stroke in kashida");
+        }
+        for (const auto& cap : e.caps) {
+            const auto slot = cap.afterLetter - 1;
+            require(slot < sub.kashidaPaths.size() && !sub.kashidaPaths[slot].isEmpty(),
+                    id + " expected a separate connector");
+            const auto& [sending, receiving] = sub.kashidaCuts[slot];
+            const auto& line = cap.receiving ? receiving : sending;
+            require(QLineF(line.p1(), cap.top).length() < .01 && QLineF(line.p2(), cap.bottom).length() < .01,
+                    id + " expected the cut at the reviewed stroke section");
         }
         if (e.connector) {
             const auto slot = e.connector->afterLetter - 1;
@@ -337,6 +405,22 @@ int main(int argc, char** argv) {
         }
         if (e.page == 403)
             require(sub.joins.rbegin()->cutSegments().size() >= 2, id + " missing kaf bridge");
+        if (e.page == 285) {
+            require(sub.kashidaCuts.size() == 1 && !sub.kashidaPaths.front().isEmpty() &&
+                    QLineF(sub.kashidaCuts.front().first.p2(), {191.259, 332.450}).length() < .01,
+                    id + " expected the seen exit on the opposing bend below the third tooth");
+        }
+        if (e.page == 413) {
+            require(sub.baseGlyphs.size() == 7 && sub.baseGlyphs[5].path.toSubpathPolygons().size() == 3 &&
+                    sub.kashidaCuts.size() == 6 && sub.kashidaCuts[5].first.p1().y() > 274.621 &&
+                    sub.kashidaCuts[5].first.length() < 1,
+                    id + " expected both heh counters and a short exit below them");
+        }
+        if (e.page == 537 && e.line == 5) {
+            require(sub.kashidaCuts.size() == 2 && !sub.kashidaPaths.front().isEmpty() &&
+                    QLineF(sub.kashidaCuts.front().first.p2(), {243.779, 195.269}).length() < .01,
+                    id + " expected the initial lam to retain its rightmost turn");
+        }
         if (e.page == 437) {
             const auto hole = shape.transform.inverted().map(QPointF(129.8, 89.0) - shape.pos);
             require(!shape.path.contains(hole), id + " expected the source counter");
@@ -370,8 +454,12 @@ int main(int argc, char** argv) {
                     id + " expected a separate alef component");
         }
         if (e.page == 91) {
-            require(sub.templateTrace.join(' ').contains("95% and 105%") && sub.baseGlyphs.size() == 4,
-                    id + " expected identical letter cuts across the two scale trials");
+            require(sub.baseGlyphs.size() == 4 && sub.joins.size() == 3,
+                    id + " expected four letters with three native joins");
+            const auto& bridge = *std::next(sub.joins.begin());
+            require(bridge.counterEntry.pathIndex > 0 && bridge.counterExit.pathIndex == bridge.counterEntry.pathIndex &&
+                    bridge.cutSegments().size() >= 2,
+                    id + " expected both bridges of the original kaf–lam counter");
         }
         if (e.page == 89) {
             auto config = PageAnalysisResult::letterForms();

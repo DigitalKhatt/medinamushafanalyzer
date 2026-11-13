@@ -1175,6 +1175,23 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             break;
         }
     }
+    // A generic route can cross the bowl of a folded form. Keep the proposed
+    // cuts for assembly, but require the terminal body to retain its shoulder.
+    if (cut && subWord.baseGlyphs.size() == baseText.size() &&
+        std::all_of(bodyTemplateIds.cbegin(), bodyTemplateIds.cend(), [](const auto& id) { return !id.isEmpty(); })) {
+        for (const auto& value : config.value("_terminalReturns").toArray()) {
+            const auto form = value.toObject();
+            if (!form.value("current").toString().contains(baseText.back())) continue;
+            const auto body = shape.transform.map(subWord.baseGlyphs.back().path).translated(shape.pos);
+            if (!retainsTerminalReturn(context, form, body)) {
+                subWord.templateTrace.append(bodyTemplateIds[lastIndex] + " · final cut clips the bowl shoulder");
+                subWord.matchedTemplates.removeAll(bodyTemplateIds[lastIndex]);
+                bodyTemplateIds[lastIndex].clear();
+                bodyAttempted[lastIndex] = true;
+            }
+            break;
+        }
+    }
     // Verify the masks as delivered, after coincident joins have been
     // reconciled and connectors have been cut out.
     const auto visibleFinal = visibleFinalCuts.constFind(bodyTemplateIds[lastIndex]);

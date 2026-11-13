@@ -47,11 +47,13 @@ add_executable(${PROJECT_NAME} ${ALL_FILES} ${TFMatcherCpp} main.cpp proposalexp
 
 target_sources(${PROJECT_NAME} PRIVATE
     cutter/detail.h
+    cutter/engine/anchor_search.cpp
     cutter/engine/body_cut_plan.cpp
+    cutter/engine/component_assembly.cpp
     cutter/engine/diagnostics.cpp
     cutter/engine/partition_assembly.cpp
-    cutter/engine/recovery.cpp
     cutter/engine/search_pass.cpp
+    cutter/forms/anchor_candidates.cpp
     cutter/forms/configuration.cpp
     cutter/forms/counters_and_bowls.cpp
     cutter/forms/dispatch.cpp

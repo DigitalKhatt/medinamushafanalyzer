@@ -11,6 +11,7 @@ cutter. The application calls the cutter through `PageAnalysisResult`.
 | Template families | [Lām](forms/lam), [teeth](forms/teeth.cpp), [counters and bowls](forms/counters_and_bowls.cpp), and [heads and ligatures](forms/heads_and_ligatures.cpp) keep shape geometry and cut policies together. Several forms can share the same recognizer. |
 | Contour operations | [geometry](geometry) contains intersections, contour walks and projections, stroke sections, join order, and path partitioning. |
 | Final assembly | [body_cut_plan.cpp](engine/body_cut_plan.cpp) gathers reusable evidence and reads attachment policies. [partition_assembly.cpp](engine/partition_assembly.cpp) builds letter and connector paths and checks recovered bodies and ink coverage. |
+| Component assembly | [component_assembly.cpp](engine/component_assembly.cpp) fits folded arms, split entries and pen lifts using the source contours. |
 
 Template settings live in [letter-forms.json](../templates/letter-forms.json).
 Recognizers use the outline and `body` settings to find evidence. Cut functions
@@ -35,12 +36,33 @@ recovered by walking the configured distance along the contour keeps that offset
 An initial cluster can keep a separate connector when the ink between its cut
 and the next letter follows one stroke and meets `cuts.minConnectorWidths`.
 
-The `initial`, `medial` and `final` arrays set the priority within each pass.
+The `initial`, `medial` and `final` arrays set template order within each
+priority. One search tries ordinary placements and eligible `onIncomplete`
+forms before widening the search to include `onUnresolved` forms. These
+attempts share the source outline and recognized bodies. The wider search
+checks body proportions and ownership before accepting a partition. If it
+fails, assembly can share the existing seam of a matched initial form that
+declares `tightJoin` and `ligatureWith` when a connector wraps around the
+leading stroke. The shared cut must preserve the bodies and cover the source
+ink. Assembly checks any still-unmatched counter outlines against the source
+counters and the caps of the proposed partition. A final template with
+`cuts.shareEntryWhenUnresolved` can supply the shared seam at its entry.
+Assembly rebuilds the affected bodies and checks their counter outlines with
+the same rules, using `requiresExitTemplate` for a rim that needs that
+particular seam. A folded terminal form can set `cuts.return.maxClipWidths`
+to limit how much of its recognized bowl another cut may clip. The cutter
+checks the free tip and shoulder before accepting the partition. The search
+uses the original contour in page coordinates. It can also split at a template's
+declared entry and fit the resulting component with the usual body rules.
+Medial tooth alternatives become eligible in
+`recoveryStage` order during placement backtracking.
+An `onUnresolvedPartition` form becomes eligible after the existing search
+fails to assemble the subword. This attempt uses bracketed intersections on
+the original curves, recovers tangents at repeated control points, and applies
+the same ink ownership checks.
 An initial form with `sharedFoldWithFinal` takes its turn in the initial array
 and uses the first matching final boundary for the declared adjacent letters.
 `sharedFoldForm` can name the specific final template supplying the cut.
-`onUnresolved` reserves a form for extended recovery. `onIncomplete` enables
-it on a retry within that pass.
 
 `cuts.turnBoundaries` can place a boundary at the turn on the same contour
 flank. Set `left` or `right` to `trim` to move a cut off a long connector
@@ -53,12 +75,44 @@ For an initial tooth, `cuts.initialToothTurnAngle` sets the angle in degrees
 where its descending flank becomes a connector. The cutter places the exit
 normal to the flank if the ink between that exit and the next letter's entry
 forms a distinct stroke.
+An initial route with `body.route.start: "lower-right"` starts at the
+rightmost outward turn in the lower half of the outline when another
+stroke extends farther right above it. The usual route and body checks
+still apply.
+
+Open heads use sections under their own two lips. When an intersection is
+missing, the section probe brackets the crossing on the same Bézier curve.
+If a preceding cut coincides with the exit of an independently recognized
+open head, the cutter can reconsider that placement using forms marked
+`preferAtHeadOverlap`. The new partition must pass the body and ink checks.
+The signed area of the original curves determines contour winding. Final
+bowl forms follow the outside edge from the free tip to find the entry
+junction, including when both nearby landmarks are higher than the tip.
+With `cuts.loop.exitTooth.returningFoot`, a loop whose attached tooth returns
+below the connector can cut at the turn on the lower edge if the usual tooth
+cut is unavailable. The section must keep the bend and the return.
+In counter ligatures, the cutter can recover the exact floor vertex from
+the source Bézier when the extrema list omits it. It checks candidate
+shoulders in order against both cuts of the body.
+For horizontal counter pairs, `cuts.loop.floorExit` can find the outgoing
+normal below both counters when the ordinary rim projection fails. The
+new body must keep both source contours. Its offset is in counter heights
+and its maximum exit width is relative to the entry width.
+
+An initial contour normal can use `snapOppositeToOrigin` to end on the
+outward turn when it would otherwise put that turn in the connector. The
+value bounds the shift as a fraction of the cut width. Medial lām uses
+the shaft's own traced fork when an intervening crest yields no valid
+route. When ordinary assembly fails, the cutter can try a declared
+terminal attachment alongside the final letter's usual boundaries.
 
 Ordinary medial teeth use local stroke offsets around their tip and inner
 bend. The lower flank can supply the stroke width for those offsets.
 `followedByFinal` limits the raised-entry cut policies to a final nūn, rāʾ
 or zāy. The upright tooth has its own measured tip-to-bend range and turn
 policy.
+On a three-tooth body, `allowUnshiftedEntry` uses the facing shoulder and
+inner bend when the shifted entry cannot produce a valid section.
 
 `ligatures` takes priority for two-letter subwords without an explicit tatweel.
 Each entry selects the letters and names the initial and final templates.
@@ -82,6 +136,25 @@ medial cut policy after recovery. Medial lām uses both arm modes.
 Use the [native tests and catalog comparison](../tools/README.md#letter-audit)
 to check a change. Audit and training snapshots fingerprint the cutter’s
 sources and headers.
+
+## Fixed anchor search
+
+`anchorSearch` lists sequences of migrated templates in reading order. The
+first sequence covers initial lām, one medial senna and final kāf. The
+transcript selects the sequence. Each form proposes sections on the uncut
+outline, with the landmarks and ink it must retain.
+[The search](engine/anchor_search.cpp) tries compatible body candidates and
+partitions the ink at their fixed sections. Coincident sections share a seam.
+Distinct sections must enclose a single connecting stroke. If no complete
+partition fits, the existing cutter handles the subword.
+
+Use the following command from the project root to compare each fixed anchor
+partition with the original cutter and check the exported geometry against
+the catalog. The report counts matching results, differences and fallbacks.
+
+```sh
+python3 tools/mushafcatalog/catalog.py check-letter-corpus --compare-anchors --report output/anchor-audit
+```
 
 ## Future improvements
 
@@ -112,9 +185,8 @@ they currently select internally. For example, a medial loop matcher can
 return each eligible loop and let the search check it against the preceding
 exit.
 
-Migrate gradually. Start by having the existing lām, senna, and sīn matchers
-return candidates in this format. Run the new search alongside the current
-one and compare the selected bodies and final cuts across all 604 pages.
-Move more forms over in groups, including shared ligature seams and separate
-ink components. Remove an old retry path once the new search handles its
+Migrate more groups using the same comparison across all 604 pages. Start
+with forms that can already supply their own sections. Extend the search to
+shared ligature seams and separate ink components as their body recognizers
+supply that evidence. Remove a retry path when the new search handles its
 cases and the catalog comparison confirms the expected results.

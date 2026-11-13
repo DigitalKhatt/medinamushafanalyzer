@@ -213,79 +213,6 @@ std::vector<NeckBody> recognizeNeckBodies(const InkOutline &outline, const QJson
     return bodies;
 }
 
-std::optional<BowlProbeBody> recognizeBowlProbe(const InkOutline &outline, const Stretching &section,
-                                                       int lookahead) {
-    const auto &points = outline.time;
-    auto it = points.find(section.topBaseLine);
-    if (it == points.end())
-        return {};
-    const auto advance = [&](timesortedtype::iterator current) {
-        return section.clockWise ? (current == points.begin() ? points.end() : std::prev(current)) : std::next(current);
-    };
-    auto previous = it, current = advance(it);
-    while (current != points.end() && current->point.y() <= previous->point.y()) {
-        previous = current;
-        current = advance(current);
-    }
-    if (current == points.end())
-        return {};
-    BowlProbeBody body{*previous, {}};
-    current = advance(current);
-    while (current != points.end() && !(!current->isSharp && current->isY) && lookahead != 0) {
-        current = advance(current);
-        --lookahead;
-    }
-    if (current != points.end() && lookahead != 0)
-        body.smooth = *current;
-    return body;
-}
-
-bool cutBowlNecks(SearchContext &context, const std::vector<NeckBody> &bodies, const QJsonObject &policy) {
-    if (context.nextIter == context.xSorted.end())
-        return false;
-    std::vector<const NeckBody *> selected;
-    auto cursor = context.nextIter;
-    for (const auto &body : bodies) {
-        const auto position = context.xSorted.find(body.cursor);
-        if (position == context.xSorted.end() || context.xSorted.key_comp()(*position, *cursor))
-            continue;
-        if (!context.subword.joins.empty()) {
-            const auto &previous = *context.subword.joins.rbegin();
-            const auto a = body.section.topBaseLine.time, b = body.section.bottomBaseLine.time;
-            if (previous.topBaseLine.time == a || previous.bottomBaseLine.time == a || previous.topBaseLine.time == b ||
-                previous.bottomBaseLine.time == b)
-                continue;
-        }
-        selected.push_back(&body);
-        cursor = std::next(position);
-        if (cursor == context.xSorted.end())
-            break;
-    }
-    if (selected.empty())
-        return false;
-    if (selected.size() >= 2) {
-        const auto &body = *selected[selected.size() - 2];
-        context.res = body.section;
-        context.nextIter = std::next(context.xSorted.find(body.cursor));
-        return true;
-    }
-    const auto &body = *selected.front();
-    if (!body.probe)
-        return false;
-    const double x = body.probe->smooth ? body.probe->smooth->point.x()
-                                        : body.probe->extremum.point.x() + policy.value("offsetX").toDouble(1.2);
-    auto hits = FindInterections(context.transformedPath, QLineF(x, context.bbox.top(), x, context.bbox.bottom()));
-    if (hits.size() < std::max(2., policy.value("minCrossings").toDouble(2)))
-        return false;
-    std::sort(hits.begin(), hits.end(), [](const auto &a, const auto &b) { return a.point.y() < b.point.y(); });
-    context.res = body.section;
-    context.res.topBaseLine = hits[0];
-    context.res.bottomBaseLine = hits[1];
-    context.res.length = 0;
-    context.nextIter = cursor;
-    return true;
-}
-
 std::vector<NeckBody> recognizeProfileNecks(const InkOutline &outline, const QJsonObject &body) {
     const auto neck = body.value("neck").toObject(), profile = body.value("profile").toObject();
     JoinCheck checks;
@@ -536,8 +463,10 @@ std::optional<BowlTurnBody> recognizeBowlTurn(const InkOutline &outline, const Q
     const auto first = std::prev(geometry.xSorted.end());
     auto current = geometry.timeSorted.find(*first);
     const auto start = current;
-    const auto step =
-        geometry.prev(current)->point.y() < current->point.y() ? &SearchContext::next : &SearchContext::prev;
+    // The winding determines which edge leaves the free tip along the
+    // underside of the bowl. Adjacent extrema can both be above the tip.
+    const auto step = outline.orientation == Orientation::CounterClockwise
+        ? &SearchContext::prev : &SearchContext::next;
     do {
         const auto next = (geometry.*step)(current);
         if (next->point.y() < current->point.y() && (current == start || next->point.y() < start->point.y())) {
@@ -832,13 +761,31 @@ bool cutBowlTurn(SearchContext &context, const BowlTurnBody &body, const QJsonOb
 LayeredHeadBody recognizeLayeredHeads(const InkOutline &outline, const QJsonObject &body) {
     LayeredHeadBody result;
     const auto profile = body.value("head").toObject();
+    QRectF counter;
+    const auto maxRise = profile.value("maxRiseLeftOfCounter");
+    if (maxRise.isDouble()) {
+        for (const auto& hole : recognizeCounterHoles(outline))
+            if (counter.isEmpty() || hole.box.right() > counter.right())
+                counter = hole.box;
+    }
+    const double clearance = .75 * counter.height();
+    const double crestLimit = counter.top() - maxRise.toDouble() * counter.height();
     auto necks = recognizeNeckBodies(outline, body.value("neck").toObject());
     for (auto &neck : necks) {
         const auto interval = getJoinTime(neck.section);
+        const double entryX = std::max(neck.section.topBaseLine.point.x(), neck.section.bottomBaseLine.point.x());
         int extrema = 0;
-        for (const auto &point : outline.time)
-            extrema += interval.isStrictRight(point.time);
-        if (extrema >= profile.value("minExtrema").toInt(8))
+        bool containsShaft = false;
+        for (const auto &point : outline.time) {
+            if (!interval.isStrictRight(point.time)) continue;
+            ++extrema;
+            // A separate crest between the eye and the proposed boundary
+            // is past the head's rim. Require a gap on both sides of it.
+            if (!counter.isEmpty() && point.isY && point.point.x() < counter.left() - clearance &&
+                point.point.x() > entryX + clearance && point.point.y() < crestLimit)
+                containsShaft = true;
+        }
+        if (!containsShaft && extrema >= profile.value("minExtrema").toInt(8))
             result.necks.push_back(std::move(neck));
     }
     const double x = outline.bounds.right() - profile.value("ascenderProbeX").toDouble(6);
@@ -1377,7 +1324,6 @@ static LoopBodyEvidence recognizeLoopBody(const InkOutline &outline, const QJson
     const auto occurrence = anchor.index;
     auto hole = context.subPaths[occurrence].boundingRect();
     if (settings.value("counterPair") == "horizontal") {
-        std::optional<QRectF> partner;
         double nearest = hole.height();
         for (size_t i = 1; i < context.subPaths.size(); ++i) {
             if (i == occurrence) continue;
@@ -1385,12 +1331,13 @@ static LoopBodyEvidence recognizeLoopBody(const InkOutline &outline, const QJson
             const double gap = hole.left() - other.right();
             if (gap >= 0 && gap < nearest && !ink.contains(other.center()) &&
                 std::min(hole.bottom(), other.bottom()) > std::max(hole.top(), other.top())) {
-                partner = other; nearest = gap;
+                result.horizontalPartner = i;
+                nearest = gap;
             }
         }
-        if (!partner)
+        if (!result.horizontalPartner)
             return result;
-        hole = hole.united(*partner);
+        hole = hole.united(context.subPaths[*result.horizontalPartner].boundingRect());
     }
     double bandY = -1;
     if (settings.value("counterPair") == "vertical") {
@@ -1504,8 +1451,9 @@ static std::optional<Stretching> counterFootCut(const QPainterPath &ink, const S
 static std::optional<Stretching> stackedPairExit(SearchContext &context, const StackedCounterPair &body,
         const Stretching &right, const Stretching &inner, double width, double maxWidthRatio);
 
-std::optional<std::pair<Stretching, Stretching>>
-cutLoopBody(SearchContext &context, const LoopBodyEvidence &body, const QJsonObject &settings, bool needEntry) {
+static std::optional<std::pair<Stretching, Stretching>>
+projectLoopBody(SearchContext& context, const LoopBodyEvidence& body, const QJsonObject& settings,
+                bool needEntry, const QJsonObject& floorExit = {}) {
     if (!body.valid)
         return {};
     const auto &ink = context.transformedPath;
@@ -1549,18 +1497,31 @@ cutLoopBody(SearchContext &context, const LoopBodyEvidence &body, const QJsonObj
         -std::numeric_limits<double>::infinity();
     if (needEntry && !anchoredRight &&
         !medialChordAt(context, hole.right() + offset, y, hole.height() * 2, right, false, entryMinY)) return {};
-    const bool anchoredLeft = exitTooth.isEmpty() && cutLoopExitCorner(context, body.exit, settings, left);
+    const bool anchoredLeft = floorExit.isEmpty() && exitTooth.isEmpty() && cutLoopExitCorner(context, body.exit, settings, left);
     if (!anchoredLeft && settings.value("exitCorner").toObject().value("required").toBool()) return {};
-    if (!exitTooth.isEmpty()) {
+    if (!floorExit.isEmpty()) {
+        // The exposed rim can lie directly over the outgoing bridge. Find
+        // the section below the counters before rotating across the stroke.
+        const double x = hole.left() - floorExit.value("offset").toDouble() * hole.height();
+        if (!medialChordAt(context, x, y, hole.height() * 2, left, false, hole.bottom(),
+                           RootSearch::BracketMissedCrossing)) return {};
+    } else if (!exitTooth.isEmpty()) {
         bool found = false;
         double nearest = exitTooth.value("maxGap").toDouble(1.5) * hole.height();
-        for (const auto &tooth : cutLoopTeeth(context, body.teeth, exitTooth)) {
-            const double gap = hole.left() - std::max(tooth.tip.point.x(), tooth.bend.point.x());
-            if (gap < 0 || gap >= nearest || tooth.tip.point.y() >= hole.bottom() ||
-                (needEntry && !Stretching::cmpbyx{}(right, tooth.left))) continue;
-            left = loopToothExit(context, tooth);
-            nearest = gap;
-            found = true;
+        const auto choose = [&](const std::vector<ToothBody>& teeth) {
+            for (const auto& tooth : teeth) {
+                const double gap = hole.left() - std::max(tooth.tip.point.x(), tooth.bend.point.x());
+                if (gap < 0 || gap >= nearest || tooth.tip.point.y() >= hole.bottom() ||
+                    (needEntry && !Stretching::cmpbyx{}(right, tooth.left))) continue;
+                left = loopToothExit(context, tooth);
+                nearest = gap;
+                found = true;
+            }
+        };
+        if (body.teeth) {
+            choose(cutToothBodies(context, *body.teeth, exitTooth, false));
+            if (!found && exitTooth.value("returningFoot").toBool())
+                choose(cutLoopReturningTeeth(context, *body.teeth));
         }
         if (!found) return {};
     } else if (!anchoredLeft && !medialChordAt(context, hole.left() - offset, y, hole.height() * 2, left)) return {};
@@ -1568,6 +1529,18 @@ cutLoopBody(SearchContext &context, const LoopBodyEvidence &body, const QJsonObj
         ((needEntry && !anchoredRight && !strokeNormalCut(context, right)) ||
          (!anchoredLeft && !strokeNormalCut(context, left)))) return {};
     if (needEntry && std::min(right.topBaseLine.point.y(), right.bottomBaseLine.point.y()) < entryMinY) return {};
+    if (!floorExit.isEmpty()) {
+        const QLineF entry(right.topBaseLine.point, right.bottomBaseLine.point);
+        const QLineF exit(left.topBaseLine.point, left.bottomBaseLine.point);
+        if (std::min(exit.y1(), exit.y2()) < hole.bottom() ||
+            exit.length() > floorExit.value("maxWidthRatio").toDouble() * entry.length()) return {};
+        const auto pieces = cutRegions(ink, {}, {right, left}, context.orientation, true);
+        if (pieces.size() != 3) return {};
+        const auto contours = toSubpaths(pieces[1].path);
+        if (contours.size() != 3 || !contours.contains(context.subPaths[occurrence]) ||
+            !contours.contains(context.subPaths[*body.horizontalPartner])) return {};
+        return std::pair{right, left};
+    }
     if (settings.contains("maxBodyHeight")) {
         const auto cuts = needEntry ? std::vector<Stretching>{right, left} : std::vector<Stretching>{left};
         const auto pieces = cutRegions(ink, {}, cuts, context.orientation, true);
@@ -1609,6 +1582,14 @@ cutLoopBody(SearchContext &context, const LoopBodyEvidence &body, const QJsonObj
         if (auto exit = stackedPairExit(context, pair, right, left, width, widthRatio)) left = *exit;
     }
     return std::pair{right, left};
+}
+
+std::optional<std::pair<Stretching, Stretching>>
+cutLoopBody(SearchContext& context, const LoopBodyEvidence& body, const QJsonObject& settings, bool needEntry) {
+    auto cuts = projectLoopBody(context, body, settings, needEntry);
+    if (cuts || !needEntry || !body.horizontalPartner) return cuts;
+    const auto floor = settings.value("floorExit").toObject();
+    return floor.isEmpty() ? cuts : projectLoopBody(context, body, settings, needEntry, floor);
 }
 
 // Slot selection is assembly: unavailable or out-of-order counters cannot
@@ -2137,6 +2118,37 @@ std::vector<PathExtrema> recognizeLoopShoulders(const InkOutline &outline, const
     std::vector<PathExtrema> result;
     if (hole.height() <= 0)
         return result;
+    if (body.value("placement") == "lower-rim") {
+        // The entry can curl under the eye. Follow its steep rising rim
+        // and the shallow flank toward the connector from the same turn.
+        const auto curves = baseContourCurves(outline.ink);
+        if (curves.empty()) return result;
+        const double height = hole.height();
+        const double sample = .3 * height;
+        for (const auto& corner : outline.time) {
+            const auto p = corner.point;
+            if (!corner.isSharp || p.x() < hole.center().x() || p.x() > hole.right() + .35 * height ||
+                std::abs(p.y() - hole.bottom()) > .6 * height)
+                continue;
+            auto lower = corner;
+            auto upper = corner;
+            lower.time -= curves.size();
+            upper.time += curves.size();
+            PathExtrema before, after;
+            QPointF tangent;
+            if (!advanceOnContour(outline.ink, corner, lower, false, sample, before, tangent) ||
+                !advanceOnContour(outline.ink, corner, upper, true, sample, after, tangent))
+                continue;
+            if (inwardTurnAngle(p - before.point, after.point - p, outline.orientation) < 30)
+                continue;
+            const auto followsRim = [&](QPointF rim, QPointF join) {
+                return rim.y() < -.45 * sample && join.x() > .7 * sample && std::abs(join.y()) < .45 * sample;
+            };
+            if (followsRim(before.point - p, after.point - p) || followsRim(after.point - p, before.point - p))
+                result.push_back(corner);
+        }
+        return result;
+    }
     const auto ideal = QPointF(hole.right(), hole.center().y());
     for (const auto &p : outline.time)
         if (p.isSharp && p.point.x() >= hole.right() - .25 * hole.height() &&
@@ -2145,20 +2157,21 @@ std::vector<PathExtrema> recognizeLoopShoulders(const InkOutline &outline, const
     return result;
 }
 
-bool cutLoopShoulder(SearchContext &ctx, const QRectF &hole, const std::vector<PathExtrema> &anchors,
-                            const QJsonObject &settings, double witness, bool final, Stretching &best) {
+std::vector<Stretching> loopShoulderCuts(SearchContext& ctx, const QRectF& hole,
+        const std::vector<PathExtrema>& anchors, const QJsonObject& settings, double witness, bool final) {
     const double h = hole.height();
     if (h <= 0)
-        return false;
+        return {};
     const auto ideal = QPointF(hole.right(), hole.center().y());
-    double score = std::numeric_limits<double>::infinity();
+    const double minX = settings.value("placement") == "lower-rim" ? hole.center().x() : hole.right() - .45 * h;
+    const double minWidth = settings.value("minWidth").toDouble() * h;
+    const double maxWidth = settings.value("maxWidth").toDouble(2.4) * h;
+    std::vector<std::pair<double, Stretching>> ranked;
     for (const auto &anchor : anchors) {
-        const auto *it = &anchor;
-        const auto p = anchor.point;
-        for (auto cut : cornerSections(ctx, *it)) {
+        for (auto cut : cornerSections(ctx, anchor)) {
             const QLineF line(cut.topBaseLine.point, cut.bottomBaseLine.point);
-            if (line.length() > settings.value("maxWidth").toDouble(2.4) * h ||
-                std::min(line.x1(), line.x2()) < hole.right() - .45 * h)
+            const double width = line.length();
+            if (width < minWidth || width > maxWidth || std::min(line.x1(), line.x2()) < minX)
                 continue;
             orientSection(ctx, cut, witness, true);
             const auto parts = cutRegions(ctx.transformedPath, {}, {cut}, ctx.orientation, true);
@@ -2174,14 +2187,22 @@ bool cutLoopShoulder(SearchContext &ctx, const QRectF &hole, const std::vector<P
             if (final && (paths.size() != 2 || parts[1].path.boundingRect().top() <
                                                    hole.top() - settings.value("maxCapRise").toDouble(2) * h))
                 continue;
-            const auto fit = QLineF(ideal, p).length() + .35 * line.length();
-            if (fit < score) {
-                best = cut;
-                score = fit;
-            }
+            ranked.emplace_back(QLineF(ideal, anchor.point).length() + .35 * width, cut);
         }
     }
-    return std::isfinite(score);
+    std::stable_sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<Stretching> result;
+    result.reserve(ranked.size());
+    for (auto& [_, cut] : ranked) result.push_back(std::move(cut));
+    return result;
+}
+
+bool cutLoopShoulder(SearchContext& ctx, const QRectF& hole, const std::vector<PathExtrema>& anchors,
+        const QJsonObject& settings, double witness, bool final, Stretching& best) {
+    auto candidates = loopShoulderCuts(ctx, hole, anchors, settings, witness, final);
+    if (candidates.empty()) return false;
+    best = std::move(candidates.front());
+    return true;
 }
 
 std::optional<LoopBridgeBody> recognizeLoopBridge(const InkOutline &outline) {
@@ -2275,6 +2296,59 @@ std::vector<CounterOutlineBody> recognizeCounterOutlines(const InkOutline &outli
                 add({holes[i], holes[j]});
     }
     return result;
+}
+
+// Confirm an existing boundary from the candidate body's own counter(s).
+// Both attachments of a medial form must independently land on its rim.
+bool matchesCounterOutline(SearchContext &source, const QPainterPath &body, const QJsonObject &rule,
+                                  const QLineF &entry, const QLineF &exit) {
+    const auto contours = toSubpaths(body);
+    const auto spec = counterOutlineSettings(rule);
+    if (contours.size() != spec.value("counters").toInt() + 1 || contours.size() < 2)
+        return false;
+    QRectF eye;
+    for (int i = 1; i < contours.size(); ++i) {
+        if (!contours[0].contains(contours[i]))
+            return false;
+        eye = eye.united(contours[i].boundingRect());
+    }
+    const auto box = body.boundingRect();
+    const double h = eye.height();
+    if (h <= .1 || eye.width() <= .1)
+        return false;
+    const auto inside = [](double value, QJsonArray interval) {
+        return interval.size() == 2 && value >= interval[0].toDouble() && value <= interval[1].toDouble();
+    };
+    if (!inside(eye.width() / h, spec.value("aspect").toArray()))
+        return false;
+    // The partition must retain one of the counter groups from the uncut ink.
+    const auto evidence = recognizedSharedShape(source, rule.value("body").toObject());
+    const bool retained = std::any_of(evidence->outlines.begin(), evidence->outlines.end(), [&](const auto &group) {
+        if (group.counters.size() + 1 != contours.size())
+            return false;
+        return std::all_of(group.counters.begin(), group.counters.end(), [&](const auto &hole) {
+            return std::find(contours.begin() + 1, contours.end(), source.subPaths[hole.index]) != contours.end();
+        });
+    });
+    if (!retained)
+        return false;
+    const auto margins = spec.value("rim").toObject();
+    if (!inside((eye.left() - box.left()) / h, margins.value("left").toArray()) ||
+        !inside((eye.top() - box.top()) / h, margins.value("top").toArray()) ||
+        !inside((box.right() - eye.right()) / h, margins.value("right").toArray()) ||
+        !inside((box.bottom() - eye.bottom()) / h, margins.value("bottom").toArray()))
+        return false;
+    const auto attached = [&](const QLineF& cut, const QJsonObject& attachment) {
+        if (attachment.isEmpty())
+            return cut.isNull();
+        if (cut.isNull())
+            return false;
+        const auto p = cut.center();
+        return inside((p.x() - eye.left()) / eye.width(), attachment.value("x").toArray()) &&
+               inside((p.y() - eye.top()) / h, attachment.value("y").toArray()) &&
+               inside(cut.length() / h, attachment.value("width").toArray());
+    };
+    return attached(entry, spec.value("entry").toObject()) && attached(exit, spec.value("exit").toObject());
 }
 
 std::vector<ParallelReturnBody> recognizeParallelReturns(const InkOutline &outline,
@@ -2474,7 +2548,7 @@ CounterAttachmentBody recognizeCounterAttachments(const InkOutline &outline, con
     }
     QVector<PathExtrema> points;
     std::vector<QPainterPath> paths;
-    ShapeItem::getExtrema(outline.ink, paths, points);
+    readContourLandmarks(outline.ink, paths, points);
     for (size_t index = 1; index < context.subPaths.size(); ++index) {
         const auto &hole = context.subPaths[index];
         const auto box = hole.boundingRect();
@@ -2486,6 +2560,21 @@ CounterAttachmentBody recognizeCounterAttachments(const InkOutline &outline, con
         for (const auto &point : points)
             if (point.pathIndex == index)
                 loop.inner.push_back(point);
+        // A counter can reach its floor exactly at a Bézier vertex whose
+        // derivative is zero on only one side. Keep that source vertex even
+        // if the extrema inventory has no root there.
+        if (result.fork && std::none_of(loop.inner.cbegin(), loop.inner.cend(), [&](const auto& p) {
+                return p.isY && std::abs(p.point.y() - box.bottom()) < 1e-5;
+            })) {
+            const auto curves = baseContourCurves(hole);
+            for (size_t i = 0; i < curves.size(); ++i) {
+                const auto p = curves[i].pt1();
+                if (std::abs(p.y() - box.bottom()) < 1e-5) {
+                    loop.inner.push_back({int(index), double(i), p, false, true});
+                    break;
+                }
+            }
+        }
         if (result.fork)
             for (auto vertex = context.timeSorted.begin(); vertex != context.timeSorted.end(); ++vertex) {
                 double lean[2]{};

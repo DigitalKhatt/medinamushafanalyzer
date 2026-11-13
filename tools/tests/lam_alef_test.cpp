@@ -508,7 +508,7 @@ static void checkForkCutPolicy() {
         Fixture{152, 1, 12, 1, 1, {138.6791, 90.5038}},
         Fixture{173, 4, 6, 1, 1, {149.3702, 169.8604}}, // A folded foot need not turn through 45 degrees.
         Fixture{254, 2, 4, 1, 1, {228.6079, 116.1752}},
-        Fixture{398, 10, 4, 2, 2, {217.409, 331.518}}, // Recovery resolves a degenerate source winding estimate.
+        Fixture{398, 10, 4, 2, 2, {217.409, 331.518}}, // The qaf bowl has a low turn between the recorded extrema.
         Fixture{415, 11, 6, 1, 2, {180.5057, 359.9912}}, // Folded fork, initially shared entry and thick adjacent seen.
         Fixture{443, 7, 2, 1, 1, {254.3559, 251.1356}}, // Wide shaft beside a thin connector.
         Fixture{565, 3, 8, 1, 1, {121.1301, 140.6489}}, // Folded foot sharing its former exit with final yeh.

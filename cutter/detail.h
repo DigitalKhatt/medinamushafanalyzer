@@ -27,7 +27,7 @@ struct CandidateSearchStats {
 
 extern thread_local QJsonObject completedSearchProfile;
 
-// Pure geometry shared by all placement/scale retries of one subword. Keys
+// Pure geometry shared by all placement retries of one subword. Keys
 // retain exact coordinates; failed candidates are cached as well as successes.
 // Bound memory and release it when the outer segmentation call finishes.
 struct CutGeometryMemo {
@@ -36,8 +36,10 @@ struct CutGeometryMemo {
     QCache<QByteArray, bool> inkSegments{65536};
     size_t partitionHits = 0, partitionMisses = 0, segmentHits = 0, segmentMisses = 0;
     bool profiling = qEnvironmentVariableIsSet("MEDINA_PROFILE");
+    bool verifyContourGeometry = false;
     QMap<QString, CandidateSearchStats> forms;
     CandidateSearchStats* activeForm = nullptr;
+    QString anchorSearch;
 
     int outlineId(const QPainterPath& ink) {
         for (size_t i = outlines.size(); i > 0; --i)
@@ -73,6 +75,8 @@ struct CutGeometryMemoScope {
             completedSearchProfile = {{"forms", forms},
                 {"partitionRequests", qint64(owned->partitionHits + owned->partitionMisses)},
                 {"partitionComputations", qint64(owned->partitionMisses)}};
+            if (!owned->anchorSearch.isEmpty())
+                completedSearchProfile.insert("anchorSearch", owned->anchorSearch);
         }
         cutGeometryMemo = nullptr;
     }
@@ -268,39 +272,7 @@ struct SearchContext {
 		return next;
 	}
 
-	void setOrientation() {
-
-		auto minY = ySorted.begin();
-		auto C = timeSorted.find(*minY);
-
-
-		auto B = prev(C);
-		if (B == timeSorted.end()) {
-			B = --timeSorted.end();
-		}
-
-		auto initB = B;
-
-		double det;
-
-
-		do {
-			auto A = B;
-			B = C;
-
-			C = std::next(B);
-			if (C == timeSorted.end()) {
-				C = timeSorted.begin();
-			}
-
-			det = (B->point.x() - A->point.x()) * (C->point.y() - A->point.y()) - (C->point.x() - A->point.x()) * (B->point.y() - A->point.y());
-
-
-		} while (det == 0 && B != initB);
-
-		orientation = det < 0 ? Orientation::ClockWise : Orientation::CounterClockwise;
-
-	}
+	void setOrientation();
 };
 
 // Recognition receives only the original contour and its landmark inventory.
@@ -367,16 +339,20 @@ bool cutPrecedes(const Stretching& right, const Stretching& left, Orientation or
 
 JoinTime getJoinTime(SearchContext& context);
 
-std::span<double> cubicRoots(double a, double b, double c, double d, std::array<double, 3>& storage);
+enum class RootSearch { Standard, BracketMissedCrossing, BracketAllCrossings };
+std::span<double> cubicRoots(double a, double b, double c, double d, std::array<double, 3>& storage,
+        RootSearch search = RootSearch::Standard);
 
 struct ProbeBounds {
     double left, right, top, bottom;
 };
 
 void FindInterections(const QBezier& b, const QLineF& line, int pathIndex, int curveIndex,
-                             std::vector<PathExtrema>& intersections, const ProbeBounds* probeBounds);
+        std::vector<PathExtrema>& intersections, const ProbeBounds* probeBounds,
+        RootSearch search = RootSearch::Standard);
 
-std::vector<PathExtrema> FindInterections(const QPainterPath& path, const QLineF& line, bool segment = false);
+std::vector<PathExtrema> FindInterections(const QPainterPath& path, const QLineF& line, bool segment = false,
+        RootSearch search = RootSearch::Standard);
 
 QJsonObject medialLamShortExit(const QJsonObject& config);
 
@@ -464,25 +440,14 @@ struct JoinCheck {
 	std::function<bool(xsortedtype::iterator)> customCheck = defaultCheck;
 };
 
-struct BowlProbeBody {
-    PathExtrema extremum;
-    std::optional<PathExtrema> smooth;
-};
-
 struct NeckBody {
     PathExtrema cursor;
     Stretching section;
-    std::optional<BowlProbeBody> probe;
     std::vector<PathExtrema> edges;
 };
 
 std::vector<NeckBody> recognizeNeckBodies(const InkOutline &outline, const QJsonObject &bounds,
                                                  const JoinCheck &joinCheck = {});
-
-std::optional<BowlProbeBody> recognizeBowlProbe(const InkOutline &outline, const Stretching &section,
-                                                       int lookahead);
-
-bool cutBowlNecks(SearchContext &context, const std::vector<NeckBody> &bodies, const QJsonObject &policy);
 
 bool interiorChord(const QPainterPath &ink, const PathExtrema &top, const PathExtrema &bottom,
                           double topTolerance = 0);
@@ -530,6 +495,8 @@ bool strokeNormalCut(const SearchContext &context, Stretching &cut, double offse
 bool anchoredStrokeNormalCut(const SearchContext &context, Stretching &cut, bool forward, bool anchorTop = false);
 
 std::vector<QBezier> baseContourCurves(const QPainterPath &path);
+void readContourLandmarks(const QPainterPath& ink, std::vector<QPainterPath>& contours,
+                          QVector<PathExtrema>& landmarks);
 
 bool contourNormalCut(const SearchContext& context, const PathExtrema& anchor,
                       bool increasingTime, bool atStepEnd, Stretching& cut, bool aboveOnly = false,
@@ -641,7 +608,8 @@ bool findJoinEnds(const QPainterPath &ink, const Stretching &join, double minX, 
 
 bool medialChordAt(const SearchContext& context, double x, double y,
                           double tolerance, Stretching& cut, bool useBottom = false,
-                          double minY = -std::numeric_limits<double>::infinity());
+                          double minY = -std::numeric_limits<double>::infinity(),
+                          RootSearch search = RootSearch::Standard);
 
 bool containsHeadLips(const QPainterPath& body, const QJsonObject& lips, QLineF* evidence = nullptr);
 
@@ -831,8 +799,7 @@ using LoopTeeth = std::vector<ToothBodyEvidence>;
 
 std::shared_ptr<const LoopTeeth> recognizeLoopTeeth(const InkOutline &outline, const QJsonObject &body);
 
-std::vector<ToothBody> cutLoopTeeth(SearchContext &context, const std::shared_ptr<const LoopTeeth> &bodies,
-                                           const QJsonObject &policy);
+std::vector<ToothBody> cutLoopReturningTeeth(const SearchContext& context, const LoopTeeth& bodies);
 
 struct LoopEntryRoute {
     PathExtrema crest;
@@ -857,6 +824,7 @@ struct StackedCounterPair {
 struct LoopBodyEvidence {
     CounterHole anchor;
     QRectF hole;
+    std::optional<size_t> horizontalPartner;
     double bandY = -1;
     bool valid = false;
     CounterCornerEvidence entry, exit;
@@ -1091,8 +1059,12 @@ bool medialBodyChord(SearchContext& context, const PathExtrema& start,
 bool connectorContainsLeadingStroke(const QVector<PathExtrema>& extrema,
         const Stretching& right, const Stretching& left, Orientation orientation);
 
+enum class ConnectorAssembly { AsProposed, ShareTightEntry };
+
 bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subword,
-                                  const QJsonObject& config);
+        const QJsonObject& config, ConnectorAssembly connectors = ConnectorAssembly::AsProposed);
+bool completeBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subword,
+        const QJsonObject& config, const QJsonObject& checks);
 
 enum class TerminalEntryPolicy { InwardCorners, LowerShoulder };
 void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub,
@@ -1168,8 +1140,8 @@ struct ReturnSeamBody {
     double shoulderX = 0;
 };
 
-bool cutReturnSeam(SearchContext &ctx, const ReturnSeamBody &body, const QJsonObject &policy, Stretching &cut,
-                          double *shoulderX = nullptr);
+bool cutReturnSeam(SearchContext& ctx, const ReturnSeamBody& body, const QJsonObject& policy, Stretching& cut);
+bool retainsTerminalReturn(SearchContext& context, const QJsonObject& form, const QPainterPath& body);
 
 std::optional<ReturnSeamBody> recognizeFoldedReturn(const InkOutline &outline, const QJsonObject &spec);
 
@@ -1234,8 +1206,6 @@ inline bool hasTatweelBeforeFinal(QStringView text) {
 
 const BodyCutProgram& bodyCutProgram(const QJsonObject& config);
 
-QJsonObject terminalArmRecipe(const QJsonObject& config, const QJsonObject& form);
-
 QByteArray bodyDescriptionKey(const QJsonObject& body);
 
 const LamBodyRecognition* recognizedLamBody(const SubwordBodyRecognition& recognition,
@@ -1267,6 +1237,23 @@ struct SubwordCutPlan {
 };
 
 SubwordCutPlan makeSubwordCutPlan(WordResultInfo::SubWordInfo proposals, const QJsonObject& config);
+
+// An anchor is a section of the uncut contour. A body's free end has no
+// section. Search can replace the candidate but cannot move its anchors.
+struct AnchoredBody {
+    QString formId;
+    std::optional<Stretching> entry, exit;
+    QVector<PathExtrema> landmarks;
+    QVector<QPointF> samples;
+};
+
+using AnchorSequences = std::vector<std::vector<QJsonObject>>;
+
+QString compileAnchorSequences(const QJsonObject& config, AnchorSequences& sequences);
+std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& config, const QJsonObject& form);
+std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
+        const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorSequences& sequences);
+bool sameAnchoredPartition(const WordResultInfo::SubWordInfo& a, const WordResultInfo::SubWordInfo& b);
 
 bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& sub,
                                  const QJsonObject& config, bool penLiftAtEnd = false);
@@ -1301,6 +1288,9 @@ std::vector<PathExtrema> recognizeLoopShoulders(const InkOutline &outline, const
 
 bool cutLoopShoulder(SearchContext &ctx, const QRectF &hole, const std::vector<PathExtrema> &anchors,
                             const QJsonObject &settings, double witness, bool final, Stretching &best);
+
+std::vector<Stretching> loopShoulderCuts(SearchContext& context, const QRectF& hole,
+        const std::vector<PathExtrema>& anchors, const QJsonObject& settings, double witness, bool final);
 
 // A medial open hah has a pointed re-entrant mouth. Its upper and lower
 // lips run left from the same notch and diverge, each ending at a turn.
@@ -1463,6 +1453,8 @@ struct CounterOutlineBody {
 };
 
 std::vector<CounterOutlineBody> recognizeCounterOutlines(const InkOutline &outline, const QJsonObject &body);
+bool matchesCounterOutline(SearchContext& source, const QPainterPath& body, const QJsonObject& form,
+        const QLineF& entry, const QLineF& exit);
 
 struct ParallelReturnBody {
     PathExtrema elbow, edge, tip;
@@ -1658,21 +1650,10 @@ bool sourceLandmark(PathExtrema& mark, const std::vector<std::vector<QBezier>>& 
 
 bool isSeparateFoldedArm(const QPainterPath& body, const QPainterPath& arm, bool allowPointContact);
 
-bool recoverExposedHead(const Word& word, WordResultInfo::SubWordInfo& sub,
+bool assembleSplitEntry(const Word& word, WordResultInfo::SubWordInfo& sub,
                                const QJsonObject& config, const QJsonObject& checks);
 
 bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJsonObject& config);
-
-bool stableTemplateCuts(const Word& word, WordResultInfo::SubWordInfo& sub, QJsonObject config,
-                               const QJsonArray& shapeFrames = {});
-
-bool recoverStackedEntry(const Word& word, WordResultInfo::SubWordInfo& sub,
-                         const QJsonObject& config, const QJsonObject& checks);
-
-bool recoverSharedTerminal(const Word& word, WordResultInfo::SubWordInfo& sub,
-                              const QJsonObject& config, const QJsonObject& checks);
-
-bool confirmCounterOutlines(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const QJsonObject& recoveryChecks);
 
 bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recognition,
                                   SubwordCutPlan& plan, const QJsonObject& config);

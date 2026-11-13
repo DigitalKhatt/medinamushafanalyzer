@@ -85,6 +85,67 @@ std::vector<QBezier> baseContourCurves(const QPainterPath &path) {
     return curves;
 }
 
+void readContourLandmarks(const QPainterPath& ink, std::vector<QPainterPath>& contours,
+                          QVector<PathExtrema>& landmarks) {
+    ShapeItem::getExtrema(ink, contours, landmarks);
+    if (!cutGeometryMemo || !cutGeometryMemo->verifyContourGeometry) return;
+
+    // Substituting the endpoint into the derivative can cancel out its
+    // direction. If a control point coincides with the endpoint, the first
+    // distinct control point gives the limiting tangent.
+    const auto tangent = [](QPointF end, QPointF first, QPointF second, QPointF opposite) {
+        for (const auto& point : {first, second}) {
+            const auto delta = point - end;
+            if (std::hypot(delta.x(), delta.y()) >= 1e-8) return delta;
+        }
+        return opposite - end;
+    };
+    const auto reverses = [](double a, double b) {
+        return (a > 0 && b < 0) || (a < 0 && b > 0);
+    };
+    landmarks.erase(std::remove_if(landmarks.begin(), landmarks.end(), [](const auto& point) {
+        return point.isSharp;
+    }), landmarks.end());
+    for (int path = 0; path < static_cast<int>(contours.size()); ++path) {
+        QPointF incoming;
+        const auto curves = baseContourCurves(contours[path]);
+        for (size_t i = 0; i < curves.size(); ++i) {
+            const auto& curve = curves[i];
+            const auto outgoing = tangent(curve.pt1(), curve.pt2(), curve.pt3(), curve.pt4());
+            const bool turnsX = reverses(incoming.x(), outgoing.x());
+            const bool turnsY = reverses(incoming.y(), outgoing.y());
+            const auto angle = QLineF(QPointF{}, incoming).angleTo(QLineF(QPointF{}, outgoing));
+            if (turnsX || turnsY || (angle > 3 && angle < 357))
+                landmarks.append({path, double(i), curve.pt1(), turnsX, !turnsX && turnsY, true});
+            incoming = -tangent(curve.pt4(), curve.pt3(), curve.pt2(), curve.pt1());
+        }
+    }
+}
+
+void SearchContext::setOrientation() {
+    const auto curves = baseContourCurves(transformedPath);
+    orientation = Orientation::CounterClockwise;
+    if (curves.empty()) return;
+    const auto origin = curves.front().pt1();
+    const auto cross = [](QPointF a, QPointF b) { return a.x() * b.y() - a.y() * b.x(); };
+    double twiceArea = 0;
+    // Integrate cross(B(t), B'(t)) in the original coordinates. The turn
+    // between distant extrema can have the opposite sign of the contour.
+    for (const auto& curve : curves) {
+        const auto p0 = curve.pt1() - origin;
+        const auto first = curve.pt2() - curve.pt1();
+        const auto second = curve.pt3() - curve.pt2();
+        const auto third = curve.pt4() - curve.pt3();
+        const auto p1 = 3 * first;
+        const auto p2 = 3 * (second - first);
+        const auto p3 = third - 2 * second + first;
+        twiceArea += cross(p0, curve.pt4() - curve.pt1()) +
+            cross(p1, p2) / 3 + cross(p1, p3) / 2 + cross(p2, p3) / 5;
+    }
+    // The cutter walks in descending contour time.
+    if (twiceArea > 0) orientation = Orientation::ClockWise;
+}
+
 // Project from a known contour landmark using the tangent on the matched
 // step's side. The landmark stays fixed, including at sharp corners.
 bool contourNormalCut(const SearchContext& context, const PathExtrema& anchor,
@@ -382,8 +443,19 @@ std::optional<ContourRouteEvidence> recognizeContourRoute(SearchContext& context
         const QJsonObject& form, const PathExtrema* crest, bool reverseTop) {
     const auto start = form.value("start").toString() == "left" ?
         std::prev(context.xSorted.end()) : context.xSorted.begin();
-    const auto origin = context.timeSorted.find(crest ? *crest :
+    auto origin = context.timeSorted.find(crest ? *crest :
         form.value("start") == "top" ? *std::prev(context.ySorted.end()) : *start);
+    if (!crest && form.value("start") == "lower-right") {
+        const double middle = context.bbox.center().y();
+        if (start->point.y() >= middle) return {};
+        const auto lower = std::find_if(context.xSorted.begin(), context.xSorted.end(), [&](const auto& p) {
+            if (!p.isX || p.point.y() < middle) return false;
+            const auto point = context.timeSorted.find(p);
+            return p.point.x() >= context.prev(point)->point.x() && p.point.x() >= context.next(point)->point.x();
+        });
+        if (lower == context.xSorted.end()) return {};
+        origin = context.timeSorted.find(*lower);
+    }
     auto forward = context.orientation == Orientation::ClockWise ? &SearchContext::prev : &SearchContext::next;
     if (form.value("traversal").toString() == "down") {
         forward = context.prev(origin)->point.y() < origin->point.y() ? &SearchContext::next : &SearchContext::prev;
@@ -400,19 +472,27 @@ std::optional<ContourRouteEvidence> recognizeContourRoute(SearchContext& context
     const int curve = static_cast<int>(std::floor(anchor.time));
     if (snap.isDouble() && curve >= 0 && anchor.time - curve <= snap.toDouble()) {
         int index = 0;
+        bool found = false;
         const auto& path = context.transformedPath;
         for (int element = 1; element < path.elementCount(); ++element) {
             const auto current = path.elementAt(element);
             if (current.isMoveTo()) return {};
             if (index++ == curve) {
-                anchor.time = curve;
-                anchor.point = path.elementAt(element - 1);
+                const QPointF endpoint = path.elementAt(element - 1);
+                // A small parameter change on a long curve can move the
+                // cut back up the shaft. Limit the actual displacement.
+                if (QLineF(anchor.point, endpoint).length() <= form.value("snapMaxDistance").toDouble(
+                        std::numeric_limits<double>::infinity())) {
+                    anchor.time = curve;
+                    anchor.point = endpoint;
+                    join.topEndpointTolerance = form.value("snapEndpointTolerance").toDouble();
+                }
+                found = true;
                 break;
             }
             if (current.isCurveTo()) element += 2;
         }
-        if (anchor.time != curve) return {};
-        join.topEndpointTolerance = form.value("snapEndpointTolerance").toDouble();
+        if (!found) return {};
     }
     return ContourRouteEvidence{start, origin, forward, topDirection,
         join.topBaseLine, topBefore, topEnd, join.topEndpointTolerance};
@@ -445,6 +525,8 @@ bool projectContourRoute(SearchContext& context, const QJsonObject& form,
     join.topEndpointTolerance = tolerance;
     PathExtrema bottomEnd{}, bottomBefore{};
     const auto probeMode = form.value("bottomProbe").toString();
+    const bool towardIncoming = context.orientation == Orientation::CounterClockwise;
+    const bool lowerFlank = (form.value("normalFrom") != "receiving") == towardIncoming;
     if (probeMode == "walk-stroke-up" || probeMode == "down-stroke" || probeMode == "walk-stroke-normal") {
         const auto& ink = context.transformedPath;
         QPointF tangent;
@@ -504,11 +586,37 @@ bool projectContourRoute(SearchContext& context, const QJsonObject& form,
         join.referenceWidth = nearest;
         join.fixedRightBoundary = true;
     } else if (probeMode == "normal") {
-        if (!contourNormalCut(context, join.topBaseLine, topDirection == &SearchContext::prev,
-                              form.value("topUseStepEnd").toBool(), join)) return false;
+        const bool anchored = form.value("normalCut").toBool() && form.value("anchorSide") == "bottom";
+        const bool specifiedFlank = anchored && form.contains("normalFrom");
+        const bool forwardNormal = specifiedFlank ? lowerFlank : topDirection == &SearchContext::prev;
+        if (!contourNormalCut(context, join.topBaseLine, forwardNormal,
+                              form.value("topUseStepEnd").toBool(), join, specifiedFlank)) return false;
+        if (anchored) {
+            // Keep the located shoulder fixed while aligning the cut to the
+            // tangents on both sides of the selected stroke.
+            std::swap(join.topBaseLine, join.bottomBaseLine);
+            if (!anchoredStrokeNormalCut(context, join, lowerFlank))
+                return false;
+            std::swap(join.topBaseLine, join.bottomBaseLine);
+        }
         join.fixedRightBoundary = true;
     } else if (probeMode == "up") {
-        if (!projectUpwardCut(context, join.topBaseLine, join)) return false;
+        auto foot = join.topBaseLine;
+        const double walk = form.value("normalWalkBack").toDouble();
+        const bool increasing = topDirection != &SearchContext::prev;
+        if (walk > 0) {
+            // Leave the junction on the flank that led to it. The point at
+            // the turn itself can be tangent to the upward probe.
+            auto limit = *origin;
+            if (increasing ? limit.time <= foot.time : limit.time >= foot.time)
+                limit.time += (increasing ? 1 : -1) * int(baseContourCurves(context.transformedPath).size());
+            QPointF tangent;
+            if (!advanceOnContour(context.transformedPath, join.topBaseLine, limit, increasing, walk, foot, tangent))
+                return false;
+        }
+        if (!projectUpwardCut(context, foot, join)) return false;
+        if (walk > 0 && !anchoredStrokeNormalCut(context, join, increasing)) return false;
+        if (form.value("normalCut").toBool() && !anchoredStrokeNormalCut(context, join, lowerFlank)) return false;
     } else if (probeMode == "below") {
         const auto anchor = join.topBaseLine;
         const auto hits = FindInterections(context.transformedPath,
@@ -631,8 +739,19 @@ bool projectContourRoute(SearchContext& context, const QJsonObject& form,
         }
         join.fixedRightBoundary = true;
     }
-    if (form.value("normalCut").toBool() &&
+    if (form.value("normalCut").toBool() && probeMode != "up" &&
+        !(probeMode == "normal" && form.value("anchorSide") == "bottom") &&
         !strokeNormalCut(context, join, form.value("strokeOffsetX").toDouble())) return false;
+    if (const auto snap = form.value("snapOppositeToOrigin"); snap.isDouble() &&
+        origin->pathIndex == join.bottomBaseLine.pathIndex &&
+        getJoinTime(join, context.orientation).isStrictLeft(origin->time)) {
+        // A normal across the stem foot can land just before the route's
+        // outward turn. Keep the turn at the boundary of the initial body.
+        const double width = QLineF(join.topBaseLine.point, join.bottomBaseLine.point).length();
+        if (QLineF(join.bottomBaseLine.point, origin->point).length() <= snap.toDouble() * width &&
+            interiorChord(context.transformedPath, join.topBaseLine, *origin))
+            join.bottomBaseLine = *origin;
+    }
     if (const auto maxRatio = form.value("maxChordToRun"); maxRatio.isDouble()) {
         // Measure the proposed cap against the horizontal run of the recognized contour.
         const double run = std::abs(anchor.point.x() - origin->point.x());
@@ -820,23 +939,27 @@ bool findJoinEnds(const QPainterPath &ink, const Stretching &join, double minX, 
 
 bool medialChordAt(const SearchContext& context, double x, double y,
                           double tolerance, Stretching& cut, bool useBottom,
-                          double minY) {
+                          double minY, RootSearch search) {
     const auto& ink = context.transformedPath;
-    const auto hits = FindInterections(ink, QLineF(x, context.bbox.top() - 1, x, context.bbox.bottom() + 1));
-    double best = tolerance;
-    bool found = false;
-    for (size_t i = 1; i < hits.size(); ++i) {
-        const auto& top = hits[i - 1];
-        const auto& bottom = hits[i];
-        const double sampleY = useBottom ? bottom.point.y() : (top.point.y() + bottom.point.y()) / 2;
-        const double distance = std::abs(sampleY - y);
-        if (top.point.y() < minY || distance >= best || !interiorChord(ink, top, bottom)) continue;
-        cut.topBaseLine = top;
-        cut.bottomBaseLine = bottom;
-        best = distance;
-        found = true;
-    }
-    return found;
+    const QLineF probe(x, context.bbox.top() - 1, x, context.bbox.bottom() + 1);
+    const auto section = [&](RootSearch roots) {
+        const auto hits = FindInterections(ink, probe, false, roots);
+        double best = tolerance;
+        bool found = false;
+        for (size_t i = 1; i < hits.size(); ++i) {
+            const auto& top = hits[i - 1];
+            const auto& bottom = hits[i];
+            const double sampleY = useBottom ? bottom.point.y() : (top.point.y() + bottom.point.y()) / 2;
+            const double distance = std::abs(sampleY - y);
+            if (top.point.y() < minY || distance >= best || !interiorChord(ink, top, bottom)) continue;
+            cut.topBaseLine = top;
+            cut.bottomBaseLine = bottom;
+            best = distance;
+            found = true;
+        }
+        return found;
+    };
+    return section(RootSearch::Standard) || (search != RootSearch::Standard && section(search));
 }
 
 static QPointF unitCurveTangent(const QBezier& curve, double t) {

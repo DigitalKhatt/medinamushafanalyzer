@@ -131,8 +131,7 @@ corners. `counterJoin` and `preserveEntryAfter` preserve the kāf–lām attachm
 The folded-foot option is `cuts.shortExit`: `minHorizontalRun` and
 `maxEntryGap` use local stroke widths; `anchorTolerance` uses page units.
 `cutsAroundHollow` and `entryMaxTilt` control its placement. Set
-`retryOnUnresolved` to false to skip the longer-exit retry, or `shortExit` to
-false to disable shortening. The ordinary fork walk remains 0.5 page unit.
+`shortExit` to false to disable shortening.
 
 For the ordinary, upright and low senna forms, `body.shape: "tooth-pair"` recognizes the outer tip,
 opposing inner bend, both flanks and local stroke measurements from uncut ink.

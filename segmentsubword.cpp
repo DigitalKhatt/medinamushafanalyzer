@@ -45,6 +45,21 @@ static void reportFinalRetry(WordResultInfo::SubWordInfo& sub, const QHash<QStri
     }
 }
 
+static const QJsonObject& primaryLetterForms(const QJsonObject& config) {
+    static thread_local QJsonObject source, primary;
+    if (source != config) {
+        source = primary = config;
+        for (const auto* position : {"initial", "medial", "final"}) {
+            const auto forms = config.value(position).toArray();
+            QJsonArray eligible;
+            for (const auto& form : forms)
+                if (!form.toObject().value("onUnresolvedPartition").toBool()) eligible.append(form);
+            if (eligible.size() != forms.size()) primary.insert(position, eligible);
+        }
+    }
+    return primary;
+}
+
 bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
                                         bool refresh, const QJsonObject* draft) {
     CutGeometryMemoScope geometryMemo;
@@ -53,75 +68,94 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     auto& sub = word.wordResultInfo.subWords[subWordIndex];
     if (!refresh && !sub.baseGlyphs.empty())
         return sub.correct;
-    const auto& sourceConfig = draft ? *draft : letterForms();
-    const auto ligature = segmentDeclaredLigature(word, sub, sourceConfig);
-    if (ligature == LigatureMatch::Failed) return false;
-    if (ligature == LigatureMatch::SharedCut)
-        return pageIndex < 0 || verifyBodyLandmarkOwnership(word, sub, sourceConfig);
-    static thread_local QJsonObject previousConfig, compiledConfig;
-    static thread_local QHash<QString, QString> compiledRetryParents;
-    if (previousConfig != sourceConfig) {
-        previousConfig = compiledConfig = sourceConfig;
-        const auto finals = finalRetryCandidates(sourceConfig.value("final").toArray(), compiledRetryParents);
-        if (!compiledRetryParents.isEmpty()) compiledConfig.insert("final", finals);
-    }
-    auto requested = compiledConfig;
-    const auto retryParents = compiledRetryParents;
-    auto recognition = recognizeSubwordBodies(word, sub, requested);
+    const auto& requestedForms = draft ? *draft : letterForms();
+    const auto source = sub;
+    const auto attempt = [&](const QJsonObject& sourceConfig) -> bool {
+        const auto ligature = segmentDeclaredLigature(word, sub, sourceConfig);
+        if (ligature == LigatureMatch::Failed) return false;
+        if (ligature == LigatureMatch::SharedCut)
+            return pageIndex < 0 || verifyBodyLandmarkOwnership(word, sub, sourceConfig);
+        static thread_local QJsonObject previousConfig, compiledConfig;
+        static thread_local QHash<QString, QString> compiledRetryParents;
+        static thread_local AnchorSequences anchorSequences;
+        if (previousConfig != sourceConfig) {
+            previousConfig = compiledConfig = sourceConfig;
+            compileAnchorSequences(sourceConfig, anchorSequences);
+            const auto finals = finalRetryCandidates(sourceConfig.value("final").toArray(), compiledRetryParents);
+            if (!compiledRetryParents.isEmpty()) compiledConfig.insert("final", finals);
+        }
+        auto anchored = pageIndex >= 0 ? segmentWithAnchors(word, sub, sourceConfig, anchorSequences) : std::nullopt;
+        if (anchored && (!cutGeometryMemo->profiling || !qEnvironmentVariableIsSet("MEDINA_COMPARE_ANCHORS"))) {
+            sub = std::move(*anchored);
+            return true;
+        }
 
-    // The shared collector combines declared lām candidates with the existing
-    // matchers for other letters. Lām never enters their method dispatcher.
-    // Resolve the declared policies before committing the partition.
-    const bool proposed = collectLegacyCutProposals(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested);
-    auto plan = makeSubwordCutPlan(std::move(sub), requested);
-    bool valid = proposed;
-    if (valid && pageIndex >= 0 && plan.partition.baseGlyphs.size() >= 2) {
-        // A recovery can select a different original contour (e.g. a detached
-        // arm). Recognize that source, never a generated letter mask.
-        if (recognition.valid) {
-            const auto source = word.bodyShape(plan.partition);
-            if (recognition.source != source.transform.map(source.path).translated(source.pos))
-                recognition = recognizeSubwordBodies(word, plan.partition, requested);
+        auto requested = compiledConfig;
+        const auto retryParents = compiledRetryParents;
+        auto recognition = recognizeSubwordBodies(word, sub, requested);
+
+        // The shared collector combines declared lām candidates with the existing
+        // matchers for other letters. Lām never enters their method dispatcher.
+        // Resolve the declared policies before committing the partition.
+        const bool proposed = collectLegacyCutProposals(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested);
+        auto plan = makeSubwordCutPlan(std::move(sub), requested);
+        bool valid = proposed;
+        if (valid && pageIndex >= 0 && plan.partition.baseGlyphs.size() >= 2) {
+            // A recovery can select a different original contour (e.g. a detached
+            // arm). Recognize that source, never a generated letter mask.
+            if (recognition.valid) {
+                const auto source = word.bodyShape(plan.partition);
+                if (recognition.source != source.transform.map(source.path).translated(source.pos))
+                    recognition = recognizeSubwordBodies(word, plan.partition, requested);
+            }
+            valid = resolveSubwordCutPlan(word, recognition, plan, requested);
+            if (valid) applyTerminalJunction(word, plan.partition, requested, TerminalEntryPolicy::InwardCorners);
+            if (valid && ligature != LigatureMatch::SeparateConnector)
+                applySharedReturnEntry(word, plan.partition, requested);
         }
-        valid = resolveSubwordCutPlan(word, recognition, plan, requested);
-        if (valid) applyTerminalJunction(word, plan.partition, requested, TerminalEntryPolicy::InwardCorners);
-        if (valid && ligature != LigatureMatch::SeparateConnector)
-            applySharedReturnEntry(word, plan.partition, requested);
-    }
-    // A scaled or split recovery trial is only a proposal. Verify the
-    // assembled masks on the source artwork when returning a page result.
-    if (valid && pageIndex >= 0) {
-        valid = verifyBodyLandmarkOwnership(word, plan.partition, requested);
-        if (valid) {
-            applyTerminalJunction(word, plan.partition, requested, TerminalEntryPolicy::LowerShoulder);
-            applyInitialToothExit(word, plan.partition, requested);
+        // Verify the assembled masks on the source artwork, including bodies
+        // matched on separate or split components.
+        if (valid && pageIndex >= 0) {
+            valid = verifyBodyLandmarkOwnership(word, plan.partition, requested);
+            if (valid) {
+                applyTerminalJunction(word, plan.partition, requested, TerminalEntryPolicy::LowerShoulder);
+                applyInitialToothExit(word, plan.partition, requested);
+            }
         }
+        sub = std::move(plan.partition);
+        reportFinalRetry(sub, retryParents);
+        if (anchored) {
+            cutGeometryMemo->anchorSearch = valid && sameAnchoredPartition(*anchored, sub) ? "same-cuts" : "different-cuts";
+            sub = std::move(*anchored);
+            return true;
+        }
+        return valid;
+    };
+    const auto& primary = geometryMemo.owned ? primaryLetterForms(requestedForms) : requestedForms;
+    if (attempt(primary)) return true;
+    if (!geometryMemo.owned) return false;
+
+    // Validate the original curves with bracketed intersections. Allow the
+    // remaining shape variants only after the established search failed.
+    // Geometry cached with the first solver cannot validate these sections.
+    auto incomplete = std::exchange(sub, source);
+    auto& geometry = *geometryMemo.owned;
+    geometry.partitions.clear();
+    geometry.inkSegments.clear();
+    geometry.verifyContourGeometry = true;
+    if (attempt(requestedForms)) {
+        sub.templateTrace.append("Unresolved partition matched on the original contours");
+        return true;
     }
-    sub = std::move(plan.partition);
-    reportFinalRetry(sub, retryParents);
-    return valid;
+    sub = std::move(incomplete);
+    return false;
 }
 
 bool PageAnalysisResult::collectLegacyCutProposals(int pageIndex, int lineIndex, int wordIndex,
         int subWordIndex, AFont* font, QJsonObject& requested) {
     auto& word = page.lines[lineIndex].words[wordIndex];
     auto& sub = word.wordResultInfo.subWords[subWordIndex];
-    if (!segmentWithRecovery(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested)) {
-        const auto letters = bodyLetters(sub.text);
-        if (!medialLamShortExit(requested).value("retryOnUnresolved").toBool() ||
-            letters.size() < 3 || !QStringView(letters).mid(1, letters.size() - 2).contains(QChar(0x0644)))
-            return false;
-
-        // Reassemble the whole subword: a shorter exit can invalidate a neighbouring cut.
-        auto partial = sub;
-        requested.insert("_disableLamShortExit", true);
-        if (!segmentWithRecovery(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested) ||
-            !coversOriginalInk(word, sub)) {
-            sub = std::move(partial);
-            return false;
-        }
-        sub.templateTrace.append("Complete partition recovered with the original lam exit");
-    }
+    if (!searchSubword(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested)) return false;
     if (pageIndex < 0 || sub.baseGlyphs.size() < 2) return true;
     const auto refine = [&] {
         refineLipCuts(lineIndex, wordIndex, subWordIndex, requested);
@@ -194,7 +228,7 @@ bool PageAnalysisResult::collectLegacyCutProposals(int pageIndex, int lineIndex,
     for (const auto& [slot, lips] : missing)
         if (!lips.isNull()) evidence.insert(QString::number(slot), QJsonArray{lips.x1(), lips.y1(), lips.x2(), lips.y2()});
     repair.insert("_observedHeadInk", evidence);
-    if (!segmentWithRecovery(pageIndex, lineIndex, wordIndex, subWordIndex, font, repair)) return false;
+    if (!searchSubword(pageIndex, lineIndex, wordIndex, subWordIndex, font, repair)) return false;
     auto failed = missingHeadInk(word, sub, letters, checks);
     const auto shape = word.bodyShape(sub);
     for (const auto& [slot, lips] : missing) {
@@ -216,230 +250,309 @@ bool PageAnalysisResult::collectLegacyCutProposals(int pageIndex, int lineIndex,
     return false;
 }
 
-bool PageAnalysisResult::segmentWithRecovery(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                                            const QJsonObject& requested) {
-    auto& word = page.lines[lineIndex].words[wordIndex];
-    auto& sub = word.wordResultInfo.subWords[subWordIndex];
-    if (!requested.contains("retryUnresolvedForms"))
-        return segmentConfigured(pageIndex, lineIndex, wordIndex, subWordIndex, font, requested);
+namespace {
 
-    // Preserve established cuts. An unresolved body enters the wider contour search.
-    static thread_local QJsonObject lastRequested, usual, extended;
-    if (lastRequested != requested) {
-        lastRequested = requested;
-        usual = requested;
-        usual.remove("retryUnresolvedForms");
-        extended = usual;
-        auto recovery = extended.value("recoveryChecks").toObject();
-        auto baseChecks = recovery;
-        QJsonArray baseExtents;
-        for (const auto& item : recovery.value("bodyExtents").toArray()) {
-            if (!item.toObject().value("onUnresolved").toBool()) baseExtents.append(item);
-        }
-        baseChecks.insert("bodyExtents", baseExtents);
-        usual.insert("recoveryChecks", baseChecks);
-        recovery.insert("initialShaft", requested.value("unresolvedInitialShaft"));
-        extended.insert("recoveryChecks", recovery);
-        auto scales = extended.value("reconsiderScale").toObject();
-        scales.insert("alternateScales", requested.value("unresolvedScaleCenters"));
-        scales.insert("tilts", requested.value("unresolvedTiltAngles"));
-        extended.insert("reconsiderScale", scales);
-        QJsonObject selectors, headRetries;
-        for (const auto* position : {"initial", "medial", "final"}) {
-            QJsonArray original, searchable, headForms;
-            QString characters;
-            for (const auto& value : requested.value(position).toArray()) {
-                // Resolve references before recovery-only parents leave the active
-                // form list. Eligibility controls execution, not shared geometry.
-                const auto form = resolvedBodyForm(requested, value.toObject());
-                if (form.value("onHeadConflict").toBool()) headForms.append(form);
-                if (!hasCounterOutline(form)) {
-                    auto retry = form;
-                    if (form.contains("recoveryVisibleFrom"))
-                        retry.insert("visibleFrom", form.value("recoveryVisibleFrom"));
-                    searchable.append(retry);
-                }
-                if (!form.value("onUnresolved").toBool())
-                    original.append(form);
-                for (auto ch : form.value("current").toString())
-                    if (!characters.contains(ch))
-                        characters.append(ch);
+struct PlacementTemplates {
+    QJsonObject all;
+    QJsonObject primary;
+    QJsonObject deferred;
+};
+
+PlacementTemplates preparePlacements(const QJsonObject& config) {
+    PlacementTemplates templates{config, config, config};
+    templates.deferred.remove("reconsiderFinalAttachments");
+    for (const auto* position : {"initial", "medial", "final"}) {
+        QJsonArray primary, deferred;
+        for (const auto& value : config.value(position).toArray()) {
+            auto form = value.toObject();
+            if (form.value("onFinalRetry").toBool()) continue;
+            deferred.append(form);
+            if (!form.value("onIncomplete").toBool()) {
+                form.remove("retryWithVariants");
+                primary.append(form);
             }
-            usual.insert(position, original);
-            extended.insert(position, searchable);
-            selectors.insert(position, characters);
-            if (!headForms.isEmpty()) headRetries.insert(position, headForms);
         }
-        usual.insert("_headRetryForms", headRetries);
-        extended.insert("_headRetryForms", headRetries);
-        extended.insert("reconsiderForms", selectors);
-        extended.insert("reconsiderFinalAttachments", selectors.value("final"));
+        templates.primary.insert(position, primary);
+        templates.deferred.insert(position, deferred);
     }
-    const auto run = [&](const QJsonObject& forms) {
-        return segmentConfigured(pageIndex, lineIndex, wordIndex, subWordIndex, font, forms);
-    };
-    if (run(usual)) {
-        // An accepted generic walk can cut through the folded bowl itself.
-        // Keep an established result unless the independently found bowl
-        // reaches beyond the final mask by a substantial part of the join.
-        if (sub.baseGlyphs.size() < 2) return true;
-        const auto letters = bodyLetters(sub.text);
-        auto finals = requested.value("final").toArray();
-        for (qsizetype i = 0; i < finals.size(); ++i) {
-            auto form = finals.at(i).toObject();
-            if (form.value("body").toObject().value("shape") != "folded-return" ||
-                !form.value("onUnresolved").toBool() || !form.value("current").toString().contains(letters.back()))
-                continue;
-            const auto shape = word.bodyShape(sub);
-            const auto mapped = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
-            SearchContext outline{.transformedPath = mapped(shape.path), .subword = sub};
-            Stretching seam{};
-            double shoulderX = 0;
-            if (!readTerminalOutline(outline))
-                break;
-            const auto declared = resolvedBodyForm(requested, form);
-            const auto evidence = recognizedSharedShape(outline, declared.value("body").toObject());
-            if (!evidence->returnSeam ||
-                !cutReturnSeam(outline, *evidence->returnSeam,
-                               declared.value("cuts").toObject().value("return").toObject(), seam, &shoulderX))
-                break;
-            const double width = QLineF(seam.topBaseLine.point, seam.bottomBaseLine.point).length();
-            const auto retainsBowl = [&](double margin) {
-                const auto bounds = mapped(sub.baseGlyphs.back().path).boundingRect();
-                return bounds.left() <= outline.bbox.left() + margin && bounds.right() >= shoulderX - margin;
-            };
-            if (retainsBowl(.5 * width)) break;
-            auto original = sub;
-            auto retry = requested;
-            form.remove("onUnresolved");
-            finals.replace(i, form);
-            retry.insert("final", finals);
-            if (segmentWithRecovery(pageIndex, lineIndex, wordIndex, subWordIndex, font, retry) &&
-                sub.baseGlyphs.size() == original.baseGlyphs.size() && retainsBowl(.05 * width) &&
-                coversOriginalInk(word, sub)) {
-                sub.templateTrace.append("Terminal bowl recovered at its first fold");
-            } else sub = std::move(original);
-            break;
-        }
-        return true;
-    }
-    if (!requested.value("retryUnresolvedForms").toBool() || bodyLetters(sub.text).size() < 2 || sub.paths.empty())
-        return false;
-    auto original = sub;
-    if (run(extended) &&
-        plausibleRecoveredBodies(word, sub, extended.value("recoveryChecks").toObject()) &&
-        coversOriginalInk(word, sub)) {
-        sub.templateTrace.append(QStringLiteral("Unresolved form matched by contour recovery"));
-        return true;
-    }
-    const auto checks = extended.value("recoveryChecks").toObject();
-    if (recoverStackedEntry(word, sub, requested, checks) ||
-        confirmCounterOutlines(word, sub, requested, checks) || recoverSharedTerminal(word, sub, requested, checks))
-        return true;
-    sub = std::move(original);
-    if (confirmCounterOutlines(word, sub, requested, checks) || recoverSharedTerminal(word, sub, requested, checks) ||
-        recoverExposedHead(word, sub, requested, checks)) return true;
-    const auto frames = requested.value("unresolvedShapeFrames").toArray();
-    if (frames.isEmpty()) return false;
-    auto usualWithChecks = usual;
-    usualWithChecks.insert("recoveryChecks", checks);
-    return stableTemplateCuts(word, sub, usualWithChecks, frames) || stableTemplateCuts(word, sub, extended, frames);
+    return templates;
 }
 
-bool PageAnalysisResult::segmentConfigured(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                                           const QJsonObject& requested) {
+struct SearchTemplates {
+    PlacementTemplates ordinary;
+    PlacementTemplates wider;
+    QJsonObject headOverlap;
+    QJsonObject terminalBoundaries;
+    QString terminalLetters;
+};
+
+SearchTemplates prepareSearchTemplates(const QJsonObject& requested) {
+    if (!requested.contains("retryUnresolvedForms"))
+        return {preparePlacements(requested), {}};
+
+    auto ordinary = requested;
+    ordinary.remove("retryUnresolvedForms");
+    auto wider = ordinary;
+    auto widerChecks = wider.value("recoveryChecks").toObject();
+    auto ordinaryChecks = widerChecks;
+    QJsonArray ordinaryExtents;
+    for (const auto& item : widerChecks.value("bodyExtents").toArray()) {
+        if (!item.toObject().value("onUnresolved").toBool()) ordinaryExtents.append(item);
+    }
+    ordinaryChecks.insert("bodyExtents", ordinaryExtents);
+    ordinary.insert("recoveryChecks", ordinaryChecks);
+    widerChecks.insert("initialShaft", requested.value("unresolvedInitialShaft"));
+    wider.insert("recoveryChecks", widerChecks);
+
+    QJsonObject selectors, headRetries;
+    QJsonArray terminalReturns;
+    for (const auto* position : {"initial", "medial", "final"}) {
+        const bool final = QLatin1String(position) == QLatin1String("final");
+        QJsonArray ordinaryForms, widerForms, headForms;
+        QString characters;
+        for (const auto& value : requested.value(position).toArray()) {
+            // Inherited body and cut settings may live on a form deferred
+            // to a later priority. Resolve them before filtering the lists.
+            const auto form = resolvedBodyForm(requested, value.toObject());
+            if (form.value("onHeadConflict").toBool()) headForms.append(form);
+            if (final &&
+                form.value("cuts").toObject().value("return").toObject().contains("maxClipWidths"))
+                terminalReturns.append(form);
+            if (!hasCounterOutline(form)) widerForms.append(form);
+            if (!form.value("onUnresolved").toBool()) ordinaryForms.append(form);
+            for (auto ch : form.value("current").toString())
+                if (!characters.contains(ch)) characters.append(ch);
+        }
+        ordinary.insert(position, ordinaryForms);
+        wider.insert(position, widerForms);
+        selectors.insert(position, characters);
+        if (!headForms.isEmpty()) headRetries.insert(position, headForms);
+    }
+    ordinary.insert("_headRetryForms", headRetries);
+    wider.insert("_headRetryForms", headRetries);
+    ordinary.insert("_terminalReturns", terminalReturns);
+    wider.insert("_terminalReturns", terminalReturns);
+    wider.insert("reconsiderForms", selectors);
+    wider.insert("reconsiderFinalAttachments", selectors.value("final"));
+    QJsonArray preferred, remaining;
+    for (const auto& value : wider.value("medial").toArray()) {
+        auto form = value.toObject();
+        if (form.value("preferAtHeadOverlap").toBool()) {
+            preferred.append(form);
+        } else remaining.append(form);
+    }
+    QJsonObject headOverlap;
+    if (!preferred.isEmpty()) {
+        for (const auto& form : remaining) preferred.append(form);
+        headOverlap = wider;
+        headOverlap.insert("medial", preferred);
+    }
+    QJsonObject terminalBoundaries;
+    QString terminalLetters;
+    QJsonArray finalForms, attachments;
+    for (const auto& value : wider.value("final").toArray()) {
+        const auto form = value.toObject();
+        if (form.value("terminalAttachment").toBool() && form.value("onFinalRetry").toBool()) {
+            attachments.append(form);
+            terminalLetters += form.value("current").toString();
+        } else finalForms.append(form);
+    }
+    if (!attachments.isEmpty()) {
+        for (const auto& form : attachments) finalForms.append(form);
+        terminalBoundaries = wider;
+        terminalBoundaries.insert("final", finalForms);
+    }
+    return {preparePlacements(ordinary), preparePlacements(wider), headOverlap, terminalBoundaries, terminalLetters};
+}
+
+bool precedingCutCoversOpenHead(const Word& word, WordResultInfo::SubWordInfo& sub,
+        const QJsonObject& config, OutlineSearchCache& cache) {
+    const auto failed = std::find_if(sub.letterDiagnostics.cbegin(), sub.letterDiagnostics.cend(),
+        [](const auto& value) { return value.toObject().value("status") != "matched"; });
+    const auto slot = std::distance(sub.letterDiagnostics.cbegin(), failed);
+    if (failed == sub.letterDiagnostics.cend() || slot <= 0 || size_t(slot) > sub.joins.size())
+        return false;
+    const auto diagnostic = failed->toObject();
+    if (diagnostic.value("position") != "medial" || diagnostic.value("status") != "no-match")
+        return false;
+    const auto selectors = diagnostic.value("candidates").toArray();
+    const auto incoming = std::next(sub.joins.begin(), slot - 1);
+    for (const auto& value : config.value("medial").toArray()) {
+        const auto form = value.toObject();
+        if (form.value("body").toObject().value("shape") != "open-head" ||
+            !selectors.contains(form.value("id"))) continue;
+        const auto shape = word.bodyShape(sub);
+        auto ink = shape.transform.map(shape.path).translated(shape.pos);
+        ink.setFillRule(Qt::WindingFill);
+        WordResultInfo::SubWordInfo geometryOnly{};
+        SearchContext source{.transformedPath = ink, .bbox = ink.boundingRect(), .subword = geometryOnly,
+                             .outlineCache = &cache};
+        if (!preparePassOutline(source, cache)) return false;
+        for (const auto& [entry, exit] : declaredOpenHeadCuts(source, form, source.bbox.left(), source.bbox.right())) {
+            // The preceding body ends at this head's own exit. Reconsider
+            // earlier placements only when the whole head lies before it.
+            if (QLineF(incoming->topBaseLine.point, exit.topBaseLine.point).length() < 1e-5 &&
+                QLineF(incoming->bottomBaseLine.point, exit.bottomBaseLine.point).length() < 1e-5 &&
+                cutPrecedes(entry, exit, source.orientation))
+                return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+bool PageAnalysisResult::searchSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
+                                       const QJsonObject& requested) {
     auto& word = page.lines[lineIndex].words[wordIndex];
     auto& sub = word.wordResultInfo.subWords[subWordIndex];
-    // Preserve established initial/medial recoveries. A new final attachment
-    // gets a vote only when the first unresolved body is an eligible final.
-    static thread_local QJsonObject previousConfig, primary, established;
+    const bool useUnresolvedRules = requested.contains("retryUnresolvedForms");
+    // Component matching can supply already filtered forms.
+    static thread_local std::array<std::pair<QJsonObject, SearchTemplates>, 2> cachedTemplates;
+    auto& [previousConfig, prepared] = cachedTemplates[useUnresolvedRules];
     if (previousConfig != requested) {
         previousConfig = requested;
-        primary = established = requested;
-        established.remove("reconsiderFinalAttachments");
-        for (const auto* position : {"initial", "medial", "final"}) {
-            QJsonArray firstPass, usualRecovery;
-            for (const auto& value : requested.value(position).toArray()) {
-                auto form = value.toObject();
-                if (form.value("onFinalRetry").toBool()) continue;
-                usualRecovery.append(form);
-                if (!form.value("onIncomplete").toBool()) {
-                    form.remove("retryWithVariants");
-                    firstPass.append(form);
-                }
+        prepared = prepareSearchTemplates(requested);
+    }
+    // A folded prefix or exposed head may run this search recursively
+    // with different declarations. Keep this subword's views for the loop.
+    const auto templates = prepared;
+    OutlineSearchCache outlineCache;
+
+    const auto retryPlacements = [&](const PlacementTemplates& forms) {
+        const auto first = std::find_if(sub.letterDiagnostics.constBegin(), sub.letterDiagnostics.constEnd(),
+            [](const auto& value) { return value.toObject().value("status") != "matched"; });
+        if (first == sub.letterDiagnostics.constEnd()) return false;
+        const auto slot = first->toObject();
+        const auto position = slot.value("position").toString(), ch = slot.value("character").toString();
+        const bool finalRetry = position == "final" && forms.all.value("reconsiderFinalAttachments").toString().contains(ch);
+        const auto& config = finalRetry ? forms.all : forms.deferred;
+        if (!finalRetry && !config.value("reconsiderForms").toObject().value(position).toString().contains(ch)) {
+            const auto& declarations = bodyCutProgram(config).forms;
+            const auto candidates = slot.value("candidates").toArray();
+            const bool hasCutRange = std::any_of(candidates.begin(), candidates.end(), [&](const auto& candidate) {
+                const auto form = declarations.constFind(candidate.toString());
+                return form != declarations.cend() && form->body.value("shape") == "contour-route" &&
+                    form->cuts.value("route").toObject().value("range").isObject();
+            });
+            if (!hasCutRange) return false;
+        }
+        auto previous = sub;
+        if (recoverFoldedArm(word, sub, config, false)) {
+            if (plausibleRecoveredBodies(word, sub, config.value("recoveryChecks").toObject()) &&
+                coversOriginalInk(word, sub))
+                return true;
+            sub = previous;
+        }
+        if (segmentWithLetterForms(pageIndex, lineIndex, wordIndex, subWordIndex, font, config, outlineCache, true)) {
+            if (coversOriginalInk(word, sub)) return true;
+            sub = std::move(previous);
+            sub.templateTrace.append("Recovered boundaries failed the ink ownership check");
+            return false;
+        }
+        // Preserve the earlier partial partition unless the retry resolved
+        // another letter and kept every previously recognized letter.
+        int gained = 0;
+        for (int i = 0; i < previous.letterDiagnostics.size(); ++i) {
+            const bool was = previous.letterDiagnostics[i].toObject().value("status") == "matched";
+            const bool now = sub.letterDiagnostics[i].toObject().value("status") == "matched";
+            if (was && !now) {
+                gained = 0;
+                break;
             }
-            primary.insert(position, firstPass);
-            established.insert(position, usualRecovery);
+            if (!was && now) ++gained;
         }
-    }
-    if (segmentWithLetterForms(pageIndex, lineIndex, wordIndex, subWordIndex, font, primary, false))
-        return true;
-    const auto first = std::find_if(sub.letterDiagnostics.constBegin(), sub.letterDiagnostics.constEnd(),
-        [](const auto& value) { return value.toObject().value("status") != "matched"; });
-    if (first == sub.letterDiagnostics.constEnd()) return false;
-    const auto slot = first->toObject();
-    const auto position = slot.value("position").toString(), ch = slot.value("character").toString();
-    const bool finalRetry = position == "final" && requested.value("reconsiderFinalAttachments").toString().contains(ch);
-    // Detach the choice from the thread-local cache before analysing a folded prefix recursively.
-    const QJsonObject config = finalRetry ? requested : established;
-    if (!finalRetry && !config.value("reconsiderForms").toObject().value(position).toString().contains(ch)) {
-        const auto& forms = bodyCutProgram(config).forms;
-        const auto candidates = slot.value("candidates").toArray();
-        const bool hasCutRange = std::any_of(candidates.begin(), candidates.end(), [&](const auto& candidate) {
-            const auto form = forms.constFind(candidate.toString());
-            return form != forms.cend() && form->body.value("shape") == "contour-route" &&
-                form->cuts.value("route").toObject().value("range").isObject();
-        });
-        if (!hasCutRange) return false;
-    }
-    auto previous = sub;
-    if (recoverFoldedArm(word, sub, config, false)) {
-        if (plausibleRecoveredBodies(word, sub, config.value("recoveryChecks").toObject()) &&
-            coversOriginalInk(word, sub))
+        auto folded = sub;
+        if (recoverFoldedArm(word, folded, config, true) &&
+            plausibleRecoveredBodies(word, folded, config.value("recoveryChecks").toObject()) &&
+            coversOriginalInk(word, folded)) {
+            sub = std::move(folded);
             return true;
-        sub = previous;
-    }
-    if (segmentWithLetterForms(pageIndex, lineIndex, wordIndex, subWordIndex, font, config, true)) {
-        if (coversOriginalInk(word, sub))
-            return true;
-        sub = std::move(previous);
-        sub.templateTrace.append("Recovered boundaries failed the ink ownership check");
+        }
+        if (detachedHeadEntry(word, sub, config)) return true;
+        const bool everySlotMatched =
+            std::all_of(sub.letterDiagnostics.begin(), sub.letterDiagnostics.end(),
+                        [](const auto& value) { return value.toObject().value("status") == "matched"; });
+        if (!gained || everySlotMatched) sub = std::move(previous);
         return false;
-    }
-    // Only retain a partial retry that actually resolved an additional letter
-    // while preserving all previously recognized letters.
-    int gained = 0;
-    for (int i = 0; i < previous.letterDiagnostics.size(); ++i) {
-        const bool was = previous.letterDiagnostics[i].toObject().value("status") == "matched";
-        const bool now = sub.letterDiagnostics[i].toObject().value("status") == "matched";
-        if (was && !now) {
-            gained = 0;
-            break;
+    };
+
+    enum class Step { primary, deferred, wider, widerDeferred, assembly };
+    WordResultInfo::SubWordInfo ordinaryPartial;
+    bool widerPlacementRejected = false;
+    const auto widerChecks = templates.wider.all.value("recoveryChecks").toObject();
+    for (const auto step : {Step::primary, Step::deferred, Step::wider, Step::widerDeferred, Step::assembly}) {
+        if (step == Step::assembly) {
+            auto sharedEntry = sub;
+            if (assembleBodyPartition(word, sharedEntry, requested, ConnectorAssembly::ShareTightEntry) &&
+                plausibleRecoveredBodies(word, sharedEntry, widerChecks) && coversOriginalInk(word, sharedEntry)) {
+                sharedEntry.correct = true;
+                sub = std::move(sharedEntry);
+                return true;
+            }
+            if (completeBodyPartition(word, sub, requested, widerChecks)) return true;
+            // These alternatives may need the attachments from the ordinary
+            // partial partition rather than those from the wider search.
+            sub = std::move(ordinaryPartial);
+            if (completeBodyPartition(word, sub, requested, widerChecks) ||
+                assembleSplitEntry(word, sub, requested, widerChecks) ||
+                detachedHeadEntry(word, sub, requested)) return true;
+            const auto tryPlacement = [&](const QJsonObject& config, bool expand, const QString& trace) {
+                auto partial = sub;
+                if (segmentWithLetterForms(pageIndex, lineIndex, wordIndex, subWordIndex, font, config,
+                                           outlineCache, expand) &&
+                    plausibleRecoveredBodies(word, sub, widerChecks) && coversOriginalInk(word, sub)) {
+                    sub.templateTrace.append(trace);
+                    return true;
+                }
+                sub = std::move(partial);
+                return false;
+            };
+            const auto& preferred = templates.headOverlap;
+            if (!preferred.isEmpty() && precedingCutCoversOpenHead(word, sub, preferred, outlineCache) &&
+                tryPlacement(preferred, false, "Recognized head retained after reconsidering the preceding boundary"))
+                return true;
+            // A terminal attachment already defines a body and a section.
+            // Try it alongside the other final boundaries after the existing
+            // placements fail, preserving the ordinary final template order.
+            const auto letters = bodyLetters(sub.text);
+            return !templates.terminalBoundaries.isEmpty() && !letters.isEmpty() &&
+                templates.terminalLetters.contains(letters.back()) &&
+                tryPlacement(templates.terminalBoundaries, true, "Final attachment matched at its own boundary");
         }
-        if (!was && now)
-            ++gained;
+        if (step == Step::wider) {
+            if (!requested.value("retryUnresolvedForms").toBool() || bodyLetters(sub.text).size() < 2 || sub.paths.empty())
+                return false;
+            ordinaryPartial = sub;
+        }
+        if (step == Step::widerDeferred && widerPlacementRejected) continue;
+
+        const bool wider = step == Step::wider || step == Step::widerDeferred;
+        const auto& forms = wider ? templates.wider : templates.ordinary;
+        const bool deferred = step == Step::deferred || step == Step::widerDeferred;
+        const bool complete = deferred ? retryPlacements(forms) :
+            segmentWithLetterForms(pageIndex, lineIndex, wordIndex, subWordIndex, font, forms.primary, outlineCache, false);
+        if (!complete) continue;
+        if (!wider) return true;
+        if (plausibleRecoveredBodies(word, sub, widerChecks) && coversOriginalInk(word, sub)) {
+            sub.templateTrace.append(QStringLiteral("Unresolved form matched by contour recovery"));
+            return true;
+        }
+        widerPlacementRejected = true;
     }
-    auto folded = sub;
-    if (recoverFoldedArm(word, folded, config, true) &&
-        plausibleRecoveredBodies(word, folded, config.value("recoveryChecks").toObject()) &&
-        coversOriginalInk(word, folded)) {
-        sub = std::move(folded);
-        return true;
-    }
-    if (detachedHeadEntry(word, sub, config))
-        return true;
-    const bool everySlotMatched =
-        std::all_of(sub.letterDiagnostics.begin(), sub.letterDiagnostics.end(),
-                    [](const auto& value) { return value.toObject().value("status") == "matched"; });
-    if (!gained || everySlotMatched)
-        sub = std::move(previous);
-    return stableTemplateCuts(word, sub, config);
+    return false;
 }
 
 bool PageAnalysisResult::segmentWithLetterForms(int pageIndex, int lineIndex, int wordIndex, int subWordIndex,
-                                                AFont* font, const QJsonObject& active, bool expand) {
+        AFont* font, const QJsonObject& active, OutlineSearchCache& outlineCache, bool expand) {
     auto passConfig = active;
-    OutlineSearchCache outlineCache;
+    // These proposals belong to the placement pass. The recognized bodies
+    // have their own source and declaration keys and survive a priority change.
+    outlineCache.terminalCuts.clear();
+    outlineCache.contourBodies.clear();
+    outlineCache.routeCuts.clear();
+    outlineCache.normalsByCenter.clear();
+    outlineCache.misplacedHeads.clear();
     if (pageIndex >= 0) {
         const auto observed = active.value("_observedHeadInk").toObject();
         for (auto it = observed.begin(); it != observed.end(); ++it) {
@@ -590,6 +703,11 @@ bool PageAnalysisResult::segmentWithLetterForms(int pageIndex, int lineIndex, in
     };
     const auto searchPlacements = [&](const SeenExitRetry* seenExit) {
         ToothSearchPlan plan(initial.size());
+        std::set<int> stages{1};
+        for (const auto& form : forms) {
+            const int stage = form.toObject().value("recoveryStage").toInt();
+            if (stage > 1) stages.insert(stage);
+        }
         const auto run = [&] {
             if (segmentSubwordPass(pageIndex, lineIndex, wordIndex, subWordIndex, font, true,
                                    &config, true, outlineCache, &plan, seenExit)) return true;
@@ -599,12 +717,8 @@ bool PageAnalysisResult::segmentWithLetterForms(int pageIndex, int lineIndex, in
         // Exhaust the body placements at the preferred route position before
         // trying the next position. Reuse the cached bodies and contour cuts.
         do {
-            for (plan.stage = 1; plan.stage <= 3; ++plan.stage) {
-                if (plan.stage > 1) {
-                    if (std::none_of(forms.begin(), forms.end(), [&](const auto& value) {
-                            return value.toObject().value("recoveryStage").toInt() == plan.stage;
-                        })) continue;
-                }
+            for (const int stage : stages) {
+                plan.stage = stage;
                 plan.enumerate = false;
                 if (run()) return true;
                 plan.enumerate = true;

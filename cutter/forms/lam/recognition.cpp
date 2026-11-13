@@ -467,18 +467,20 @@ std::vector<MedialCandidate> computeMedialLamCuts(SearchContext& context,
         firstStemX = std::max(firstStemX, stem.crest.point.x());
         eligible.push_back(&stem);
     }
-    // Apply the existing occurrence constraints once, before multiplying the
-    // surviving stems by route, flank and fork alternatives. Keep their order.
-    if (!sharedExit) std::erase_if(eligible, [&](const auto* stem) {
-        return stem->crest.point.x() < firstStemX - 1e-6;
-    });
+    // The rightmost crest is the usual starting point for a route. A low
+    // inward fork can itself register as a crest to the right of its shaft.
+    const auto routeStem = [&](const LamStemBody& stem) {
+        return sharedExit || stem.crest.point.x() >= firstStemX - 1e-6;
+    };
     std::vector<MedialCandidate> forkCandidates;
     const double forkOffset = lam.value("forkOffset").toDouble();
-    if (allowFork && forkOffset > 0 && !sharedExit && incoming.counterEntry.pathIndex <= 0) {
+    const auto proposeForks = [&](bool useRouteStem) {
+        if (!allowFork || forkOffset <= 0 || sharedExit || incoming.counterEntry.pathIndex > 0) return;
         const auto entrySide = getJoinTime(incoming, context.orientation);
         const auto& recognizedBodies = bodyEvidence.forks;
         for (const auto* selected : eligible) {
             const auto& stem = *selected;
+            if (routeStem(stem) != useRouteStem) continue;
             const auto* crest = &stem.crest;
             for (const auto index : stem.forks) {
                 const auto& body = recognizedBodies[index];
@@ -509,7 +511,8 @@ std::vector<MedialCandidate> computeMedialLamCuts(SearchContext& context,
                 }
             }
         }
-    }
+    };
+    proposeForks(true);
     for (qsizetype routeIndex = 0; routeIndex < routes.size(); ++routeIndex) {
         const auto route = routes[routeIndex];
         const auto routePolicy = routeCuts[routeIndex].toObject();
@@ -517,6 +520,7 @@ std::vector<MedialCandidate> computeMedialLamCuts(SearchContext& context,
 
         for (const auto* selected : eligible) {
             const auto& stem = *selected;
+            if (!routeStem(stem)) continue;
             const auto* crest = &stem.crest;
             // Reading-order selection belongs to assembly. Recognition keeps
             // the following stem available for its own later letter slot.
@@ -696,6 +700,12 @@ std::vector<MedialCandidate> computeMedialLamCuts(SearchContext& context,
         std::stable_sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
             return Stretching::cmpbyx{}(a.right, b.right);
         });
+    if (candidates.empty() && forkCandidates.empty()) {
+        proposeForks(false);
+        std::stable_sort(forkCandidates.begin(), forkCandidates.end(), [](const auto& a, const auto& b) {
+            return a.lamCrest->point.x() > b.lamCrest->point.x();
+        });
+    }
     candidates.insert(candidates.begin(), forkCandidates.begin(), forkCandidates.end());
     if (inspectingForm) for (const auto& item : candidates) inspectCandidate(item.lamFork ? "Fork flanks" : "Stem route", item.left, item.right);
     if (candidates.empty()) inspectReason("Assembly", "No recognized shaft produced compatible cuts after rise, proportions, ordering and attachment checks.");

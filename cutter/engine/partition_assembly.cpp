@@ -128,7 +128,30 @@ bool connectorContainsLeadingStroke(const QVector<PathExtrema>& extrema,
 
 // Partition a local proposal. Policy trials never mutate a published subword.
 bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subword,
-                                  const QJsonObject& config) {
+        const QJsonObject& config, ConnectorAssembly connectors) {
+    if (connectors == ConnectorAssembly::ShareTightEntry) {
+        const auto& diagnostics = subword.letterDiagnostics;
+        if (subword.joins.empty() || !subword.joins.begin()->fixedLeftBoundary ||
+            diagnostics.size() != subword.joins.size() + 1 ||
+            std::any_of(diagnostics.cbegin(), diagnostics.cend(), [](const auto& slot) {
+                return slot.toObject().value("status") != "matched";
+            })) return false;
+        const auto form = namedLetterForm(config, diagnostics.first().toObject().value("template").toString());
+        if (!form.value("tightJoin").toBool() || !form.contains("ligatureWith")) return false;
+
+        auto seam = *subword.joins.begin();
+        auto entry = seam;
+        entry.topBaseLine = seam.topLeft;
+        entry.bottomBaseLine = seam.bottomLeft;
+        if (!connectorContainsLeadingStroke(subword.extrema, seam, entry, subword.basePathOrientation))
+            return false;
+
+        seam.length = 0;
+        seam.fixedLeftBoundary = false;
+        seam.kashidaOverrides.insert("enabled", false);
+        subword.joins.erase(subword.joins.begin());
+        subword.joins.insert(seam);
+    }
     const auto shape = word.bodyShape(subword);
     auto ink = shape.transform.map(shape.path);
     ink.translate(shape.pos);
@@ -247,7 +270,248 @@ bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subwor
         regions.erase(regions.begin() + region);
     }
     subword.baseGlyphs = std::move(regions);
+    if (connectors == ConnectorAssembly::ShareTightEntry)
+        subword.templateTrace.append("Initial ligature shares its seam");
     return true;
+}
+
+static void recordAssembledForm(WordResultInfo::SubWordInfo& trial, int slot, const QString& id) {
+    auto diagnostic = trial.letterDiagnostics[slot].toObject();
+    if (diagnostic.value("status") != "matched")
+        trial.templateTrace.removeAll(QString("%1 %2 · %3").arg(diagnostic.value("position").toString(),
+            diagnostic.value("character").toString(), diagnostic.value("status").toString()));
+    auto candidates = diagnostic.value("candidates").toArray();
+    if (!candidates.contains(id)) candidates.append(id);
+    diagnostic.insert("candidates", candidates);
+    diagnostic.insert("template", id);
+    diagnostic.insert("status", "matched");
+    trial.letterDiagnostics[slot] = diagnostic;
+    if (!trial.matchedTemplates.contains(id)) trial.matchedTemplates.append(id);
+}
+
+static bool matchAssembledBody(SearchContext& source, const Apath& shape, const QJsonObject& config,
+        WordResultInfo::SubWordInfo& trial, int slot, const QString& exitTemplate = {}) {
+    const auto diagnostic = trial.letterDiagnostics[slot].toObject();
+    const auto letter = diagnostic.value("character").toString();
+    if (letter.isEmpty()) return false;
+    const auto cap = [&](size_t gap, bool receiving) {
+        if (gap < trial.kashidaPaths.size() && !trial.kashidaPaths[gap].isEmpty())
+            return receiving ? trial.kashidaCuts[gap].second : trial.kashidaCuts[gap].first;
+        const auto segments = std::next(trial.joins.begin(), gap)->cutSegments();
+        return segments.size() == 1 ? segments.front() : QLineF{};
+    };
+    const auto entry = slot > 0 ? cap(slot - 1, true) : QLineF{};
+    const auto exit = size_t(slot) < trial.joins.size() ? cap(slot, false) : QLineF{};
+    const auto mask = shape.transform.map(trial.baseGlyphs[slot].path).translated(shape.pos);
+    for (const auto& value : config.value(diagnostic.value("position").toString()).toArray()) {
+        const auto form = value.toObject();
+        if (!hasCounterOutline(form) || !form.value("current").toString().contains(letter) ||
+            (form.contains("requiresExitTemplate") && form.value("requiresExitTemplate").toString() != exitTemplate) ||
+            !matchesCounterOutline(source, mask, form, entry, exit)) continue;
+        const auto id = form.value("id").toString();
+        recordAssembledForm(trial, slot, id);
+        auto matched = trial.letterDiagnostics[slot].toObject();
+        matched.insert("matchMethod", "counter-outline");
+        trial.letterDiagnostics[slot] = matched;
+        trial.templateTrace.append(id + " · counter and body attachments matched");
+        return true;
+    }
+    return false;
+}
+
+static bool projectTerminalShoulder(SearchContext& context, const QJsonObject& form,
+        const QJsonObject& policy, Stretching current, double bodyFloor);
+
+static bool assembleSharedTerminalEntry(SearchContext& source, const Apath& shape, const QJsonObject& config,
+        const QJsonObject& receiver, const QString& letters, WordResultInfo::SubWordInfo& trial) {
+    const int last = letters.size() - 1;
+    const auto matched = [&](int slot) {
+        return trial.letterDiagnostics[slot].toObject().value("status") == "matched";
+    };
+    for (int slot = 0; slot < last - 1; ++slot)
+        if (!matched(slot)) return false;
+    if (!declaredSharedBoundary(source, receiver)) return false;
+    auto seam = source.res;
+    const auto id = receiver.value("id").toString();
+
+    // A declared counter rim can supply the preceding seam if its eye was
+    // enclosed by the earlier body. Verify the proposed body on the source.
+    std::optional<Stretching> rim;
+    if (last >= 2 && !matched(last - 1)) {
+        const auto captured = toSubpaths(shape.transform.map(trial.baseGlyphs[last - 2].path).translated(shape.pos));
+        for (const auto& value : config.value("medial").toArray()) {
+            const auto form = value.toObject();
+            if (!form.contains("rimOffset") || form.value("requiresExitTemplate").toString() != id ||
+                !form.value("current").toString().contains(letters[last - 1])) continue;
+            for (int i = 1; i < captured.size(); ++i) {
+                const auto eye = captured[i].boundingRect();
+                Stretching edge{};
+                if (!medialChordAt(source, eye.right() + form.value("rimOffset").toDouble() * eye.height(),
+                                   eye.center().y(), 1.3 * eye.height(), edge)) continue;
+                orientSection(source, edge, seam.topBaseLine.time, true);
+                const auto pieces = cutRegions(source.transformedPath, {}, {edge, seam}, source.orientation, true);
+                if (pieces.size() != 3 || !matchesCounterOutline(source, pieces[1].path, form,
+                        edge.cutSegments().front(), seam.cutSegments().front())) continue;
+                if (rim) return false;
+                rim = edge;
+            }
+        }
+    }
+
+    // Recut only the bodies affected by the new seams. Start at the receiving
+    // cap of the preserved prefix so that its last connector stays intact.
+    const int first = last - (rim ? 2 : 1);
+    std::vector<Stretching> sections;
+    if (first > 0) {
+        const auto gap = size_t(first - 1);
+        auto cap = *std::next(trial.joins.begin(), gap);
+        if (gap < trial.kashidaPaths.size() && !trial.kashidaPaths[gap].isEmpty()) {
+            const auto edge = trial.kashidaCuts[gap].second;
+            cap = {};
+            cap.topBaseLine.point = edge.p1();
+            cap.bottomBaseLine.point = edge.p2();
+            const std::vector<std::vector<QBezier>> outer{baseContourCurves(source.subPaths.front())};
+            if (!sourceLandmark(cap.topBaseLine, outer) || !sourceLandmark(cap.bottomBaseLine, outer)) return false;
+            orientSection(source, cap, seam.topBaseLine.time, true);
+        }
+        sections.push_back(cap);
+    }
+    if (rim) sections.push_back(*rim);
+    std::optional<Stretching> exit;
+    if (!rim && matched(last - 1) && size_t(last) <= trial.joins.size()) {
+        const auto& sending = *std::next(trial.joins.begin(), last - 1);
+        const QLineF from(sending.topBaseLine.point, sending.bottomBaseLine.point);
+        const auto canKeepExit = [&](const Stretching& receiving) {
+            const QLineF to(receiving.topBaseLine.point, receiving.bottomBaseLine.point);
+            const auto minSpan = config.value("kashidaDefaults").toObject().value("minSpan").toDouble();
+            if (!cutPrecedes(sending, receiving, source.orientation) ||
+                from.center().x() - to.center().x() <= std::max(minSpan, .5 * std::min(from.length(), to.length())))
+                return false;
+            const auto pieces = cutRegions(source.transformedPath, {}, {sending, receiving}, source.orientation, true);
+            return pieces.size() == 3 && toSubpaths(pieces[1].path).size() == 1 &&
+                followsOneStroke(pieces[1].path, from, to);
+        };
+        if (sending.counterEntry.pathIndex <= 0 && sending.fixedRightBoundary) {
+            if (canKeepExit(seam)) {
+                exit = sending;
+            } else if (const auto shoulder = formDescription(config, receiver, "cuts").value("shoulderEntry").toObject();
+                       !shoulder.isEmpty()) {
+                // A slanted terminal seam can put a slice of the bowl into
+                // the connector. Test the declared lower shoulder before
+                // merging the preceding body's exit with the terminal cut.
+                const auto pieces = cutRegions(source.transformedPath, {}, {seam}, source.orientation, true);
+                if (pieces.size() == 2 && projectTerminalShoulder(source, receiver, shoulder, seam,
+                        pieces.back().path.boundingRect().bottom()) && canKeepExit(source.res) &&
+                    matchesBoundaryBody(source, receiver, source.res, false)) {
+                    exit = sending;
+                    seam = source.res;
+                }
+            }
+        }
+    }
+    if (exit) sections.push_back(*exit);
+    sections.push_back(seam);
+    const auto pieces = cutRegions(shape.path, {}, sections, source.orientation, true);
+    if (pieces.size() != sections.size() + 1) return false;
+
+    trial.baseGlyphs.resize(last + 1);
+    const auto bodyBegin = pieces.size() - (last - first + 1) - (exit ? 1 : 0);
+    for (int slot = first; slot < last; ++slot)
+        trial.baseGlyphs[slot].path = pieces[bodyBegin + slot - first].path;
+    trial.baseGlyphs.back().path = pieces.back().path;
+    trial.baseGlyphs.back().text = letters.right(1);
+    trial.kashidaPaths.resize(last);
+    trial.kashidaCuts.resize(last);
+    std::vector<Stretching> joins(trial.joins.begin(), std::next(trial.joins.begin(), first));
+    if (exit) {
+        auto connector = *exit;
+        connector.topRight = connector.topBaseLine;
+        connector.bottomRight = connector.bottomBaseLine;
+        connector.topLeft = seam.topBaseLine;
+        connector.bottomLeft = seam.bottomBaseLine;
+        connector.fixedLeftBoundary = true;
+        connector.length = 0;
+        connector.kashidaOverrides.insert("enabled", true);
+        joins.push_back(connector);
+    } else {
+        joins.insert(joins.end(), sections.end() - (last - first), sections.end());
+    }
+    trial.joins.clear();
+    for (int gap = 0; gap < last; ++gap) {
+        joins[gap].readingOrder = gap;
+        trial.joins.insert(joins[gap]);
+        if (gap >= first) {
+            trial.kashidaPaths[gap] = {};
+            trial.kashidaCuts[gap] = {};
+        }
+    }
+    if (!matched(last - 1) && !matchAssembledBody(source, shape, config, trial, last - 1, id)) return false;
+    if (exit) {
+        trial.kashidaPaths.back() = pieces[pieces.size() - 2].path;
+        trial.kashidaCuts.back() = {
+            QLineF(exit->topBaseLine.point, exit->bottomBaseLine.point),
+            QLineF(seam.topBaseLine.point, seam.bottomBaseLine.point)};
+    } else {
+        auto sender = trial.letterDiagnostics[last - 1].toObject();
+        sender.insert("sharedExitTemplate", id);
+        trial.letterDiagnostics[last - 1] = sender;
+    }
+    recordAssembledForm(trial, last, id);
+    trial.templateTrace.append(id + (exit ? " · separate connector at its declared cut" : " · shared entry at its declared cut"));
+    return true;
+}
+
+bool completeBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subword,
+        const QJsonObject& config, const QJsonObject& checks) {
+    const auto letters = PageAnalysisResult::bodyLetters(subword.text);
+    const int count = letters.size();
+    if (count < 2 || subword.paths.empty() || subword.letterDiagnostics.size() != count ||
+        subword.baseGlyphs.size() != subword.joins.size() + 1 ||
+        (subword.baseGlyphs.size() != size_t(count) && subword.baseGlyphs.size() != size_t(count - 1)) ||
+        subword.kashidaPaths.size() > subword.kashidaCuts.size()) return false;
+
+    QJsonObject receiver;
+    for (const auto& value : config.value("final").toArray()) {
+        const auto form = value.toObject();
+        if (!form.value("sharedBoundary").toBool() || !form.value("current").toString().contains(letters.back()) ||
+            (form.contains("sharedBoundaryWith") &&
+             !form.value("sharedBoundaryWith").toString().contains(letters[count - 2]))) continue;
+        if (formDescription(config, form, "cuts").value("shareEntryWhenUnresolved").toBool()) {
+            receiver = resolvedBodyForm(config, form);
+            break;
+        }
+    }
+    const auto unresolved = [](const QJsonValue& diagnostic) {
+        return diagnostic.toObject().value("status") != "matched";
+    };
+    const bool checkExisting = subword.baseGlyphs.size() == size_t(count) &&
+        std::any_of(subword.letterDiagnostics.cbegin(), subword.letterDiagnostics.cend(), unresolved);
+    if (!checkExisting && receiver.isEmpty()) return false;
+    const auto shape = word.bodyShape(subword);
+    WordResultInfo::SubWordInfo geometryOnly;
+    OutlineSearchCache cache;
+    SearchContext source{.transformedPath = shape.transform.map(shape.path).translated(shape.pos),
+                         .subword = geometryOnly, .outlineCache = &cache};
+    if (!readTerminalOutline(source)) return false;
+    const auto accept = [&](WordResultInfo::SubWordInfo& trial) {
+        if (!plausibleRecoveredBodies(word, trial, checks) || !coversOriginalInk(word, trial)) return false;
+        trial.correct = true;
+        subword = std::move(trial);
+        return true;
+    };
+    auto trial = subword;
+    if (checkExisting) {
+        bool complete = true;
+        for (int slot = 0; slot < count; ++slot) {
+            if (unresolved(trial.letterDiagnostics[slot]) && !matchAssembledBody(source, shape, config, trial, slot)) {
+                complete = false;
+                break;
+            }
+        }
+        if (complete && accept(trial)) return true;
+        trial = subword;
+    }
+    return !receiver.isEmpty() && assembleSharedTerminalEntry(source, shape, config, receiver, letters, trial) && accept(trial);
 }
 
 // An oblique cut at the lower shoulder can leave the upper stroke outside the

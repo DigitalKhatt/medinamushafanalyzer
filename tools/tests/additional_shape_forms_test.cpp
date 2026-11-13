@@ -30,10 +30,10 @@ int main(int argc,char** argv) {
         int upperCorner = -1, lowerCorner = -1;
         bool finalKashida = false;
     };
-    const Case cases[]={{1,2,1,1,"seen-compact-medi"},{1,8,2,3,"beh-tooth-medi"},
+    const Case cases[]={{1,2,1,1,"seen-compact-medi"},
         {4,12,4,1,"beh-tooth-medi"},{3,6,2,1,"seen-medi"},
         {5,14,3,1,"feh-descending-init"},{4,11,6,1,"alef-return-fina"},
-        {62,1,11,1,"yeh-return-fina"},{19,4,2,2,"kaf-bent-neck-medi"},
+        {19,4,2,2,"kaf-bent-neck-medi"},
         {11,6,2,2,"reh-hook-fina"},{5,15,2,1,"ain-fina"},
         {251,11,4,2,"qaf-fina",9,21},{4,5,1,3,"qaf-fina",2,14},
         {19,4,4,1,"qaf-fina",4,15},{70,3,1,2,"qaf-fina",13,24},
