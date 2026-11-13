@@ -21,7 +21,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const bool supported = position == 0 ? shape == "contour-route" || shape == "horizontal-counters" ||
                 shape == "suspended-loop" || shape == "counter-neck" :
                 position == 1 ? toothDescription(body) || shape == "stacked-counters" || shape == "counter-loop" ||
-                shape == "open-head" || shape == "crested-loop" :
+                shape == "open-head" || shape == "crested-loop" || shape == "paired-route" :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn";
             if (!supported)
@@ -113,6 +113,13 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
             return Stretching::cmpbyx{}(*a.entry, *b.entry);
         });
+    } else if (shape == "paired-route") {
+        const auto evidence = recognizedSharedShape(source, body);
+        const auto route = body.value("routes").toObject();
+        const auto policy = cuts.value("routes").toObject();
+        for (const auto& candidate : evidence->pairedRoutes)
+            for (const auto& [entry, exit] : cutPairedRoutes(source, {candidate}, route, policy))
+                result.push_back({.formId = id, .entry = entry, .exit = exit, .landmarks = {candidate.anchor}});
     } else if (toothDescription(body)) {
         auto teeth = declaredToothBoundaries(source, form);
         // Keep the established reading order among placements of one form.

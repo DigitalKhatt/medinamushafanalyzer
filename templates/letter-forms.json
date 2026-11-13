@@ -3489,6 +3489,7 @@
     },
     {
       "id": "hah-wedge-medi",
+      "fixedAnchors": true,
       "current": "جحخ",
       "body": {
         "shape": "paired-route",
