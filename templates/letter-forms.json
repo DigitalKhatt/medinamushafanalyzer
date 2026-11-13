@@ -4686,6 +4686,7 @@
     },
     {
       "id": "tah-low-rim-medi",
+      "fixedAnchors": true,
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
