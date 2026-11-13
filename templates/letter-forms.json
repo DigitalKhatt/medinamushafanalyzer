@@ -851,6 +851,7 @@
     },
     {
       "id": "beh-foot-init",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "tryNext": true,
       "body": {
