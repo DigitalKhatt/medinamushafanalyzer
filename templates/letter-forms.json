@@ -3202,6 +3202,7 @@
     },
     {
       "id": "tah-loop-medi",
+      "fixedAnchors": true,
       "current": "طظ",
       "body": {
         "shape": "counter-loop",
