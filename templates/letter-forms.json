@@ -7347,6 +7347,7 @@
     },
     {
       "id": "meem-diagonal-fina",
+      "fixedAnchors": true,
       "current": "م",
       "tryNext": true,
       "onIncomplete": true,
