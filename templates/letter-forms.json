@@ -4751,6 +4751,7 @@
     },
     {
       "id": "tah-upper-neck-medi",
+      "fixedAnchors": true,
       "current": "طظ",
       "tryNext": true,
       "onIncomplete": true,
