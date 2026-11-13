@@ -240,6 +240,7 @@
     },
     {
       "id": "feh-init",
+      "fixedAnchors": true,
       "current": "ف",
       "tryNext": true,
       "body": {
