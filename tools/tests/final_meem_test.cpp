@@ -102,9 +102,13 @@ int main(int argc, char** argv) {
         check(a.segmentSubword(loc[0]-1, loc[1]-1, loc[2]-1, loc[3]-1, nullptr, true),
               "Folded rim lost its visible cut or terminal shoulder");
         const auto& result = a.page.lines[loc[1]-1].words[loc[2]-1].wordResultInfo.subWords[loc[3]-1];
-        if (loc[0] == 184)
-            check(result.letterDiagnostics.last().toObject().value("template") == "meem-shoulder-fina",
-                  "Assembly did not retain the final body's own shoulder");
+        if (loc[0] == 184) {
+            const auto meem = result.letterDiagnostics.last().toObject();
+            check(meem.value("template") == "meem-shoulder-fina" && meem.value("entryTemplate") == "meem-shoulder-fina" &&
+                  meem.value("candidates").toArray().contains("meem-shoulder-fina") &&
+                  result.matchedTemplates.contains("meem-shoulder-fina") && !result.matchedTemplates.contains("meem-counter-fina"),
+                  "The accepted final shoulder is missing from the assembled template diagnostics");
+        }
     }
     const auto counterForm = resolvedLetterForm(config, "meem-counter-fina");
     QFile steps("pages/page2.dat");

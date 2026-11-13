@@ -83,13 +83,14 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
     if (regions.size() != sections.size() + 1) return {};
     const auto inPage = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
     size_t region = 0;
+    QStringList bodyForms;
     for (size_t slot = 0; slot < bodies.size(); ++slot) {
         const auto& body = *bodies[slot];
         const auto mask = inPage(regions[region].path);
         if (mask.boundingRect().isEmpty() || std::any_of(body.samples.begin(), body.samples.end(),
                 [&](const auto& point) { return !mask.contains(point); })) return {};
         trial.baseGlyphs.push_back(std::move(regions[region++]));
-        trial.matchedTemplates.append(body.formId);
+        bodyForms.append(body.formId);
         trial.letterDiagnostics.append(QJsonObject{{"letterIndex", int(slot + 1)}, {"character", letters.mid(int(slot), 1)},
             {"position", slot == 0 ? "initial" : slot + 1 == bodies.size() ? "final" : "medial"},
             {"status", "matched"}, {"template", body.formId}, {"candidates", QJsonArray{body.formId}}});
@@ -103,7 +104,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
     }
     if (!coversOriginalInk(word, trial)) return {};
     trial.correct = true;
-    trial.templateTrace.append("Fixed anchors · " + trial.matchedTemplates.join(" → "));
+    trial.templateTrace.append("Fixed anchors · " + bodyForms.join(" → "));
     return trial;
 }
 

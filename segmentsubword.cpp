@@ -4,13 +4,6 @@ using namespace MedinaCutter;
 
 static void reportFinalRetry(WordResultInfo::SubWordInfo& sub, const QHash<QString, QString>& parents) {
     if (parents.isEmpty()) return;
-    bool matchedRetry = false;
-    for (auto& id : sub.matchedTemplates) {
-        if (!parents.contains(id)) continue;
-        id = parents.value(id);
-        matchedRetry = true;
-    }
-    if (matchedRetry) sub.matchedTemplates.removeDuplicates();
     for (auto& trace : sub.templateTrace)
         for (auto parent = parents.cbegin(); parent != parents.cend(); ++parent)
             trace.replace(parent.key(), parent.value() + " (final retry)");
@@ -23,9 +16,12 @@ static void reportFinalRetry(WordResultInfo::SubWordInfo& sub, const QHash<QStri
             slot.insert("cutPolicy", "final-retry");
             changed = true;
         }
-        const auto inferred = slot.value("inferredFrom").toString();
-        if (parents.contains(inferred)) {
-            slot.insert("inferredFrom", parents.value(inferred));
+        const auto original = slot;
+        for (auto field = original.constBegin(); field != original.constEnd(); ++field) {
+            if (field.key() != "inferredFrom" && !field.key().endsWith("Template")) continue;
+            const auto referenced = field.value().toString();
+            if (!parents.contains(referenced)) continue;
+            slot.insert(field.key(), parents.value(referenced));
             changed = true;
         }
         const auto candidates = slot.value("candidates").toArray();
@@ -68,6 +64,10 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     auto& sub = word.wordResultInfo.subWords[subWordIndex];
     if (!refresh && !sub.baseGlyphs.empty())
         return sub.correct;
+    const auto finish = [&](bool complete) {
+        collectUsedTemplates(sub);
+        return complete;
+    };
     const auto& requestedForms = draft ? *draft : letterForms();
     const auto source = sub;
     const auto attempt = [&](const QJsonObject& sourceConfig) -> bool {
@@ -132,8 +132,8 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         return valid;
     };
     const auto& primary = geometryMemo.owned ? primaryLetterForms(requestedForms) : requestedForms;
-    if (attempt(primary)) return true;
-    if (!geometryMemo.owned) return false;
+    if (attempt(primary)) return finish(true);
+    if (!geometryMemo.owned) return finish(false);
 
     // Validate the original curves with bracketed intersections. Allow the
     // remaining shape variants only after the established search failed.
@@ -145,10 +145,10 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     geometry.verifyContourGeometry = true;
     if (attempt(requestedForms)) {
         sub.templateTrace.append("Unresolved partition matched on the original contours");
-        return true;
+        return finish(true);
     }
     sub = std::move(incomplete);
-    return false;
+    return finish(false);
 }
 
 bool PageAnalysisResult::collectLegacyCutProposals(int pageIndex, int lineIndex, int wordIndex,
@@ -793,37 +793,56 @@ LetterFormInspection inspectLetterForm(PageAnalysisResult& sample, int page, int
         ~Capture() { formInspection = previous; inspectingForm = active; inspectionCoordinates = coordinates; }
     } capture(result);
     result.complete = sample.segmentSubword(page, line, wordIndex, subwordIndex, font, true, &config);
-    const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     const auto joins = std::vector<Stretching>(sub.joins.begin(), sub.joins.end());
+    // A separate contour has no chord at its entry. Map each assembled join
+    // to the actual letter indices before displaying its boundary source.
+    QVector<int> incoming(sub.letterDiagnostics.size(), -1), outgoing(incoming.size(), -1);
+    int joinIndex = 0;
+    for (int index = 1; index < sub.letterDiagnostics.size() && joinIndex < int(joins.size()); ++index) {
+        if (sub.letterDiagnostics[index].toObject().value("boundaryKind") == "separate-contours") continue;
+        incoming[index] = outgoing[index - 1] = joinIndex++;
+    }
     for (int index = 0; index < sub.letterDiagnostics.size(); ++index) {
         const auto slot = sub.letterDiagnostics[index].toObject();
         const auto selected = slot.value("template").toString();
-        if (selected != id && !slot.value("candidates").toArray().contains(id)) continue;
+        const auto entry = slot.value("entryTemplate").toString(selected);
+        const auto exit = slot.value("exitTemplate").toString(selected);
+        const bool selectedBody = selected == id && slot.value("status") == "matched";
+        const bool usesEntry = !id.isEmpty() && entry == id && incoming[index] >= 0;
+        const bool usesExit = !id.isEmpty() && exit == id && outgoing[index] >= 0;
+        QStringList references;
+        for (const auto* field : {"prefixTemplate", "headTemplate", "componentTemplate"})
+            if (slot.value(field) == id) references.append(QString::fromLatin1(field));
+        if (!selectedBody && !usesEntry && !usesExit && references.isEmpty() &&
+            !slot.value("candidates").toArray().contains(id)) continue;
         result.assembly.append(QString("Letter %1 · %2 · %3 · %4%5")
             .arg(index + 1).arg(slot.value("character").toString(), slot.value("position").toString(),
                  slot.value("status").toString(), selected.isEmpty() ? QString{} : " · selected " + selected));
-        if (selected != id) continue;
-        if (index < int(sub.baseGlyphs.size()))
+        if (selectedBody && index < int(sub.baseGlyphs.size()))
             result.selectedBody.addPath(shape.transform.map(sub.baseGlyphs[index].path).translated(shape.pos));
-        LetterFormInspection::Candidate selectedCuts{QString("Selected letter %1 (assembled)").arg(index + 1), {}};
-        const auto appendBoundary = [&](int joinIndex, bool receiving) {
-            auto boundary = joins[joinIndex];
-            if (joinIndex < int(sub.kashidaPaths.size()) && !sub.kashidaPaths[joinIndex].isEmpty()) {
-                const auto& caps = sub.kashidaCuts[joinIndex];
+        LetterFormInspection::Candidate selectedCuts{QString("Assembled cuts · letter %1").arg(index + 1), {}};
+        const auto appendBoundary = [&](int gap, bool receiving, const QString& source) {
+            auto boundary = joins[gap];
+            if (gap < int(sub.kashidaPaths.size()) && !sub.kashidaPaths[gap].isEmpty()) {
+                const auto& caps = sub.kashidaCuts[gap];
                 const auto& actual = receiving ? caps.second : caps.first;
                 boundary.topBaseLine.point = actual.p1();
                 boundary.bottomBaseLine.point = actual.p2();
             }
             for (const auto& cut : boundary.cutSegments()) selectedCuts.cuts.append(cut);
+            result.assembly.append((receiving ? QStringLiteral("Entry cut · ") : QStringLiteral("Exit cut · ")) + source);
         };
-        if (index > 0 && index - 1 < int(joins.size())) appendBoundary(index - 1, true);
-        if (index < letters.size() - 1 && index < int(joins.size())) appendBoundary(index, false);
-        result.candidates.prepend(selectedCuts);
+        if (usesEntry || (selectedBody && incoming[index] >= 0)) appendBoundary(incoming[index], true, entry);
+        if (usesExit || (selectedBody && outgoing[index] >= 0)) appendBoundary(outgoing[index], false, exit);
+        if (!selectedCuts.cuts.isEmpty()) result.candidates.prepend(selectedCuts);
+        for (const auto& field : references) result.assembly.append(field + " · " + id);
+        if (!selectedBody) continue;
         for (const auto* field : {"bodyForm", "variant", "cutPolicy", "entryPolicy", "junctionPolicy", "entryFork", "entryWalk"})
             if (slot.contains(field)) result.assembly.append(QString::fromLatin1(field) + ": " +
                 slot.value(field).toVariant().toString());
     }
-    if (!result.attempted) result.assembly.append("This template was not reached in this run (position, priority or recovery stage). This is not a recognition rejection.");
+    if (sub.matchedTemplates.contains(id)) result.attempted = true;
+    if (!result.attempted) result.assembly.append("The search did not reach this template in this run.");
     if (result.assembly.isEmpty()) result.assembly.append("No letter selected this template in the assembled result.");
     // Keep the full trace: later recovery/assembly can reject a valid local
     // proposal. A failed alternative is never presented as the selected cut.

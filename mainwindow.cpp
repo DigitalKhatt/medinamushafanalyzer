@@ -1564,15 +1564,16 @@ void MainWindow::inspectSubword(const QPoint& pos) {
         return tr("%1 · %2 body regions · %3 kashida spans\n%4")
             .arg(complete ? tr("Complete") : tr("Partial"))
             .arg(result.baseGlyphs.size()).arg(spans)
-            .arg(result.templateTrace.join('\n'));
+            .arg((result.matchedTemplates.isEmpty() ? QString{} :
+                    tr("Used templates · %1\n").arg(result.matchedTemplates.join(", "))) + result.templateTrace.join('\n'));
     };
     const bool complete = sample.segmentSubword(hit.pageIndex, 0, 0, subwordIndex, &font, true);
     render(current);
     const auto currentTrace = describe(complete);
+    const auto currentTemplates = result.matchedTemplates;
+    const auto currentAttempts = result.templateTrace;
     trace->setPlainText(currentTrace);
-    auto ids = result.matchedTemplates;
-    ids.removeDuplicates();
-    QStringList inspectIds = ids;
+    QStringList inspectIds = currentTemplates;
     const auto letters = PageAnalysisResult::bodyLetters(subword->text);
     for (const auto* phase : {"initial", "medial", "final"}) {
         const auto applicable = QString(phase) == "initial" ? letters.left(1) :
@@ -1586,7 +1587,7 @@ void MainWindow::inspectSubword(const QPoint& pos) {
     }
     inspectIds.removeDuplicates();
     rules->addItems(inspectIds);
-    for (const auto& id : ids) if (resolvedLetterForm(PageAnalysisResult::letterForms(), id).contains("body")) {
+    for (const auto& id : currentTemplates) if (resolvedLetterForm(PageAnalysisResult::letterForms(), id).contains("body")) {
         rules->setCurrentText(id); break;
     }
     bodyCuts->selectForm(rules->currentText());
@@ -1703,22 +1704,35 @@ void MainWindow::inspectSubword(const QPoint& pos) {
     connect(copyReview, &QPushButton::clicked, &dialog, [&] {
         const auto& active = PageAnalysisResult::letterForms();
         QJsonObject activeRules;
-        QJsonArray selectedRules;
         for (const auto* phase : {"initial", "medial", "final"}) {
             for (const auto& entry : active.value(phase).toArray()) {
                 const auto id = entry.toObject().value("id").toString();
                 activeRules.insert(id, entry);
-                if (ids.contains(id) || currentTrace.contains(QStringLiteral(" · %1 · ").arg(id)))
-                    selectedRules.append(entry);
             }
         }
 
         QString report = tr("Medina Mushaf Analyzer · Page %1 · Line %2 · Word %3 · Subword %4\nText: %5\n\n%6")
             .arg(hit.pageIndex + 1).arg(hit.lineIndex + 1).arg(hit.wordIndex + 1)
             .arg(subwordIndex + 1).arg(subword->text, trace->toPlainText());
-        if (!selectedRules.isEmpty()) {
+        QJsonArray usedRules;
+        for (const auto& id : currentTemplates)
+            if (activeRules.contains(id)) usedRules.append(activeRules.value(id));
+        if (!usedRules.isEmpty()) {
+            report += tr("\n\nUsed templates\n");
+            report += QString::fromUtf8(QJsonDocument(usedRules).toJson());
+        }
+        QJsonArray otherRules;
+        for (const auto& entry : currentAttempts) {
+            const auto fields = entry.split(QStringLiteral(" · "));
+            for (const auto& field : fields) {
+                if (!activeRules.contains(field) || currentTemplates.contains(field)) continue;
+                const auto rule = activeRules.value(field);
+                if (!otherRules.contains(rule)) otherRules.append(rule);
+            }
+        }
+        if (!otherRules.isEmpty()) {
             report += tr("\n\nTemplates tried\n");
-            report += QString::fromUtf8(QJsonDocument(selectedRules).toJson());
+            report += QString::fromUtf8(QJsonDocument(otherRules).toJson());
         }
 
         QJsonParseError parse;

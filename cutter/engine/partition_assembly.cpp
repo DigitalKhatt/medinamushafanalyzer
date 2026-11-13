@@ -33,7 +33,6 @@ LigatureMatch segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordI
     clearCuts();
     trial.extrema.clear();
     trial.templateTrace.clear();
-    trial.matchedTemplates.clear();
     const auto slot = [&](int index, const QString& form, bool matched) {
         return QJsonObject{{"letterIndex", index + 1}, {"character", letters.mid(index, 1)},
             {"position", index == 0 ? "initial" : "final"}, {"status", matched ? "matched" : "no-match"},
@@ -110,8 +109,8 @@ LigatureMatch segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordI
         !coversOriginalInk(word, trial))
         return fail("shared cut failed ink ownership");
     sub = std::move(trial);
-    sub.matchedTemplates = QStringList{initialId, finalId};
     sub.letterDiagnostics = {slot(0, initialId, true), slot(1, finalId, true)};
+    recordBoundaryTemplate(sub, 0, false, finalId);
     sub.templateTrace.append(id + " · " + initialId + " + " + finalId + " · shared cut");
     sub.correct = true;
     return LigatureMatch::SharedCut;
@@ -275,20 +274,6 @@ bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subwor
     return true;
 }
 
-static void recordAssembledForm(WordResultInfo::SubWordInfo& trial, int slot, const QString& id) {
-    auto diagnostic = trial.letterDiagnostics[slot].toObject();
-    if (diagnostic.value("status") != "matched")
-        trial.templateTrace.removeAll(QString("%1 %2 · %3").arg(diagnostic.value("position").toString(),
-            diagnostic.value("character").toString(), diagnostic.value("status").toString()));
-    auto candidates = diagnostic.value("candidates").toArray();
-    if (!candidates.contains(id)) candidates.append(id);
-    diagnostic.insert("candidates", candidates);
-    diagnostic.insert("template", id);
-    diagnostic.insert("status", "matched");
-    trial.letterDiagnostics[slot] = diagnostic;
-    if (!trial.matchedTemplates.contains(id)) trial.matchedTemplates.append(id);
-}
-
 static bool matchAssembledBody(SearchContext& source, const Apath& shape, const QJsonObject& config,
         WordResultInfo::SubWordInfo& trial, int slot, const QString& exitTemplate = {}) {
     const auto diagnostic = trial.letterDiagnostics[slot].toObject();
@@ -337,6 +322,7 @@ static bool assembleSharedTerminalEntry(SearchContext& source, const Apath& shap
     // A declared counter rim can supply the preceding seam if its eye was
     // enclosed by the earlier body. Verify the proposed body on the source.
     std::optional<Stretching> rim;
+    QString rimTemplate;
     if (last >= 2 && !matched(last - 1)) {
         const auto captured = toSubpaths(shape.transform.map(trial.baseGlyphs[last - 2].path).translated(shape.pos));
         for (const auto& value : config.value("medial").toArray()) {
@@ -354,6 +340,7 @@ static bool assembleSharedTerminalEntry(SearchContext& source, const Apath& shap
                         edge.cutSegments().front(), seam.cutSegments().front())) continue;
                 if (rim) return false;
                 rim = edge;
+                rimTemplate = form.value("id").toString();
             }
         }
     }
@@ -446,17 +433,20 @@ static bool assembleSharedTerminalEntry(SearchContext& source, const Apath& shap
         }
     }
     if (!matched(last - 1) && !matchAssembledBody(source, shape, config, trial, last - 1, id)) return false;
+    if (rim) {
+        recordBoundaryTemplate(trial, last - 2, false, rimTemplate);
+        recordBoundaryTemplate(trial, last - 1, true, rimTemplate);
+    }
     if (exit) {
         trial.kashidaPaths.back() = pieces[pieces.size() - 2].path;
         trial.kashidaCuts.back() = {
             QLineF(exit->topBaseLine.point, exit->bottomBaseLine.point),
             QLineF(seam.topBaseLine.point, seam.bottomBaseLine.point)};
     } else {
-        auto sender = trial.letterDiagnostics[last - 1].toObject();
-        sender.insert("sharedExitTemplate", id);
-        trial.letterDiagnostics[last - 1] = sender;
+        recordBoundaryTemplate(trial, last - 1, false, id);
     }
     recordAssembledForm(trial, last, id);
+    recordBoundaryTemplate(trial, last, true, id);
     trial.templateTrace.append(id + (exit ? " · separate connector at its declared cut" : " · shared entry at its declared cut"));
     return true;
 }
@@ -649,7 +639,9 @@ void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub,
     }
     if (!coversOriginalInk(word, trial)) return;
     diagnostic.insert("junctionPolicy", atShoulder ? "lower-shoulder" : "inward-corners");
+    diagnostic.insert("entryTemplate", id);
     trial.letterDiagnostics[trial.letterDiagnostics.size() - 1] = diagnostic;
+    if (!separate) recordBoundaryTemplate(trial, int(last) - 1, false, id);
     trial.templateTrace.append(id + (atShoulder ? " · terminal cut from lower shoulder" : " · terminal cut at contour junction"));
     inspectCandidate(atShoulder ? "Terminal lower shoulder" : "Terminal contour junction", context.res);
     sub = std::move(trial);

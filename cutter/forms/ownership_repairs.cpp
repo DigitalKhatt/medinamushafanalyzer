@@ -168,6 +168,7 @@ void PageAnalysisResult::refineLipCuts(int line, int wordIndex, int subIndex, co
         auto headStart = oldHeadStart, sender = entry;
         const bool wasShared = sub.kashidaPaths[i-1].isEmpty();
         bool shared = wasShared;
+        bool senderFromTooth = false;
         std::optional<Stretching> ainExit;
         const bool refineSharedEntry = wasShared && mouth.value("separateSharedEntry").toBool();
         if (ain || seen || refineSharedEntry) {
@@ -188,7 +189,10 @@ void PageAnalysisResult::refineLipCuts(int line, int wordIndex, int subIndex, co
                             rule.insert("exitOffset", .25);
                             Stretching tooth{};
                             if (seenTeethBoundaries(ctx, rule, ctx.bbox.left(), ctx.bbox.right()+1e-6, nullptr, &tooth) &&
-                                before(entry, tooth) && before(tooth, headStart)) sender = tooth;
+                                before(entry, tooth) && before(tooth, headStart)) {
+                                sender = tooth;
+                                senderFromTooth = true;
+                            }
                             break;
                         }
                     }
@@ -228,17 +232,23 @@ void PageAnalysisResult::refineLipCuts(int line, int wordIndex, int subIndex, co
             sub = std::move(previous);
             return false;
         };
-        if (ainExit && apply(*ainExit, false)) {
+        const bool separateAin = ainExit && apply(*ainExit, false);
+        if (separateAin) {
             sub.templateTrace.append(sub.letterDiagnostics[i-1].toObject().value("template").toString() +
                                      " · own exit starts kashida before the open lip");
         } else if (!apply(sender, shared)) {
             continue;
         }
-        auto diagnostic = slot;
-        diagnostic.insert("boundaryTemplate", form.value("id"));
-        sub.letterDiagnostics[i] = diagnostic;
-        if (!sub.matchedTemplates.contains(form.value("id").toString())) sub.matchedTemplates.append(form.value("id").toString());
-        sub.templateTrace.append(form.value("id").toString() + " · open lip boundaries refined");
+        const auto id = form.value("id").toString();
+        const bool entryChanged = sub.kashidaPaths[i-1].isEmpty() != wasShared || chord(headStart) != chord(oldHeadStart);
+        if (entryChanged) {
+            recordBoundaryTemplate(sub, i, true, id);
+            if (sub.kashidaPaths[i-1].isEmpty()) recordBoundaryTemplate(sub, i - 1, false, id);
+            else if (separateAin || senderFromTooth)
+                recordBoundaryTemplate(sub, i - 1, false, sub.letterDiagnostics[i-1].toObject().value("template").toString());
+        }
+        if (exitChanged) recordBoundaryTemplate(sub, i, false, id);
+        sub.templateTrace.append(id + " · open lip boundaries refined");
     }
 }
 
@@ -446,7 +456,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             const double width = chord(current).length();
             const double minTravel = stem ? 2.6 : descender ? 1.1 : stemFoot ? 1.0 : 2.0;
             std::optional<ToothClusterBody> cluster;
-            const auto declaration = program.forms.constFind(templateId(owner));
+            const auto id = templateId(owner);
+            const auto declaration = program.forms.constFind(id);
             if (declaration != program.forms.cend() && declaration->body.value("shape") == "tooth-cluster") {
                 // A long run near the last tooth can look like a connector.
                 // Find this body's three tips before considering the new cut.
@@ -497,11 +508,14 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                 if (!cutPrecedes(right, left, outline.orientation) ||
                     !cutPrecedes(movesEarlier ? *boundary : current,
                                  movesEarlier ? current : *boundary, outline.orientation)) continue;
-                if (replace(request.join, right, left, templateId(owner) + " · cut at the stroke turn", [&] {
+                if (replace(request.join, right, left, id + " · cut at the stroke turn", [&] {
                         const auto updated = world(sub.baseGlyphs[owner].path);
                         return toSubpaths(updated).size() == contourCount &&
                             std::abs(updated.boundingRect().top() - bounds.top()) < 1e-5;
-                    })) break;
+                    })) {
+                    recordBoundaryTemplate(sub, owner, request.incoming, id);
+                    break;
+                }
             }
         }
         if (checkTerminalTeeth) {
@@ -524,14 +538,8 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                     replace(last - 1, sending, boundary, id + " · first tooth retained", [&] {
                         return toSubpaths(world(sub.baseGlyphs.back().path)).size() == 1;
                     })) {
-                    auto diagnostic = sub.letterDiagnostics.last().toObject();
-                    diagnostic.insert("template", id);
-                    auto candidates = diagnostic.value("candidates").toArray();
-                    if (!candidates.contains(id)) candidates.append(id);
-                    diagnostic.insert("candidates", candidates);
-                    sub.letterDiagnostics[last] = diagnostic;
-                    sub.matchedTemplates.removeAll(terminal);
-                    if (!sub.matchedTemplates.contains(id)) sub.matchedTemplates.append(id);
+                    recordAssembledForm(sub, last, id);
+                    recordBoundaryTemplate(sub, last, true, id);
                 }
             }
         }
@@ -565,9 +573,14 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                     return retainedHoles(world(sub.baseGlyphs[letter].path)) == following &&
                         retainedHoles(world(sub.baseGlyphs[joinIndex].path)) == previous;
                 };
+                const auto id = templateId(letter);
                 if (replace(joinIndex, keepConnector ? sending : cut,
                             keepConnector ? std::optional<Stretching>{cut} : std::nullopt,
-                            templateId(letter) + " · incoming counter rim retained", retainsCounters)) break;
+                            id + " · incoming counter rim retained", retainsCounters)) {
+                    recordBoundaryTemplate(sub, letter, true, id);
+                    if (!keepConnector) recordBoundaryTemplate(sub, joinIndex, false, id);
+                    break;
+                }
             }
         }
     }
@@ -589,11 +602,15 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                 nearest = length;
             }
             orientSection(outline, *boundary, outline.ySorted.rbegin()->time, false);
-            replace(0, *boundary, {}, initial + " · descending stroke retained in kaf", [&] {
+            const auto id = outline.form.value("id").toString();
+            if (replace(0, *boundary, {}, id + " · descending stroke retained in kaf", [&] {
                 const auto repaired = world(sub.baseGlyphs.front().path).boundingRect();
                 return repaired.height() > 1.45 * first.height() &&
                     std::abs(repaired.top() - first.top()) < 1e-5;
-            });
+            })) {
+                recordBoundaryTemplate(sub, 0, false, id);
+                recordBoundaryTemplate(sub, 1, true, id);
+            }
         }
     }
 
@@ -611,7 +628,11 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                     const auto repaired = world(sub.baseGlyphs.back().path).boundingRect();
                     return repaired.right() < tail.right() && std::abs(repaired.left() - tail.left()) < 1e-5 &&
                         std::abs(repaired.top() - tail.top()) < 1e-5;
-                })) break;
+                })) {
+                recordBoundaryTemplate(sub, last, true, terminal);
+                recordBoundaryTemplate(sub, last - 1, false, terminal);
+                break;
+            }
         }
     }
 
@@ -651,13 +672,9 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         };
         const auto id = stackedLam.value("id").toString();
         if (replace(0, outline.res, {}, id + " · stacked head restored to its own body", shaftRestored)) {
-            auto diagnostic = sub.letterDiagnostics.first().toObject();
-            diagnostic.insert("template", id);
-            auto candidates = diagnostic.value("candidates").toArray();
-            if (!candidates.contains(id)) candidates.append(id);
-            diagnostic.insert("candidates", candidates);
-            sub.letterDiagnostics[0] = diagnostic;
-            if (!sub.matchedTemplates.contains(id)) sub.matchedTemplates.append(id);
+            recordAssembledForm(sub, 0, id);
+            recordBoundaryTemplate(sub, 0, false, id);
+            recordBoundaryTemplate(sub, 1, true, id);
         }
     }
 
@@ -665,18 +682,22 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         const auto current = *sub.joins.begin();
         auto connector = sub.kashidaPaths.front().isEmpty() ? std::optional<Stretching>{} : entry(current);
         std::optional<Stretching> boundary;
+        QString boundaryId;
         if (clippedLam) {
-            const auto declaration = form("initial", "lam-hah-stacked-init");
+            boundaryId = "lam-hah-stacked-init";
+            const auto declaration = form("initial", boundaryId);
             if (!declaration.isEmpty() && declaredLamBoundary(outline, config, declaration)) boundary = outline.res;
         } else if ((clippedSeen || clippedTooth || clippedStackedTooth) && last >= 2 && QStringLiteral("جحخ").contains(letters[1])) {
-            const auto settings = form("medial", "hah-stacked-medi").value("upperAttachment").toObject();
+            boundaryId = "hah-stacked-medi";
+            const auto settings = form("medial", boundaryId).value("upperAttachment").toObject();
             auto attachmentInk = world(sub.baseGlyphs[1].path);
             if (connector) attachmentInk.addPath(world(sub.kashidaPaths.front()));
             boundary = stackedAttachment(outline, settings, first, attachmentInk,
                                          current, *std::next(sub.joins.begin()), true);
             if (boundary) connector.reset();
         } else {
-            boundary = walk("initial", clippedTooth ? "beh-foot-init" : initial, clippedSeen);
+            boundaryId = clippedTooth ? QStringLiteral("beh-foot-init") : initial;
+            boundary = walk("initial", boundaryId, clippedSeen);
         }
         if (boundary) {
             const auto restoresBody = [&] {
@@ -684,7 +705,10 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                 return clippedLam ? repaired.height() >= 2 * first.height() :
                     repaired.width() >= std::max(.45, 1.5 * first.width()) && repaired.height() >= 1.2;
             };
-            replace(0, *boundary, connector, initial + " · initial stroke restored at its own boundary", restoresBody);
+            if (replace(0, *boundary, connector, boundaryId + " · initial stroke restored at its own boundary", restoresBody)) {
+                recordBoundaryTemplate(sub, 0, false, boundaryId);
+                if (!connector) recordBoundaryTemplate(sub, 1, true, boundaryId);
+            }
         }
     }
 
@@ -696,7 +720,11 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             return repaired.left() <= outline.bbox.left() + 1e-5 &&
                 (lostShaft ? repaired.height() >= 4 : repaired.width() >= 2.5 && repaired.height() >= 1.4);
         };
-        replace(last - 1, seam, {}, terminal + " · terminal stroke restored at its own boundary", restoresBody);
+        const auto source = sub.letterDiagnostics.last().toObject().value("entryTemplate").toString(terminal);
+        if (replace(last - 1, seam, {}, terminal + " · terminal stroke restored at its own boundary", restoresBody)) {
+            recordBoundaryTemplate(sub, last - 1, false, source);
+            recordBoundaryTemplate(sub, last, true, source);
+        }
     }
 
     if (risingTail) {
@@ -720,10 +748,12 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         }
         if (boundary) {
             const auto right = last == 1 ? walk("initial", initial) : std::optional<Stretching>{join};
-            if (right)
-                replace(last - 1, *right, boundary, terminal + " · raised entry restored", [&] {
+            if (right && replace(last - 1, *right, boundary, terminal + " · raised entry restored", [&] {
                     return world(sub.baseGlyphs.back().path).boundingRect().top() < tail.top() - .3;
-                });
+                })) {
+                recordBoundaryTemplate(sub, last, true, terminal);
+                if (last == 1) recordBoundaryTemplate(sub, 0, false, initial);
+            }
         }
     }
 
@@ -751,7 +781,10 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             const bool sliver = preceding && !connected &&
                 QLineF(chord(*preceding).center(), chord(*boundary).center()).length() < .4 * chord(*boundary).length();
             if (!sliver) {
-                replace(last - 1, connected ? join : *boundary, connected ? boundary : std::nullopt, message, restoredHook);
+                if (replace(last - 1, connected ? join : *boundary, connected ? boundary : std::nullopt, message, restoredHook)) {
+                    recordBoundaryTemplate(sub, last, true, terminal);
+                    if (!connected) recordBoundaryTemplate(sub, last - 1, false, terminal);
+                }
             } else if (templateId(last - 1).startsWith("beh-")) {
                 // The old tooth match can be the reh hook itself. If giving
                 // that hook back leaves a sliver, look for the actual tooth
@@ -759,6 +792,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                 const auto oldEntry = *std::next(sub.joins.rbegin());
                 const bool ribbon = !sub.kashidaPaths[last - 2].isEmpty();
                 const auto declaration = resolvedBodyForm(config, form("medial", "beh-shoulder-medi"));
+                const auto toothId = declaration.value("id").toString();
                 auto teeth = declaredToothBoundaries(outline, declaration);
                 std::stable_sort(teeth.begin(), teeth.end(), [](const auto& a, const auto& b) {
                     return a.tip.point.y() < b.tip.point.y();
@@ -788,8 +822,20 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
                             const auto connector = world(sub.kashidaPaths.back());
                             return hookAndTooth() && toSubpaths(connector).size() == 1 &&
                                 followsOneStroke(connector, end, startOfReh);
-                        }, incoming)) break;
-                    if (replace(last - 1, *boundary, {}, restored, hookAndTooth, incoming)) break;
+                        }, incoming)) {
+                        recordBoundaryTemplate(sub, last, true, terminal);
+                        recordBoundaryTemplate(sub, last - 1, true, toothId);
+                        recordBoundaryTemplate(sub, last - 1, false, toothId);
+                        if (!ribbon) recordBoundaryTemplate(sub, last - 2, false, toothId);
+                        break;
+                    }
+                    if (replace(last - 1, *boundary, {}, restored, hookAndTooth, incoming)) {
+                        recordBoundaryTemplate(sub, last, true, terminal);
+                        recordBoundaryTemplate(sub, last - 1, true, toothId);
+                        recordBoundaryTemplate(sub, last - 1, false, terminal);
+                        if (!ribbon) recordBoundaryTemplate(sub, last - 2, false, toothId);
+                        break;
+                    }
                 }
             }
         }
@@ -798,10 +844,11 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
     if (clippedKaf) {
         const double rail = .45 * world(sub.kashidaPaths.front()).boundingRect().width();
         const QJsonObject parallel{{"minRun", rail}, {"minGap", .25}};
-        if (const auto cut = walk("initial", "kaf-elbow-init"))
-            replace(0, *cut, entry(*sub.joins.begin()), initial + " · lower return retained in kaf", [&] {
+        const QString id = "kaf-elbow-init";
+        if (const auto cut = walk("initial", id))
+            if (replace(0, *cut, entry(*sub.joins.begin()), id + " · lower return retained in kaf", [&] {
                 return containsHeadLips(world(sub.baseGlyphs.front().path), parallel);
-            });
+            })) recordBoundaryTemplate(sub, 0, false, id);
     }
 
     if (connectedNoon && sub.kashidaCuts.size() == sub.kashidaPaths.size()) {
@@ -817,12 +864,11 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         };
         const auto sending = readCap(rightCap), receiving = readCap(leftCap);
         const auto boundary = sending && receiving ? restoreNoonBowlEntry(outline, *receiving, *sending) : std::nullopt;
-        if (boundary)
-            replace(last - 1, *sending, boundary, terminal + " · outer bowl retained", [&] {
+        if (boundary && replace(last - 1, *sending, boundary, terminal + " · outer bowl retained", [&] {
                 const auto repaired = world(sub.baseGlyphs.back().path).boundingRect();
                 return repaired.right() > tail.right() && repaired.left() <= tail.left() + 1e-5 &&
                     repaired.bottom() >= tail.bottom() - 1e-5;
-            });
+            })) recordBoundaryTemplate(sub, last, true, terminal);
     }
 
     if (liftedAlef) {
@@ -856,7 +902,11 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
         }
         auto diagnostic = sub.letterDiagnostics[last].toObject();
         diagnostic.insert("boundaryKind", "separate-contours");
+        diagnostic.remove("entryTemplate");
         sub.letterDiagnostics[last] = diagnostic;
+        auto previousLetter = sub.letterDiagnostics[last - 1].toObject();
+        previousLetter.remove("exitTemplate");
+        sub.letterDiagnostics[last - 1] = previousLetter;
         sub.templateTrace.append(terminal + " · detached diagonal retained in alef");
     }
 }

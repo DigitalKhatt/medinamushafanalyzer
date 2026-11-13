@@ -2840,6 +2840,11 @@
         "forkOffset": 0.5,
         "tightJoin": "tip-normal",
         "counterJoin": "preserve-entry",
+        "overlappingExit": {
+          "finalTemplate": "meem-shoulder-fina",
+          "maxEntryShiftWidths": 0.5,
+          "minGapToOffset": 0.3333333333333333
+        },
         "sharedFold": {
           "letters": "يئى",
           "template": "yeh-first-turn-fina",

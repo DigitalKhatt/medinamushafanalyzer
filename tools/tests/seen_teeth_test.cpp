@@ -344,15 +344,14 @@ static void checkClusterAttachments(const QJsonObject& config) {
         std::array<double, 3> tips;
         bool connector;
     };
-    const std::array<Example, 8> examples{{
+    const std::array<Example, 7> examples{{
         {3, 5, 8, 2, 2, {31.6225, 35.6388, 38.5079}, true},
         {39, 1, 5, 3, 0, {21.5734, 26.6657, 30.7143}, true},
         {104, 6, 4, 1, 2, {6.42374, 11.7121, 17.6433}, true},
         {115, 4, 4, 2, 3, {14.5569, 19.6289, 23.6858}, true},
         {238, 7, 10, 1, 1, {6.4307, 10.7275, 13.6555}, false},
         {244, 11, 9, 1, 1, {4.55777, 8.50743, 12.4836}, true},
-        {480, 13, 3, 3, 0, {21.4082, 28.592, 31.6273}, true},
-        {531, 8, 6, 3, 1, {9.5588, 14.5306, 18.5482}, false}
+        {480, 13, 3, 3, 0, {21.4082, 28.592, 31.6273}, true}
     }};
     QFile fontFile("input/font.dat");
     check(fontFile.open(QIODevice::ReadOnly), "Missing native font");

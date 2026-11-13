@@ -137,6 +137,10 @@ void inspectLandmark(const char* name, const PathExtrema& point);
 void inspectCandidate(const QString& label, const Stretching& left,
                              const std::optional<Stretching>& right = {});
 
+void recordBoundaryTemplate(WordResultInfo::SubWordInfo& sub, int slot, bool entry, const QString& id);
+void recordAssembledForm(WordResultInfo::SubWordInfo& sub, int slot, const QString& id);
+void collectUsedTemplates(WordResultInfo::SubWordInfo& sub);
+
 struct ByContourTime {
     bool operator()(const PathExtrema& a, const PathExtrema& b) const {
         return a.time > b.time;

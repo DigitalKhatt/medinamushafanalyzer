@@ -58,4 +58,37 @@ void inspectCandidate(const QString& label, const Stretching& left,
     formInspection->candidates.append({label, lines});
 }
 
+void recordBoundaryTemplate(WordResultInfo::SubWordInfo& sub, int slot, bool entry, const QString& id) {
+    auto letter = sub.letterDiagnostics.at(slot).toObject();
+    letter.insert(entry ? "entryTemplate" : "exitTemplate", id);
+    sub.letterDiagnostics[slot] = letter;
+}
+
+void recordAssembledForm(WordResultInfo::SubWordInfo& sub, int slot, const QString& id) {
+    auto letter = sub.letterDiagnostics.at(slot).toObject();
+    if (letter.value("status") != "matched")
+        sub.templateTrace.removeAll(QString("%1 %2 · %3").arg(letter.value("position").toString(),
+            letter.value("character").toString(), letter.value("status").toString()));
+    auto candidates = letter.value("candidates").toArray();
+    if (!candidates.contains(id)) candidates.append(id);
+    letter.insert("candidates", candidates);
+    letter.insert("template", id);
+    letter.insert("status", "matched");
+    sub.letterDiagnostics[slot] = letter;
+}
+
+void collectUsedTemplates(WordResultInfo::SubWordInfo& sub) {
+    sub.matchedTemplates.clear();
+    const auto append = [&](const QString& id) {
+        if (!id.isEmpty() && !sub.matchedTemplates.contains(id)) sub.matchedTemplates.append(id);
+    };
+    for (const auto& value : sub.letterDiagnostics) {
+        const auto letter = value.toObject();
+        if (letter.value("status") == "matched") append(letter.value("template").toString());
+        for (auto field = letter.constBegin(); field != letter.constEnd(); ++field) {
+            if (field.key().endsWith("Template")) append(field.value().toString());
+        }
+    }
+}
+
 } // namespace MedinaCutter

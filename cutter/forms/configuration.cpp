@@ -1651,6 +1651,18 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 const auto forkOffset = declaredCuts.value("forkOffset");
                 if (!forkOffset.isUndefined() && !positive(forkOffset))
                     return id + ": cuts.forkOffset must be positive in page units";
+                if (const auto value = declaredCuts.value("overlappingExit"); !value.isUndefined()) {
+                    const auto attachment = value.toObject();
+                    const auto finals = config.value("final").toArray();
+                    const auto partner = std::find_if(finals.begin(), finals.end(), [&](const auto& value) {
+                        return value.toObject().value("id") == attachment.value("finalTemplate");
+                    });
+                    if (attachment.size() != 3 ||
+                        !positive(attachment.value("maxEntryShiftWidths")) ||
+                        !positive(attachment.value("minGapToOffset")) || partner == finals.end() ||
+                        formDescription(config, partner->toObject(), "body").value("shape") != "counter-shoulder")
+                        return id + ": cuts.overlappingExit needs a final counter-shoulder template and positive shift and gap ratios";
+                }
                 if (const auto value = declaredCuts.value("sharedFold"); !value.isUndefined()) {
                     const auto fold = value.toObject();
                     const auto receiver = namedLetterForm(config, fold.value("template").toString());
@@ -1686,7 +1698,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     for (auto key = settings.begin(); key != settings.end(); ++key)
                         if (!QStringList{"boundaries", "forkOffset", "tightJoin", "counterJoin", "beforeFinal",
                                          "letters", "junction", "preserveEntryAfter", "route", "section", "exitRoutes",
-                                         "entryRoute", "placement", "shortExit", "sharedFold", "turnBoundaries"}.contains(key.key()))
+                                         "entryRoute", "placement", "shortExit", "overlappingExit", "sharedFold",
+                                         "turnBoundaries"}.contains(key.key()))
                             return id + ": unknown cuts setting " + key.key();
                 }
             }

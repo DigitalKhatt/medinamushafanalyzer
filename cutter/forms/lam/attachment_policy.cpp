@@ -103,6 +103,7 @@ static bool resolveLamForkEntry(const Word& word, const LamBodyRecognition& reco
             diagnostic.insert("entryFork", body->tip.time);
             diagnostic.insert("entryWalk", distance);
             sub.letterDiagnostics[slot] = diagnostic;
+            recordBoundaryTemplate(sub, slot, true, diagnostic.value("template").toString());
             sub.templateTrace.append("lam · incoming cut from its own fork; terminal return retained");
             return true;
         }
@@ -199,6 +200,11 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
                 sub.templateTrace.append("lam-alef · shared-return policy failed ink ownership");
                 return false;
             }
+            const auto receiver = sub.letterDiagnostics.last().toObject();
+            const auto source = junction ? returnBody->body.value("alefArm").toString() :
+                receiver.value("entryTemplate").toString(receiver.value("template").toString());
+            recordBoundaryTemplate(sub, terminalLam, false, source);
+            recordBoundaryTemplate(sub, terminalLam + 1, true, source);
         }
         auto diagnostic = sub.letterDiagnostics[terminalLam].toObject();
         diagnostic.insert("bodyForm", "lam-terminal-return");
@@ -408,45 +414,41 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
             const bool receiving = !before(left, next);
             if (!sharedTip || sending == receiving || !before(right, left)) return retainNearBoundary();
 
-            // The half-unit anchors are fixed. If a tentative adjacent cap
-            // crosses one of them, try a nearby section of that same join.
+            // Keep the fork anchors fixed while testing the neighboring cut.
             const auto oldCap = sending ? previousCap : nextCap;
             const auto flank = chord(sending ? right : left);
-            const auto accept = [&](const Stretching& seam) {
+            const auto accept = [&](const Stretching& seam, double maxShift, double minGap) {
                 const auto cap = chord(seam);
                 if ((sending ? !before(seam, right) : !before(left, seam)) ||
-                    QLineF(cap.center(), oldCap.center()).length() > oldCap.length() / 2 ||
-                    QLineF(cap.center(), flank.center()).length() < offset / 3) return false;
+                    QLineF(cap.center(), oldCap.center()).length() > maxShift * oldCap.length() ||
+                    QLineF(cap.center(), flank.center()).length() < minGap)
+                    return false;
                 return sending ? apply(right, left, seam, next) : apply(right, left, previous, seam);
             };
-            // Prefer the final body's own loop shoulder when its template has one.
-            if (receiving && i + 2 == letters.size()) {
-                for (const auto& value : config.value("final").toArray()) {
-                    const auto rule = bodyConstraintForm(config, value.toObject());
-                    if (!rule.contains("shoulder") || !rule.value("current").toString().contains(letters.back())) continue;
-                    Stretching seam{};
-                    bool projected = false;
-                    if (rule.value("body").toObject().value("shape") == "counter-shoulder") {
-                        const auto body = recognizedSharedShape(context, rule.value("body").toObject());
-                        projected = body->terminalContour &&
-                                    cutLoopShoulder(context, body->terminalContour->box, body->shoulders,
-                                                    shapeSettings(rule, "shoulder"),
-                                                    std::prev(context.xSorted.end())->time, true, seam);
+            if (sending) {
+                // The preceding body can still arrive through the legacy
+                // search without a separate exit at its own landmark.
+                for (double distance = 1.5 * offset; distance <= offset + oldCap.length(); distance += offset / 4) {
+                    const auto seam = cutLamForkFlank(context, tip, std::nullopt, rightForward, 1, distance);
+                    if (seam && accept(*seam, .5, offset / 3)) {
+                        recordBoundaryTemplate(sub, i - 1, false, form);
+                        return true;
                     }
-                    if (!projected || !accept(seam))
-                        continue;
-                    auto diagnostic = sub.letterDiagnostics.last().toObject();
-                    diagnostic.insert("template", rule.value("id"));
-                    sub.letterDiagnostics[sub.letterDiagnostics.size() - 1] = diagnostic;
-                    sub.templateTrace.append(rule.value("id").toString() + " · neighboring cut restored at its shoulder");
-                    return true;
                 }
             }
-            const bool forward = sending ? rightForward : !rightForward;
-            const int side = sending ? 1 : -1;
-            for (double distance = 1.5 * offset; distance <= offset + oldCap.length(); distance += offset / 4) {
-                const auto seam = cutLamForkFlank(context, tip, std::nullopt, forward, side, distance);
-                if (seam && accept(*seam)) return true;
+            if (receiving && i + 2 == letters.size()) {
+                const auto alternative = lam.value("overlappingExit").toObject();
+                const auto id = alternative.value("finalTemplate").toString();
+                const auto rule = bodyConstraintForm(config, namedLetterForm(config, id));
+                if (rule.value("current").toString().contains(letters.back()) &&
+                    declaredSharedBoundary(context, rule) && matchesBoundaryBody(context, rule, context.res, false) &&
+                    accept(context.res, alternative.value("maxEntryShiftWidths").toDouble(),
+                           alternative.value("minGapToOffset").toDouble() * offset)) {
+                    recordAssembledForm(sub, i + 1, id);
+                    recordBoundaryTemplate(sub, i + 1, true, id);
+                    sub.templateTrace.append(id + " · neighboring cut restored at its shoulder");
+                    return true;
+                }
             }
             return retainNearBoundary();
         };
@@ -522,6 +524,10 @@ bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recog
             diagnostic.insert("bodyForm", "lam-fork");
             diagnostic.insert("cutPolicy", sharedCounter ? "lam-fork-preserved-entry" : "lam-fork-flanks");
             sub.letterDiagnostics[i] = diagnostic;
+            if (!sharedCounter && sub.kashidaCuts[i - 1].second != old.kashidaCuts[i - 1].second)
+                recordBoundaryTemplate(sub, i, true, form);
+            if (sub.kashidaCuts[i].first != old.kashidaCuts[i].first)
+                recordBoundaryTemplate(sub, i, false, form);
             sub.templateTrace.append(form + " · fork cut policy applied");
         }
     }

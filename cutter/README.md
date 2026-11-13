@@ -106,6 +106,12 @@ the shaft's own traced fork when an intervening crest yields no valid
 route. When ordinary assembly fails, the cutter can try a declared
 terminal attachment alongside the final letter's usual boundaries.
 
+For a medial lām exit that overlaps a terminal entry, `cuts.overlappingExit`
+can name a final template to try at its own counter shoulder. The shift
+limit is relative to the current entry's width. The minimum separation is
+relative to `forkOffset`. Assembly keeps lām's fork anchors fixed and
+checks the replacement against the final body's counter.
+
 Ordinary medial teeth use local stroke offsets around their tip and inner
 bend. The lower flank can supply the stroke width for those offsets.
 `followedByFinal` limits the raised-entry cut policies to a final nūn, rāʾ

@@ -24,7 +24,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     subWord.joins.clear();
     subWord.extrema.clear();
     subWord.templateTrace.clear();
-    subWord.matchedTemplates.clear();
     subWord.letterDiagnostics = {};
     if (subWord.paths.empty() || subWord.paths.front() < 0 || subWord.paths.front() >= word.paths.size() ||
         word.paths[subWord.paths.front()].path.isEmpty()) {
@@ -110,6 +109,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
     const auto& finalRules = preparedRules.finals;
     const auto& alefTurnRules = preparedRules.alefTurns;
     QVector<QString> bodyTemplateIds(baseText.size());
+    QString terminalBoundaryTemplate;
     QVector<int> sharedEntries;
     QMap<int, ToothBody> ownedTeeth;
     QMap<int, PathExtrema> ownedLamCrests;
@@ -169,7 +169,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                  accepted ? QStringLiteral("matched") : bodyRejected ?
                     (rejectionReason.isEmpty() ? QStringLiteral("body proportions rejected") : rejectionReason) : QStringLiteral("no cut")));
         if (accepted) {
-            subWord.matchedTemplates.append(id);
             bodyTemplateIds[owner] = id;
             if (retryRule.isEmpty() && rule.value("retryOnPartial").toBool()) retryRule = id;
             return true;
@@ -291,8 +290,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             if (!attempt(initial, 0, false, &seam)) return false;
             bodyTemplateIds[0] = initial.value("id").toString();
             bodyTemplateIds[1] = final.value("id").toString();
+            terminalBoundaryTemplate = bodyTemplateIds[1];
             retryRule = bodyTemplateIds[0];
-            subWord.matchedTemplates << bodyTemplateIds[0] << bodyTemplateIds[1];
             subWord.templateTrace << bodyTemplateIds[0] + " · shared cut at the final fold";
             sharedEntries.append(0);
             seam.kashidaOverrides = final.value("kashida").toObject();
@@ -329,7 +328,10 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         context.res.kashidaOverrides = context.form.value("kashida").toObject();
         if (context.res.counterEntry.pathIndex > 0) {
             context.res.kashidaOverrides.insert("enabled", false);
-            if (index + 1 == lastIndex) bodyTemplateIds[lastIndex] = context.form.value("id").toString();
+            if (index + 1 == lastIndex) {
+                bodyTemplateIds[lastIndex] = context.form.value("id").toString();
+                terminalBoundaryTemplate = bodyTemplateIds[lastIndex];
+            }
             subWord.templateTrace.append(context.form.value("id").toString() + " · shared ligature boundary across two ink bridges");
             if (preserveReadingOrder) context.res.readingOrder=index;
             subWord.joins.insert(context.res);
@@ -430,8 +432,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     original->fixedLeftBoundary = false;
                     original->length = 0;
                     original->kashidaOverrides.insert("enabled", false);
-                    subWord.matchedTemplates.append(pair.templateId);
                     bodyTemplateIds[pair.primaryIsNext ? 0 : lastIndex] = pair.templateId;
+                    if (index + 1 == lastIndex) terminalBoundaryTemplate = bodyTemplateIds[lastIndex];
                     subWord.templateTrace.append(pair.templateId + (pair.ligature
                             ? " · shared ligature cut" : atJunction
                             ? " · shared cut at contour corners" : " · shared cut for tight join"));
@@ -470,7 +472,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             original->bottomLeft = left.bottomBaseLine;
             original->fixedRightBoundary = true;
             original->fixedLeftBoundary = true;
-            subWord.matchedTemplates.append(pair.templateId);
             bodyTemplateIds[pair.primaryIsNext ? 0 : lastIndex] = pair.templateId;
             subWord.templateTrace.append(pair.templateId + " · paired body boundary matched");
         }
@@ -1015,8 +1016,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                         outgoing.kashidaOverrides.insert("enabled", false);
                     if (!finalTemplate.isEmpty()) {
                         bodyTemplateIds[lastIndex] = finalTemplate;
-                        if (!subWord.matchedTemplates.contains(finalTemplate))
-                            subWord.matchedTemplates.append(finalTemplate);
+                        terminalBoundaryTemplate = sharedExit ? finalTemplate : QString{};
                         subWord.templateTrace.append(QString("%1 → %2 · %3 · %4")
                             .arg(baseText.mid(letter, 1), baseText.mid(letter + 1, 1), finalTemplate,
                                 sharedExit ? "shared ligature cut" : "paired body boundary matched"));
@@ -1032,7 +1032,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                         outgoing.fixedLeftBoundary = true;
                     }
                     const auto id = form.value("id").toString();
-                    subWord.matchedTemplates.append(id);
                     bodyTemplateIds[letter] = id;
                     if (medial.tooth) ownedTeeth.insert(letter, *medial.tooth);
                     if (lamCrest) ownedLamCrests.insert(letter, *lamCrest);
@@ -1125,7 +1124,7 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
                     continue;
                 const auto id = rule.value("id").toString();
                 bodyTemplateIds.back() = id;
-                subWord.matchedTemplates.append(id);
+                terminalBoundaryTemplate = shared ? id : QString{};
                 subWord.templateTrace.append(id +
                                              (shared ? " · shared body attachment" : " · separate body attachment"));
                 break;
@@ -1169,7 +1168,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             const double roundoff = 1e-6 * std::max(1., context.bbox.width());
             if (finalInk.boundingRect().left() > context.bbox.left() + roundoff) {
                 subWord.templateTrace.append(bodyTemplateIds[lastIndex] + " · final body lost its left tail tip");
-                subWord.matchedTemplates.removeAll(bodyTemplateIds[lastIndex]);
                 bodyTemplateIds[lastIndex].clear();
             }
             break;
@@ -1185,7 +1183,6 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             const auto body = shape.transform.map(subWord.baseGlyphs.back().path).translated(shape.pos);
             if (!retainsTerminalReturn(context, form, body)) {
                 subWord.templateTrace.append(bodyTemplateIds[lastIndex] + " · final cut clips the bowl shoulder");
-                subWord.matchedTemplates.removeAll(bodyTemplateIds[lastIndex]);
                 bodyTemplateIds[lastIndex].clear();
                 bodyAttempted[lastIndex] = true;
             }
@@ -1293,6 +1290,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
         QJsonObject diagnostic{{"letterIndex", letter + 1},
             {"character", baseText.mid(letter, 1)}, {"position", position}, {"status", status},
             {"template", bodyTemplateIds[letter]}, {"candidates", candidates}};
+        if (letter == lastIndex && status == "matched" && !terminalBoundaryTemplate.isEmpty())
+            diagnostic.insert("entryTemplate", terminalBoundaryTemplate);
         if (matchedLamForks.contains(letter)) {
             diagnostic.insert("bodyForm", "lam-fork");
             diagnostic.insert("cutPolicy", "lam-fork-flanks");
@@ -1307,6 +1306,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             .arg(position, baseText.mid(letter, 1), status));
         subWord.letterDiagnostics.append(diagnostic);
     }
+    if (!terminalBoundaryTemplate.isEmpty() && !bodyTemplateIds[lastIndex].isEmpty())
+        recordBoundaryTemplate(subWord, lastIndex - 1, false, terminalBoundaryTemplate);
     subWord.correct = cut && subWord.joins.size() == lastIndex &&
         std::all_of(bodyTemplateIds.begin(), bodyTemplateIds.end(), [](const auto& id) { return !id.isEmpty(); });
 
@@ -1339,10 +1340,8 @@ bool PageAnalysisResult::segmentSubwordPass(int pageIndex, int lineIndex, int wo
             }
             if (!accepted) { subWord = std::move(previous); continue; }
             const auto id = rule.value("id").toString();
-            auto slot = subWord.letterDiagnostics[i].toObject();
-            slot.insert("entryTemplate", id);
-            subWord.letterDiagnostics[i] = slot;
-            if (!subWord.matchedTemplates.contains(id)) subWord.matchedTemplates.append(id);
+            recordBoundaryTemplate(subWord, i, true, id);
+            recordBoundaryTemplate(subWord, i - 1, false, id);
             subWord.templateTrace.append(id + " · shared horizontal cut at the upper-stroke attachment");
         }
     }

@@ -105,6 +105,17 @@ int main(int argc, char** argv) {
               "Inherited description failed after recovery filtering");
         samePartition(expected, analysis.page.lines[f.line-1].words[f.word-1].wordResultInfo.subWords[f.sub-1]);
     }
+    {
+        auto analysis = fixture(3);
+        const auto usedForEntry = inspectLetterForm(analysis, 2, 4, 0, 0, nullptr, config, "hah-stacked-medi");
+        const auto& sub = analysis.page.lines[4].words[0].wordResultInfo.subWords[0];
+        const auto hah = sub.letterDiagnostics[1].toObject();
+        check(usedForEntry.complete && hah.value("template") == "hah-rising-entry-medi" &&
+              hah.value("entryTemplate") == "hah-stacked-medi" && sub.matchedTemplates.contains("hah-stacked-medi") &&
+              usedForEntry.assembly.contains("Entry cut · hah-stacked-medi") &&
+              !usedForEntry.candidates.isEmpty() && usedForEntry.selectedBody.isEmpty(),
+              "The cut inspector hid the template that supplied the shared entry");
+    }
     check(PageAnalysisResult::letterForms() == config, "Preview activated a draft globally");
 
     auto* full = new QPlainTextEdit;

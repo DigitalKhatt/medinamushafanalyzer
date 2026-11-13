@@ -267,13 +267,12 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
                                              {"template", arm.value("id")},
                                              {"boundaryKind", attached ? "shared-folded-arm" : "separate-contours"},
                                              {"candidates", QJsonArray{arm.value("id")}}});
+    if (attached)
+        recordBoundaryTemplate(sub, sub.letterDiagnostics.size() - 2, false, arm.value("id").toString());
     sub.templateTrace = result.templateTrace;
     sub.templateTrace.append(sourceTemplate + " · prefix body recovered with its terminal arm");
     sub.templateTrace.append(arm.value("id").toString() +
                              (attached ? " · sloping arm cut at its root" : " · separate sloping arm"));
-    sub.matchedTemplates = result.matchedTemplates;
-    sub.matchedTemplates << sourceTemplate << arm.value("id").toString();
-    sub.matchedTemplates.removeDuplicates();
     sub.correct = true;
     return true;
 }
@@ -383,8 +382,9 @@ bool assembleSplitEntry(const Word& word, WordResultInfo::SubWordInfo& sub,
         }
         candidate.letterDiagnostics.append(d);
     }
-    candidate.matchedTemplates = result.matchedTemplates;
-    candidate.matchedTemplates.prepend(headId); candidate.matchedTemplates.prepend(initialId);
+    const auto exitSource = initialForm.isEmpty() ? first.value("exitTemplate").toString(initialId) : initialId;
+    recordBoundaryTemplate(candidate, 0, false, exitSource);
+    recordBoundaryTemplate(candidate, 1, true, exitSource);
     candidate.templateTrace = result.templateTrace;
     candidate.templateTrace.prepend(headId + " · exposed head at shared cut");
     candidate.templateTrace.prepend(initialId + (initialForm.isEmpty() ? " · existing exit retained" :
@@ -549,10 +549,6 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
         };
         append(prefix, pieces[0]);
         append(suffix, pieces[1]);
-        assembled.matchedTemplates.clear();
-        for (const auto& d : assembled.letterDiagnostics)
-            assembled.matchedTemplates << d.toObject().value("template").toString();
-        assembled.matchedTemplates.removeDuplicates();
         assembled.templateTrace.clear();
         for (const auto& d : assembled.letterDiagnostics) {
             const auto v = d.toObject();

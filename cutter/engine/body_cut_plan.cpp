@@ -357,6 +357,8 @@ static void shareFoldedStemReturn(const Word& word, WordResultInfo::SubWordInfo&
     const auto after = inPage(trial->baseGlyphs[slot].path);
     if (toSubpaths(before).size() != toSubpaths(after).size() ||
         std::abs(before.boundingRect().top() - after.boundingRect().top()) > 1e-5) return;
+    recordBoundaryTemplate(*trial, slot, false, fold.value("template").toString());
+    recordBoundaryTemplate(*trial, slot + 1, true, fold.value("template").toString());
     trial->templateTrace.append(id + " · stem return kept at the final fold");
     sub = std::move(*trial);
 }
@@ -450,14 +452,15 @@ void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, 
         return;
     if (keepStemArm) {
         if (!preserveUnchangedOutline(sub.baseGlyphs.back().path, trial.baseGlyphs.back().path)) return;
+        const auto source = trial.letterDiagnostics[1].toObject().value("entryTemplate").toString(idAt(1));
+        recordBoundaryTemplate(trial, 0, false, source);
         trial.templateTrace.append(idAt(1) + " · shared cut at the final fold");
     } else {
-        auto diagnostic = trial.letterDiagnostics[1].toObject();
-        diagnostic.insert("template", final.value("id"));
-        trial.letterDiagnostics[1] = diagnostic;
-        trial.matchedTemplates.removeAll(idAt(1));
-        trial.matchedTemplates.append(final.value("id").toString());
-        trial.templateTrace.append(final.value("id").toString() + " · shared cut across the returning lip");
+        const auto id = final.value("id").toString();
+        recordAssembledForm(trial, 1, id);
+        recordBoundaryTemplate(trial, 0, false, id);
+        recordBoundaryTemplate(trial, 1, true, id);
+        trial.templateTrace.append(id + " · shared cut across the returning lip");
     }
     sub = std::move(trial);
 }
@@ -514,6 +517,7 @@ void applyInitialToothExit(const Word& word, WordResultInfo::SubWordInfo& sub, c
         if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, end, nextStart)) continue;
         InspectFormScope inspection(id);
         inspectCandidate("Initial tooth exit", *boundary);
+        recordBoundaryTemplate(*trial, 0, false, id);
         trial->templateTrace.append(id + " · exit at the tooth foot");
         sub = std::move(*trial);
         return;
@@ -644,6 +648,8 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                         const auto& [sending, entry] = trial->kashidaCuts[slot];
                         if (toSubpaths(ribbon).size() != 1 || !followsOneStroke(ribbon, sending, entry)) return false;
                     }
+                    recordBoundaryTemplate(*trial, slot, false, id);
+                    if (!receiving) recordBoundaryTemplate(*trial, slot + 1, true, id);
                     auto revised = attachment;
                     revised.exit = boundary;
                     revised.receiving = receiving;
@@ -682,8 +688,11 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
                         revised.entry = boundary;
                         auto trial = recutBodyJoin(word, sub, slot - 1, slot, connector ? *sending : boundary,
                             connector ? fit.entry : std::nullopt, config);
-                        if (trial) accept(std::move(*trial), revised, boundary, "First tooth junction",
-                                          "entry at first tooth junction");
+                        if (trial) {
+                            recordBoundaryTemplate(*trial, slot, true, id);
+                            if (!connector) recordBoundaryTemplate(*trial, slot - 1, false, id);
+                            accept(std::move(*trial), revised, boundary, "First tooth junction", "entry at first tooth junction");
+                        }
                     }
                 }
             }
@@ -695,9 +704,6 @@ bool verifyBodyLandmarkOwnership(const Word& word, WordResultInfo::SubWordInfo& 
         diagnostic.insert("template", "");
         diagnostic.insert("ownershipRejection", error);
         sub.letterDiagnostics[slot] = diagnostic;
-        if (std::none_of(sub.letterDiagnostics.begin(), sub.letterDiagnostics.end(), [&](const auto& entry) {
-                return entry.toObject().value("template") == id;
-            })) sub.matchedTemplates.removeAll(id);
         sub.templateTrace.append(id + " · landmark ownership rejected · " + error);
         sub.correct = false;
     }
