@@ -2048,6 +2048,7 @@
     },
     {
       "id": "ain-returning-corner-init",
+      "fixedAnchors": true,
       "current": "عغ",
       "tryNext": true,
       "body": {
