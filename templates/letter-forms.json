@@ -745,6 +745,7 @@
     },
     {
       "id": "beh-init",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "tryNext": true,
       "retryOnPartial": true,
