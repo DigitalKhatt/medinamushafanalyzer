@@ -2,6 +2,40 @@
 
 namespace MedinaCutter {
 
+static std::optional<Stretching> initialFootExit(const SearchContext& source, const Stretching& section,
+                                                double penWidth) {
+    const auto axis = section.bottomBaseLine.point - section.topBaseLine.point;
+    if (std::abs(axis.y()) >= std::abs(axis.x()) || QLineF(QPointF{}, axis).length() >= .75 * penWidth)
+        return {};
+    const auto side = getJoinTime(section, source.orientation);
+    const auto& bend = section.topBaseLine;
+    const bool forward = side.startAtLeft != (bend.time == side.minTime);
+    auto limit = bend;
+    limit.time += (forward ? 1 : -1) * int(baseContourCurves(source.transformedPath).size());
+    // The inner bend can be vertical at the landmark itself. A short
+    // walk exposes the lower edge of the foot to the same downward probe.
+    for (const double walk : {0., .25, .5}) {
+        auto top = bend;
+        QPointF tangent;
+        if (walk > 0 && !advanceOnContour(source.transformedPath, bend, limit, forward, walk * penWidth, top, tangent))
+            continue;
+        const QLineF ray(top.point, {top.point.x(), source.bbox.bottom() + 1});
+        const auto hits = FindInterections(source.transformedPath, ray, true);
+        for (const auto& bottom : hits) {
+            if (bottom.point.y() <= top.point.y() + 1e-5) continue;
+            if (bottom.point.y() - top.point.y() < .75 * penWidth ||
+                bottom.point.y() - top.point.y() > 2 * penWidth ||
+                !interiorChord(source.transformedPath, top, bottom)) break;
+            auto cut = section;
+            cut.topBaseLine = top;
+            cut.bottomBaseLine = bottom;
+            cut.referenceWidth = bottom.point.y() - top.point.y();
+            return cut;
+        }
+    }
+    return {};
+}
+
 QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
     forms = {};
     AnchorForms compiled;
@@ -57,10 +91,18 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             if (initial) {
                 const auto projected = source.res;
                 const QLineF original(projected.topBaseLine.point, projected.bottomBaseLine.point);
+                if (cuts.value("preferFootExit").toBool()) {
+                    if (const auto foot = initialFootExit(source, projected, penWidth);
+                        foot && matchesBoundaryBody(source, form, *foot, true))
+                        result.push_back({.formId = id, .exit = foot, .landmarks = {*source.xSorted.begin()},
+                                          .footExitCandidate = true});
+                }
                 if (cuts.value("preferFlankExit").toBool()) {
                     for (const auto& exit : declaredFlankExits(source, body, cuts, penWidth)) {
                         const QLineF shorter(exit.topBaseLine.point, exit.bottomBaseLine.point);
-                        if (shorter.center().x() - original.center().x() < .75 * shorter.length() ||
+                        // Use a flank exit to reclaim a connector. Sub-stroke
+                        // shifts at the foot belong to the contour route.
+                        if (shorter.center().x() - original.center().x() < shorter.length() ||
                             !cutPrecedes(exit, projected, source.orientation) ||
                             !matchesBoundaryBody(source, form, exit, true)) continue;
                         result.push_back({.formId = id, .exit = exit, .landmarks = {*source.xSorted.begin()}});

@@ -1273,6 +1273,7 @@ struct AnchoredBody {
     QString tightEntryAfter;
     bool preservesTerminalBody = false;
     bool stemFootCandidate = false;
+    bool footExitCandidate = false;
     QJsonObject sharedFold;
 };
 

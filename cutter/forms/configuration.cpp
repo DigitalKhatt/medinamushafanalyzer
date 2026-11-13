@@ -794,6 +794,12 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": preferFlankExit needs a flank exit angle and a boolean";
         cutKeys << "preferFlankExit";
     }
+    if (const auto prefer = cuts.value("preferFootExit"); !prefer.isUndefined()) {
+        if (phase != "initial" || shape != "contour-route" ||
+            cuts.value("route").toObject().value("bottomProbe") != "normal" || !prefer.isBool())
+            return id + ": preferFootExit needs an initial contour route with a normal probe";
+        cutKeys << "preferFootExit";
+    }
     if (shape == "rising-return") {
         bodyKeys << "entryRecoveryRoute";
         cutKeys << "entryRecoveryRoute";

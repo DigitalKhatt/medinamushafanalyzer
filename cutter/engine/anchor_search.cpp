@@ -47,6 +47,42 @@ bool sharesTightEntry(const AnchoredBody& sending, const AnchoredBody& receiving
                     QLineF(exit.bottomBaseLine.point, entry.bottomBaseLine.point).length()) <= tolerance;
 }
 
+bool leavesSendingStroke(const SearchContext& source, const Stretching& exit, double penWidth) {
+    const auto side = getJoinTime(exit, source.orientation);
+    const int count = baseContourCurves(source.transformedPath).size();
+    const auto chord = sectionLine(exit);
+    const auto axis = (chord.p2() - chord.p1()) / chord.length();
+    const auto flankDirection = [&](const PathExtrema& end, bool sending) {
+        const bool forward = sending == (side.startAtLeft == (end.time == side.minTime));
+        auto limit = end;
+        limit.time += forward ? count : -count;
+        PathExtrema sample{};
+        QPointF tangent;
+        if (!advanceOnContour(source.transformedPath, end, limit, forward, .25 * penWidth, sample, tangent))
+            return QPointF{};
+        const auto delta = sample.point - end.point;
+        const double length = std::hypot(delta.x(), delta.y());
+        return length > 0 ? delta / length : QPointF{};
+    };
+    const auto top = flankDirection(exit.topBaseLine, true);
+    const auto bottom = flankDirection(exit.bottomBaseLine, true);
+    constexpr double minFlankAlignment = .6;
+    constexpr double minStrokeAlignment = .866;
+    const double alongTop = QPointF::dotProduct(top, axis);
+    const double alongBottom = QPointF::dotProduct(bottom, axis);
+    const auto stroke = top + bottom;
+    const bool alongBody = alongTop * alongBottom > 0 &&
+        std::min(std::abs(alongTop), std::abs(alongBottom)) >= minFlankAlignment &&
+        std::abs(alongTop + alongBottom) >= minStrokeAlignment * std::hypot(stroke.x(), stroke.y());
+    if (!alongBody) return true;
+
+    // The body flanks can run along the cap at a natural turn. Keep the
+    // cut when the two flanks leave the cap together as a single stroke.
+    constexpr double minOutgoingAlignment = .819152; // cos(35 degrees)
+    return QPointF::dotProduct(flankDirection(exit.topBaseLine, false),
+                               flankDirection(exit.bottomBaseLine, false)) >= minOutgoingAlignment;
+}
+
 bool retainsLandmarks(const AnchoredBody& body, const Stretching* entry, const Stretching* exit,
                       Orientation orientation) {
     const auto first = entry ? std::optional{getJoinTime(*entry, orientation)} : std::nullopt;
@@ -74,7 +110,7 @@ bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot
 
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
         const SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
-        double tightTolerance, double minWidthRatio) {
+        double tightTolerance, double penWidth) {
     Subword trial{};
     trial.text = sub.text;
     trial.paths = sub.paths;
@@ -104,13 +140,12 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
             exit = entry;
         }
         const bool shared = sameSection(exit, entry) || sharesIncomingSection(exit, receiving, source.orientation);
+        if (sending.footExitCandidate && (shared || !receiving.keepsEntryJunction)) return {};
         if (shared && ((receiving.keepsEntryJunction && !sameSection(exit, entry)) ||
                        (sending.keepsExitHollow && !sameSection(exit, *sending.exit)))) return {};
-        if (!shared && (sending.keepsExitHollow || receiving.keepsEntryJunction)) {
-            const auto a = sectionLine(exit).length(), b = sectionLine(entry).length();
-            if (std::min(a, b) < minWidthRatio * std::max(a, b) ||
-                !leavesEntryClearance(exit, entry, source.orientation, tightTolerance)) return {};
-        }
+        if (!shared && (sending.keepsExitHollow || receiving.keepsEntryJunction) &&
+            !leavesEntryClearance(exit, entry, source.orientation, tightTolerance)) return {};
+        if (!shared && receiving.keepsEntryJunction && !leavesSendingStroke(source, exit, penWidth)) return {};
         if (!shared && bodies[slot]->retainsCounterRim) {
             // The saved rim geometry uses the sending cap's source curve
             // parameter. Rebind it without moving either endpoint.
@@ -197,7 +232,6 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
     selected.reserve(forms.size());
     const auto connector = config.value("kashidaDefaults").toObject();
     const double tightTolerance = penWidth * connector.value("sharedCutTolerance").toDouble(.25);
-    const double minWidthRatio = connector.value("minTrackWidthRatio").toDouble(.65);
     std::map<QString, std::optional<Stretching>> folds;
     const auto sharesFinalFold = [&]() {
         const auto& sending = *selected[selected.size() - 2];
@@ -220,8 +254,8 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
     };
     const auto search = [&](auto&& self, size_t slot) -> std::optional<Subword> {
         if (slot == forms.size()) {
-            auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(),
-                                      tightTolerance, minWidthRatio);
+            auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(), tightTolerance,
+                                      penWidth);
             if (partition && accept && !accept(*partition)) return {};
             return partition;
         }

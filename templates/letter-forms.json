@@ -586,6 +586,7 @@
           }
         },
         "shareTerminalReturn": true,
+        "preferFootExit": true,
         "boundaries": {
           "right": "free",
           "left": "contour-route"
@@ -800,6 +801,7 @@
         }
       },
       "cuts": {
+        "preferFlankExit": true,
         "flankExitAngle": 20,
         "route": {
           "bottomProbe": "down"

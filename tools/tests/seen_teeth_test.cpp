@@ -301,6 +301,47 @@ static void checkSeenEntryAndExit(const QJsonObject& config) {
     }
 }
 
+static void checkInitialConnectors(const QJsonObject& config) {
+    QFile fontFile("input/font.dat");
+    check(fontFile.open(QIODevice::ReadOnly), "Missing native font");
+    AFont font;
+    QDataStream fontStream(&fontFile);
+    fontStream >> font;
+    for (const auto& [number, line, wordIndex, subword, letters, initialForm] : {
+            std::tuple{1, 2, 1, 1, QStringLiteral("بسم"), "beh-shallow-step-init"},
+            std::tuple{3, 10, 9, 2, QStringLiteral("لسفها"), "lam-init"},
+            std::tuple{6, 2, 9, 1, QStringLiteral("نسبح"), "beh-shallow-step-init"},
+            std::tuple{8, 14, 5, 3, QStringLiteral("لسلو"), "lam-normal-init"},
+            std::tuple{22, 2, 8, 1, QStringLiteral("يشا"), "beh-shallow-step-init"},
+            std::tuple{37, 6, 2, 2, QStringLiteral("لنسا"), "lam-init"},
+            std::tuple{93, 12, 5, 1, QStringLiteral("لست"), "lam-normal-init"},
+            std::tuple{108, 1, 8, 2, QStringLiteral("غسلو"), "ain-init"},
+            std::tuple{585, 4, 8, 2, QStringLiteral("نت"), "beh-foot-init"}}) {
+        QFile file(QString("pages/page%1.dat").arg(number));
+        check(file.open(QIODevice::ReadOnly), "Missing initial connector fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        page.resolveWordBoundaries(number, &font);
+        check(page.segmentSubword(number - 1, line - 1, wordIndex - 1, subword - 1, &font, true, &config),
+              "Initial connector fixture must segment completely");
+        const auto& word = page.page.lines[line - 1].words[wordIndex - 1];
+        const auto& sub = word.wordResultInfo.subWords[subword - 1];
+        check(PageAnalysisResult::bodyLetters(sub.text) == letters &&
+              sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+              !sub.kashidaPaths.empty() && !sub.kashidaPaths.front().isEmpty(),
+              "The initial body absorbed its connector");
+        check(sub.letterDiagnostics.first().toObject().value("template") == QLatin1String(initialForm),
+              "The initial body lost its established exit");
+        if (number == 6 || number == 8 || number == 37) {
+            const auto& exit = sub.kashidaCuts.front().first;
+            check(std::abs(exit.dx()) < 1e-5 && exit.dy() > 1,
+                  "The initial exit must run down to the lower edge of the foot");
+        }
+        checkPartition(word.bodyShape(sub).path, sub);
+    }
+}
+
 static void checkSeenJunctionEntries(const QJsonObject& config) {
     struct Example {
         int page, line, word, subword, join;
@@ -441,6 +482,7 @@ int main(int argc, char** argv) {
     checkClusterAttachments(config);
     checkSeenTailOwnership(config);
     checkSeenEntryAndExit(config);
+    checkInitialConnectors(config);
     checkSeenJunctionEntries(config);
     {
         QFile file("pages/page230.dat");
