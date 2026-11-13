@@ -6411,6 +6411,7 @@
     },
     {
       "id": "heh-counter-fina",
+      "fixedAnchors": true,
       "tryNext": true,
       "current": "هة",
       "body": {
