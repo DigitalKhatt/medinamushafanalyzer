@@ -3161,6 +3161,7 @@
     },
     {
       "id": "beh-hook-medi",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "recoveryStage": 3,
       "body": {
