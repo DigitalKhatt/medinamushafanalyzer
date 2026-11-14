@@ -3044,6 +3044,7 @@
     },
     {
       "id": "beh-raised-entry-medi",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "followedByFinal": "نرز",
       "body": {
@@ -3110,6 +3111,7 @@
     },
     {
       "id": "beh-raised-bend-medi",
+      "fixedAnchors": true,
       "current": "بتثنيئى",
       "followedByFinal": "نرز",
       "recoveryStage": 1,
