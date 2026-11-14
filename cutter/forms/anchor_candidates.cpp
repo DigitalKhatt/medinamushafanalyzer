@@ -56,15 +56,24 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto maxLetters = declaration.value("fixedAnchorsMaxLetters");
             if (!maxLetters.isUndefined() && maxLetters.toInt() < 2)
                 return id + ": fixedAnchorsMaxLetters must be an integer of at least two";
+            const auto ending = declaration.value("fixedAnchorsEnding");
+            if (!ending.isUndefined() && (position == 2 || !ending.isString() || ending.toString().isEmpty()))
+                return id + ": fixedAnchorsEnding needs final letters on an initial or medial form";
+            const auto tatweel = declaration.value("fixedAnchorsTatweel");
+            if (!tatweel.isUndefined() && (position != 2 || !tatweel.isBool()))
+                return id + ": fixedAnchorsTatweel must be a boolean on a final form";
             const auto form = bodyConstraintForm(config, declaration);
             const auto body = form.value("body").toObject();
             const auto shape = body.value("shape");
             const bool supported = position == 0 ? shape == "contour-route" || shape == "horizontal-counters" ||
                 shape == "suspended-loop" || shape == "counter-neck" || shape == "counter-loop" ||
-                shape == "profile-neck" :
+                shape == "profile-neck" || shape == "tooth-cluster" || shape == "layered-head" ||
+                shape == "enclosed-lips" || shape == "descending-stem" :
                 position == 1 ? toothDescription(body) || shape == "stacked-counters" || shape == "counter-loop" ||
                 shape == "open-head" || shape == "crested-loop" || shape == "paired-route" ||
-                shape == "forked-stem" || (shape == "tooth-cluster" &&
+                shape == "forked-stem" || shape == "turning-shaft" || shape == "returning-lips" ||
+                shape == "enclosed-lips" || shape == "inclined-blade" || shape == "parallel-return" ||
+                (shape == "tooth-cluster" &&
                     form.value("cuts").toObject().value("cluster").toObject().value("entryAtJunction").toBool() &&
                     form.value("cuts").toObject().value("cluster").toObject().value("exitAtHollow").toBool()) :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
@@ -136,9 +145,30 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                         result.push_back({.formId = id, .exit = exit, .landmarks = {*source.xSorted.begin()}});
                     }
                 }
-                result.push_back({.formId = id, .exit = projected, .landmarks = {*source.xSorted.begin()}});
+                const auto origin = body.value("route").toObject().value("start") == "top"
+                    ? *source.ySorted.rbegin() : *source.xSorted.begin();
+                result.push_back({.formId = id, .exit = projected, .landmarks = {origin}});
             } else
                 result.push_back({.formId = id, .entry = source.res, .landmarks = {*source.xSorted.rbegin()}});
+        }
+    } else if (position == 0 && (shape == "layered-head" || shape == "enclosed-lips")) {
+        const auto evidence = recognizedSharedShape(source, body);
+        if (declaredSharedBoundary(source, form) && matchesBoundaryBody(source, form, source.res, true)) {
+            const auto exit = source.res;
+            const auto pieces = cutRegions(source.transformedPath, {}, {exit}, source.orientation, true);
+            if (pieces.size() != 2) return result;
+            const auto contours = toSubpaths(pieces.front().path);
+            QVector<size_t> counters;
+            for (size_t i = 1; i < source.subPaths.size(); ++i)
+                if (contours.contains(source.subPaths[i])) counters.append(i);
+            if (counters.isEmpty() || (form.contains("bodyCounters") &&
+                counters.size() != form.value("bodyCounters").toInt())) return result;
+            if (evidence->layeredHead && evidence->layeredHead->exitCounter &&
+                std::none_of(counters.begin(), counters.end(), [&](size_t i) {
+                    return source.subPaths[i].boundingRect() == *evidence->layeredHead->exitCounter;
+                })) return result;
+            result.push_back({.formId = id, .exit = exit, .landmarks = {*source.xSorted.begin()},
+                              .counters = std::move(counters)});
         }
     } else if (shape == "horizontal-counters" || shape == "suspended-loop" ||
                (position == 0 && shape == "counter-neck")) {
@@ -194,9 +224,49 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                               .exit = sections->second,
                               .counters = std::move(counters)});
         }
-    } else if (position == 0 && shape == "profile-neck") {
+    } else if (position == 0 && (shape == "profile-neck" || shape == "descending-stem")) {
         if (declaredSharedBoundary(source, form) && matchesBoundaryBody(source, form, source.res, true))
-            result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()}});
+            result.push_back({.formId = id, .exit = source.res, .landmarks = {
+                shape == "descending-stem" ? *source.ySorted.rbegin() : *source.xSorted.begin()}});
+    } else if (shape == "returning-lips" || shape == "enclosed-lips" ||
+               shape == "inclined-blade" || shape == "parallel-return") {
+        const auto evidence = recognizedSharedShape(source, body);
+        if (shape == "returning-lips") {
+            for (const auto& head : evidence->mouths)
+                for (const auto& [entry, exit] : cutOpenMouths(source, {head}, shapeSettings(form, "mouth"))) {
+                    // On stacked ink a nose candidate can belong to the
+                    // upper stroke. The notch and upper lip define the mouth.
+                    result.push_back({.formId = id, .entry = entry, .exit = exit,
+                                      .landmarks = {head.lips.notch, head.lips.upper},
+                                      .usesSharedEntry = form.value("sharedEntry").toBool() ||
+                                                         form.value("reclaimEntry").toBool()});
+                }
+        } else if (shape == "enclosed-lips") {
+            for (const auto& head : evidence->enclosedLips)
+                for (const auto& [entry, exit] : cutEnclosedLips(source, {head}, cuts.value("head").toObject(), false))
+                    for (size_t i = 1; i < source.subPaths.size(); ++i)
+                        if (source.subPaths[i].boundingRect() == head.counter)
+                            result.push_back({.formId = id, .entry = entry, .exit = exit,
+                                              .landmarks = {head.nose}, .counters = {i}});
+        } else if (shape == "inclined-blade") {
+            for (const auto& blade : evidence->blades)
+                for (const auto& [entry, exit] : cutBlades(source, {blade}, cuts.value("blade").toObject()))
+                    result.push_back({.formId = id, .entry = entry, .exit = exit,
+                                      .landmarks = {blade.elbow, blade.tip}});
+        } else {
+            for (const auto& fold : evidence->parallelReturns)
+                for (const auto& [entry, exit] : cutParallelReturns(source, {fold}, cuts.value("bands").toObject()))
+                    result.push_back({.formId = id, .entry = entry, .exit = exit,
+                        .samples = {fold.first.first.center(), fold.first.second.center(),
+                                    fold.second.first.center(), fold.second.second.center()}});
+        }
+    } else if (shape == "turning-shaft") {
+        const auto evidence = recognizedSharedShape(source, body);
+        if (!evidence->medialStem) return result;
+        for (const auto& candidate : turningShaftCuts(source, *evidence->medialStem, body.value("shaft").toObject(), cuts))
+            result.push_back({.formId = id, .entry = candidate.right, .exit = candidate.left,
+                              .landmarks = {*candidate.stemCrest}, .preservesTerminalBody = true,
+                              .entryLimit = candidate.stemFork});
     } else if (shape == "open-head" || shape == "crested-loop") {
         const auto evidence = recognizedSharedShape(source, body);
         const auto policy = cuts.value("head").toObject();
@@ -250,27 +320,66 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         const auto evidence = recognizedSharedShape(source, body);
         const auto route = body.value("routes").toObject();
         const auto policy = cuts.value("routes").toObject();
+        const bool atUpperAttachment = form.contains("upperAttachment");
+        const auto attachmentShape = form.value("upperAttachment").toObject();
         for (const auto& candidate : evidence->pairedRoutes) {
-            for (const auto& [entry, exit] : cutPairedRoutes(source, {candidate}, route, policy)) {
+            for (auto [entry, exit] : cutPairedRoutes(source, {candidate}, route, policy)) {
+                // The attachment corner must connect the head flank to
+                // the rising stroke. A sharp bend on either flank is insufficient.
+                if (atUpperAttachment) {
+                    const auto head = attachmentShape.value("headFlank").toObject();
+                    const auto rise = attachmentShape.value("risingFlank").toObject();
+                    const auto corner = source.timeSorted.find(entry.bottomBaseLine);
+                    if (!entry.bottomBaseLine.isX || corner == source.timeSorted.end() ||
+                        (!(contourFlank(source, corner, true, head) && contourFlank(source, corner, false, rise)) &&
+                         !(contourFlank(source, corner, false, head) && contourFlank(source, corner, true, rise)))) {
+                        const auto pieces = cutRegions(source.transformedPath, {}, {entry, exit}, source.orientation, true);
+                        if (pieces.size() != 3) continue;
+                        const auto seam = stackedAttachment(source, attachmentShape, pieces[0].path.boundingRect(),
+                                                            pieces[1].path, entry, exit);
+                        if (!seam) continue;
+                        entry = *seam;
+                    }
+                }
                 if (form.contains("bodyCounters")) {
-                    const auto pieces = cutRegions(source.transformedPath, {}, {entry, exit}, source.orientation, true);
+                    const auto pieces = cutRegions(source.transformedPath, {}, {entry, exit},
+                                                   source.orientation, true);
                     if (pieces.size() != 3 || toSubpaths(pieces[1].path).size() - 1 !=
                         form.value("bodyCounters").toInt()) continue;
                 }
                 result.push_back({.formId = id, .entry = entry, .exit = exit, .landmarks = {candidate.anchor},
-                                  .sharesExitAtCorners = cuts.value("sharedExit") == "receiving-corners"});
+                                  .sharesExitAtCorners = cuts.value("sharedExit") == "receiving-corners",
+                                  .usesSharedEntry = form.value("sharedEntry").toBool(),
+                                  .requiresSharedEntry = atUpperAttachment});
             }
         }
     } else if (shape == "tooth-cluster") {
         const auto evidence = recognizedSharedShape(source, body);
         const auto policy = cuts.value("cluster").toObject();
-        for (const auto& cluster : evidence->clusters)
-            if (const auto sections = medialClusterAnchors(source, cluster, evidence->clusters,
+        const auto settings = toothClusterSettings(form);
+        for (const auto& cluster : evidence->clusters) {
+            if (position == 0) {
+                if (policy.value("exitAtHollow").toBool())
+                    if (const auto exit = clusterExitAtHollow(source, cluster, penWidth, 2 * penWidth, policy))
+                        result.push_back({.formId = id, .exit = exit,
+                                          .landmarks = {cluster.turns.begin(), cluster.turns.end()}});
+                const auto add = [&](const SeenExitRetry* retry) {
+                    Stretching exit{};
+                    if (cutToothClusters(source, {cluster}, settings, source.bbox.left(), source.bbox.right() + 1e-6,
+                                         nullptr, &exit, nullptr, nullptr, retry))
+                        result.push_back({.formId = id, .exit = exit,
+                                          .landmarks = {cluster.turns.begin(), cluster.turns.end()}});
+                };
+                add(nullptr);
+                const SeenExitRetry bend{0, SeenExitMode::AlongContour};
+                if (bend.supports(settings)) add(&bend);
+            } else if (const auto sections = medialClusterAnchors(source, cluster, evidence->clusters,
                                                           body.value("cluster").toObject(), policy, penWidth))
                 result.push_back({.formId = id, .entry = sections->first, .exit = sections->second,
                                   .landmarks = {cluster.turns.begin(), cluster.turns.end()},
                                   .sharesJunctionEntry = form.value("sharedEntry").toBool(),
                                   .keepsEntryJunction = true, .keepsExitHollow = true});
+        }
         std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
             return a.landmarks.front().point.x() > b.landmarks.front().point.x();
         });

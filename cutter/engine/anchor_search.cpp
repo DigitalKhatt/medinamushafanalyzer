@@ -7,6 +7,20 @@ using Subword = WordResultInfo::SubWordInfo;
 using BodySequence = std::span<const AnchoredBody* const>;
 using FormChoices = std::vector<const std::vector<QJsonObject>*>;
 
+std::optional<std::vector<bool>> explicitConnectors(const QString& text, const QString& letters) {
+    std::vector<bool> connectors(letters.size() - 1);
+    qsizetype slot = 0;
+    for (const auto ch : text) {
+        if (ch.unicode() == 0x0640) {
+            if (slot == 0 || slot >= letters.size() || connectors[slot - 1]) return {};
+            connectors[slot - 1] = true;
+        } else if (slot < letters.size() && ch == letters.at(slot))
+            ++slot;
+    }
+    if (slot != letters.size()) return {};
+    return connectors;
+}
+
 size_t letterPosition(size_t slot, size_t count) {
     return slot == 0 ? 0 : slot + 1 == count ? 2 : 1;
 }
@@ -120,9 +134,16 @@ bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot
                             source.orientation);
 }
 
+bool canUseReceivingEntry(const AnchoredBody& sending, const AnchoredBody& receiving, Orientation orientation) {
+    if (!receiving.usesSharedEntry || orderedSections(*sending.exit, *receiving.entry, orientation)) return false;
+    if (sending.entry && !orderedSections(*sending.entry, *receiving.entry, orientation)) return false;
+    return retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &*receiving.entry, orientation);
+}
+
+
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
         const SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
-        double tightTolerance, double penWidth) {
+        const std::vector<bool>& requiredConnectors, double tightTolerance, double penWidth) {
     Subword trial{};
     trial.text = sub.text;
     trial.paths = sub.paths;
@@ -134,6 +155,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
     trial.kashidaCuts.resize(bodies.size() - 1);
     std::vector<Stretching> sections;
     sections.reserve(2 * (bodies.size() - 1));
+    std::vector<bool> sharedAtEntry(bodies.size() - 1);
     std::vector<std::vector<QBezier>> outer;
 
     for (size_t slot = 1; slot < bodies.size(); ++slot) {
@@ -145,14 +167,18 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
             (!orderedSections(exit, entry, source.orientation) ||
              QLineF(sectionLine(exit).center(), sectionLine(entry).center()).length() <= tightTolerance);
         if (sharesRim || sharesCornerExit(sending, entry, source.orientation, tightTolerance) ||
+            canUseReceivingEntry(sending, receiving, source.orientation) ||
             (receiving.sharesJunctionEntry && !orderedSections(exit, entry, source.orientation)) ||
             (slot + 1 == bodies.size() &&
                          (sharesFinalFold || sharesTightEntry(sending, receiving, tightTolerance)))) {
             if (!retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &entry, source.orientation))
                 return {};
             exit = entry;
+            sharedAtEntry[slot - 1] = true;
         }
         const bool shared = sameSection(exit, entry) || sharesIncomingSection(exit, receiving, source.orientation);
+        if (receiving.requiresSharedEntry && !sameSection(exit, entry)) return {};
+        if (shared && requiredConnectors[slot - 1]) return {};
         if (sending.footExitCandidate && (shared || !receiving.keepsEntryJunction)) return {};
         if (shared && ((receiving.keepsEntryJunction && !sameSection(exit, entry)) ||
                        (sending.keepsExitHollow && !sameSection(exit, *sending.exit)))) return {};
@@ -214,6 +240,9 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
             !followsOneStroke(inPage(connector), right, left, ConnectorEndpointMatch::NearestVertex)) return {};
         trial.kashidaPaths[slot] = std::move(connector);
     }
+    for (size_t slot = 0; slot < sharedAtEntry.size(); ++slot)
+        if (sharedAtEntry[slot])
+            recordBoundaryTemplate(trial, int(slot), false, bodies[slot + 1]->formId);
     if (!coversOriginalInk(word, trial)) return {};
     trial.correct = true;
     trial.templateTrace.append("Fixed anchors · " + bodyForms.join(" → "));
@@ -225,13 +254,15 @@ bool applies(const QJsonObject& form, const QString& letters, int slot) {
         !form.value("kashida").toObject().isEmpty() || form.contains("sharedFoldWithFinal")) return false;
     const auto maxLetters = form.value("fixedAnchorsMaxLetters");
     if (maxLetters.isDouble() && letters.size() > maxLetters.toInt()) return false;
+    const auto ending = form.value("fixedAnchorsEnding").toString();
+    if (!ending.isEmpty() && !ending.contains(letters.back())) return false;
     const auto following = slot == 0 ? form.value("ligatureWith").toString() : medialFinalLetters(form);
     return following.isEmpty() || hasFollowingLetter(letters, slot, following, slot > 0);
 }
 
 std::optional<Subword> searchSequence(const Word& word, const Subword& sub, const Apath& shape,
         SearchContext& source, const QString& letters, const FormChoices& forms, double penWidth,
-        const QJsonObject& config, const AnchorPartitionCheck& accept) {
+        const QJsonObject& config, const std::vector<bool>& requiredConnectors, const AnchorPartitionCheck& accept) {
     std::map<QString, std::vector<AnchoredBody>> candidates;
     // Keep each candidate at its original contour sections across backtracking.
     const auto bodiesFor = [&](const QJsonObject& form, size_t slot) -> const std::vector<AnchoredBody>& {
@@ -269,8 +300,8 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
     };
     const auto search = [&](auto&& self, size_t slot) -> std::optional<Subword> {
         if (slot == forms.size()) {
-            auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(), tightTolerance,
-                                      penWidth);
+            auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(),
+                                      requiredConnectors, tightTolerance, penWidth);
             if (partition && accept && !accept(*partition)) return {};
             return partition;
         }
@@ -284,6 +315,7 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
                     if (body.stemFootCandidate && !sending.sharesIncoming) continue;
                     if (!sameSection(exit, *body.entry) &&
                         !orderedSections(exit, *body.entry, source.orientation) &&
+                        !canUseReceivingEntry(sending, body, source.orientation) &&
                         !sharesIncomingSection(exit, body, source.orientation) && !body.sharesRimEntry &&
                         !body.sharesJunctionEntry && !sharesCornerExit(sending, *body.entry, source.orientation,
                                                                       tightTolerance)) {
@@ -310,10 +342,14 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, const Subword& sub,
         const QJsonObject& config, const AnchorForms& forms, const AnchorPartitionCheck& accept) {
     if (forms.front().isEmpty() || forms.back().isEmpty() || sub.paths.empty() || sub.paths.front() < 0 ||
-        sub.paths.front() >= int(word.paths.size()) || sub.secondaryBodyPath >= 0 ||
-        sub.text.contains(QChar(0x0640))) return {};
+        sub.paths.front() >= int(word.paths.size()) || sub.secondaryBodyPath >= 0) return {};
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (letters.size() < 2 || !forms.front().contains(letters.front()) || !forms.back().contains(letters.back())) return {};
+    const auto& finals = forms.back().constFind(letters.back()).value();
+    if (sub.text.contains(QChar(0x0640)) && std::none_of(finals.begin(), finals.end(),
+            [](const auto& form) { return form.value("fixedAnchorsTatweel").toBool(); })) return {};
+    const auto connectors = explicitConnectors(sub.text, letters);
+    if (!connectors) return {};
     FormChoices choices;
     choices.reserve(letters.size());
     for (int slot = 0; slot < letters.size(); ++slot) {
@@ -338,7 +374,7 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
                          .subword = geometryOnly, .outlineCache = &cache};
     if (!preparePassOutline(source, cache)) return {};
     auto result = searchSequence(word, sub, shape, source, letters, choices, config.value("strokeWidth").toDouble(1),
-                                 config, accept);
+                                 config, *connectors, accept);
     if (result && cutGeometryMemo && cutGeometryMemo->profiling) cutGeometryMemo->anchorSearch = "matched";
     return result;
 }

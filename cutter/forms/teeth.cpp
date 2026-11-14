@@ -348,7 +348,7 @@ static std::optional<Stretching> clusterExitAtBend(SearchContext& context, const
     return {};
 }
 
-static std::optional<Stretching> clusterExitAtHollow(SearchContext& context, const ToothClusterBody& cluster,
+std::optional<Stretching> clusterExitAtHollow(SearchContext& context, const ToothClusterBody& cluster,
         double penWidth, double maxWidth, const QJsonObject& cutSettings) {
     const auto& tip = cluster.turns.back();
     const double reach = cutSettings.value("maxExitBendDistance").toDouble(2) * meanToothPitch(cluster);

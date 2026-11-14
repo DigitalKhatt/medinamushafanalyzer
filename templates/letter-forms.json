@@ -352,6 +352,8 @@
     },
     {
       "id": "seen-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "سش",
       "tryNext": true,
       "retryOnPartial": true,
@@ -454,6 +456,8 @@
     },
     {
       "id": "lam-hah-stacked-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "ل",
       "ligatureWith": "جحخ",
       "tightJoin": true,
@@ -691,6 +695,8 @@
     },
     {
       "id": "beh-sloping-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "بتثنيئى",
       "tryNext": true,
       "retryOnPartial": true,
@@ -910,6 +916,8 @@
     },
     {
       "id": "beh-under-blade-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "بتثنيئى",
       "onUnresolved": true,
       "onIncomplete": true,
@@ -1189,6 +1197,8 @@
     },
     {
       "id": "hah-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "tryNext": true,
       "body": {
@@ -1224,6 +1234,8 @@
     },
     {
       "id": "hah-counter-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "tryNext": true,
       "body": {
@@ -1255,6 +1267,8 @@
     },
     {
       "id": "hah-enclosed-head-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "tryNext": true,
       "onIncomplete": true,
@@ -1276,6 +1290,8 @@
     },
     {
       "id": "kaf-flat-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "ك",
       "onPartial": true,
       "tryNext": true,
@@ -1309,6 +1325,8 @@
     },
     {
       "id": "ain-neck-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "عغ",
       "onPartial": true,
       "tryNext": true,
@@ -1552,6 +1570,8 @@
     },
     {
       "id": "sad-wide-tooth-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "صض",
       "tryNext": true,
       "onIncomplete": true,
@@ -1801,6 +1821,8 @@
     },
     {
       "id": "hah-recurved-lip-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "tryNext": true,
       "body": {
@@ -1932,6 +1954,8 @@
     },
     {
       "id": "feh-rising-attachment-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "ف",
       "tryNext": true,
       "body": {
@@ -3512,6 +3536,8 @@
     },
     {
       "id": "hah-wedge-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "body": {
         "shape": "paired-route",
@@ -3599,6 +3625,8 @@
     },
     {
       "id": "hah-stacked-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "upperAttachment": {
         "letters": "بتثنيىئمعغ",
@@ -3673,6 +3701,8 @@
     },
     {
       "id": "hah-rising-entry-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "preferAtHeadOverlap": true,
       "sharedEntry": true,
@@ -3790,6 +3820,8 @@
     },
     {
       "id": "hah-shoulder-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "sharedEntry": true,
       "body": {
@@ -3850,6 +3882,8 @@
     },
     {
       "id": "hah-compact-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "body": {
         "shape": "paired-route",
@@ -3911,6 +3945,8 @@
     },
     {
       "id": "hah-open-mouth-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "tightJoin": true,
       "body": {
@@ -3976,6 +4012,8 @@
     },
     {
       "id": "hah-enclosed-lips-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "onIncomplete": true,
       "tightJoin": true,
@@ -4071,6 +4109,8 @@
     },
     {
       "id": "hah-returning-lips-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "onHeadConflict": true,
       "preferAtHeadOverlap": true,
       "current": "جحخ",
@@ -4205,6 +4245,8 @@
     },
     {
       "id": "kaf-zigzag-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "ك",
       "tightJoin": true,
       "body": {
@@ -4310,6 +4352,8 @@
     },
     {
       "id": "kaf-bent-neck-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "ك",
       "tightJoin": true,
       "body": {
@@ -4437,6 +4481,8 @@
     },
     {
       "id": "kaf-descending-blade-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "ك",
       "tightJoin": true,
       "onIncomplete": true,
@@ -4464,6 +4510,8 @@
     },
     {
       "id": "lam-turning-flanks-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "ل",
       "tightJoin": true,
       "onIncomplete": true,
@@ -4507,6 +4555,8 @@
     },
     {
       "id": "kaf-parallel-fold-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "ك",
       "onIncomplete": true,
       "reclaimEntry": true,
@@ -4589,6 +4639,8 @@
     },
     {
       "id": "sad-wide-tooth-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
       "current": "صض",
       "tryNext": true,
       "onIncomplete": true,
@@ -6344,6 +6396,7 @@
     {
       "id": "dal-fina",
       "fixedAnchors": true,
+      "fixedAnchorsTatweel": true,
       "pairedOnly": true,
       "tightJoin": true,
       "current": "دذ",

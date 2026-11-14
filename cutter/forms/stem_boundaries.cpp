@@ -60,7 +60,7 @@ void inspectStemEvidence(const MedialStemEvidence& evidence) {
 
 // A shaft and its own fork supply the only anchors. Cut policies can walk
 // from those landmarks or use the turn directly at a tight attachment.
-static std::vector<MedialCandidate> turningShaftCuts(SearchContext& context,
+std::vector<MedialCandidate> turningShaftCuts(SearchContext& context,
         const MedialStemEvidence& evidence, const QJsonObject& shape, const QJsonObject& cuts) {
     std::vector<MedialCandidate> candidates;
     const auto& ink = context.transformedPath;

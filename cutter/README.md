@@ -210,6 +210,11 @@ Final nūn identifies the tip, floor and shoulder of the open bowl before
 proposing its entry. During migration, `fixedAnchorsMaxLetters` limits where
 a migrated form can participate. Final nūn starts in two-letter subwords
 while the longer sequences with medial joins are checked.
+`fixedAnchorsEnding` limits an initial or medial form's rollout by the
+subword's last letter. The forms added for dāl and dhāl use this selector.
+A final form can enable `fixedAnchorsTatweel` so assembly accepts explicit
+tatweel. The corresponding join must retain a separate stroke for the
+catalog to assign to that character.
 Final dāl and dhāl recognize the fork at the start of their descending
 contour run. `cuts.route.descendingTurn` uses the same tangent-turn
 projection as final alef. The preferred cut is the normal where the flank

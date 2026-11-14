@@ -674,6 +674,8 @@ std::vector<ToothClusterBody> recognizeToothClusters(const InkOutline &outline, 
 
 std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
                                                  double penWidth);
+std::optional<Stretching> clusterExitAtHollow(SearchContext& context, const ToothClusterBody& cluster,
+        double penWidth, double maxWidth, const QJsonObject& cutSettings);
 std::optional<std::pair<Stretching, Stretching>> medialClusterAnchors(SearchContext& context,
         const ToothClusterBody& cluster, const std::vector<ToothClusterBody>& clusters,
         const QJsonObject& settings, const QJsonObject& cuts, double penWidth);
@@ -1280,6 +1282,8 @@ struct AnchoredBody {
     bool keepsExitHollow = false;
     bool sharesExitAtCorners = false;
     bool sharesIncoming = false;
+    bool usesSharedEntry = false;
+    bool requiresSharedEntry = false;
     QString tightEntryAfter;
     bool preservesTerminalBody = false;
     bool stemFootCandidate = false;
@@ -1477,6 +1481,9 @@ std::vector<MedialCandidate> stemBoundaryCandidates(SearchContext& context,
         const QJsonObject& config, const QJsonObject& form, const MedialStemEvidence& evidence,
         const Stretching& incoming, const QPointF& entry, const QPointF& exit, double stroke,
         bool open, bool recoverTeeth, bool allowFork, const std::optional<Stretching>& sharedExit);
+
+std::vector<MedialCandidate> turningShaftCuts(SearchContext& context,
+        const MedialStemEvidence& evidence, const QJsonObject& shape, const QJsonObject& cuts);
 
 // At a tight loop-to-stroke junction, both edges of the bridge can end at
 // corners. Join those corners while retaining the counter and the complete tail.

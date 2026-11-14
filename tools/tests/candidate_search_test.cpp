@@ -197,6 +197,29 @@ static void checkFixedAnchors(const QJsonObject& config) {
                          a.entry->bottomBaseLine.point == b.entry->bottomBaseLine.point;
               }), "Final dal's entries depend on the preceding stroke width");
     }
+    for (const auto& f : {Fixture{3, 5, 1, 1}, Fixture{4, 13, 5, 1}, Fixture{6, 9, 8, 2},
+                          Fixture{141, 14, 5, 2}, Fixture{218, 15, 1, 3}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing fixed-anchor migration fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file); stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        check(page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &config),
+              "Migrated initial form or attachment prevented assembly");
+        const auto& sub = page.page.lines[f.line - 1].words[f.word - 1].wordResultInfo.subWords[f.subword - 1];
+        check(sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+              sub.letterDiagnostics.last().toObject().value("template") == "dal-fina",
+              "Migrated final dal subword used the old search");
+        if (f.page == 3)
+            check(sub.letterDiagnostics.at(1).toObject().value("template") == "hah-stacked-medi" &&
+                  sub.kashidaPaths.front().isEmpty(), "Stacked hah lost its shared seam");
+        else if (f.page == 141)
+            check(sub.text.contains(QChar(0x0640)) && !sub.kashidaPaths.front().isEmpty(),
+                  "Fixed anchors lost the explicitly transcribed tatweel's stroke");
+        else
+            check(sub.letterDiagnostics.first().toObject().value("template") == "seen-init",
+                  "Fixed anchors lost the recognized initial seen");
+    }
     checkRecoveryPriority(legacy, font);
 
     // The normal fork cannot share the final kāf's established bowl entry.
