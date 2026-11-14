@@ -1087,6 +1087,8 @@
     },
     {
       "id": "kaf-descending-hook-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "وؤ",
       "current": "ك",
       "tryNext": true,
       "retryOnPartial": true,
@@ -6204,6 +6206,8 @@
     },
     {
       "id": "reh-fina",
+      "fixedAnchors": true,
+      "fixedAnchorsMaxLetters": 2,
       "current": "رز",
       "ownsLeftTip": true,
       "retainEntryCrest": true,
