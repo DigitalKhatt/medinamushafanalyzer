@@ -48,6 +48,12 @@ Check all letter cuts**, or:
 python3 tools/mushafcatalog/catalog.py check-letter-corpus --report output/cut-review
 ```
 
+During a template migration, use `--form dal-fina` to replay connected subwords
+ending in د or ذ. The selector uses the template’s letters and their position
+inside the subword. It also covers occurrences assigned to another template
+in the catalog. The report counts outline, raster-mask, connector and
+template-label changes. `label-changes.json` lists changes to form labels.
+
 Choose a new report directory each time. It contains `index.html`, the frozen
 reference catalog, all recomputed multi-letter cuts, `cutter.log`, and timings
 by stage and subword. This command does not update the live catalog. Single

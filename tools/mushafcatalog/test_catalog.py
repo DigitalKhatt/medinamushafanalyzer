@@ -156,6 +156,21 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(rows('ول'),[])  # Adjacent in the word, in different subwords.
             self.assertEqual(rows('لعل','isolated'),[])
 
+    def test_cutter_review_selects_transcript_positions_before_any_cuts(self):
+        from cut_review import review_targets
+
+        forms = self.root/'forms.json'
+        forms.write_text(encoded(dict(
+            initial=[dict(id='first-beh', current='ب')],
+            medial=[dict(id='medial-reh', current='ر')],
+            final=[dict(id='last-reh', current='ر')],
+        )))
+        self.assertEqual(review_targets(self.db, [PID], forms, 'first-beh'), {PID: {S1}})
+        self.assertEqual(review_targets(self.db, [PID], forms, 'last-reh'), {PID: {S1}})
+        self.assertEqual(review_targets(self.db, [PID], forms, 'medial-reh'), {PID: set()})
+        with self.assertRaisesRegex(ValueError, 'Unknown template'):
+            review_targets(self.db, [PID], forms, 'missing')
+
     def test_preview_connectors_and_measurements_for_the_run(self):
         self.bundle['parts'][0]['metrics']['kashidaLeft']=1
         self.attach(self.bundle)

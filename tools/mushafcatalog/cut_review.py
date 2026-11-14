@@ -1,4 +1,4 @@
-"""Recompute all multi-letter cuts and compare them with a frozen catalog."""
+"""Recompute multi-letter cuts and compare them with a frozen catalog."""
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
@@ -18,21 +18,50 @@ from store import VERSION, encoded, partition_rows, read, require, sha
 FIELDS = ('d', 'caps', 'fillRule', 'ink')
 
 
-def compare_page(db, pid, folder):
+def review_targets(db, pages, templates, form):
+    selectors = None
+    if form:
+        config = json.loads(templates.read_bytes())
+        selectors = {position: set(rule['current']) for position in ('initial', 'medial', 'final')
+                     for rule in config[position] if rule['id'] == form}
+        require(selectors, f'Unknown template {form}')
+    targets = {}
+    for pid in pages:
+        targets[pid] = set()
+        if selectors is None:
+            targets[pid].update(row[0] for row in db.execute(
+                "SELECT id FROM catalog_subwords WHERE page_id=? AND kind='text' AND letter_count>1", (pid,)))
+            continue
+        letters = defaultdict(list)
+        for sid, char in db.execute("""
+            SELECT s.id,o.character FROM catalog_subwords s JOIN catalog_owners o ON o.subword_id=s.id
+            WHERE s.page_id=? AND s.kind='text' AND s.letter_count>1 AND o.role='letter'
+            ORDER BY s.id,o.word_offset""", (pid,)):
+            letters[sid].append(char)
+        for sid, chars in letters.items():
+            by_position = {'initial': chars[:1], 'medial': chars[1:-1], 'final': chars[-1:]}
+            if any(allowed.intersection(by_position[position]) for position, allowed in selectors.items()):
+                targets[pid].add(sid)
+    return targets
+
+
+def compare_page(db, pid, folder, targets):
     data = json.loads((folder/(pid+'.json')).read_bytes())
     after = json.loads(zlib.decompress((folder/(pid+'.vectors')).read_bytes()))
     before = json.loads(zlib.decompress(db.execute(
         'SELECT vectors FROM catalog_page_art WHERE page_id=?', (pid,)).fetchone()[0]))
     expected = {r['id']: r for r in db.execute('''SELECT id,text,letter_count,body_key
-        FROM catalog_subwords WHERE page_id=? AND kind='text' AND letter_count>1''', (pid,))}
+        FROM catalog_subwords WHERE page_id=? AND kind='text' AND letter_count>1''', (pid,)) if r['id'] in targets}
     data['results'] = {sid:r for sid,r in data['results'].items() if r['status']!='single-letter'}
-    require(data['results'].keys() == expected.keys(), f'{pid}: not all multi-letter subwords were checked')
+    require(data['results'].keys() == expected.keys(), f'{pid}: cutter output disagrees with the selected subwords')
     owners = defaultdict(list)
     for row in db.execute('''SELECT o.id,o.subword_id,o.character,o.form FROM catalog_owners o
             JOIN catalog_subwords s ON s.id=o.subword_id WHERE s.page_id=? AND o.role='letter'
             ORDER BY o.word_offset''', (pid,)):
         owners[row['subword_id']].append(dict(row))
-    changes, issues = [], []
+    prior_labels = dict(db.execute("""SELECT p.owner_id,p.variant FROM catalog_parts p
+        JOIN catalog_subwords s ON s.id=p.subword_id WHERE s.page_id=? AND p.role='body'""", (pid,)))
+    changes, label_changes, issues = [], [], []
     for sid, result in data['results'].items():
         spec = expected[sid]
         if data['keys'][sid] != spec['body_key']:
@@ -48,6 +77,12 @@ def compare_page(db, pid, folder):
         altered = {k:[f for f in FIELDS if a.get(k,{}).get(f)!=b.get(k,{}).get(f)]
                    for k in a.keys()|b.keys()}
         altered = {k:v for k,v in altered.items() if v or (k in a)!=(k in b)}
+        if complete:
+            labels = [{'owner': p['owner'], 'before': prior_labels[p['owner']], 'after': p.get('variant')}
+                      for p in result['parts'] if p['role']=='body'
+                      and p['owner'] in prior_labels and prior_labels[p['owner']] != p.get('variant')]
+            if labels:
+                label_changes.append(dict(id=sid, geometryChanged=bool(altered), labels=labels))
         if not altered:
             continue
         if complete:
@@ -58,7 +93,7 @@ def compare_page(db, pid, folder):
                 issues.append(dict(id=sid, issue='invalid-partition', error=str(error)))
         changes.append(dict(id=sid, text=spec['text'], status=result['status'], changedParts=altered,
                             owners=owners[sid], before=a, after=b))
-    return changes, issues
+    return changes, label_changes, issues
 
 
 def render_report(folder, report):
@@ -122,27 +157,25 @@ __CANDIDATES__<details><summary>Verification and timing</summary><pre>__JSON__</
         .replace('__CARDS__',''.join(cards)))
 
 
-def review(database, destination, pages, workers, templates, *, compare_anchors=False):
+def review(database, destination, pages, workers, templates, *, compare_anchors=False, form=None):
     started = time.perf_counter()
     folder = destination.resolve()
     require(not folder.exists() or not any(folder.iterdir()), 'Choose an empty review directory')
     folder.mkdir(parents=True, exist_ok=True)
     (folder/'pages').mkdir()
+    shutil.copy2(templates, folder/'letter-forms.json')
     # Freeze the source of comparison while the viewer remains usable.
     with closing(read(database)) as source, closing(sqlite3.connect(folder/'reference.sqlite')) as target:
         source.backup(target)
     binary = folder/'cutter'
     shutil.copy2(native_binary(), binary)
-    shutil.copy2(templates, folder/'letter-forms.json')
-    targets = defaultdict(set)
     with closing(read(folder/'reference.sqlite')) as db:
-        chosen = selected_pages(db, pages)
-        for sid,pid in db.execute("SELECT id,page_id FROM catalog_subwords WHERE kind='text' AND letter_count>1"):
-            if pid in chosen:
-                targets[pid].add(sid)
+        targets = review_targets(db, selected_pages(db, pages), folder/'letter-forms.json', form)
+    chosen = [pid for pid, ids in targets.items() if ids]
+    require(chosen, 'No multi-letter subwords match the review selection')
     counts, stages, python, anchors = Counter(), Counter(), Counter(), Counter()
     candidate_totals, candidate_forms = Counter(), defaultdict(Counter)
-    changes, issues, slowest = [], [], []
+    changes, label_changes, issues, slowest = [], [], [], []
     revisions, cache_hits = set(), 0
     cut_started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=workers) as pool, (folder/'cutter.log').open('w') as log:
@@ -173,11 +206,20 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
     require(len(revisions)==1, 'Mixed cutter revisions')
     with closing(read(folder/'reference.sqlite')) as db:
         for pid in chosen:
-            altered, errors = compare_page(db,pid,folder/'pages')
-            changes.extend(altered); issues.extend(errors)
+            altered, labels, errors = compare_page(db,pid,folder/'pages',targets[pid])
+            changes.extend(altered); label_changes.extend(labels); issues.extend(errors)
+    (folder/'label-changes.json').write_text(encoded(label_changes))
+    differences = dict(bodyOutlines=sum(any(k.endswith('/body') and 'd' in fields
+                           for k, fields in c['changedParts'].items()) for c in changes),
+                       rasterMasks=sum(any('ink' in fields for fields in c['changedParts'].values()) for c in changes),
+                       connectorCaps=sum(any('caps' in fields for fields in c['changedParts'].values()) for c in changes),
+                       connectorCounts=sum(sum(k.endswith('/kashida') for k in c['before']) !=
+                                           sum(k.endswith('/kashida') for k in c['after']) for c in changes),
+                       templateLabels=len(label_changes),
+                       labelsOnly=sum(not c['geometryChanged'] for c in label_changes))
     report = dict(pages=len(chosen), subwords=sum(counts.values()), statusCounts=counts,
                   anchorSearch=dict(sorted(anchors.items())),
-                  changes=changes, issues=issues, inputCacheHits=cache_hits,
+                  changes=changes, issues=issues, inputCacheHits=cache_hits, form=form, differences=differences,
                   cutSeconds=cut_seconds, elapsedSeconds=time.perf_counter()-started,
                   stageSeconds={k:v/1000 for k,v in stages.items()}, pythonSeconds=python,
                   candidateSearch=dict(candidate_totals,forms=dict(candidate_forms)),
@@ -185,9 +227,9 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
                   slowestSubwords=sorted(slowest,key=lambda s:s['milliseconds'],reverse=True)[:20],
                   binarySha256=sha(binary.read_bytes()), templatesSha256=sha((folder/'letter-forms.json').read_bytes()),
                   revision=next(iter(revisions)),
-                  comparison='Every multi-letter subword recomputed; exact outlines, fill rules, cut endpoints and raster-mask hashes compared. Single letters and source artwork remain unchanged.')
+                  comparison='Selected multi-letter subwords recomputed and compared with catalog outlines, fill rules, connector caps, raster hashes and template labels.')
     (folder/'comparison.json').write_text(encoded(report))
     render_report(folder,report)
     return dict(report=str(folder/'index.html'),pages=len(chosen),subwords=report['subwords'],
-                changed=len(changes),issues=issues,anchorSearch=report['anchorSearch'],
+                changed=len(changes),differences=differences,issues=issues,anchorSearch=report['anchorSearch'],
                 cutSeconds=cut_seconds,elapsedSeconds=report['elapsedSeconds'])
