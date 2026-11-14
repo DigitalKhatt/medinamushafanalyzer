@@ -7982,6 +7982,7 @@
     },
     {
       "id": "beh-rising-shoulder-fina",
+      "fixedAnchors": true,
       "current": "بتث",
       "tryNext": true,
       "body": {
