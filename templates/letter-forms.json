@@ -185,6 +185,12 @@
       "seen-folded-init": {
         "fixedAnchors": true
       },
+      "noon-fina": {
+        "fixedAnchorsMaxLetters": null
+      },
+      "reh-fina": {
+        "fixedAnchorsMaxLetters": null
+      },
       "seen-folded-medi": {
         "fixedAnchors": true
       },
@@ -247,9 +253,6 @@
         },
         "hah-under-shaft-medi": {
           "fixedAnchors": true
-        },
-        "noon-fina": {
-          "fixedAnchorsMaxLetters": null
         }
       }
     }
@@ -504,7 +507,6 @@
         }
       },
       "cuts": {
-        "sharedExitWith": "kaf-zigzag-medi",
         "head": {
           "maxNeckDistance": 3,
           "maxProjectionInset": 2,
@@ -652,6 +654,10 @@
       },
       "cuts": {
         "minConnectorWidths": 1.1,
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 4
+        },
         "route": {
           "bottomProbe": "down",
           "trimExitToNormal": true
@@ -773,8 +779,6 @@
         }
       },
       "cuts": {
-        "sharedExitWith": "seen-medi",
-        "keepExitBeforeFinal": "ن",
         "beforeFinal": {
           "letters": "اآأإٱ",
           "boundaries": {
@@ -824,7 +828,6 @@
         }
       },
       "cuts": {
-        "sharedExitWith": "kaf-descending-blade-medi",
         "useOwnedCrest": "دذ",
         "beforeFinal": {
           "letters": "اآأإٱ",
@@ -4467,6 +4470,7 @@
         "counters": 0
       },
       "cuts": {
+        "sharedEntryAtAttachment": "hah-stacked-medi",
         "minimumExitWidths": 2,
         "mouth": {
           "projectExit": true,
@@ -6489,6 +6493,7 @@
         }
       },
       "cuts": {
+        "fixEntryJunction": true,
         "precedingTooth": {
           "refitTemplate": "beh-shoulder-medi"
         },
@@ -7049,7 +7054,6 @@
           "turnAngle": 45,
           "stemWidthLimit": 1.7
         },
-        "recoveryShaft": true,
         "boundaries": {
           "left": "free",
           "right": "stem-turn"
@@ -8230,56 +8234,6 @@
       },
       "ownsLeftTip": true,
       "returningStroke": true,
-      "onUnresolvedPartition": true,
-      "onUnresolved": true
-    },
-    {
-      "id": "noon-returning-shoulder-fina",
-      "fixedAnchors": true,
-      "current": "ن",
-      "tryNext": true,
-      "body": {
-        "shape": "contour-route",
-        "route": {
-          "start": "left",
-          "traversal": "down",
-          "topTraversal": "forward",
-          "top": [
-            "down",
-            {
-              "direction": "up",
-              "minX": 1,
-              "maxY": -0.6
-            },
-            {
-              "direction": "right",
-              "minX": 0.12,
-              "minY": -0.2,
-              "maxY": 0.25,
-              "start": {
-                "sharp": true
-              }
-            }
-          ]
-        },
-        "counters": 0,
-        "features": {
-          "minWidthToHeight": 1,
-          "minHeight": 3
-        }
-      },
-      "cuts": {
-        "route": {
-          "bottomProbe": "normal",
-          "anchorSide": "bottom"
-        },
-        "boundaries": {
-          "right": "contour-route",
-          "left": "free"
-        }
-      },
-      "ownsLeftTip": true,
-      "retainBodyFeatures": true,
       "onUnresolvedPartition": true,
       "onUnresolved": true
     },

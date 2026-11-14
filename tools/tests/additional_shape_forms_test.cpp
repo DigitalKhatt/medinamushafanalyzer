@@ -29,6 +29,7 @@ int main(int argc,char** argv) {
         const char* form;
         int upperCorner = -1, lowerCorner = -1;
         bool finalKashida = false;
+        bool fixedAnchors = false;
     };
     const Case cases[]={{1,2,1,1,"seen-compact-medi"},
         {4,12,4,1,"beh-tooth-medi"},{3,6,2,1,"seen-medi"},
@@ -37,6 +38,8 @@ int main(int argc,char** argv) {
         {11,6,2,2,"reh-hook-fina"},{5,15,2,1,"ain-fina"},
         {251,11,4,2,"qaf-fina",9,21},{4,5,1,3,"qaf-fina",2,14},
         {19,4,4,1,"qaf-fina",4,15},{70,3,1,2,"qaf-fina",13,24},
+        {2,4,1,1,"noon-fina",36,54,true,true},
+        {1,8,2,3,"noon-fina",15,32,true,true},{287,5,11,2,"noon-fina",-1,32,true,true},
         {3,12,2,3,"waw-fina",-1,-1,true},{10,11,7,2,"waw-fina",6,13},{13,3,3,1,"waw-fina",6,12},
         {71,2,10,1,"waw-fina",4,11},{103,14,8,3,"waw-fina",6,13,true},
         {162,2,2,3,"waw-fina",4,10,true},{3,1,2,3,"noon-fina",2,12,true},
@@ -52,6 +55,10 @@ int main(int argc,char** argv) {
         qInfo("Checking page%d:l%d-w%d-s%d · %s",at.p,at.l,at.w,at.s,at.form);
         check(a.segmentSubword(at.p-1,at.l-1,at.w-1,at.s-1,&font,true),"Shape remains partial");
         check(sub.matchedTemplates.contains(at.form),"Required intrinsic form did not match");
+        if (at.fixedAnchors)
+            check(sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+                  sub.letterDiagnostics.last().toObject().value("template")=="noon-fina",
+                  "Subword did not use the fixed nūn bowl junction");
         check(sub.baseGlyphs.size()==PageAnalysisResult::bodyLetters(sub.text).size(),"Wrong body count");
         const auto& sh=word.paths[sub.paths.front()];
         const auto mapped=[&](const QPainterPath& p) {auto q=sh.transform.map(p);q.translate(sh.pos);return q;};

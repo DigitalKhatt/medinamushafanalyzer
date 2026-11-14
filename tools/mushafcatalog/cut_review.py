@@ -2,8 +2,10 @@
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
+import csv
 from html import escape
 import json
+from math import dist
 from pathlib import Path
 import shutil
 import sqlite3
@@ -45,7 +47,7 @@ def review_targets(db, pages, templates, form):
     return targets
 
 
-def compare_page(db, pid, folder, targets):
+def compare_page(db, pid, folder, targets, *, complete_only=False):
     data = json.loads((folder/(pid+'.json')).read_bytes())
     after = json.loads(zlib.decompress((folder/(pid+'.vectors')).read_bytes()))
     before = json.loads(zlib.decompress(db.execute(
@@ -68,7 +70,9 @@ def compare_page(db, pid, folder, targets):
             issues.append(dict(id=sid, issue='source-key-changed'))
         complete = result['status'] == 'template'
         if not complete:
-            issues.append(dict(id=sid, issue='unresolved', status=result['status']))
+            issues.append(dict(id=sid, issue='unresolved', status=result['status'], text=spec['text']))
+            if complete_only:
+                continue
         elif sum(p['role']=='body' for p in result.get('parts', [])) != spec['letter_count']:
             issues.append(dict(id=sid, issue='letter-count'))
         keys = [o['id']+'/'+role for o in owners[sid] for role in ('body','kashida')]
@@ -96,6 +100,61 @@ def compare_page(db, pid, folder, targets):
     return changes, label_changes, issues
 
 
+def straight_edges(outline):
+    # Catalog paths close implicitly. A cut is often the closing edge of a body.
+    edges = set()
+    start = end = None
+    for command, points in outline_commands(outline):
+        point = points[-2:]
+        if command == 'M':
+            if start is not None and end != start:
+                edges.add(tuple(sorted((end, start))))
+            start = point
+        elif command == 'L' and end != point:
+            edges.add(tuple(sorted((end, point))))
+        end = point
+    if start is not None and end != start:
+        edges.add(tuple(sorted((end, start))))
+    return edges
+
+
+def shared_cut_edges(parts):
+    bodies = sorted((key.removesuffix('/body') for key in parts if key.endswith('/body')),
+                    key=lambda owner: int(owner.rsplit(':c', 1)[1]))
+    for right, left in zip(bodies, bodies[1:]):
+        if right + '/kashida' in parts:
+            continue
+        outgoing = straight_edges(parts[right + '/body']['d'])
+        incoming = straight_edges(parts[left + '/body']['d'])
+        common = outgoing & incoming
+        if common:
+            yield from ((edge, False) for edge in sorted(common))
+            continue
+        # Some exported bodies use slightly different sections at the same
+        # join. Draw the two outline edges if both endpoints agree closely.
+        for first in sorted(outgoing):
+            for second in sorted(incoming):
+                error = min(max(dist(a, b) for a, b in zip(first, ends))
+                            for ends in (second, second[::-1]))
+                if error <= min(1.0, .25 * min(dist(*first), dist(*second))):
+                    yield first, True
+                    yield second, True
+
+
+def review_crop(parts, changed, viewbox):
+    paths, cuts = [], []
+    for key, part in parts.items():
+        color = '#ce9c31' if key.endswith('/kashida') else '#057f91' if key in changed else '#adb8be'
+        paths.append(f'<path fill="{color}" fill-rule="{part.get("fillRule","evenodd")}" d="{escape(part["d"])}"/>')
+        for a,b in part.get('caps',[]):
+            cuts.append(f'<line stroke="#d51a68" stroke-width=".8" x1="{a[0]}" y1="{a[1]}" x2="{b[0]}" y2="{b[1]}"/>')
+    for ((ax,ay),(bx,by)), nearby in shared_cut_edges(parts):
+        dash = ' stroke-dasharray="2 1"' if nearby else ''
+        cuts.append(f'<line class="shared-cut" stroke="#d51a68" stroke-width="1.5"'
+                    f' vector-effect="non-scaling-stroke"{dash} x1="{ax}" y1="{ay}" x2="{bx}" y2="{by}"/>')
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{viewbox}">'+''.join(paths+cuts)+'</svg>'
+
+
 def render_report(folder, report):
     cards = []
     for change in report['changes']:
@@ -112,20 +171,26 @@ def render_report(folder, report):
             if side == 'after' and change['status'] != 'template':
                 panels.append('<section><h3>After</h3><p>Unresolved</p></section>')
                 continue
-            paths, cuts = [], []
-            for key,p in change[side].items():
-                color = '#ce9c31' if key.endswith('/kashida') else '#057f91' if key in changed else '#adb8be'
-                paths.append(f'<path fill="{color}" fill-rule="{p.get("fillRule","evenodd")}" d="{escape(p["d"])}"/>')
-                for a,b in p.get('caps',[]):
-                    cuts.append(f'<path fill="none" stroke="#d51a68" stroke-width=".8" d="M{a[0]} {a[1]}L{b[0]} {b[1]}"/>')
-            svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x0} {y0} {width} {height}">'+''.join(paths+cuts)+'</svg>'
+            svg = review_crop(change[side], changed, f'{x0} {y0} {width} {height}')
             name = change['id'].replace(':','-')+'-'+side+'.svg'
             (folder/name).write_text(svg)
-            panels.append(f'<section><h3>{side.title()}</h3><a href="{name}">{svg}</a></section>')
+            preview = f'<img src="{name}" loading="lazy" alt="{side.title()} cuts">' if report.get('noLegacy') else svg
+            panels.append(f'<section><h3>{side.title()}</h3><a href="{name}">{preview}</a></section>')
         sid = escape(change['id'])
-        cards.append(f'<article data-id="{sid}"><h2>{sid} · <bdi dir="rtl">{escape(change["text"])}</bdi></h2>'
+        connector_count = sum(k.endswith('/kashida') for k in change['after']) - sum(
+            k.endswith('/kashida') for k in change['before'])
+        raster_changed = any('ink' in fields for fields in changed.values())
+        caption = f'<p>Connector count {connector_count:+d}</p>' if connector_count else ''
+        cards.append(f'<article data-id="{sid}" data-connectors="{int(bool(connector_count))}" '
+                     f'data-raster="{int(raster_changed)}"><h2>{sid} · <bdi dir="rtl">{escape(change["text"])}</bdi></h2>'
+                     +caption+
                      '<div class="pair">'+''.join(panels)+'</div></article>')
-    summary = {k:v for k,v in report.items() if k!='changes'}
+    summary = {k:v for k,v in report.items() if k not in ('changes','issues')}
+    if not report.get('noLegacy'):
+        summary['issues'] = report['issues']
+    migration = ('<p>Fixed-anchor audit with the legacy cutter disabled. '
+                 '<a href="remaining-migration.csv">Download all unresolved subwords and their blockers</a>.</p>'
+                 if report.get('noLegacy') else '')
     search = report.get('candidateSearch', {})
     forms = search.get('forms', {})
     candidates = ''
@@ -141,11 +206,24 @@ def render_report(folder, report):
     html = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cutter changes</title><style>body{font:15px system-ui;margin:24px;background:#f3f5f7;color:#20323e}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px}article{background:white;padding:14px;border:1px solid #d2dae0;border-radius:8px}
-h2{font-size:16px}h3{font-size:13px;margin:4px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}svg{width:100%;height:190px}
+h2{font-size:16px}h3{font-size:13px;margin:4px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+svg,.pair img{width:100%;height:190px;object-fit:contain}
 pre{white-space:pre-wrap}input{padding:10px;width:300px}table{border-collapse:collapse}th,td{text-align:left;padding:6px 12px;border-bottom:1px solid #d2dae0}@media(max-width:500px){.grid{grid-template-columns:1fr}}</style>
-<h1>Cutter changes</h1><p>__SUMMARY__</p><p>Teal: changed letter bodies · gray: unchanged letters · gold: kashidas · pink: cut endpoints. Click an image to enlarge.</p>
-<input placeholder="Filter by subword ID" oninput="document.querySelectorAll('article').forEach(e=>e.hidden=!e.dataset.id.includes(this.value))">
-__CANDIDATES__<details><summary>Verification and timing</summary><pre>__JSON__</pre></details><main class="grid">__CARDS__</main></html>'''
+<h1>Cutter changes</h1><p>__SUMMARY__</p><p>Teal marks changed bodies, gray marks unchanged bodies, and gold marks kashidas. Pink lines show cuts at shared joins and at both ends of a kashida. Dashed pink lines show where the two body outlines have slightly different boundaries. Click an image to enlarge.</p>
+__MIGRATION__
+<input id="subword" placeholder="Filter by subword ID" oninput="filterCuts()">
+<label>Changes <select id="change-type" onchange="filterCuts()">
+<option value="">All cuts</option><option value="raster">Pixel ownership</option>
+<option value="connectors">Connector count</option></select></label>
+__CANDIDATES__<details><summary>Verification and timing</summary><pre>__JSON__</pre></details><main class="grid">__CARDS__</main>
+<script>
+function filterCuts() {
+  const id = document.getElementById('subword').value.trim();
+  const type = document.getElementById('change-type').value;
+  for (const card of document.querySelectorAll('article'))
+    card.hidden = !card.dataset.id.includes(id) || (type && card.dataset[type] !== '1');
+}
+</script></html>'''
     unresolved = sum(issue['issue']=='unresolved' for issue in report['issues'])
     changed = sum(change['status']=='template' for change in report['changes'])
     failures = len(report['issues']) - unresolved
@@ -153,11 +231,12 @@ __CANDIDATES__<details><summary>Verification and timing</summary><pre>__JSON__</
         f"{report['pages']} pages · {report['subwords']:,} multi-letter subwords · {changed} changed complete cuts · "
         f"{unresolved} unresolved · {failures} validation issues"))
         .replace('__JSON__',escape(json.dumps(summary,ensure_ascii=False,indent=2)))
+        .replace('__MIGRATION__',migration)
         .replace('__CANDIDATES__',candidates)
         .replace('__CARDS__',''.join(cards)))
 
 
-def review(database, destination, pages, workers, templates, *, compare_anchors=False, form=None):
+def review(database, destination, pages, workers, templates, *, compare_anchors=False, no_legacy=False, form=None):
     started = time.perf_counter()
     folder = destination.resolve()
     require(not folder.exists() or not any(folder.iterdir()), 'Choose an empty review directory')
@@ -176,11 +255,13 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
     counts, stages, python, anchors = Counter(), Counter(), Counter(), Counter()
     candidate_totals, candidate_forms = Counter(), defaultdict(Counter)
     changes, label_changes, issues, slowest = [], [], [], []
+    routes = {}
     revisions, cache_hits = set(), 0
     cut_started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=workers) as pool, (folder/'cutter.log').open('w') as log:
         jobs = {pool.submit(prepare_page,folder/'reference.sqlite',pid,binary,folder/'pages',
-                            targets[pid],folder/'letter-forms.json',profile=True,compare_anchors=compare_anchors):pid for pid in chosen}
+                            targets[pid],folder/'letter-forms.json',profile=True,
+                            compare_anchors=compare_anchors,no_legacy=no_legacy):pid for pid in chosen}
         for n,job in enumerate(as_completed(jobs),1):
             pid = jobs[job]
             revisions.add(job.result())
@@ -192,7 +273,9 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
             slowest.extend(timing['subwords'])
             for subword in timing['subwords']:
                 search = subword.get('search', {})
-                candidate_totals.update({k:v for k,v in search.items() if k not in ('forms','anchorSearch')})
+                candidate_totals.update({k:v for k,v in search.items() if k not in ('forms','anchorSearch','anchorBlocker')})
+                if no_legacy:
+                    routes[subword['id']] = (search.get('anchorSearch','unrecorded'),search.get('anchorBlocker',''))
                 if status := search.get('anchorSearch'):
                     anchors[status] += 1
                     if status == 'different-cuts':
@@ -206,7 +289,7 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
     require(len(revisions)==1, 'Mixed cutter revisions')
     with closing(read(folder/'reference.sqlite')) as db:
         for pid in chosen:
-            altered, labels, errors = compare_page(db,pid,folder/'pages',targets[pid])
+            altered, labels, errors = compare_page(db,pid,folder/'pages',targets[pid],complete_only=no_legacy)
             changes.extend(altered); label_changes.extend(labels); issues.extend(errors)
     (folder/'label-changes.json').write_text(encoded(label_changes))
     differences = dict(bodyOutlines=sum(any(k.endswith('/body') and 'd' in fields
@@ -217,7 +300,22 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
                                            sum(k.endswith('/kashida') for k in c['after']) for c in changes),
                        templateLabels=len(label_changes),
                        labelsOnly=sum(not c['geometryChanged'] for c in label_changes))
+    remaining = Counter()
+    if no_legacy:
+        with (folder/'remaining-migration.csv').open('w',encoding='utf-8-sig',newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(('Subword','Text','Status','Route','Blocker'))
+            for issue in sorted(issues,key=lambda i:i['id']):
+                if issue['issue'] != 'unresolved':
+                    continue
+                sid = issue['id']
+                route, blocker = routes.get(sid,('unrecorded',''))
+                if route == 'fallback':
+                    route = 'search-exhausted'
+                remaining[blocker or route] += 1
+                writer.writerow((sid,issue['text'],issue['status'],route,blocker))
     report = dict(pages=len(chosen), subwords=sum(counts.values()), statusCounts=counts,
+                  noLegacy=no_legacy,remainingMigration=dict(remaining.most_common()),
                   anchorSearch=dict(sorted(anchors.items())),
                   changes=changes, issues=issues, inputCacheHits=cache_hits, form=form, differences=differences,
                   cutSeconds=cut_seconds, elapsedSeconds=time.perf_counter()-started,
@@ -231,5 +329,6 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
     (folder/'comparison.json').write_text(encoded(report))
     render_report(folder,report)
     return dict(report=str(folder/'index.html'),pages=len(chosen),subwords=report['subwords'],
-                changed=len(changes),differences=differences,issues=issues,anchorSearch=report['anchorSearch'],
+                changed=len(changes),differences=differences,issues=len(issues) if no_legacy else issues,
+                remainingMigration=report['remainingMigration'],anchorSearch=report['anchorSearch'],
                 cutSeconds=cut_seconds,elapsedSeconds=report['elapsedSeconds'])

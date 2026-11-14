@@ -70,8 +70,12 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     };
     const auto& requestedForms = draft ? *draft : letterForms();
     const auto source = sub;
+    const bool noLegacy = qEnvironmentVariableIsSet("MEDINA_AUDIT_NO_LEGACY");
     const auto attempt = [&](const QJsonObject& sourceConfig) -> bool {
         const auto ligature = segmentDeclaredLigature(word, sub, sourceConfig);
+        if (noLegacy && cutGeometryMemo->profiling &&
+            (ligature == LigatureMatch::SharedCut || ligature == LigatureMatch::Failed))
+            cutGeometryMemo->anchorSearch = "declared-ligature";
         if (ligature == LigatureMatch::Failed) return false;
         if (ligature == LigatureMatch::SharedCut)
             return pageIndex < 0 || assembleToothClusterCuts(word, sub, sourceConfig);
@@ -108,6 +112,8 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         }
         std::optional<WordResultInfo::SubWordInfo> anchored;
         if (pageIndex >= 0) {
+            if (noLegacy && cutGeometryMemo->profiling && cutGeometryMemo->anchorSearch.isEmpty())
+                cutGeometryMemo->anchorSearch = sub.secondaryBodyPath >= 0 ? "compound-body" : "ineligible";
             const bool verify = cutGeometryMemo->verifyContourGeometry;
             std::vector<AnchorPriority> priorities{{sourceConfig, anchorForms, verify}};
             if (!expandedConfig.isEmpty()) priorities.push_back({expandedConfig, expandedForms, verify});
@@ -122,10 +128,11 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
             }
             anchored = segmentWithAnchors(word, sub, priorities, acceptAnchors);
         }
-        if (anchored && (!cutGeometryMemo->profiling || !qEnvironmentVariableIsSet("MEDINA_COMPARE_ANCHORS"))) {
+        if (anchored && (noLegacy || !cutGeometryMemo->profiling || !qEnvironmentVariableIsSet("MEDINA_COMPARE_ANCHORS"))) {
             sub = std::move(*anchored);
             return true;
         }
+        if (noLegacy) return false;
 
         auto requested = compiledConfig;
         const auto retryParents = compiledRetryParents;

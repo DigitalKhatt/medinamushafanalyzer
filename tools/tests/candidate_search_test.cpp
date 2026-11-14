@@ -82,6 +82,7 @@ static void checkRecoveryPriority(const QJsonObject& config, AFont& font) {
 
 static void checkFixedAnchors(const QJsonObject& config) {
     auto legacy = config;
+    legacy.remove("fixedAnchorExpansion");
     for (const auto* phase : {"initial", "medial", "final"}) {
         QJsonArray forms;
         for (const auto& value : config.value(phase).toArray()) {
@@ -139,6 +140,14 @@ static void checkFixedAnchors(const QJsonObject& config) {
         check(!actual.templateTrace.isEmpty() && actual.templateTrace.front().startsWith("Fixed anchors"),
               "The fixed anchor fixture fell back to the original cutter");
         if (f.page == 2 && f.line == 7) {
+            const AnchorForms ineligible;
+            const std::array priorities{AnchorPriority{config, ineligible}, AnchorPriority{config, anchors}};
+            const auto later = [&] {
+                CutGeometryMemoScope memo;
+                return segmentWithAnchors(word, actual, priorities, {});
+            }();
+            check(later && sameAnchoredPartition(*later, actual),
+                  "An ineligible configuration blocked the next fixed-anchor configuration");
             int rejected = 0;
             const AnchorPartitionCheck reject = [&](const auto&) { ++rejected; return false; };
             check(analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1,
@@ -277,6 +286,140 @@ static void checkFixedAnchors(const QJsonObject& config) {
               sub.kashidaPaths.size() == 4 && sub.kashidaPaths[1].isEmpty() &&
               !sub.kashidaPaths[2].isEmpty() && coversOriginalInk(word, sub),
               "Resolving the hah–kaf junction changed the kaf–meem connector");
+    }
+    struct StackedJoin { int page, line, word, subword, connectors; double corner; };
+    for (const auto& f : {StackedJoin{36, 13, 7, 1, 1, 11}, StackedJoin{226, 3, 7, 2, 1, 15},
+                          StackedJoin{317, 13, 4, 1, 1, 11}, StackedJoin{453, 15, 8, 1, 1, 31},
+                          StackedJoin{550, 2, 12, 1, 2, 14}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing upper attachment fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        check(page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &config),
+              "Stacked subword did not assemble");
+        const auto& word = page.page.lines[f.line - 1].words[f.word - 1];
+        const auto& sub = word.wordResultInfo.subWords[f.subword - 1];
+        const auto initial = f.page == 453 ? "ain-init" : "beh-stacked-init";
+        check(sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+              sub.letterDiagnostics.first().toObject().value("template") == initial &&
+              !sub.joins.empty() && !sub.kashidaPaths.empty() && sub.kashidaPaths.front().isEmpty() &&
+              std::count_if(sub.kashidaPaths.begin(), sub.kashidaPaths.end(),
+                            [](const auto& path) { return !path.isEmpty(); }) == f.connectors &&
+              coversOriginalInk(word, sub), "Stacked join changed stroke ownership");
+        const auto& seam = *sub.joins.begin();
+        check(seam.bottomBaseLine.time == f.corner && std::abs(sectionLine(seam).dy()) < 1e-5,
+              "Stacked join missed the upper attachment corner");
+    }
+    for (const auto& f : {Fixture{21, 9, 4, 2}, Fixture{544, 14, 6, 1},
+                          Fixture{407, 7, 8, 1}, Fixture{579, 1, 11, 2}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing stacked attachment and alif fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        check(page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &config),
+              "Stacked attachment and alif did not assemble");
+        const auto& word = page.page.lines[f.line - 1].words[f.word - 1];
+        const auto& sub = word.wordResultInfo.subWords[f.subword - 1];
+        check(sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+              sub.letterDiagnostics.last().toObject().value("template") == "alef-fina" &&
+              sub.kashidaPaths.size() == 2 && sub.kashidaPaths.front().isEmpty() &&
+              sub.kashidaPaths.back().isEmpty() == (f.page == 407 || f.page == 579) &&
+              coversOriginalInk(word, sub),
+              "The stacked attachment or the alif connector changed ownership");
+        const auto& join = *sub.joins.rbegin();
+        const auto foot = sub.kashidaPaths.back().isEmpty() ? sectionLine(join) : sub.kashidaCuts.back().second;
+        check(foot.dy() > .3, "Alif used the horizontal shaft section instead of the foot");
+    }
+    {
+        QFile file("pages/page259.dat");
+        check(file.open(QIODevice::ReadOnly), "Missing alif shaft ownership fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        page.resolveWordBoundaries(259, &font);
+        check(page.segmentSubword(258, 4, 0, 2, &font, true, &config), "Alif shaft ownership did not assemble");
+        const auto& word = page.page.lines[4].words[0];
+        const auto& sub = word.wordResultInfo.subWords[2];
+        check(sub.letterDiagnostics.last().toObject().value("template") == "alef-return-fina" &&
+              sub.baseGlyphs.size() == 3 && coversOriginalInk(word, sub),
+              "Upright alif candidate sliced the shaft off the final body");
+    }
+    struct RehJunction { int page, line, word, subword, connectors; double lowerCorner; };
+    for (const auto& f : {RehJunction{16, 3, 1, 2, 3, 29},
+                          RehJunction{19, 12, 3, 1, 2, 15},
+                          RehJunction{34, 12, 9, 3, 3, 25}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing fixed rāʾ junction fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        const int line = f.line - 1, word = f.word - 1, subword = f.subword - 1;
+        check(page.segmentSubword(f.page - 1, line, word, subword, &font, true, &config),
+              "The fixed rāʾ entry did not assemble");
+        const auto& item = page.page.lines[line].words[word];
+        const auto& result = item.wordResultInfo.subWords[subword];
+        check(result.templateTrace.value(0).startsWith("Fixed anchors") &&
+              result.letterDiagnostics.last().toObject().value("template") == "reh-fina" &&
+              std::count_if(result.kashidaPaths.begin(), result.kashidaPaths.end(),
+                            [](const auto& path) { return !path.isEmpty(); }) == f.connectors &&
+              coversOriginalInk(item, result), "Final rāʾ changed connector ownership");
+        const auto& join = *result.joins.rbegin();
+        const auto& lower = result.kashidaPaths.back().isEmpty() ? join.bottomBaseLine : join.bottomLeft;
+        check(std::abs(lower.time - f.lowerCorner) < 1e-6, "Final rāʾ lost its entry corner");
+    }
+    {
+        QFile file("pages/page33.dat");
+        check(file.open(QIODevice::ReadOnly), "Missing final lām fork endpoint fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        page.resolveWordBoundaries(33, &font);
+        check(page.segmentSubword(32, 12, 10, 0, &font, true, &config), "Final lām fork did not assemble");
+        const auto& word = page.page.lines[12].words[10];
+        const auto& sub = word.wordResultInfo.subWords[0];
+        check(sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+              sub.letterDiagnostics.last().toObject().value("template") == "lam-bowl-fina" &&
+              sub.kashidaPaths.size() == 1 && !sub.kashidaPaths.front().isEmpty() &&
+              std::abs(sub.joins.begin()->bottomLeft.time - 9.19066) < 1e-5 &&
+              coversOriginalInk(word, sub),
+              "Final lām skipped the fork at the lower endpoint of the preliminary cut");
+    }
+    {
+        const Fixture f{53, 12, 2, 1};
+        QFile file("pages/page53.dat");
+        check(file.open(QIODevice::ReadOnly), "Missing page 53 attachment fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        const auto segment = [&](const QJsonObject& rules) {
+            return page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &rules);
+        };
+        const auto& word = page.page.lines[f.line - 1].words[f.word - 1];
+        const auto& sub = word.wordResultInfo.subWords[f.subword - 1];
+        check(segment(legacy), "Missing established page 53 cut");
+        const auto expected = sub;
+        check(segment(config) && sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+              sub.kashidaCuts == expected.kashidaCuts && sub.baseGlyphs.size() == expected.baseGlyphs.size(),
+              "Fixed anchor assembly changed a verified page 53 cut");
+        for (size_t i = 0; i < sub.baseGlyphs.size(); ++i)
+            check(sub.baseGlyphs[i].path == expected.baseGlyphs[i].path, "Page 53 body outline changed");
+        check(page.segmentSubword(52, 8, 6, 1, &font, true, &config), "Stacked tāʾ–khāʾ did not assemble");
+        const auto& stackedWord = page.page.lines[8].words[6];
+        const auto& stacked = stackedWord.wordResultInfo.subWords[1];
+        check(stacked.templateTrace.value(0).startsWith("Fixed anchors") &&
+              stacked.letterDiagnostics.at(1).toObject().value("template") == "hah-returning-lips-medi" &&
+              stacked.kashidaPaths.front().isEmpty() && !stacked.kashidaPaths.back().isEmpty() &&
+              coversOriginalInk(stackedWord, stacked), "Stacked tāʾ–khāʾ lost its shared entry or outgoing connector");
+        const auto& seam = *stacked.joins.begin();
+        check(std::abs(seam.topBaseLine.time - 2.17912) < 1e-5 &&
+              seam.bottomBaseLine.time == 19 && std::abs(sectionLine(seam).dy()) < 1e-5,
+              "Stacked tāʾ–khāʾ did not use the horizontal attachment");
     }
     QFile foldedPage("pages/page21.dat");
     check(foldedPage.open(QIODevice::ReadOnly), "Missing folded seen–yeh fixture");

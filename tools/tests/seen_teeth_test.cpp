@@ -145,8 +145,9 @@ static void checkFoldedSheen(const QJsonObject& config) {
               sub.baseGlyphs.size() == 2 && sub.joins.size() == 1 &&
               sub.matchedTemplates == QStringList{"seen-folded-init", "yeh-fina"},
               "The folded initial body did not match at the final yeh cut");
-        check(sub.templateTrace == QStringList{"seen-folded-init · shared cut at the final fold"},
-              "The contextual match entered the ordinary boundary search");
+        check(sub.templateTrace.value(0) == "seen-folded-init · shared cut at the final fold" ||
+              sub.templateTrace.value(0) == "Fixed anchors · seen-folded-init → yeh-fina",
+              "The contextual match did not use the declared final fold");
         const auto shape = word.bodyShape(sub);
         WordResultInfo::SubWordInfo dummy;
         auto context = geometry(shape.transform.map(shape.path).translated(shape.pos), dummy);

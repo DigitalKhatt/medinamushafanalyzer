@@ -199,13 +199,10 @@ A subword can use the search
 when every letter has an eligible form. Each form proposes sections on the
 uncut outline and identifies the landmarks and ink it must retain. Counter
 forms identify the source contours their body must own.
-An initial body can use `cuts.sharedExitWith` to validate a fixed exit at
-the entry of a named medial form. `cuts.keepExitBeforeFinal` gives the
-body's own exit priority for the listed endings. Initial ḥāʾ keeps the exit found by its
-own head or counter outline. A medial blade can use `cuts.sharedEntryAfter`
-to participate after that initial shape outside its ordinary set of final
-letters. Assembly checks the two fixed sections and retains any connecting
-stroke between them.
+An initial body proposes its exit from its own outline. A medial blade can
+use `cuts.sharedEntryAfter` to participate after that initial shape outside
+its ordinary set of final letters. Assembly checks both fixed sections and
+retains any connecting stroke between them.
 In the continuation search, an initial form with `preferSharedAttachment`
 is tried first when the following letter matches its `ligatureWith` selector.
 `fixedAnchorExpansion` enables extra forms and attachment policies in the
@@ -218,6 +215,14 @@ candidates the expanded search visits before handing the subword to the
 existing cutter.
 Folded ligatures evaluate the sending body at the receiving form's proposed
 seam. A shared counter can supply the two ink bridges of a single seam.
+For a stacked join, `cuts.sharedEntryAtAttachment` reuses the upper
+attachment geometry of a medial template. The horizontal cut applies to
+an already shared join when the entry and exit meet at the same corner
+and both bodies retain their landmarks.
+An initial contour route can use `cuts.sharedExitAtAttachment` to propose the
+same horizontal section as its exit. The section must follow the route's
+original exit within `maxDistanceWidths` global stroke widths. Assembly
+requires a receiving body with the same section.
 For a short attachment, the search can use a shared section when the caps
 nearly coincide and the sending form keeps all its landmarks. A short separate
 connector must still fit the configured stroke envelope. An explicit tatweel
@@ -313,6 +318,13 @@ kāf blade walks from the fork. The returning-lip and stacked ḥāʾ forms
 share `cuts.minimumExitWidths`, measured from the start of the lower lip.
 Both measurements use the global `strokeWidth`. Each recognized body has
 a preferred section and an immutable limit. Assembly keeps ordered cuts.
+An upright final alif supplies one entry candidate. Its normal at the foot
+takes priority over a horizontal shaft section. If both sections are
+ordered along the same stem within one local stroke width, the higher
+section bounds how far assembly can retreat to clear an overlap.
+A final stemmed bowl with a `fork-normal` entry tries its own fork flank
+before the stem turn. The stem turn still supplies an entry when the fork
+or the cut from it cannot be used.
 With a declared entry limit, assembly computes one seam from the two
 contour flanks. An explicit junction, such as final wāw's entry, or
 two sections whose corresponding endpoints meet within
@@ -331,6 +343,11 @@ the catalog. The report counts matching results, differences and fallbacks.
 ```sh
 python3 tools/mushafcatalog/catalog.py check-letter-corpus --compare-anchors --report output/anchor-audit
 ```
+
+Use `--no-legacy` instead of `--compare-anchors` to audit fixed anchors
+and declared ligatures against the saved catalog with the legacy search
+disabled. The review shows changed complete cuts and lists unresolved
+subwords in `remaining-migration.csv`.
 
 ## Future improvements
 

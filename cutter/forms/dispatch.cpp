@@ -587,10 +587,16 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
         }
     } else if (shape == "upright-stem") {
         const auto policy = cuts.value("stem").toObject();
-        if (recovering && cuts.value("recoveryShaft").toBool() && evidence->descendingShaft)
-            found = cutDescendingShaft(context, *evidence->descendingShaft, policy, context.res);
-        if (!found && evidence->uprightStem)
+        if (evidence->uprightStem)
             found = cutUprightStem(context, *evidence->uprightStem, policy, context.res);
+        if ((!found || std::abs(sectionLine(context.res).dy()) <= .05 * sectionLine(context.res).length()) &&
+            evidence->descendingShaft) {
+            Stretching foot{};
+            if (cutDescendingShaft(context, *evidence->descendingShaft, policy, foot)) {
+                context.res = foot;
+                found = true;
+            }
+        }
     } else if (shape == "layered-head")
         found = evidence->layeredHead && cutLayeredHead(context, *evidence->layeredHead, cuts.value("head").toObject());
     else if (shape == "counter-attachment")
@@ -735,8 +741,8 @@ bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
     // These terminal searches use the fixed outline and their own settings.
     // Keep the proposal, including a miss. The join and ownership checks
     // below still run against the current placement.
-    const auto intrinsicTerminal = [&](bool variant, const auto& search) {
-        const auto key = std::make_pair(rule.value("id").toString(), variant);
+    const auto intrinsicTerminal = [&](const auto& search) {
+        const auto key = std::make_pair(rule.value("id").toString(), false);
         auto [it, inserted] = context.outlineCache->terminalCuts.try_emplace(key);
         if (inserted && search()) it->second = context.res;
         if (!it->second) return false;
@@ -747,9 +753,7 @@ bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
     if (sharedShapeDescription(rule.value("body").toObject())) {
         const auto shape = rule.value("body").toObject().value("shape").toString();
         const bool cachedTerminal = terminal && (shape.startsWith("counter-") || shape == "upright-stem");
-        const bool variant = shape == "upright-stem" && recoverTeeth &&
-                             rule.value("cuts").toObject().value("recoveryShaft").toBool();
-        found = cachedTerminal ? intrinsicTerminal(variant,
+        found = cachedTerminal ? intrinsicTerminal(
                                              [&] {
                                                  return declaredSharedBoundary(
                                                      context, rule, seenRetry, recoverTeeth);

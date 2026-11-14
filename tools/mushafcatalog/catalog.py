@@ -118,8 +118,11 @@ def main():
     review.add_argument('--report',type=Path,required=True,help='Empty output directory for the review and profiles')
     review.add_argument('--templates',type=Path,default=ROOT/'templates/letter-forms.json')
     review.add_argument('--form',help='Check subwords with the selected template’s letters and position')
-    review.add_argument('--compare-anchors',action='store_true',
-                        help='Compare each fixed anchor result with the original cutter on the same ink')
+    anchor_mode = review.add_mutually_exclusive_group()
+    anchor_mode.add_argument('--compare-anchors',action='store_true',
+                             help='Compare each fixed anchor result with the original cutter on the same ink')
+    anchor_mode.add_argument('--no-legacy',action='store_true',
+                             help='Audit fixed anchors and declared ligatures with the legacy cutter disabled')
     page_export = commands.add_parser('export-page',help='Regenerate a standalone SVG page from the catalog')
     page_export.add_argument('page',help='Page number or ID')
     page_export.add_argument('file',type=Path)
@@ -190,7 +193,7 @@ def main():
     elif args.command=='check-letter-corpus':
         from cut_review import review
         data = review(args.db,args.report,args.pages,args.workers,args.templates,
-                      compare_anchors=args.compare_anchors, form=args.form)
+                      compare_anchors=args.compare_anchors, no_legacy=args.no_legacy, form=args.form)
     elif args.command=='export-page':
         target = args.file.resolve()
         require(target!=args.db.resolve() and target.suffix.lower()=='.svg','Choose an SVG output file')

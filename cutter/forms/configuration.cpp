@@ -843,8 +843,6 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": shoulderEntry.sharedCorners needs preceding letters and a positive shift limit";
         cutKeys << "shoulderEntry";
     }
-    if (shape == "upright-stem")
-        cutKeys << "recoveryShaft";
     if (const auto value = cuts.value("precedingTooth"); !value.isUndefined()) {
         const auto placement = value.toObject();
         const auto probe = placement.value("probeEntry");
@@ -876,19 +874,6 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         bodyKeys << "maxShoulderBacktrackWidths";
     if (shape == "layered-head")
         bodyKeys << "neck";
-    if (const auto partner = cuts.value("sharedExitWith"); !partner.isUndefined()) {
-        const auto medial = config.value("medial").toArray();
-        if (phase != "initial" || (shape != "layered-head" && shape != "suspended-loop" && shape != "contour-route") ||
-            partner.toString().isEmpty() || std::none_of(medial.begin(), medial.end(), [&](const auto& rule) {
-                return rule.toObject().value("id") == partner;
-            })) return id + ": sharedExitWith needs a medial template after an initial body";
-        cutKeys << "sharedExitWith";
-    }
-    if (cuts.contains("keepExitBeforeFinal")) {
-        if (!cuts.contains("sharedExitWith") || cuts.value("keepExitBeforeFinal").toString().isEmpty())
-            return id + ": keepExitBeforeFinal needs a shared exit and final letters";
-        cutKeys << "keepExitBeforeFinal";
-    }
     if (shape == "inclined-blade" && cuts.contains("sharedEntryAfter")) {
         if (phase != "medial" || cuts.value("sharedEntryAfter").toString().isEmpty())
             return id + ": sharedEntryAfter needs initial letters for a medial blade";
@@ -905,6 +890,22 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             !cuts.value("sharedEntryAtFeet").isBool())
             return id + ": sharedEntryAtFeet needs a medial form with stacked counters";
         cutKeys << "sharedEntryAtFeet";
+    }
+    if (const auto attachment = cuts.value("sharedEntryAtAttachment"); !attachment.isUndefined()) {
+        const auto partner = namedLetterForm(config, attachment.toString());
+        if (phase != "medial" || (shape != "returning-lips" && shape != "paired-route") ||
+            !partner.value("upperAttachment").isObject())
+            return id + ": sharedEntryAtAttachment needs a medial return and a declared upper attachment";
+        cutKeys << "sharedEntryAtAttachment";
+    }
+    if (const auto value = cuts.value("sharedExitAtAttachment"); !value.isUndefined()) {
+        const auto attachment = value.toObject();
+        const auto partner = namedLetterForm(config, attachment.value("template").toString());
+        if (phase != "initial" || shape != "contour-route" || attachment.size() != 2 ||
+            !partner.value("upperAttachment").isObject() ||
+            !positive(attachment.value("maxDistanceWidths")))
+            return id + ": sharedExitAtAttachment needs an initial route, upper attachment and positive distance";
+        cutKeys << "sharedExitAtAttachment";
     }
     for (const auto& [field, expectedShape] : {std::pair{"minimumEntryWidths", "inclined-blade"},
                                                std::pair{"minimumExitWidths", "returning-lips"}}) {
@@ -923,8 +924,8 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         cutKeys << field;
     }
     if (const auto fixed = cuts.value("fixEntryJunction"); !fixed.isUndefined()) {
-        if (phase != "final" || shape != "counter-neck" || !fixed.isBool())
-            return id + ": fixEntryJunction requires a final counter-neck form";
+        if (phase != "final" || (shape != "counter-neck" && shape != "contour-route") || !fixed.isBool())
+            return id + ": fixEntryJunction requires a final counter neck or contour route";
         cutKeys << "fixEntryJunction";
     }
     if (const auto sender = cuts.value("shareOverlappingEntryAfter"); !sender.isUndefined()) {
@@ -1207,7 +1208,7 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         const auto policy = cuts.value("stem").toObject();
         if (phase != "final" || !body.value("stem").toObject().isEmpty() ||
             !(policy.value("turnAngle").toDouble() > 0) || policy.value("turnAngle").toDouble() >= 90 ||
-            !(policy.value("stemWidthLimit").toDouble() > 0) || !cuts.value("recoveryShaft").isBool())
+            !(policy.value("stemWidthLimit").toDouble() > 0))
             return id + ": invalid upright stem cut policy";
     }
     if (shape == "layered-head") {
@@ -2241,7 +2242,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
             const auto settings = form.value().toObject();
             for (auto field = settings.begin(); field != settings.end(); ++field)
                 if (!QStringList{"fixedAnchors", "fixedAnchorsRetry", "fixedAnchorsEnding",
-                                 "fixedAnchorsBeforeFinal", "sharedBoundary", "sharedBoundaryWith"}
+                                 "fixedAnchorsBeforeFinal", "fixedAnchorsMaxLetters", "sharedBoundary", "sharedBoundaryWith"}
                          .contains(field.key()))
                     return "Unsupported fixed-anchor expansion setting " + field.key();
         }

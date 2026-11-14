@@ -349,7 +349,7 @@ bool fitsAnchorGap(const AnchoredBody& sending, const AnchoredBody& receiving,
 
 bool sharesFixedJunction(SearchContext& source, const AnchoredBody& sending, const AnchoredBody& receiving,
                          double penWidth) {
-    if (!receiving.fixedEntryJunction || sending.keepsExitHollow || sending.requiresSharedExit ||
+    if (!receiving.fixedEntryJunction || sending.requiresSharedExit ||
         receiving.requiresSharedEntry) return false;
     const auto& exit = *sending.exit;
     const auto& entry = *receiving.entry;
@@ -459,7 +459,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
     QString terminalJunction;
     const bool continuation = config.value("_anchorContinuation").toBool();
     const bool canShareFixedCut = continuation && !requiredConnector;
-    if (continuation && !sameSection(exit, entry) && !orderedSections(exit, entry, source.orientation) &&
+    if (!sameSection(exit, entry) && !orderedSections(exit, entry, source.orientation) &&
         hasOverlapLimits(sending, receiving, tightTolerance, penWidth)) {
         if (requiredConnector) return {};
         const auto seam = resolveOverlap(source, sending, receiving);
@@ -509,6 +509,14 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
                 terminalJunction = sending.sharedReturnJunction;
             }
         }
+        // A stacked join can have two normal projections through the same
+        // corner. Use the head-to-stroke attachment when the bodies already
+        // meet there and the horizontal section keeps their landmarks.
+        if (!requiredConnector && !sending.entry && receiving.upperAttachment &&
+            exit.bottomBaseLine.time == entry.bottomBaseLine.time &&
+            !orderedSections(exit, entry, source.orientation) &&
+            retainsLandmarks(sending, nullptr, &*receiving.upperAttachment, source.orientation))
+            entry = *receiving.upperAttachment;
         exit = entry;
         sharedAtEntry = true;
     }
@@ -535,7 +543,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
     if (shared && requiredConnector) return {};
     if (sending.footExitCandidate && (shared || !receiving.keepsEntryJunction)) return {};
     if (shared && ((receiving.keepsEntryJunction && !sameSection(exit, entry)) ||
-                   (sending.keepsExitHollow && !sameSection(exit, *sending.exit)))) return {};
+                   (sending.keepsExitHollow && !useFixedJunction && !sameSection(exit, *sending.exit)))) return {};
     if (!shared && (sending.keepsExitHollow || receiving.keepsEntryJunction) &&
         !leavesEntryClearance(exit, entry, source.orientation, tightTolerance) &&
         !preserveHollow && !(continuation && receiving.keepsEntryJunction &&
@@ -791,22 +799,7 @@ struct AnchorTraversal {
                                                    forms.size(), penWidth, verifyContours, entryTurn, seam))
                 result.push_back(&body);
         };
-        const auto addAttachments = [&] {
-            if (!continuation || slot != 0 || requiredConnectors.front()) return;
-            const auto cuts = form.value("cuts").toObject();
-            const auto partner = cuts.value("sharedExitWith").toString();
-            if (partner.isEmpty()) return;
-            for (const auto* receiver : forms[1]) {
-                if (receiver->value("id") != partner) continue;
-                for (const auto* receiving : bodiesFor(branch, *receiver, 1))
-                    add(&*receiving->entry);
-            }
-        };
-        const bool preferAttachment = !form.value("cuts").toObject().value("keepExitBeforeFinal").toString()
-            .contains(letters.back());
-        if (preferAttachment) addAttachments();
         if (!folded) add(nullptr);
-        if (!preferAttachment) addAttachments();
         if (folded || sharedReturn) {
             const auto finalId = folded ? form.value("sharedFoldForm").toString() : exitTemplate;
             for (const auto* final : forms.back()) {
@@ -888,18 +881,17 @@ struct AnchorTraversal {
             if (body.requiresDeclaredReturn && sending.sharedReturnWith.contains(letters.back()) &&
                 sending.sharedReturnJunction.isEmpty()) return {false};
             const bool sharedCounter = !terminal && sharesCounterSection(exit, body, source.orientation);
-            const bool declaredPair = !sending.sharedExitWith.isEmpty();
+            const bool declaredPair = !sending.requiredExitTemplate.isEmpty();
             if (!sharedCounter && sending.requiresSharedExit && (!sameSection(exit, *body.entry) ||
-                (declaredPair ? sending.sharedExitWith != body.formId : !terminal && !body.requiresSharedEntry)))
+                (declaredPair ? sending.requiredExitTemplate != body.formId : !terminal && !body.requiresSharedEntry)))
                 return {false};
             if ((body.requiresSharedSource && !sending.requiresSharedExit) ||
-                (body.stemFootCandidate && !sending.sharesIncoming) ||
                 (checkFoldedTooth && separatesFoldedTooth(source, sending, body))) return {false};
             if (sharedCounter || sameSection(exit, *body.entry) ||
                 orderedSections(exit, *body.entry, source.orientation) ||
-                (continuation && !requiredConnectors[slot - 1] &&
+                (!requiredConnectors[slot - 1] &&
                     (hasOverlapLimits(sending, body, tightTolerance, penWidth) ||
-                     sharesFixedJunction(source, sending, body, penWidth))) ||
+                     (continuation && sharesFixedJunction(source, sending, body, penWidth)))) ||
                 canUseReceivingEntry(sending, body, source.orientation, letters[int(slot) - 1], penWidth) ||
                 fitsDeclaredSharedEntry(sending, body, source, letters.back(), penWidth) ||
                 (allowAlternates && sharesLoopNeck(sending, body, source.orientation, tightTolerance)) ||
@@ -977,7 +969,7 @@ struct AnchorTraversal {
         for (const auto* declaration : branch.forms[slot]) {
             const auto& form = *declaration;
             if (restrictedEnding(form, letters, int(slot)) && !allowsInitialAttachment(form, letters, int(slot)) &&
-                (!sending || !sending->requiresSharedExit || sending->sharedExitWith != form.value("id").toString()))
+                (!sending || !sending->requiresSharedExit || sending->requiredExitTemplate != form.value("id").toString()))
                 continue;
             const auto& intrinsic = bodiesFor(branch, form, slot);
             std::vector<const AnchoredBody*> paired;
@@ -1098,14 +1090,25 @@ struct AnchorTraversal {
         const bool tatweel = sub.text.contains(QChar(0x0640));
         FormChoices forms(letters.size());
         for (int slot = 0; slot < letters.size(); ++slot) {
-            const auto& position = templates[letterPosition(slot, letters.size())];
-            const auto found = position.constFind(letters[slot]);
-            if (found == position.cend()) return {};
+            const auto position = letterPosition(slot, letters.size());
+            const auto& byLetter = templates[position];
+            const auto found = byLetter.constFind(letters[slot]);
+            const auto blocked = [&](const QString& reason) -> std::optional<AnchorBranch> {
+                if (cutGeometryMemo && cutGeometryMemo->profiling &&
+                    cutGeometryMemo->anchorSearch == "ineligible") {
+                    const std::array<const char*, 3> names{"initial", "medial", "final"};
+                    cutGeometryMemo->anchorBlocker = QString("%1 %2 · %3")
+                        .arg(QLatin1String(names[position]), letters[slot], reason);
+                }
+                return {};
+            };
+            if (found == byLetter.cend()) return blocked("no enabled template");
             if (slot + 1 == letters.size() && tatweel && std::none_of(found->begin(), found->end(),
-                    [](const auto& form) { return form.value("fixedAnchorsTatweel").toBool(); })) return {};
+                    [](const auto& form) { return form.value("fixedAnchorsTatweel").toBool(); }))
+                return blocked("tatweel unsupported");
             for (const auto& form : found.value())
                 if (applies(form, letters, slot)) forms[slot].push_back(&form);
-            if (forms[slot].empty()) return {};
+            if (forms[slot].empty()) return blocked("template selectors excluded this context");
         }
         const bool continuation = config.value("_anchorContinuation").toBool();
         if (continuation) {
@@ -1142,10 +1145,13 @@ struct AnchorTraversal {
             const auto branch = prepareBranch(priority, *source);
             if (!branch) {
                 if (prepare) source.reset();
-                break;
+                continue;
             }
             if (cutGeometryMemo) {
-                if (cutGeometryMemo->profiling) cutGeometryMemo->anchorSearch = "fallback";
+                if (cutGeometryMemo->profiling) {
+                    cutGeometryMemo->anchorSearch = "fallback";
+                    cutGeometryMemo->anchorBlocker.clear();
+                }
                 cutGeometryMemo->verifyContourGeometry = verify;
                 cutGeometryMemo->memoizeIntersections = !first || verify;
             }

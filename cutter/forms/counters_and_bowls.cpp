@@ -572,14 +572,14 @@ std::optional<OpenBowlBody> recognizeOpenBowl(const InkOutline& outline, const Q
     const auto origin = context.timeSorted.find(tip);
     if (origin == context.timeSorted.end()) return {};
 
-    // Walk the outside of the bowl from its free end. That end may curl
-    // upward first. The floor is the first low turn beyond the free lip.
+    // The first low turn beyond the free lip can be a smooth extremum or
+    // a corner between the bowl floor and its rising flank.
     const bool forward = outline.orientation == Orientation::CounterClockwise;
     const auto step = [&](auto point) { return forward ? context.prev(point) : context.next(point); };
     auto floor = step(origin);
     for (; floor != origin; floor = step(floor)) {
         const auto before = forward ? context.next(floor) : context.prev(floor);
-        if (floor->isY && floor->point.y() > tip.point.y() &&
+        if ((floor->isY || floor->isSharp) && floor->point.y() > tip.point.y() &&
             floor->point.y() >= before->point.y() && floor->point.y() > step(floor)->point.y()) break;
     }
     if (floor == origin) return {};
@@ -612,6 +612,14 @@ std::optional<OpenBowlBody> recognizeOpenBowl(const InkOutline& outline, const Q
         if (!advanceOnContour(outline.ink, *point, limit, forward, sample, after, tangent)) continue;
         const auto exit = after.point - p;
         if (exit.x() <= std::abs(exit.y())) continue;
+        // Check both flanks. Looking back along the bowl beyond the corner
+        // bevel distinguishes the shoulder from a bend on the way up.
+        limit = *point;
+        limit.time += forward ? -double(curves.size()) : double(curves.size());
+        PathExtrema before;
+        if (!advanceOnContour(outline.ink, *point, limit, !forward, .75 * stroke, before, tangent)) continue;
+        const auto entry = before.point - p;
+        if (entry.y() <= std::abs(entry.x())) continue;
         bowl = OpenBowlBody{tip, *floor, *point, stroke, sample, forward, {}, {}};
         if (sharp) break;
     }

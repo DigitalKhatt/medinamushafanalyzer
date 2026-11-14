@@ -43,6 +43,7 @@ struct CutGeometryMemo {
     QMap<QString, CandidateSearchStats> forms;
     CandidateSearchStats* activeForm = nullptr;
     QString anchorSearch;
+    QString anchorBlocker;
 
     int outlineId(const QPainterPath& ink) {
         for (size_t i = outlines.size(); i > 0; --i)
@@ -80,6 +81,8 @@ struct CutGeometryMemoScope {
                 {"partitionComputations", qint64(owned->partitionMisses)}};
             if (!owned->anchorSearch.isEmpty())
                 completedSearchProfile.insert("anchorSearch", owned->anchorSearch);
+            if (!owned->anchorBlocker.isEmpty())
+                completedSearchProfile.insert("anchorBlocker", owned->anchorBlocker);
         }
         cutGeometryMemo = nullptr;
     }
@@ -1293,7 +1296,7 @@ struct AnchoredBody {
     QStringList sharesOverlappingEntryAfter;
     bool requiresSharedEntry = false;
     bool requiresSharedExit = false;
-    QString sharedExitWith;
+    QString requiredExitTemplate;
     bool requiresSharedSource = false;
     bool keepsSharedCounterEntry = false;
     bool sharesFinalEntry = false;
@@ -1317,10 +1320,10 @@ struct AnchoredBody {
     QString tightEntryAfter;
     QString sharedEntryFrom;
     bool preservesTerminalBody = false;
-    bool stemFootCandidate = false;
     bool footExitCandidate = false;
     std::optional<PathExtrema> entryLimit, exitLimit;
     std::optional<Stretching> minimumEntry, minimumExit;
+    std::optional<Stretching> upperAttachment;
     std::optional<std::pair<double, double>> forkEntry;
     QJsonObject sharedFold;
     std::optional<std::pair<PathExtrema, bool>> toothExitFlank;
