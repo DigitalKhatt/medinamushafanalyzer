@@ -1275,6 +1275,9 @@ struct AnchoredBody {
     bool preservesTerminalBody = false;
     bool stemFootCandidate = false;
     bool footExitCandidate = false;
+    bool trimsExit = false;
+    bool keepsExitReferenceWidth = false;
+    bool pairedEntry = false;
     QJsonObject sharedFold;
 };
 
@@ -1282,7 +1285,7 @@ using AnchorForms = std::array<QHash<QChar, std::vector<QJsonObject>>, 3>;
 
 QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms);
 std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
-                                         double penWidth);
+                                         double penWidth, double attachmentWidth = 0);
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
         const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorForms& forms,
         const AnchorPartitionCheck& accept);

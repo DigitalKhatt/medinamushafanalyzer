@@ -85,7 +85,8 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
     return {};
 }
 
-std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position, double penWidth) {
+std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
+                                        double penWidth, double attachmentWidth) {
     const auto id = form.value("id").toString();
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto shape = body.value("shape");
@@ -93,7 +94,17 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     InspectFormScope inspection(form, source.transformedPath);
     source.res = {};
     source.nextIter = std::next(source.xSorted.begin());
-    if (shape == "contour-route") {
+    if (shape == "contour-route" && position == 2 && cuts.value("route").toObject().value("strokeSource") == "paired") {
+        const auto evidence = recognizedSharedShape(source, body);
+        if (!evidence->route || attachmentWidth <= 0) return result;
+        const auto& route = *evidence->route;
+        auto policy = cuts.value("route").toObject();
+        policy.insert("penWidth", attachmentWidth);
+        if (projectSavedRoute(source, evidence->route, body.value("route").toObject(), policy) &&
+            matchesBoundaryBody(source, form, source.res, false))
+            result.push_back({.formId = id, .entry = source.res, .landmarks = {route.origin, route.anchor},
+                              .pairedEntry = true});
+    } else if (shape == "contour-route") {
         const bool initial = position == 0;
         if (declaredSharedBoundary(source, form) &&
             matchesOffset(form.value("chord").toObject(), source.res.bottomBaseLine.point - source.res.topBaseLine.point) &&
@@ -123,7 +134,10 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                         result.push_back({.formId = id, .exit = exit, .landmarks = {*source.xSorted.begin()}});
                     }
                 }
-                result.push_back({.formId = id, .exit = projected, .landmarks = {*source.xSorted.begin()}});
+                result.push_back({.formId = id, .exit = projected, .landmarks = {*source.xSorted.begin()},
+                                  .trimsExit = cuts.value("turnBoundaries").toObject().value("left") == "trim"});
+                if (cuts.value("route").toObject().value("trimExitToNormal").toBool())
+                    for (auto& candidate : result) candidate.keepsExitReferenceWidth = true;
             } else
                 result.push_back({.formId = id, .entry = source.res, .landmarks = {*source.xSorted.rbegin()}});
         }

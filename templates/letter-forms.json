@@ -6343,6 +6343,8 @@
     },
     {
       "id": "dal-fina",
+      "fixedAnchors": true,
+      "fixedAnchorsMaxLetters": 2,
       "pairedOnly": true,
       "tightJoin": true,
       "current": "دذ",
@@ -6375,6 +6377,7 @@
         },
         "route": {
           "bottomProbe": "walk-stroke-normal",
+          "strokeSource": "paired",
           "range": {
             "minWidths": 0,
             "preferredWidths": 1

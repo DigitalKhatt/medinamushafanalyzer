@@ -210,6 +210,12 @@ Final nūn identifies the tip, floor and shoulder of the open bowl before
 proposing its entry. During migration, `fixedAnchorsMaxLetters` limits where
 a migrated form can participate. Final nūn starts in two-letter subwords
 while the longer sequences with medial joins are checked.
+Final dāl and dhāl recognize the fork at the start of their descending
+contour run. The entry policy walks from it by one sending stroke width
+and projects a normal to the opposite edge. The route is recognized on
+the uncut ink, and each projected entry is fixed during assembly.
+This migration starts with two-letter subwords. Joins that still need
+a separate sending-side trim use the existing cutter.
 Medial sīn and shīn use the first tooth junction for entry and the inward
 hollow beyond the third tooth for exit. Each candidate must retain all
 three tips and both valleys on one counter-free contour. The two

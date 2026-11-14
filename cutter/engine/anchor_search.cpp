@@ -119,9 +119,26 @@ bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot
                             source.orientation);
 }
 
+bool hasExitTrim(const SearchContext& source, const Stretching& exit, const Stretching& entry,
+                 double bodyWidth, double penWidth) {
+    const auto seam = sectionLine(exit);
+    const double width = seam.length();
+    if (width < .25 * penWidth || width > 2.7 * penWidth ||
+        std::abs(seam.dy()) < .72 * width || bodyWidth < 2.7 * width) return false;
+    for (const auto [lower, angle] : {std::pair{false, 43.}, {false, 25.}, {true, 43.}}) {
+        const auto& start = lower ? exit.bottomBaseLine : exit.topBaseLine;
+        auto cut = strokeFlankTurn(source, start, width, 1, false, angle, 2);
+        if (!cut || cut->referenceWidth > 1.65 * width) continue;
+        if (lower) std::swap(cut->topBaseLine, cut->bottomBaseLine);
+        if (cutPrecedes(*cut, exit, source.orientation) && cutPrecedes(*cut, entry, source.orientation))
+            return true;
+    }
+    return false;
+}
+
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
         const SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
-        double tightTolerance, double penWidth) {
+        double tightTolerance, double penWidth, bool& needsLegacyTrim) {
     Subword trial{};
     trial.text = sub.text;
     trial.paths = sub.paths;
@@ -194,6 +211,14 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         const auto mask = inPage(regions[region].path);
         if (mask.boundingRect().isEmpty() || std::any_of(body.samples.begin(), body.samples.end(),
                 [&](const auto& point) { return !mask.contains(point); })) return {};
+        // Keep the existing cutter responsible for a possible late trim of
+        // the sending body while migrating the paired entry independently.
+        if (bodies.back()->pairedEntry && slot + 2 == bodies.size() && body.trimsExit &&
+            !trial.kashidaCuts[slot].first.isNull() &&
+            hasExitTrim(source, *body.exit, *bodies.back()->entry, mask.boundingRect().width(), penWidth)) {
+            needsLegacyTrim = true;
+            return {};
+        }
         if (!body.counters.isEmpty()) {
             const auto contours = toSubpaths(mask);
             if (std::any_of(body.counters.begin(), body.counters.end(), [&](size_t counter) {
@@ -231,19 +256,28 @@ bool applies(const QJsonObject& form, const QString& letters, int slot) {
 std::optional<Subword> searchSequence(const Word& word, const Subword& sub, const Apath& shape,
         SearchContext& source, const QString& letters, const FormChoices& forms, double penWidth,
         const QJsonObject& config, const AnchorPartitionCheck& accept) {
-    std::map<QString, std::vector<AnchoredBody>> candidates;
-    // Keep each candidate at its original contour sections across backtracking.
+    std::map<std::pair<QString, double>, std::vector<AnchoredBody>> candidates;
+    std::vector<const AnchoredBody*> selected;
+    selected.reserve(forms.size());
+    // A paired stroke walk uses the sending section's width to project the
+    // cut. The saved route and each projected candidate stay fixed.
     const auto bodiesFor = [&](const QJsonObject& form, size_t slot) -> const std::vector<AnchoredBody>& {
-        auto [saved, inserted] = candidates.try_emplace(form.value("id").toString());
+        const auto position = letterPosition(slot, forms.size());
+        double attachmentWidth = 0;
+        if (position == 2 && form.value("cuts").toObject().value("route").toObject().value("strokeSource") == "paired") {
+            const auto& sending = *selected.back();
+            const auto& exit = *sending.exit;
+            attachmentWidth = (selected.size() > 1 || sending.keepsExitReferenceWidth) && exit.referenceWidth > 0
+                ? exit.referenceWidth : sectionLine(exit).length();
+        }
+        auto [saved, inserted] = candidates.try_emplace(std::pair{form.value("id").toString(), attachmentWidth});
         if (inserted) {
-            saved->second = anchoredBodies(source, form, letterPosition(slot, forms.size()), penWidth);
+            saved->second = anchoredBodies(source, form, position, penWidth, attachmentWidth);
             std::erase_if(saved->second, [&](const auto& body) { return !fitsBody(body, source, slot, forms.size()); });
         }
         return saved->second;
     };
 
-    std::vector<const AnchoredBody*> selected;
-    selected.reserve(forms.size());
     const auto connector = config.value("kashidaDefaults").toObject();
     const double tightTolerance = penWidth * connector.value("sharedCutTolerance").toDouble(.25);
     std::map<QString, std::optional<Stretching>> folds;
@@ -266,10 +300,11 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
         }
         return saved->second && sameSection(*saved->second, *receiving.entry);
     };
+    bool needsLegacyTrim = false;
     const auto search = [&](auto&& self, size_t slot) -> std::optional<Subword> {
         if (slot == forms.size()) {
             auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(), tightTolerance,
-                                      penWidth);
+                                      penWidth, needsLegacyTrim);
             if (partition && accept && !accept(*partition)) return {};
             return partition;
         }
@@ -297,6 +332,7 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
                 selected.push_back(&body);
                 if (auto complete = self(self, slot + 1)) return complete;
                 selected.pop_back();
+                if (needsLegacyTrim) return {};
             }
         }
         return {};
