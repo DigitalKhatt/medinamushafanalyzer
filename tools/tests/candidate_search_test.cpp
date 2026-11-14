@@ -198,6 +198,7 @@ static void checkFixedAnchors(const QJsonObject& config) {
               }), "Final dal's entries depend on the preceding stroke width");
     }
     for (const auto& f : {Fixture{3, 5, 1, 1}, Fixture{4, 13, 5, 1}, Fixture{6, 9, 8, 2},
+                          Fixture{8, 5, 4, 2}, Fixture{71, 5, 5, 1},
                           Fixture{141, 14, 5, 2}, Fixture{218, 15, 1, 3}}) {
         QFile file(QString("pages/page%1.dat").arg(f.page));
         check(file.open(QIODevice::ReadOnly), "Missing fixed-anchor migration fixture");
@@ -213,7 +214,14 @@ static void checkFixedAnchors(const QJsonObject& config) {
         if (f.page == 3)
             check(sub.letterDiagnostics.at(1).toObject().value("template") == "hah-stacked-medi" &&
                   sub.kashidaPaths.front().isEmpty(), "Stacked hah lost its shared seam");
-        else if (f.page == 141)
+        else if (f.page == 8 || f.page == 71) {
+            const auto expectedHah = f.page == 8 ? "hah-stacked-medi" : "hah-shoulder-medi";
+            check(sub.letterDiagnostics.first().toObject().value("template") == "beh-stacked-init" &&
+                  sub.letterDiagnostics.at(1).toObject().value("template") == expectedHah &&
+                  sub.kashidaPaths.front().isEmpty(), "Stacked tooth did not share the hah attachment");
+            const auto seam = sub.joins.begin()->cutSegments().front();
+            check(!seam.isNull() && std::abs(seam.dy()) < 1e-5, "Stacked tooth left the attachment level");
+        } else if (f.page == 141)
             check(sub.text.contains(QChar(0x0640)) && !sub.kashidaPaths.front().isEmpty(),
                   "Fixed anchors lost the explicitly transcribed tatweel's stroke");
         else

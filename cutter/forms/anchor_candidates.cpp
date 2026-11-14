@@ -62,13 +62,13 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto tatweel = declaration.value("fixedAnchorsTatweel");
             if (!tatweel.isUndefined() && (position != 2 || !tatweel.isBool()))
                 return id + ": fixedAnchorsTatweel must be a boolean on a final form";
-            const auto form = bodyConstraintForm(config, declaration);
+            auto form = bodyConstraintForm(config, declaration);
             const auto body = form.value("body").toObject();
             const auto shape = body.value("shape");
             const bool supported = position == 0 ? shape == "contour-route" || shape == "horizontal-counters" ||
                 shape == "suspended-loop" || shape == "counter-neck" || shape == "counter-loop" ||
                 shape == "profile-neck" || shape == "tooth-cluster" || shape == "layered-head" ||
-                shape == "enclosed-lips" || shape == "descending-stem" :
+                shape == "enclosed-lips" || shape == "descending-stem" || shape == "stacked-tooth" :
                 position == 1 ? toothDescription(body) || shape == "stacked-counters" || shape == "counter-loop" ||
                 shape == "open-head" || shape == "crested-loop" || shape == "paired-route" ||
                 shape == "forked-stem" || shape == "turning-shaft" || shape == "returning-lips" ||
@@ -81,6 +81,16 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 shape == "upright-stem" || shape == "open-bowl";
             if (!supported)
                 return id + ": this body does not supply fixed anchors for its position";
+            if (shape == "stacked-tooth") {
+                const auto partner = body.value("attachment").toObject().value("template").toString();
+                form.insert("_upperAttachment", namedLetterForm(config, partner).value("upperAttachment"));
+            } else if (shape == "paired-route" && !form.contains("upperAttachment")) {
+                const auto inherit = declaration.value("body").toObject().value("inherit").toString();
+                if (!inherit.isEmpty()) {
+                    const auto parent = namedLetterForm(config, inherit);
+                    form.insert("_sharedAttachment", parent.value("upperAttachment"));
+                }
+            }
             for (const auto letter : form.value("current").toString())
                 compiled[position][letter].push_back(form);
         }
@@ -114,6 +124,27 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             inspectLandmark("Entry limit at fork", fork);
             if (matchesBoundaryBody(source, form, cut, false))
                 result.push_back({.formId = id, .entry = cut, .landmarks = {route.origin}, .entryLimit = fork});
+        }
+    } else if (shape == "stacked-tooth") {
+        const auto attachment = body.value("attachment").toObject();
+        const auto settings = form.value("_upperAttachment").toObject();
+        const auto crest = *source.ySorted.rbegin();
+        for (auto seam : upperAttachmentSections(source, settings)) {
+            const QLineF section(seam.topBaseLine.point, seam.bottomBaseLine.point);
+            if (section.center().y() - crest.point.y() < attachment.value("minRise").toDouble()) continue;
+            orientSection(source, seam, crest.time, false);
+            const auto pieces = cutRegions(source.transformedPath, {}, {seam}, source.orientation, true);
+            if (pieces.size() != 2) continue;
+            const auto& stroke = pieces.front().path;
+            const auto bounds = stroke.boundingRect();
+            if (toSubpaths(stroke).size() != 1 || std::abs(bounds.top() - crest.point.y()) > 1e-5 ||
+                std::abs(bounds.bottom() - section.center().y()) > 1e-5 ||
+                bounds.width() > attachment.value("maxWidthToHeight").toDouble() * bounds.height()) continue;
+            // The upper pen shape can double back. Check the descending
+            // arm near the attachment, below that turn.
+            if (!singleHorizontalStroke(stroke, bounds, bounds.top() + .85 * bounds.height())) continue;
+            result.push_back({.formId = id, .exit = seam, .landmarks = {crest},
+                              .requiresSharedExit = true});
         }
     } else if (shape == "contour-route") {
         const bool initial = position == 0;
@@ -321,36 +352,34 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         const auto route = body.value("routes").toObject();
         const auto policy = cuts.value("routes").toObject();
         const bool atUpperAttachment = form.contains("upperAttachment");
-        const auto attachmentShape = form.value("upperAttachment").toObject();
+        const auto attachmentShape = (atUpperAttachment ? form.value("upperAttachment")
+                                                       : form.value("_sharedAttachment")).toObject();
+        const auto sharedSections = upperAttachmentSections(source, attachmentShape);
         for (const auto& candidate : evidence->pairedRoutes) {
-            for (auto [entry, exit] : cutPairedRoutes(source, {candidate}, route, policy)) {
+            for (const auto& [entry, exit] : cutPairedRoutes(source, {candidate}, route, policy)) {
                 // The attachment corner must connect the head flank to
-                // the rising stroke. A sharp bend on either flank is insufficient.
-                if (atUpperAttachment) {
-                    const auto head = attachmentShape.value("headFlank").toObject();
-                    const auto rise = attachmentShape.value("risingFlank").toObject();
-                    const auto corner = source.timeSorted.find(entry.bottomBaseLine);
-                    if (!entry.bottomBaseLine.isX || corner == source.timeSorted.end() ||
-                        (!(contourFlank(source, corner, true, head) && contourFlank(source, corner, false, rise)) &&
-                         !(contourFlank(source, corner, false, head) && contourFlank(source, corner, true, rise)))) {
-                        const auto pieces = cutRegions(source.transformedPath, {}, {entry, exit}, source.orientation, true);
-                        if (pieces.size() != 3) continue;
-                        const auto seam = stackedAttachment(source, attachmentShape, pieces[0].path.boundingRect(),
-                                                            pieces[1].path, entry, exit);
-                        if (!seam) continue;
-                        entry = *seam;
+                // the rising stroke. The mouth can keep the same exit
+                // even when its original entry walk stops above this junction.
+                std::vector<Stretching> entries{entry};
+                if (atUpperAttachment) entries.clear();
+                for (const auto& seam : sharedSections)
+                    if (getJoinTime(seam, source.orientation).isStrictLeft(candidate.anchor.time) &&
+                        cutPrecedes(seam, exit, source.orientation)) entries.push_back(seam);
+                for (const auto& section : entries) {
+                    const bool movedEntry = section.topBaseLine.time != entry.topBaseLine.time ||
+                                            section.bottomBaseLine.time != entry.bottomBaseLine.time;
+                    if (form.contains("bodyCounters")) {
+                        const auto pieces = cutRegions(source.transformedPath, {}, {section, exit},
+                                                       source.orientation, true);
+                        if (pieces.size() != 3 || toSubpaths(pieces[1].path).size() - 1 !=
+                            form.value("bodyCounters").toInt()) continue;
                     }
+                    result.push_back({.formId = id, .entry = section, .exit = exit, .landmarks = {candidate.anchor},
+                                      .sharesExitAtCorners = cuts.value("sharedExit") == "receiving-corners",
+                                      .usesSharedEntry = form.value("sharedEntry").toBool(),
+                                      .requiresSharedEntry = atUpperAttachment || movedEntry,
+                                      .requiresSharedSource = !atUpperAttachment && movedEntry});
                 }
-                if (form.contains("bodyCounters")) {
-                    const auto pieces = cutRegions(source.transformedPath, {}, {entry, exit},
-                                                   source.orientation, true);
-                    if (pieces.size() != 3 || toSubpaths(pieces[1].path).size() - 1 !=
-                        form.value("bodyCounters").toInt()) continue;
-                }
-                result.push_back({.formId = id, .entry = entry, .exit = exit, .landmarks = {candidate.anchor},
-                                  .sharesExitAtCorners = cuts.value("sharedExit") == "receiving-corners",
-                                  .usesSharedEntry = form.value("sharedEntry").toBool(),
-                                  .requiresSharedEntry = atUpperAttachment});
             }
         }
     } else if (shape == "tooth-cluster") {

@@ -164,6 +164,25 @@ std::optional<PathExtrema> contourFlank(SearchContext& context, timesortedtype::
     return {};
 }
 
+std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJsonObject& settings) {
+    const auto head = settings.value("headFlank").toObject();
+    const auto rise = settings.value("risingFlank").toObject();
+    if (head.isEmpty() || rise.isEmpty()) return {};
+    std::vector<Stretching> sections;
+    for (auto corner = context.timeSorted.begin(); corner != context.timeSorted.end(); ++corner) {
+        if (!corner->isSharp || !corner->isX ||
+            (!(contourFlank(context, corner, true, head) && contourFlank(context, corner, false, rise)) &&
+             !(contourFlank(context, corner, false, head) && contourFlank(context, corner, true, rise)))) continue;
+        if (const auto opposite = horizontalOpposite(context, *corner, true)) {
+            Stretching seam{};
+            seam.topBaseLine = seam.topLeft = seam.topRight = *opposite;
+            seam.bottomBaseLine = seam.bottomLeft = seam.bottomRight = *corner;
+            sections.push_back(seam);
+        }
+    }
+    return sections;
+}
+
 // A stacked tooth can have a valid cut across its cap while the descending
 // stroke below it is still inside the hah mask. Its true shared boundary is
 // the chord at the sharp junction with the top of the hah head.

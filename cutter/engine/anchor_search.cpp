@@ -312,6 +312,9 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
                 if (slot) {
                     const auto& sending = *selected.back();
                     const auto& exit = *sending.exit;
+                    if (sending.requiresSharedExit &&
+                        (!body.requiresSharedEntry || !sameSection(exit, *body.entry))) continue;
+                    if (body.requiresSharedSource && !sending.requiresSharedExit) continue;
                     if (body.stemFootCandidate && !sending.sharesIncoming) continue;
                     if (!sameSection(exit, *body.entry) &&
                         !orderedSections(exit, *body.entry, source.orientation) &&

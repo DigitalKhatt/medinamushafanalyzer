@@ -694,6 +694,28 @@
       }
     },
     {
+      "id": "beh-stacked-init",
+      "fixedAnchors": true,
+      "fixedAnchorsEnding": "دذ",
+      "current": "بتثنيئى",
+      "ligatureWith": "جحخ",
+      "onIncomplete": true,
+      "body": {
+        "shape": "stacked-tooth",
+        "attachment": {
+          "template": "hah-stacked-medi",
+          "minRise": 3,
+          "maxWidthToHeight": 1.8
+        }
+      },
+      "cuts": {
+        "boundaries": {
+          "right": "free",
+          "left": "shared-section"
+        }
+      }
+    },
+    {
       "id": "beh-sloping-init",
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
@@ -3707,7 +3729,7 @@
       "preferAtHeadOverlap": true,
       "sharedEntry": true,
       "body": {
-        "shape": "paired-route",
+        "inherit": "hah-stacked-medi",
         "routes": {
           "anchor": {
             "xExtremum": true,
@@ -3737,10 +3759,10 @@
               }
             ]
           }
-        },
-        "counters": 0
+        }
       },
       "cuts": {
+        "inherit": "hah-stacked-medi",
         "routes": {
           "right": {
             "bottomProbe": "normal"
@@ -3748,10 +3770,6 @@
           "left": {
             "bottomProbe": "below"
           }
-        },
-        "boundaries": {
-          "left": "route-left",
-          "right": "route-right"
         }
       }
     },
@@ -3825,7 +3843,7 @@
       "current": "جحخ",
       "sharedEntry": true,
       "body": {
-        "shape": "paired-route",
+        "inherit": "hah-stacked-medi",
         "routes": {
           "anchor": {
             "xExtremum": true,
@@ -3862,22 +3880,10 @@
               }
             ]
           }
-        },
-        "counters": 0
+        }
       },
       "cuts": {
-        "routes": {
-          "right": {
-            "bottomProbe": "normal"
-          },
-          "left": {
-            "bottomProbe": "below"
-          }
-        },
-        "boundaries": {
-          "left": "route-left",
-          "right": "route-right"
-        }
+        "inherit": "hah-rising-entry-medi"
       }
     },
     {

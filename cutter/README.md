@@ -223,6 +223,11 @@ section along that flank, up to the fork. The route can also recognize
 an earlier concave shoulder on a stacked outline. Each candidate keeps
 its own fork and free tip. The policy applies at any subword length and
 both searches use the same cuts for the final letter.
+An initial stacked tooth recognizes the descending arm above a horizontal
+attachment. The stacked medial ḥāʾ variants share the attachment's corner and
+flank definition and keep their own contour routes around the mouth. A
+stacked-tooth exit and the receiving entry must use the same section, so this
+ligature has no separate kashida.
 Medial sīn and shīn use the first tooth junction for entry and the inward
 hollow beyond the third tooth for exit. Each candidate must retain all
 three tips and both valleys on one counter-free contour. The two

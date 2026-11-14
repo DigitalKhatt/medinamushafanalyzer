@@ -265,6 +265,7 @@ const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
         {"counter-rim", {"rim", {"free", "loop-entry", "loop-exit"}}},
         {"counter-outline", {"outline", {"free", "outline-entry", "outline-exit"}}},
         {"contour-route", {"route", {"free", "contour-route"}}},
+        {"stacked-tooth", {"attachment", {"free", "shared-section"}}},
         {"descending-stem", {"stem", {"free", "stem-section"}}},
         {"terminal-fork", {"stem", {"free", "fork-normal"}}},
         {"forked-stem", {"", {"fork-normal"}}},
@@ -574,6 +575,14 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     const auto positive = [](const QJsonValue& value) {
         return value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble() > 0;
     };
+    if (shape == "stacked-tooth") {
+        const auto attachment = body.value("attachment").toObject();
+        const auto partner = namedLetterForm(config, attachment.value("template").toString());
+        if (phase != "initial" || attachment.size() != 3 ||
+            !partner.value("upperAttachment").isObject() || !positive(attachment.value("minRise")) ||
+            !positive(attachment.value("maxWidthToHeight")) || boundaries.value("left") != "shared-section")
+            return id + ": stacked tooth requires a shared upper attachment, rise and aspect limit";
+    }
     if (hasStemFlanks(body)) {
         if (phase != "medial") return id + ": stem flanks require an entry and exit";
         bodyKeys << "minRise" << "maxWidthToHeight" << "minFlankSpan" << "entryRoute" << "exitRoutes";
@@ -1431,7 +1440,8 @@ const PreparedPassRules& preparePassRules(const QJsonObject& config, bool recove
         for (const auto& value : config.value(position).toArray()) {
             auto rule = bodyConstraintForm(config, value.toObject());
             prepared->constraints.insert(rule.value("id").toString(), rule);
-            if (QString(position) == "medial" || rule.value("body").toObject().value("shape") == "component-arm") continue;
+            const auto shape = rule.value("body").toObject().value("shape");
+            if (QString(position) == "medial" || shape == "component-arm" || shape == "stacked-tooth") continue;
             if (rule.value("retryWithVariants").toBool()) rule.insert("tryNext", true);
             if (!recoverTeeth && rule.value("onPartial").toBool()) continue;
             if (QString(position) == "initial") {
@@ -1867,7 +1877,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 !std::isfinite(bodyCounters.toDouble()) || bodyCounters.toDouble() < 0 ||
                 bodyCounters.toDouble() != std::floor(bodyCounters.toDouble())))
                 return id + ": bodyCounters must be a nonnegative integer";
-            if (rule.contains("ligatureWith") && ((method != "counter-ligature" && headLip.isUndefined()) || QString(phase) != "initial" ||
+            if (rule.contains("ligatureWith") && ((method != "counter-ligature" && headLip.isUndefined() &&
+                sharedBody.value("shape") != "stacked-tooth") || QString(phase) != "initial" ||
                 !rule.value("ligatureWith").isString() || rule.value("ligatureWith").toString().isEmpty()))
                 return id + ": ligatureWith requires an initial ligature form and its paired letters";
             const auto counterLigature = rule.value("counterLigature").toObject();
@@ -2003,7 +2014,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 const auto shape = sharedBody.value("shape");
                 if (declaredBody.isEmpty() && shape != "component-arm" && shape != "tapered-arm" && shape != "open-bowl" &&
                     shape != "terminal-fork" && shape != "tooth-cluster" && shape != "counter-neck" &&
-                    shape != "counter-shoulder" && shape != "counter-bridge" &&
+                    shape != "counter-shoulder" && shape != "counter-bridge" && shape != "stacked-tooth" &&
                     !(QString(phase) == "initial" ? initialMethods : finalMethods).contains(method))
                     return id + ": an explicit body method for this position is required; generic join rules are unsupported";
             }

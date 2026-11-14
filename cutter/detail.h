@@ -1150,6 +1150,7 @@ std::optional<Stretching> stackedAttachment(SearchContext& context, const QJsonO
                                                    const QRectF& cap, const QPainterPath& head,
                                                    const Stretching& incoming, const Stretching& outgoing,
                                                    bool clippedCap = false);
+std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJsonObject& settings);
 
 std::vector<Stretching> cornerSections(const SearchContext& context, const PathExtrema& corner);
 
@@ -1284,6 +1285,8 @@ struct AnchoredBody {
     bool sharesIncoming = false;
     bool usesSharedEntry = false;
     bool requiresSharedEntry = false;
+    bool requiresSharedExit = false;
+    bool requiresSharedSource = false;
     QString tightEntryAfter;
     bool preservesTerminalBody = false;
     bool stemFootCandidate = false;
