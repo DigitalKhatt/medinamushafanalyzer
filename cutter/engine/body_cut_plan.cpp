@@ -11,14 +11,14 @@ InkOutline inkOutline(const SearchContext &context) {
 
 // Placement retries change joins and cursors, never the source landmarks.
 // Cache the complete inventory, including the corner-preserving deduplication.
-bool preparePassOutline(SearchContext& context, OutlineSearchCache& cache) {
+bool preparePassOutline(SearchContext& context, OutlineSearchCache& cache, bool completeClosedOutline) {
     if (!cache.outline || cache.outline->ink != context.transformedPath) {
         cache.routeCuts.clear();
         cache.normalsByCenter.clear();
         auto prepared = std::make_shared<PreparedPassOutline>();
         prepared->ink = context.transformedPath;
         QVector<PathExtrema> raw;
-        readContourLandmarks(prepared->ink, prepared->contours, raw);
+        readContourLandmarks(prepared->ink, prepared->contours, raw, completeClosedOutline);
         for (const auto& point : raw) {
             auto existing = std::find_if(prepared->extrema.begin(), prepared->extrema.end(), [&](const auto& other) {
                 const double dx = std::abs(other.point.x() - point.point.x());
@@ -179,10 +179,6 @@ static bool leavesConnectorRoom(const Stretching& sending, const Stretching& rec
         return QPointF::dotProduct(point.point - sending.topBaseLine.point, along);
     };
     return gap(receiving.topBaseLine) > minimum && gap(receiving.bottomBaseLine) > minimum;
-}
-
-static QLineF sectionLine(const Stretching& cut) {
-    return {cut.topBaseLine.point, cut.bottomBaseLine.point};
 }
 
 bool leavesEntryClearance(const Stretching& sending, const Stretching& receiving,

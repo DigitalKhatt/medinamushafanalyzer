@@ -129,5 +129,42 @@ int main(int argc, char** argv) {
     unguarded.insert("anchor", anchor);
     check(!openCandidates(nc, unguarded).empty() && openCandidates(nc, settings).empty(),
           "Kaf candidate that loses its defining upper arm was not rejected");
+
+    QFile tightFile("pages/page135.dat"); check(tightFile.open(QIODevice::ReadOnly), "Tight qaf–kaf fixture missing");
+    PageAnalysisResult tight; QDataStream tightStream(&tightFile); tightStream >> tight.page;
+    QFile fontFile("input/font.dat"); check(fontFile.open(QIODevice::ReadOnly), "Native font fixture missing");
+    AFont font; QDataStream fontStream(&fontFile); fontStream >> font;
+    PageAnalysisResult::initQuranText();
+    tight.resolveWordBoundaries(135, &font);
+    check(tight.segmentSubword(134, 9, 0, 1, &font, true, &config), "Tight qaf–kaf–meem remains partial");
+    const auto& tightWord = tight.page.lines[9].words[0];
+    const auto& tightSubword = tightWord.wordResultInfo.subWords[1];
+    check(tightSubword.templateTrace.value(0).startsWith("Fixed anchors"), "Tight qaf–kaf–meem used the existing search");
+    check(tightSubword.matchedTemplates.contains("kaf-zigzag-medi"), "Tight qaf–kaf–meem used another kaf form");
+    check(tightSubword.kashidaCuts.size() == 2 &&
+          QLineF(tightSubword.kashidaCuts.front().first.center(),
+                 tightSubword.kashidaCuts.front().second.center()).length() < .06 &&
+          !tightSubword.kashidaPaths.back().isEmpty(), "Tight qaf–kaf seam or kaf–meem connector moved");
+    check(coversOriginalInk(tightWord, tightSubword), "Tight qaf–kaf–meem lost source ink");
+    QFile hahFile("pages/page338.dat");
+    check(hahFile.open(QIODevice::ReadOnly), "Ḥāʾ–kāf fixture missing");
+    PageAnalysisResult hah;
+    QDataStream hahStream(&hahFile); hahStream >> hah.page;
+    hah.resolveWordBoundaries(338, &font);
+    auto& hahWord = hah.page.lines[8].words[7];
+    auto& hahSubword = hahWord.wordResultInfo.subWords.front();
+    check(hah.segmentSubword(337, 8, 7, 0, &font, true, &config) &&
+          hahSubword.templateTrace.value(0).startsWith("Fixed anchors") &&
+          hahSubword.letterDiagnostics.first().toObject().value("template") == "hah-init" &&
+          !hahSubword.kashidaPaths.front().isEmpty() && coversOriginalInk(hahWord, hahSubword),
+          "Ḥāʾ–kāf must preserve the head and the separate connector");
+    const auto hahShape = hahWord.bodyShape(hahSubword);
+    WordResultInfo::SubWordInfo empty;
+    auto hahSource = geometry(hahShape.transform.map(hahShape.path).translated(hahShape.pos), empty);
+    const auto head = bodyConstraintForm(config, namedLetterForm(config, "hah-init"));
+    check(declaredSharedBoundary(hahSource, head) &&
+          QLineF(hahSubword.kashidaCuts.front().first.p1(), hahSource.res.topBaseLine.point).length() < 1e-5 &&
+          QLineF(hahSubword.kashidaCuts.front().first.p2(), hahSource.res.bottomBaseLine.point).length() < 1e-5,
+          "Ḥāʾ–kāf moved the cut away from ḥāʾ’s own boundary");
     qInfo("Zigzag medial kaf passed: intrinsic routes, normal exit, preserved counter, independent geometry, scale, determinism and conserved ink.");
 }

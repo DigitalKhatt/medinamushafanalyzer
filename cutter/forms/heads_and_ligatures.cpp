@@ -170,9 +170,12 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
     if (head.isEmpty() || rise.isEmpty()) return {};
     std::vector<Stretching> sections;
     for (auto corner = context.timeSorted.begin(); corner != context.timeSorted.end(); ++corner) {
+        const auto sample = [&](bool previous, const QJsonObject& bounds) {
+            return contourFlank(context, corner, previous, bounds, .05);
+        };
         if (!corner->isSharp || !corner->isX ||
-            (!(contourFlank(context, corner, true, head) && contourFlank(context, corner, false, rise)) &&
-             !(contourFlank(context, corner, false, head) && contourFlank(context, corner, true, rise)))) continue;
+            (!(sample(true, head) && sample(false, rise)) &&
+             !(sample(false, head) && sample(true, rise)))) continue;
         if (const auto opposite = horizontalOpposite(context, *corner, true)) {
             Stretching seam{};
             seam.topBaseLine = seam.topLeft = seam.topRight = *opposite;
@@ -567,6 +570,7 @@ static std::vector<MouthLips> recognizeMouthLips(const InkOutline &outline, cons
         struct Lip {
             PathExtrema turn;
             double rise;
+            bool forward;
         };
         auto lip = [&](auto advance) -> std::optional<Lip> {
             auto current = notch;
@@ -589,7 +593,7 @@ static std::vector<MouthLips> recognizeMouthLips(const InkOutline &outline, cons
             const double run = notch->point.x() - current->point.x();
             if (!moved || run < form.value("minLipRun").toDouble(1.65) || run > form.value("maxLipRun").toDouble(9))
                 return {};
-            return Lip{*current, rise};
+            return Lip{*current, rise, advance == &SearchContext::prev};
         };
         auto a = lip(&SearchContext::prev), b = lip(&SearchContext::next);
         if (!a || !b)
@@ -598,7 +602,7 @@ static std::vector<MouthLips> recognizeMouthLips(const InkOutline &outline, cons
             std::swap(a, b);
         if (a->rise > -.22 || b->rise < .28 || b->turn.point.y() <= a->turn.point.y())
             continue;
-        mouths.push_back({*notch, a->turn, b->turn});
+        mouths.push_back({*notch, a->turn, b->turn, b->forward});
     }
     return mouths;
 }
@@ -608,7 +612,7 @@ std::vector<OpenMouthBody> recognizeOpenMouths(const InkOutline &outline, const 
     auto ctx = outline.geometry(empty);
     std::vector<OpenMouthBody> bodies;
     for (const auto &lips : recognizeMouthLips(outline, form)) {
-        const auto &[notch, upper, lower] = lips;
+        const auto &[notch, upper, lower, forward] = lips;
         const double span = notch.point.x() - upper.point.x();
         // The outer nose lies to the right of the notch. Protect it and both
         // lips from being assigned to an adjacent stem or to a connector.
@@ -650,7 +654,7 @@ std::vector<std::pair<Stretching, Stretching>>
 cutOpenMouths(SearchContext &ctx, const std::vector<OpenMouthBody> &bodies, const QJsonObject &form) {
     std::vector<std::pair<Stretching, Stretching>> pairs;
     for (const auto &body : bodies) {
-        const auto &[notch, upper, lower] = body.lips;
+        const auto &[notch, upper, lower, forward] = body.lips;
         const auto &nose = body.nose;
         const double span = notch.point.x() - upper.point.x();
         std::vector<Stretching> lefts = cornerSections(ctx, lower);

@@ -38,6 +38,8 @@ struct CutGeometryMemo {
     size_t partitionHits = 0, partitionMisses = 0, segmentHits = 0, segmentMisses = 0;
     bool profiling = qEnvironmentVariableIsSet("MEDINA_PROFILE");
     bool verifyContourGeometry = false;
+    bool memoizeIntersections = false;
+    QCache<QByteArray, std::vector<PathExtrema>> intersections{4 * 1024 * 1024};
     QMap<QString, CandidateSearchStats> forms;
     CandidateSearchStats* activeForm = nullptr;
     QString anchorSearch;
@@ -308,7 +310,7 @@ struct PreparedPassOutline {
     Orientation orientation;
 };
 
-bool preparePassOutline(SearchContext& context, OutlineSearchCache& cache);
+bool preparePassOutline(SearchContext& context, OutlineSearchCache& cache, bool completeClosedOutline = false);
 
 struct JoinTime {
 	double minTime = -1;
@@ -332,9 +334,9 @@ struct JoinTime {
 	}
 };
 
-JoinTime getJoinTime(Stretching join);
+JoinTime getJoinTime(const Stretching& join);
 
-JoinTime getJoinTime(Stretching join, Orientation pathOrient);
+JoinTime getJoinTime(const Stretching& join, Orientation pathOrient);
 
 bool sharesLowerForkTip(const Stretching& right, const Stretching& left);
 
@@ -502,7 +504,7 @@ bool anchoredStrokeNormalCut(const SearchContext &context, Stretching &cut, bool
 
 std::vector<QBezier> baseContourCurves(const QPainterPath &path);
 void readContourLandmarks(const QPainterPath& ink, std::vector<QPainterPath>& contours,
-                          QVector<PathExtrema>& landmarks);
+                          QVector<PathExtrema>& landmarks, bool completeClosedOutline = false);
 
 bool contourNormalCut(const SearchContext& context, const PathExtrema& anchor,
                       bool increasingTime, bool atStepEnd, Stretching& cut, bool aboveOnly = false,
@@ -531,6 +533,7 @@ std::optional<UprightStemBody> recognizeUprightStem(const InkOutline &outline);
 bool cutUprightStem(const SearchContext &context, const UprightStemBody &body, const QJsonObject &form,
                            Stretching &result);
 std::optional<Stretching> uprightStemFoot(const SearchContext& context, const Stretching& entry, double penWidth);
+std::optional<Stretching> descenderEntry(const SearchContext& context, const Stretching& entry, double penWidth);
 
 std::optional<PathExtrema> horizontalOpposite(const SearchContext& context,
                                                      const PathExtrema& anchor, bool left);
@@ -673,7 +676,7 @@ struct ToothClusterBody {
 std::vector<ToothClusterBody> recognizeToothClusters(const InkOutline &outline, const QJsonObject &form);
 
 std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
-                                                 double penWidth);
+                                                 double penWidth, bool allowSmoothUpper = false);
 std::optional<Stretching> clusterExitAtHollow(SearchContext& context, const ToothClusterBody& cluster,
         double penWidth, double maxWidth, const QJsonObject& cutSettings);
 std::optional<std::pair<Stretching, Stretching>> medialClusterAnchors(SearchContext& context,
@@ -1280,32 +1283,71 @@ struct AnchoredBody {
     bool sharesRimEntry = false;
     bool sharesJunctionEntry = false;
     bool sharesLoopNeck = false;
+    // The minimum body boundary and preferred cut coincide at this junction.
+    bool fixedEntryJunction = false;
     bool keepsEntryJunction = false;
     bool keepsExitHollow = false;
     bool sharesExitAtCorners = false;
     bool sharesIncoming = false;
     bool usesSharedEntry = false;
+    QStringList sharesOverlappingEntryAfter;
     bool requiresSharedEntry = false;
     bool requiresSharedExit = false;
+    QString sharedExitWith;
     bool requiresSharedSource = false;
+    bool keepsSharedCounterEntry = false;
+    bool sharesFinalEntry = false;
+    QString stemFootSkipAfter;
+    bool acceptsCloseSharedJoin = false;
+    bool coversSharedEntry = false;
+    QString keepInitialExitAfter;
+    bool keepsEntryConnector = false;
+    bool stemmedBowl = false;
+    bool prefersIntrinsicSharedExit = false;
+    bool prefersTightIncoming = false;
+    bool needsSharedInwardCorner = false;
+    QString shareEntryWith;
+    bool hasStemReturn = false;
+    QString sharedReturnWith;
+    QString sharedReturnJunction;
+    std::optional<QJsonObject> sharedEntryBody;
+    bool requiresDeclaredReturn = false;
+    QString sharedCounterReceiver;
     bool alternateAnchor = false;
     QString tightEntryAfter;
     QString sharedEntryFrom;
     bool preservesTerminalBody = false;
     bool stemFootCandidate = false;
     bool footExitCandidate = false;
-    std::optional<PathExtrema> entryLimit;
+    std::optional<PathExtrema> entryLimit, exitLimit;
+    std::optional<Stretching> minimumEntry, minimumExit;
+    std::optional<std::pair<double, double>> forkEntry;
     QJsonObject sharedFold;
     std::optional<std::pair<PathExtrema, bool>> toothExitFlank;
 };
 
+QLineF sectionLine(const Stretching& section);
+bool orderedSections(const Stretching& right, const Stretching& left, Orientation orientation);
+bool retainsLandmarks(const AnchoredBody& body, const Stretching* entry, const Stretching* exit,
+                      Orientation orientation);
+
 using AnchorForms = std::array<QHash<QChar, std::vector<QJsonObject>>, 3>;
 
 QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms);
+QJsonObject expandedAnchorConfig(QJsonObject config, bool continuation = false);
 std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
-                                         double penWidth);
+                                         double penWidth, bool tryEntryTurn = false,
+                                         const Stretching* sharedExit = nullptr);
+std::vector<AnchoredBody> anchoredBodiesAtSharedEntry(SearchContext& source, const QJsonObject& form,
+        std::span<const AnchoredBody* const> intrinsic, const Stretching& incoming, double penWidth, bool counter);
+struct AnchorPriority {
+    const QJsonObject& config;
+    const AnchorForms& forms;
+    bool verifyContours = false;
+};
+
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
-        const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorForms& forms,
+        const WordResultInfo::SubWordInfo& sub, std::span<const AnchorPriority> priorities,
         const AnchorPartitionCheck& accept);
 bool sameAnchoredPartition(const WordResultInfo::SubWordInfo& a, const WordResultInfo::SubWordInfo& b);
 
@@ -1361,6 +1403,7 @@ std::vector<Stretching> loopShoulderCuts(SearchContext& context, const QRectF& h
 // lips run left from the same notch and diverge, each ending at a turn.
 struct MouthLips {
     PathExtrema notch, upper, lower;
+    bool lowerForward;
 };
 
 struct OpenMouthBody {
@@ -1717,13 +1760,17 @@ enum class ConnectorEndpointMatch { FirstWithinTolerance, NearestVertex };
 bool leavesEntryClearance(const Stretching& sending, const Stretching& receiving,
                           Orientation orientation, double minimumGap);
 bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLineF& left,
-                      ConnectorEndpointMatch match = ConnectorEndpointMatch::FirstWithinTolerance);
+                      ConnectorEndpointMatch match = ConnectorEndpointMatch::FirstWithinTolerance,
+                      double nominalWidth = 0);
 
 std::map<int, QLineF> missingHeadInk(const Word& word, const WordResultInfo::SubWordInfo& sub,
                                             const QString& letters, const QJsonObject& settings);
 
+inline bool hasMinimumBodyArea(const QRectF& bounds) {
+    return bounds.width() * bounds.height() >= .12;
+}
 bool plausibleRecoveredBodies(const Word& word, const WordResultInfo::SubWordInfo& sub,
-                                     const QJsonObject& settings);
+                                     const QJsonObject& settings, double nominalWidth = 0);
 
 bool sourceLandmark(PathExtrema& mark, const std::vector<std::vector<QBezier>>& paths);
 

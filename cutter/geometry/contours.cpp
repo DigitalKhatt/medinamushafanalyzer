@@ -4,7 +4,7 @@ using namespace MedinaCutter;
 
 namespace MedinaCutter {
 
-JoinTime getJoinTime(Stretching join) {
+JoinTime getJoinTime(const Stretching& join) {
 	JoinTime joinTime;
 
 	if (join.topBaseLine.time > join.bottomBaseLine.time) {
@@ -21,7 +21,7 @@ JoinTime getJoinTime(Stretching join) {
 	return joinTime;
 }
 
-JoinTime getJoinTime(Stretching join, Orientation pathOrient) {
+JoinTime getJoinTime(const Stretching& join, Orientation pathOrient) {
 	JoinTime joinTime;
 
 	if (join.topBaseLine.time > join.bottomBaseLine.time) {
@@ -86,7 +86,7 @@ std::vector<QBezier> baseContourCurves(const QPainterPath &path) {
 }
 
 void readContourLandmarks(const QPainterPath& ink, std::vector<QPainterPath>& contours,
-                          QVector<PathExtrema>& landmarks) {
+                          QVector<PathExtrema>& landmarks, bool completeClosedOutline) {
     ShapeItem::getExtrema(ink, contours, landmarks);
     if (!cutGeometryMemo || !cutGeometryMemo->verifyContourGeometry) return;
 
@@ -100,6 +100,16 @@ void readContourLandmarks(const QPainterPath& ink, std::vector<QPainterPath>& co
         }
         return opposite - end;
     };
+    const auto axisTangent = [](QPointF end, QPointF first, QPointF second, QPointF opposite) {
+        const auto direction = [](double first, double second, double last) {
+            return std::abs(first) > 1e-8 ? first : std::abs(second) > 1e-8 ? second : last;
+        };
+        first -= end;
+        second -= end;
+        opposite -= end;
+        return QPointF(direction(first.x(), second.x(), opposite.x()),
+                       direction(first.y(), second.y(), opposite.y()));
+    };
     const auto reverses = [](double a, double b) {
         return (a > 0 && b < 0) || (a < 0 && b > 0);
     };
@@ -107,17 +117,24 @@ void readContourLandmarks(const QPainterPath& ink, std::vector<QPainterPath>& co
         return point.isSharp;
     }), landmarks.end());
     for (int path = 0; path < static_cast<int>(contours.size()); ++path) {
-        QPointF incoming;
         const auto curves = baseContourCurves(contours[path]);
+        if (curves.empty()) continue;
+        const auto& last = curves.back();
+        auto incoming = completeClosedOutline ? -tangent(last.pt4(), last.pt3(), last.pt2(), last.pt1()) : QPointF{};
+        auto incomingAxes = completeClosedOutline ? -axisTangent(last.pt4(), last.pt3(), last.pt2(), last.pt1()) : QPointF{};
         for (size_t i = 0; i < curves.size(); ++i) {
             const auto& curve = curves[i];
             const auto outgoing = tangent(curve.pt1(), curve.pt2(), curve.pt3(), curve.pt4());
-            const bool turnsX = reverses(incoming.x(), outgoing.x());
-            const bool turnsY = reverses(incoming.y(), outgoing.y());
+            const auto outgoingAxes = axisTangent(curve.pt1(), curve.pt2(), curve.pt3(), curve.pt4());
+            const auto a = completeClosedOutline ? incomingAxes : incoming;
+            const auto b = completeClosedOutline ? outgoingAxes : outgoing;
+            const bool turnsX = reverses(a.x(), b.x());
+            const bool turnsY = reverses(a.y(), b.y());
             const auto angle = QLineF(QPointF{}, incoming).angleTo(QLineF(QPointF{}, outgoing));
             if (turnsX || turnsY || (angle > 3 && angle < 357))
                 landmarks.append({path, double(i), curve.pt1(), turnsX, !turnsX && turnsY, true});
             incoming = -tangent(curve.pt4(), curve.pt3(), curve.pt2(), curve.pt1());
+            incomingAxes = -axisTangent(curve.pt4(), curve.pt3(), curve.pt2(), curve.pt1());
         }
     }
 }
@@ -1225,6 +1242,36 @@ bool strokeNormalCut(const SearchContext& context, Stretching& cut, double offse
     cut.bottomBaseLine = result.bottomBaseLine;
     cut.topEndpointTolerance = 0;
     return true;
+}
+
+QLineF sectionLine(const Stretching& section) {
+    return {section.topBaseLine.point, section.bottomBaseLine.point};
+}
+
+bool orderedSections(const Stretching& right, const Stretching& left, Orientation orientation) {
+    const auto receiving = getJoinTime(left, orientation);
+    const bool atFork = sharesLowerForkTip(right, left);
+    return cutPrecedes(right, left, orientation) &&
+           receiving.isStrictRight(right.topBaseLine.time) &&
+           (atFork || (receiving.isStrictRight(right.bottomBaseLine.time) &&
+                       sectionLine(right).intersects(sectionLine(left), nullptr) != QLineF::BoundedIntersection));
+}
+
+bool retainsLandmarks(const AnchoredBody& body, const Stretching* entry, const Stretching* exit,
+                      Orientation orientation) {
+    const auto first = entry ? std::optional{getJoinTime(*entry, orientation)} : std::nullopt;
+    const auto last = exit ? std::optional{getJoinTime(*exit, orientation)} : std::nullopt;
+    constexpr double timeTolerance = 1e-8;
+    const auto onCut = [](const Stretching& cut, const PathExtrema& point) {
+        return std::abs(cut.topBaseLine.time - point.time) <= timeTolerance ||
+               std::abs(cut.bottomBaseLine.time - point.time) <= timeTolerance;
+    };
+    if (first && body.entryLimit && !first->isLeft(body.entryLimit->time) && !onCut(*entry, *body.entryLimit)) return false;
+    if (last && body.exitLimit && !last->isRight(body.exitLimit->time) && !onCut(*exit, *body.exitLimit)) return false;
+    return std::all_of(body.landmarks.begin(), body.landmarks.end(), [&](const auto& point) {
+        return point.pathIndex == 0 && (!first || first->isStrictLeft(point.time)) &&
+               (!last || last->isStrictRight(point.time));
+    });
 }
 
 } // namespace MedinaCutter

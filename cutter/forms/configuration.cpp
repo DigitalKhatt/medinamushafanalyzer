@@ -876,10 +876,64 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         bodyKeys << "maxShoulderBacktrackWidths";
     if (shape == "layered-head")
         bodyKeys << "neck";
+    if (const auto partner = cuts.value("sharedExitWith"); !partner.isUndefined()) {
+        const auto medial = config.value("medial").toArray();
+        if (phase != "initial" || (shape != "layered-head" && shape != "suspended-loop" && shape != "contour-route") ||
+            partner.toString().isEmpty() || std::none_of(medial.begin(), medial.end(), [&](const auto& rule) {
+                return rule.toObject().value("id") == partner;
+            })) return id + ": sharedExitWith needs a medial template after an initial body";
+        cutKeys << "sharedExitWith";
+    }
+    if (cuts.contains("keepExitBeforeFinal")) {
+        if (!cuts.contains("sharedExitWith") || cuts.value("keepExitBeforeFinal").toString().isEmpty())
+            return id + ": keepExitBeforeFinal needs a shared exit and final letters";
+        cutKeys << "keepExitBeforeFinal";
+    }
+    if (shape == "inclined-blade" && cuts.contains("sharedEntryAfter")) {
+        if (phase != "medial" || cuts.value("sharedEntryAfter").toString().isEmpty())
+            return id + ": sharedEntryAfter needs initial letters for a medial blade";
+        cutKeys << "sharedEntryAfter";
+    }
     if (cuts.contains("sharedExit")) {
         if (phase != "medial" || shape != "paired-route" || cuts.value("sharedExit") != "receiving-corners")
             return id + ": sharedExit needs a medial paired route and receiving corners";
         cutKeys << "sharedExit";
+    }
+    if (cuts.contains("sharedEntryAtFeet")) {
+        if (phase != "medial" || shape != "counter-loop" ||
+            body.value("loop").toObject().value("counterPair") != "vertical" ||
+            !cuts.value("sharedEntryAtFeet").isBool())
+            return id + ": sharedEntryAtFeet needs a medial form with stacked counters";
+        cutKeys << "sharedEntryAtFeet";
+    }
+    for (const auto& [field, expectedShape] : {std::pair{"minimumEntryWidths", "inclined-blade"},
+                                               std::pair{"minimumExitWidths", "returning-lips"}}) {
+        const auto distance = cuts.value(field);
+        if (distance.isUndefined()) continue;
+        const bool supported = shape == expectedShape || (shape == "paired-route" &&
+            QLatin1String(field) == QLatin1String("minimumExitWidths"));
+        if (phase != "medial" || !supported || !positive(distance))
+            return id + ": invalid " + field + " contour walk";
+        if (shape == "paired-route") {
+            bodyKeys << "mouth";
+            cutKeys << "mouth";
+            if (!cuts.value("mouth").toObject().isEmpty())
+                return id + ": use the paired routes for cut projection";
+        }
+        cutKeys << field;
+    }
+    if (const auto fixed = cuts.value("fixEntryJunction"); !fixed.isUndefined()) {
+        if (phase != "final" || shape != "counter-neck" || !fixed.isBool())
+            return id + ": fixEntryJunction requires a final counter-neck form";
+        cutKeys << "fixEntryJunction";
+    }
+    if (const auto sender = cuts.value("shareOverlappingEntryAfter"); !sender.isUndefined()) {
+        const auto senders = sender.isString() ? QJsonArray{sender} : sender.toArray();
+        if (phase != "medial" || shape != "paired-route" || senders.isEmpty() ||
+            std::any_of(senders.begin(), senders.end(), [&](const auto& rule) {
+                return rule.toString().isEmpty() || namedLetterForm(config, rule.toString()).isEmpty();
+            })) return id + ": shareOverlappingEntryAfter needs a medial paired route and sending templates";
+        cutKeys << "shareOverlappingEntryAfter";
     }
     if (phase == "final" && (shape == "contour-route" || shape == "open-bowl")) {
         cutKeys << "junction";
@@ -1240,7 +1294,7 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             if (it.key() != "margin" || !it.value().isDouble() || !(it.value().toDouble() > 0))
                 return id + ": invalid blade cut margin";
     }
-    if (shape == "returning-lips") {
+    if (shape == "returning-lips" || (shape == "paired-route" && body.contains("mouth"))) {
         if (phase != "medial")
             return id + ": returning-lips requires a medial body";
         const auto mouth = body.value("mouth").toObject(), policy = cuts.value("mouth").toObject();
@@ -2174,6 +2228,42 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
     AnchorForms anchorForms;
     const auto anchorProblem = compileAnchorForms(config, anchorForms);
     if (!anchorProblem.isEmpty()) return anchorProblem;
+    if (config.contains("fixedAnchorExpansion")) {
+        const auto expansion = config.value("fixedAnchorExpansion").toObject();
+        const auto overrides = expansion.value("forms").toObject();
+        if (overrides.isEmpty()) return "fixedAnchorExpansion requires template overrides";
+        const auto visits = expansion.value("fixedAnchorExpansionChecks");
+        if (!visits.isUndefined() && visits.toInt() < 1)
+            return "fixedAnchorExpansionChecks must be a positive integer";
+        for (auto form = overrides.begin(); form != overrides.end(); ++form) {
+            if (!form.value().isObject() || namedLetterForm(config, form.key()).isEmpty())
+                return "Invalid fixed-anchor expansion template " + form.key();
+            const auto settings = form.value().toObject();
+            for (auto field = settings.begin(); field != settings.end(); ++field)
+                if (!QStringList{"fixedAnchors", "fixedAnchorsRetry", "fixedAnchorsEnding",
+                                 "fixedAnchorsBeforeFinal", "sharedBoundary", "sharedBoundaryWith"}
+                         .contains(field.key()))
+                    return "Unsupported fixed-anchor expansion setting " + field.key();
+        }
+        const auto error = compileAnchorForms(expandedAnchorConfig(config), anchorForms);
+        if (!error.isEmpty()) return error;
+        if (expansion.contains("continuation")) {
+            const auto additional = expansion.value("continuation").toObject().value("forms").toObject();
+            for (auto form = additional.begin(); form != additional.end(); ++form) {
+                if (!form.value().isObject() || namedLetterForm(config, form.key()).isEmpty())
+                    return "Invalid fixed-anchor continuation template " + form.key();
+                const auto settings = form.value().toObject();
+                for (auto field = settings.begin(); field != settings.end(); ++field)
+                    if (!((field.key() == "fixedAnchors" && field.value().isBool()) ||
+                          ((field.key() == "fixedAnchorsEnding" || field.key() == "fixedAnchorsBeforeFinal") &&
+                           (field.value().isNull() || field.value().isString())) ||
+                          (field.key() == "fixedAnchorsMaxLetters" && field.value().isNull())))
+                        return "Unsupported fixed-anchor continuation setting " + field.key();
+            }
+            const auto problem = compileAnchorForms(expandedAnchorConfig(config, true), anchorForms);
+            if (!problem.isEmpty()) return problem;
+        }
+    }
     config.insert("kashidaDefaults", effective);
     return {};
 }

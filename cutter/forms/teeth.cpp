@@ -284,7 +284,7 @@ static bool keepsClusterAtExit(const ToothClusterBody& cluster, const Stretching
 }
 
 static std::optional<Stretching> seenEntryNormal(SearchContext& context, const ToothClusterBody& cluster,
-                                                 double penWidth) {
+                                                 double penWidth, bool allowSmoothUpper) {
     const auto& tip = cluster.turns.front();
     const auto towardEntry = cluster.advancePrevious ? &SearchContext::next : &SearchContext::prev;
     const auto lowerTowardEntry = cluster.advancePrevious ? &SearchContext::prev : &SearchContext::next;
@@ -319,16 +319,37 @@ static std::optional<Stretching> seenEntryNormal(SearchContext& context, const T
         best = cut;
         nearest = distance;
     }
+    if (!best && allowSmoothUpper && foot->time != tip.time && foot->isY &&
+        foot->point.x() > tip.point.x() && QLineF(tip.point, foot->point).length() <= meanToothPitch(cluster)) {
+        Stretching chord{};
+        if (contourNormalCut(context, *foot, !cluster.advancePrevious, false, chord) &&
+            chord.bottomBaseLine.point.y() > foot->point.y() && chord.referenceWidth <= 2 * penWidth)
+            best = chord;
+    }
+    // On a shallow bend under the tip the normal can leave the ink.
+    // Use the first opposite edge directly below that bend.
+    if (!best && allowSmoothUpper && foot->isSharp && foot->point.x() >= tip.point.x() - .5 * penWidth) {
+        const auto lower = foot->point + QPointF(0, 2 * penWidth);
+        for (const auto& hit : FindInterections(context.transformedPath, QLineF(foot->point, lower), true)) {
+            if (hit.pathIndex != 0 || hit.point.y() - foot->point.y() < .3 * penWidth ||
+                !interiorInkSegment(context.transformedPath, foot->point, hit.point)) continue;
+            best = Stretching{.topBaseLine = *foot, .bottomBaseLine = hit,
+                              .referenceWidth = QLineF(foot->point, hit.point).length()};
+            break;
+        }
+    }
     return best;
 }
 
 std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const ToothClusterBody& cluster,
-                                                 double penWidth) {
+                                                 double penWidth, bool allowSmoothUpper) {
     const auto& tip = cluster.turns.front();
     // Compare all opposing bends. An extrema flag can mark a farther bend
     // on the preceding letter even when a smooth bend faces this tooth.
     auto junction = seenEntryCornerPair(context, tip, !cluster.advancePrevious, meanToothPitch(cluster), true);
-    if (!junction) junction = seenEntryNormal(context, cluster, penWidth);
+    // A smooth valley can be the upper end of the junction when there is
+    // no opposing corner pair. It still comes from the first tooth's flank.
+    if (!junction) junction = seenEntryNormal(context, cluster, penWidth, allowSmoothUpper);
     if (!junction) return {};
     orientSection(context, *junction, tip.time, true);
     const auto side = getJoinTime(*junction, context.orientation);
@@ -382,7 +403,8 @@ std::optional<std::pair<Stretching, Stretching>> medialClusterAnchors(SearchCont
         const ToothClusterBody& cluster, const std::vector<ToothClusterBody>& clusters,
         const QJsonObject& settings, const QJsonObject& cuts, double penWidth) {
     if (!followsUpperFlank(context, cluster)) return {};
-    const auto entry = clusterEntryAtJunction(context, cluster, penWidth);
+    const auto entry = clusterEntryAtJunction(context, cluster, penWidth,
+        cuts.value("entryCornerOptional").toBool());
     if (!entry) return {};
     auto exit = clusterExitAtHollow(context, cluster, penWidth, 2 * std::max(penWidth, entry->referenceWidth), cuts);
     if (!exit && cuts.value("exitAtFlank").toBool()) {

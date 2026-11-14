@@ -750,10 +750,9 @@ bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub)
     std::vector<QImage> images;
     for (const auto& path : shapes)
         images.push_back(render(path));
-    QPainterPathStroker stroke;
-    stroke.setWidth(.002);
-    stroke.setCurveThreshold(1e-5);
-    const auto boundary = stroke.createStroke(ink);
+    std::optional<QPainterPath> boundary;
+    std::optional<QPainterPath> preciseInk;
+    std::vector<QPainterPath> preciseShapes;
     std::vector<const uchar*> scan(images.size());
     for (int y = 0; y < size.height(); ++y) {
         for (size_t i = 0; i < images.size(); ++i)
@@ -769,8 +768,28 @@ bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub)
             int actual = 0;
             for (const auto& path : shapes)
                 actual += path.contains(probe);
-            if (actual != int(ink.contains(probe)) && !(actual <= 1 && boundary.contains(probe)))
-                return false;
+            if (actual == int(ink.contains(probe))) continue;
+            if (cutGeometryMemo && cutGeometryMemo->verifyContourGeometry) {
+                // A subdivided cubic and its original can flatten differently.
+                // Retest at finer precision before treating it as extra or missing ink.
+                const auto detail = QTransform::fromScale(64, 64);
+                if (!preciseInk) {
+                    preciseInk = detail.map(ink);
+                    for (const auto& path : shapes) preciseShapes.push_back(detail.map(path));
+                }
+                const auto point = detail.map(probe);
+                const auto count = std::ranges::count_if(preciseShapes,
+                    [&](const auto& path) { return path.contains(point); });
+                if (count == int(preciseInk->contains(point))) continue;
+            }
+            if (actual > 1) return false;
+            if (!boundary) {
+                QPainterPathStroker stroke;
+                stroke.setWidth(.002);
+                stroke.setCurveThreshold(1e-5);
+                boundary = stroke.createStroke(ink);
+            }
+            if (!boundary->contains(probe)) return false;
         }
     }
     return true;
@@ -780,7 +799,7 @@ bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub)
 // outside its straight endpoint chord while both sides still follow the same
 // thin stroke. A tooth or head produces a long unmatched excursion instead.
 bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLineF& left,
-                      ConnectorEndpointMatch match) {
+                      ConnectorEndpointMatch match, double nominalWidth) {
     auto curves = baseContourCurves(ribbon);
     if (curves.size() < 3)
         return false;
@@ -832,12 +851,6 @@ bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLi
         if (d.back() <= 1e-5)
             return false;
     }
-    const double width = std::max(right.length(), left.length());
-    const double shortSide = std::min(distances[0].back(), distances[1].back());
-    const double longSide = std::max(distances[0].back(), distances[1].back());
-    if (longSide - shortSide > 3.5 * width + .18 * shortSide ||
-        (shortSide + longSide) / 2 > 2.2 * QLineF(right.center(), left.center()).length() + 2.8 * width)
-        return false;
     auto sample = [&](int side, double t) {
         const auto& ds = distances[side];
         const auto& ps = points[side];
@@ -846,6 +859,18 @@ bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLi
             std::clamp(int(std::upper_bound(ds.begin(), ds.end(), target) - ds.begin()), 1, int(ds.size()) - 1);
         return QLineF(ps[i - 1], ps[i]).pointAt((target - ds[i - 1]) / std::max(ds[i] - ds[i - 1], 1e-9));
     };
+    double width = std::max(right.length(), left.length());
+    if (nominalWidth > 0 && width < nominalWidth) {
+        const auto middle = [&](double t) {
+            return QLineF(sample(0, t), sample(1, t)).length();
+        };
+        width = std::max(width, std::min({nominalWidth, middle(.25), middle(.5), middle(.75)}));
+    }
+    const double shortSide = std::min(distances[0].back(), distances[1].back());
+    const double longSide = std::max(distances[0].back(), distances[1].back());
+    if (longSide - shortSide > 3.5 * width + .18 * shortSide ||
+        (shortSide + longSide) / 2 > 2.2 * QLineF(right.center(), left.center()).length() + 2.8 * width)
+        return false;
     for (double f : {.15, .3, .5, .7, .85})
         if (QLineF(sample(0, f), sample(1, f)).length() > 2.7 * width)
             return false;
@@ -957,7 +982,7 @@ static bool retainsInitialShaft(const QPainterPath& body, const QPainterPath& so
 }
 
 bool plausibleRecoveredBodies(const Word& word, const WordResultInfo::SubWordInfo& sub,
-                                     const QJsonObject& settings) {
+                                     const QJsonObject& settings, double nominalWidth) {
     const auto shape = word.bodyShape(sub);
     auto map = [&](const QPainterPath& path) {
         auto p = shape.transform.map(path);
@@ -990,7 +1015,9 @@ bool plausibleRecoveredBodies(const Word& word, const WordResultInfo::SubWordInf
                     withinEnvelope = false;
             }
         const bool longJoin = length >= settings.value("longConnectorWidths").toDouble(4) * width;
-        if ((longJoin || !withinEnvelope) && !followsOneStroke(ribbon, entry, exit))
+        const auto endpoints = nominalWidth > 0 ? ConnectorEndpointMatch::NearestVertex
+                                               : ConnectorEndpointMatch::FirstWithinTolerance;
+        if ((longJoin || !withinEnvelope) && !followsOneStroke(ribbon, entry, exit, endpoints, nominalWidth))
             return false;
     }
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
@@ -1006,7 +1033,7 @@ bool plausibleRecoveredBodies(const Word& word, const WordResultInfo::SubWordInf
     for (int i = 0; i < static_cast<int>(sub.baseGlyphs.size()); ++i) {
         const auto body = map(sub.baseGlyphs[i].path);
         const auto box = body.boundingRect();
-        if (box.width() * box.height() < .12)
+        if (!hasMinimumBodyArea(box))
             return false;
         const auto position = i == 0
                                   ? QStringLiteral("initial")

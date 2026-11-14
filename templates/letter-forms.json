@@ -1,6 +1,259 @@
 {
   "version": 2,
   "strokeWidth": 1,
+  "fixedAnchorExpansion": {
+    "forms": {
+      "ain-neck-init": {
+        "fixedAnchorsEnding": null
+      },
+      "ain-shallow-return-init": {
+        "fixedAnchors": true
+      },
+      "alef-folded-fina": {
+        "fixedAnchors": true
+      },
+      "alef-open-fina": {
+        "fixedAnchors": true
+      },
+      "alef-return-fina": {
+        "fixedAnchors": true
+      },
+      "alef-tapered-arm-fina": {
+        "fixedAnchors": true
+      },
+      "beh-folded-shoulder-fina": {
+        "fixedAnchors": true
+      },
+      "beh-high-foot-init": {
+        "fixedAnchors": true
+      },
+      "beh-shoulder-init": {
+        "fixedAnchors": true
+      },
+      "beh-sloping-init": {
+        "fixedAnchorsEnding": null
+      },
+      "beh-under-blade-init": {
+        "fixedAnchorsEnding": null
+      },
+      "feh-fina": {
+        "fixedAnchorsRetry": true
+      },
+      "hah-compact-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-counter-init": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-enclosed-head-init": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-enclosed-lips-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-extended-lip-init": {
+        "fixedAnchors": true
+      },
+      "hah-folded-yeh-medi": {
+        "fixedAnchors": true
+      },
+      "hah-init": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-lower-shoulder-medi": {
+        "fixedAnchors": true
+      },
+      "hah-oblique-folded-yeh-medi": {
+        "fixedAnchors": true
+      },
+      "hah-open-mouth-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-returning-lip-init": {
+        "fixedAnchors": true
+      },
+      "hah-returning-lips-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-rising-entry-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-shallow-mouth-medi": {
+        "fixedAnchors": true
+      },
+      "hah-shoulder-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-stacked-fina": {
+        "fixedAnchors": true
+      },
+      "hah-stacked-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "hah-stacked-throat-medi": {
+        "fixedAnchors": true
+      },
+      "hah-wedge-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "heh-paired-crown-medi": {
+        "fixedAnchors": true
+      },
+      "kaf-ascender-init": {
+        "fixedAnchors": true
+      },
+      "kaf-countered-crest-init": {
+        "fixedAnchors": true
+      },
+      "kaf-descending-hook-init": {
+        "fixedAnchorsEnding": "وؤماآأإٱنعغبتث"
+      },
+      "kaf-descending-blade-medi": {
+        "fixedAnchorsBeforeFinal": "وؤم"
+      },
+      "kaf-flat-init": {
+        "fixedAnchorsEnding": null
+      },
+      "kaf-fork-ascender-medi": {
+        "fixedAnchors": true
+      },
+      "kaf-fork-ascender-init": {
+        "fixedAnchors": true
+      },
+      "kaf-fork-fina": {
+        "fixedAnchors": true
+      },
+      "kaf-hook-init": {
+        "fixedAnchors": true,
+        "fixedAnchorsEnding": "وؤماآأإٱ"
+      },
+      "kaf-parallel-fold-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "kaf-zigzag-medi": {
+        "fixedAnchorsEnding": null,
+        "fixedAnchorsBeforeFinal": null
+      },
+      "lam-descending-heel-init": {
+        "fixedAnchors": true
+      },
+      "lam-descending-shaft-medi": {
+        "fixedAnchors": true
+      },
+      "lam-folded-neck-medi": {
+        "fixedAnchors": true
+      },
+      "lam-hah-stacked-init": {
+        "fixedAnchorsEnding": null
+      },
+      "lam-turning-flanks-medi": {
+        "fixedAnchorsEnding": "دذاآأإٱوؤم"
+      },
+      "meem-returning-shoulder-fina": {
+        "fixedAnchors": true
+      },
+      "meem-short-neck-fina": {
+        "fixedAnchors": true
+      },
+      "meem-stacked-rim-medi": {
+        "fixedAnchors": true
+      },
+      "meem-tailed-rim-fina": {
+        "fixedAnchors": true
+      },
+      "meem-upper-bridge-fina": {
+        "fixedAnchors": true
+      },
+      "qaf-fina": {
+        "fixedAnchorsRetry": true
+      },
+      "sad-corner-tooth-medi": {
+        "fixedAnchors": true
+      },
+      "sad-rounded-exit-init": {
+        "fixedAnchors": true
+      },
+      "sad-wide-tooth-init": {
+        "fixedAnchorsEnding": null
+      },
+      "sad-wide-tooth-medi": {
+        "fixedAnchorsEnding": null
+      },
+      "tah-rising-rim-medi": {
+        "fixedAnchors": true
+      },
+      "seen-folded-init": {
+        "fixedAnchors": true
+      },
+      "seen-folded-medi": {
+        "fixedAnchors": true
+      },
+      "waw-fina": {
+        "fixedAnchorsRetry": true
+      },
+      "yeh-fina": {
+        "sharedBoundary": true,
+        "sharedBoundaryWith": "ل"
+      },
+      "yeh-first-turn-fina": {
+        "fixedAnchors": true
+      },
+      "yeh-return-fina": {
+        "fixedAnchors": true
+      }
+    },
+    "fixedAnchorAlternatesEnding": "دذبتثنهوؤيىئكلاآأإٱقمفحجخرزسشصضغعطة",
+    "fixedAnchorStemReturnEnding": "يىئ",
+    "fixedAnchorBodyChecks": true,
+    "fixedAnchorExpansionChecks": 4096,
+    "continuation": {
+      "forms": {
+        "beh-stacked-init": {
+          "fixedAnchorsEnding": null
+        },
+        "feh-descending-rim-medi": {
+          "fixedAnchors": true
+        },
+        "kaf-descending-blade-medi": {
+          "fixedAnchorsEnding": "دذاآأإٱبتثهم",
+          "fixedAnchorsBeforeFinal": "وؤمة"
+        },
+        "heh-paired-rim-init": {
+          "fixedAnchors": true
+        },
+        "heh-crowned-pair-medi": {
+          "fixedAnchors": true
+        },
+        "reh-rising-tail-fina": {
+          "fixedAnchors": true
+        },
+        "reh-hook-fina": {
+          "fixedAnchors": true
+        },
+        "lam-bowl-fina": {
+          "fixedAnchors": true
+        },
+        "lam-turning-flanks-medi": {
+          "fixedAnchorsEnding": "دذاآأإٱوؤمكهة"
+        },
+        "kaf-bent-neck-medi": {
+          "fixedAnchorsEnding": "دذهوؤ"
+        },
+        "kaf-descending-hook-init": {
+          "fixedAnchorsEnding": "وؤيئى"
+        },
+        "hah-recurved-lip-init": {
+          "fixedAnchorsEnding": "دذوؤ"
+        },
+        "hah-under-shaft-medi": {
+          "fixedAnchors": true
+        },
+        "noon-fina": {
+          "fixedAnchorsMaxLetters": null
+        }
+      }
+    }
+  },
   "fixedAnchorAlternatesEnding": "دذ",
   "joinDefaults": {
     "lookback": 4,
@@ -251,6 +504,7 @@
         }
       },
       "cuts": {
+        "sharedExitWith": "kaf-zigzag-medi",
         "head": {
           "maxNeckDistance": 3,
           "maxProjectionInset": 2,
@@ -268,21 +522,10 @@
       "current": "ق",
       "tryNext": true,
       "body": {
-        "shape": "suspended-loop",
-        "head": {
-          "maxEdgeDistance": 1.5
-        }
+        "inherit": "feh-init"
       },
       "cuts": {
-        "head": {
-          "maxNeckDistance": 3,
-          "maxProjectionInset": 2,
-          "normalCut": true
-        },
-        "boundaries": {
-          "left": "head-neck",
-          "right": "free"
-        }
+        "inherit": "feh-init"
       }
     },
     {
@@ -530,6 +773,8 @@
         }
       },
       "cuts": {
+        "sharedExitWith": "seen-medi",
+        "keepExitBeforeFinal": "ن",
         "beforeFinal": {
           "letters": "اآأإٱ",
           "boundaries": {
@@ -579,6 +824,7 @@
         }
       },
       "cuts": {
+        "sharedExitWith": "kaf-descending-blade-medi",
         "useOwnedCrest": "دذ",
         "beforeFinal": {
           "letters": "اآأإٱ",
@@ -701,13 +947,14 @@
       "fixedAnchorsEnding": "دذ",
       "current": "بتثنيئى",
       "ligatureWith": "جحخ",
+      "preferSharedAttachment": true,
       "onIncomplete": true,
       "body": {
         "shape": "stacked-tooth",
         "attachment": {
           "template": "hah-stacked-medi",
           "minRise": 3,
-          "maxWidthToHeight": 1.8
+          "maxWidthToHeight": 1.9
         }
       },
       "cuts": {
@@ -942,7 +1189,7 @@
     {
       "id": "beh-under-blade-init",
       "fixedAnchors": true,
-      "fixedAnchorsEnding": "دذ",
+      "fixedAnchorsEnding": "دذم",
       "current": "بتثنيئى",
       "onUnresolved": true,
       "onIncomplete": true,
@@ -2692,6 +2939,7 @@
       "id": "hah-under-shaft-medi",
       "current": "جحخ",
       "onUnresolved": true,
+      "tightJoin": true,
       "assembly": {
         "operation": "exposed-head",
         "bodyForms": [
@@ -3205,7 +3453,8 @@
         "flankMode": "contour-normal",
         "flankOffset": 0.5,
         "maxSectionWidth": 2.5,
-        "tightJoin": "shared-boundary"
+        "tightJoin": "shared-boundary",
+        "shareLoopNeck": true
       }
     },
     {
@@ -3673,6 +3922,7 @@
       },
       "sharedEntry": true,
       "body": {
+        "inherit": "hah-returning-lips-medi",
         "shape": "paired-route",
         "routes": {
           "anchor": {
@@ -3714,6 +3964,8 @@
         "counters": 0
       },
       "cuts": {
+        "inherit": "hah-returning-lips-medi",
+        "mouth": {},
         "routes": {
           "right": {
             "bottomProbe": "left",
@@ -4215,6 +4467,7 @@
         "counters": 0
       },
       "cuts": {
+        "minimumExitWidths": 2,
         "mouth": {
           "projectExit": true,
           "exitMargin": 0.25,
@@ -4316,6 +4569,7 @@
         }
       },
       "cuts": {
+        "sharedEntryAtFeet": true,
         "entryRim": {
           "minRiseWidths": 2.5,
           "maxSlope": 0.15
@@ -4335,6 +4589,7 @@
       "id": "kaf-zigzag-medi",
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
+      "fixedAnchorsBeforeFinal": "م",
       "current": "ك",
       "tightJoin": true,
       "body": {
@@ -4383,6 +4638,7 @@
         "counters": 0
       },
       "cuts": {
+        "shareOverlappingEntryAfter": ["hah-open-init", "hah-stacked-medi"],
         "turnBoundaries": {
           "right": "descender"
         },
@@ -4586,6 +4842,8 @@
         "counters": 0
       },
       "cuts": {
+        "minimumEntryWidths": 1,
+        "sharedEntryAfter": "جحخ",
         "turnBoundaries": {
           "right": "descender"
         },
@@ -6455,6 +6713,7 @@
         }
       },
       "cuts": {
+        "fixEntryJunction": true,
         "boundaries": {
           "left": "free",
           "right": "corner-junction"

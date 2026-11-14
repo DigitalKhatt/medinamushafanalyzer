@@ -73,10 +73,9 @@ uses the original contour in page coordinates. It can also split at a template's
 declared entry and fit the resulting component with the usual body rules.
 Medial tooth alternatives become eligible in
 `recoveryStage` order during placement backtracking.
-An `onUnresolvedPartition` form becomes eligible after the existing search
-fails to assemble the subword. This attempt uses bracketed intersections on
-the original curves, recovers tangents at repeated control points, and applies
-the same ink ownership checks.
+If the first partition search fails, the cutter tries the remaining
+`onUnresolvedPartition` forms on the original ink with bracketed contour
+intersections. Both searches apply the same ownership checks.
 An initial form with `sharedFoldWithFinal` takes its turn in the initial array
 and uses the first matching final boundary for the declared adjacent letters.
 `sharedFoldForm` can name the specific final template supplying the cut.
@@ -200,7 +199,33 @@ A subword can use the search
 when every letter has an eligible form. Each form proposes sections on the
 uncut outline and identifies the landmarks and ink it must retain. Counter
 forms identify the source contours their body must own.
+An initial body can use `cuts.sharedExitWith` to validate a fixed exit at
+the entry of a named medial form. `cuts.keepExitBeforeFinal` gives the
+body's own exit priority for the listed endings. Initial ḥāʾ keeps the exit found by its
+own head or counter outline. A medial blade can use `cuts.sharedEntryAfter`
+to participate after that initial shape outside its ordinary set of final
+letters. Assembly checks the two fixed sections and retains any connecting
+stroke between them.
+In the continuation search, an initial form with `preferSharedAttachment`
+is tried first when the following letter matches its `ligatureWith` selector.
+`fixedAnchorExpansion` enables extra forms and attachment policies in the
+established order. These choices share the source outline and reuse the
+candidates already recognized for the same template. The bracketed contour
+mode has its own candidate geometry. The continuation branch includes
+turns across the closing seam of the outline. `fixedAnchorBodyChecks` adds the body
+proportion and connector checks. `fixedAnchorExpansionChecks` limits how many
+candidates the expanded search visits before handing the subword to the
+existing cutter.
+Folded ligatures evaluate the sending body at the receiving form's proposed
+seam. A shared counter can supply the two ink bridges of a single seam.
+For a short attachment, the search can use a shared section when the caps
+nearly coincide and the sending form keeps all its landmarks. A short separate
+connector must still fit the configured stroke envelope. An explicit tatweel
+must retain its own connector. Final counter-outline forms propose their entry
+from the counter rim and verify that the mask retains the original counter.
 Medial heh uses its own stacked counters and outer feet to place both anchors.
+`cuts.sharedEntryAtFeet` allows this entry to supply the seam when the
+preferred cuts overlap.
 A counter form can locate the entry at the rounded foot using `cuts.entryRim`
 before assembly. A hanging mīm recognizes its own upper entry and exit
 corners and keeps its counter, regardless of the preceding letter. When
@@ -212,6 +237,14 @@ a migrated form can participate. Final nūn starts in two-letter subwords
 while the longer sequences with medial joins are checked.
 `fixedAnchorsEnding` limits an initial or medial form's rollout by the
 subword's last letter. The forms added for dāl and dhāl use this selector.
+`fixedAnchorsBeforeFinal` adds an eligible medial position immediately before
+a listed final letter. At that position a paired-route form with a
+`descender` entry policy proposes the contour turn before the raw section.
+Assembly chooses between these fixed sections while checking both bodies.
+With `cuts.shareOverlappingEntryAfter`, the receiving form can provide
+the shared seam after any of the listed sending forms. The original caps
+must overlap within one entry stroke width, and the shared seam must
+preserve the sending body's landmarks and counters.
 A final form can enable `fixedAnchorsTatweel` so assembly accepts explicit
 tatweel. The corresponding join must retain a separate stroke for the
 catalog to assign to that character.
@@ -255,9 +288,15 @@ at its own turn before the route's longer exit. A final counter with
 `cuts.tightEntryAfter` can share its entry with the named sending form
 where the proposed cuts meet at one flank. Both bodies must still retain
 their defining landmarks and counters.
-[The search](engine/anchor_search.cpp) builds each form's candidates once per
-outline and backtracks over compatible bodies. Their entry and exit sections
-stay fixed. Coincident sections share a seam. A template with
+[The search](engine/anchor_search.cpp) looks up the next letter's templates
+and checks their candidate entries against the preceding body's fixed exit.
+Ordinary joins require room between the bodies. A declared ligature can
+recognize a candidate directly at the incoming section. Backtracking chooses
+another candidate and leaves both anchors of each existing candidate intact.
+The search rejects incompatible gaps before exploring later letters. Forked
+stems must retain their crest between the proposed anchors before the form
+builds a trial outline. Assembly checks landmark ownership, counters,
+connectors and ink coverage for a complete sequence. Coincident sections share a seam. A template with
 `cuts.tightJoin: "shared-boundary"` can use the sending section when the two
 proposed sections overlap and the shared cut retains the receiving body's
 landmarks and ink. A medial contour route can declare
@@ -268,6 +307,22 @@ A separate connector must enclose a single stroke. Catalog
 export also checks that every letter owns source pixels. A rejected partition
 returns control to the same search with the original anchor candidates. If no
 complete partition fits, the existing cutter handles the subword.
+
+In the continuation search, `cuts.minimumEntryWidths` on the descending
+kāf blade walks from the fork. The returning-lip and stacked ḥāʾ forms
+share `cuts.minimumExitWidths`, measured from the start of the lower lip.
+Both measurements use the global `strokeWidth`. Each recognized body has
+a preferred section and an immutable limit. Assembly keeps ordered cuts.
+With a declared entry limit, assembly computes one seam from the two
+contour flanks. An explicit junction, such as final wāw's entry, or
+two sections whose corresponding endpoints meet within
+`kashidaDefaults.sharedCutTolerance` allow the preceding cut to move up
+to its declared exit limit. Where the sending body already shares its own
+entry, a tight join can use the next body's fixed entry if the corresponding
+endpoints are within one pen width and the sections face the same way.
+The seam must stay within both limits, retain the defining landmarks and
+stay inside the ink. Backtracking can choose another body candidate
+and reuse the result of each join check.
 
 Use the following command from the project root to compare each fixed anchor
 partition with the original cutter and check the exported geometry against

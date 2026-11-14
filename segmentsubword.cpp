@@ -75,12 +75,27 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         if (ligature == LigatureMatch::Failed) return false;
         if (ligature == LigatureMatch::SharedCut)
             return pageIndex < 0 || assembleToothClusterCuts(word, sub, sourceConfig);
-        static thread_local QJsonObject previousConfig, compiledConfig;
+        static thread_local QJsonObject previousConfig, previousRequested, compiledConfig, expandedConfig, preciseExpandedConfig,
+            continuationConfig;
         static thread_local QHash<QString, QString> compiledRetryParents;
-        static thread_local AnchorForms anchorForms;
-        if (previousConfig != sourceConfig) {
+        static thread_local AnchorForms anchorForms, expandedForms, preciseForms, preciseExpandedForms, continuationForms;
+        if (previousConfig != sourceConfig || previousRequested != requestedForms) {
             previousConfig = compiledConfig = sourceConfig;
+            previousRequested = requestedForms;
             compileAnchorForms(sourceConfig, anchorForms);
+            expandedConfig = {};
+            continuationConfig = {};
+            if (sourceConfig.contains("fixedAnchorExpansion")) {
+                expandedConfig = expandedAnchorConfig(sourceConfig);
+                compileAnchorForms(expandedConfig, expandedForms);
+                if (sourceConfig.value("fixedAnchorExpansion").toObject().contains("continuation")) {
+                    continuationConfig = expandedAnchorConfig(sourceConfig, true);
+                    compileAnchorForms(continuationConfig, continuationForms);
+                    compileAnchorForms(requestedForms, preciseForms);
+                    preciseExpandedConfig = expandedAnchorConfig(requestedForms);
+                    compileAnchorForms(preciseExpandedConfig, preciseExpandedForms);
+                }
+            }
             for (const auto* position : {"initial", "medial", "final"}) {
                 const auto forms = sourceConfig.value(position).toArray();
                 QJsonArray legacyForms;
@@ -91,7 +106,22 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
             const auto finals = finalRetryCandidates(compiledConfig.value("final").toArray(), compiledRetryParents);
             if (!compiledRetryParents.isEmpty()) compiledConfig.insert("final", finals);
         }
-        auto anchored = pageIndex >= 0 ? segmentWithAnchors(word, sub, sourceConfig, anchorForms, acceptAnchors) : std::nullopt;
+        std::optional<WordResultInfo::SubWordInfo> anchored;
+        if (pageIndex >= 0) {
+            const bool verify = cutGeometryMemo->verifyContourGeometry;
+            std::vector<AnchorPriority> priorities{{sourceConfig, anchorForms, verify}};
+            if (!expandedConfig.isEmpty()) priorities.push_back({expandedConfig, expandedForms, verify});
+            if (!continuationConfig.isEmpty()) {
+                if (!verify && sourceConfig != requestedForms)
+                    priorities.push_back({requestedForms, preciseForms, true});
+                priorities.push_back({continuationConfig, continuationForms, verify});
+                if (!verify) {
+                    priorities.push_back({preciseExpandedConfig, preciseExpandedForms, true});
+                    priorities.push_back({continuationConfig, continuationForms, true});
+                }
+            }
+            anchored = segmentWithAnchors(word, sub, priorities, acceptAnchors);
+        }
         if (anchored && (!cutGeometryMemo->profiling || !qEnvironmentVariableIsSet("MEDINA_COMPARE_ANCHORS"))) {
             sub = std::move(*anchored);
             return true;

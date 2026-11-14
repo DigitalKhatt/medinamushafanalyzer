@@ -223,7 +223,19 @@ void FindInterections(const QBezier& b, const QLineF& line, int pathIndex, int c
 
 std::vector<PathExtrema> FindInterections(const QPainterPath& path, const QLineF& line, bool segment, RootSearch search) {
 
-	if (cutGeometryMemo && cutGeometryMemo->verifyContourGeometry) search = RootSearch::BracketAllCrossings;
+    if (cutGeometryMemo && cutGeometryMemo->verifyContourGeometry) search = RootSearch::BracketAllCrossings;
+    QByteArray key;
+    if (cutGeometryMemo && cutGeometryMemo->memoizeIntersections) {
+        const int outline = cutGeometryMemo->outlineId(path);
+        if (outline >= 0) {
+            appendGeometryKey(key, outline);
+            appendGeometryPoint(key, line.p1());
+            appendGeometryPoint(key, line.p2());
+            appendGeometryKey(key, segment);
+            appendGeometryKey(key, search);
+            if (const auto* saved = cutGeometryMemo->intersections.object(key)) return *saved;
+        }
+    }
 	std::vector<PathExtrema> res;
     constexpr double tolerance = 1e-9;
     const ProbeBounds bounds{std::min(line.x1(), line.x2()) - tolerance, std::max(line.x1(), line.x2()) + tolerance,
@@ -271,6 +283,11 @@ std::vector<PathExtrema> FindInterections(const QPainterPath& path, const QLineF
 	std::sort(res.begin(), res.end(), [](const PathExtrema& a, const PathExtrema& b) { return a.point.y() == b.point.y() ? a.point.x() < b.point.x() : a.point.y() < b.point.y(); });
 	auto last = std::unique(res.begin(), res.end(), [](const PathExtrema& a, const PathExtrema& b) { return a.point.x() == b.point.x() && a.point.y() == b.point.y(); });
 	res.erase(last, res.end());
+    if (!key.isEmpty()) {
+        const auto bytes = 128 + key.size() + res.size() * sizeof(PathExtrema);
+        if (bytes <= size_t(cutGeometryMemo->intersections.maxCost()))
+            cutGeometryMemo->intersections.insert(key, new std::vector<PathExtrema>(res), int(bytes));
+    }
 	return res;
 
 }

@@ -414,7 +414,7 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             const bool stemFoot = request.policy == "stem-foot";
             const bool grow = descender || stem, lowerFlank = stem || stemFoot;
             const double width = chord(current).length();
-            const double minTravel = descender ? 1.1 : stemFoot ? 1.0 : 2.0;
+            const double minTravel = stemFoot ? 1.0 : 2.0;
             std::optional<ToothClusterBody> cluster;
             const auto id = templateId(owner);
             const auto declaration = program.forms.constFind(id);
@@ -446,16 +446,15 @@ void PageAnalysisResult::refineBodyOwnership(int line, int wordIndex, int subInd
             const auto bounds = body.boundingRect();
             const auto contourCount = toSubpaths(body).size();
             const std::array<std::pair<bool, double>, 3> walks{{
-                {lowerFlank, descender ? 13. : 43.}, {false, 25.}, {true, 43.}}};
+                {lowerFlank, 43.}, {false, 25.}, {true, 43.}}};
             for (int i = 0, count = request.policy == "trim" ? walks.size() : 1; i < count; ++i) {
                 const auto [lower, angle] = walks[i];
                 const auto& start = lower ? current.bottomBaseLine : current.topBaseLine;
-                auto boundary = stem ? uprightStemFoot(outline, current, penWidth) :
+                auto boundary = descender ? descenderEntry(outline, current, penWidth) :
+                    stem ? uprightStemFoot(outline, current, penWidth) :
                     strokeFlankTurn(outline, start, width, grow || !request.incoming ? 1 : -1, grow, angle, minTravel);
                 if (!boundary || (!grow && boundary->referenceWidth > 1.65 * width)) continue;
                 if (lower && !stem) std::swap(boundary->topBaseLine, boundary->bottomBaseLine);
-                const auto shift = chord(*boundary).center() - chord(current).center();
-                if (descender && shift.x() < 1.6 * width) continue;
                 if (cluster) {
                     const auto side = getJoinTime(*boundary, outline.orientation);
                     const auto& tips = cluster->turns;

@@ -247,6 +247,37 @@ static void checkFixedAnchors(const QJsonObject& config) {
                   sub.kashidaPaths.at(0).isEmpty() && sub.kashidaPaths.at(1).isEmpty(),
                   "The open lip lost one of its attachment seams");
     }
+    for (const auto& f : {Fixture{135, 13, 8, 1}, Fixture{267, 15, 5, 2}, Fixture{576, 14, 10, 1}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing fixed hah–waw junction fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file); stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        const int line = f.line - 1, word = f.word - 1, subword = f.subword - 1;
+        check(page.segmentSubword(f.page - 1, line, word, subword, &font, true, &config),
+              "The fixed lower lip and waw junction did not assemble");
+        const auto& item = page.page.lines[line].words[word];
+        const auto& result = item.wordResultInfo.subWords[subword];
+        check(result.templateTrace.value(0).startsWith("Fixed anchors") && result.kashidaPaths.size() == 2 &&
+              result.kashidaPaths.back().isEmpty() && coversOriginalInk(item, result),
+              "The hah–waw seam lost ink or manufactured a connector");
+    }
+    {
+        QFile file("pages/page23.dat");
+        check(file.open(QIODevice::ReadOnly), "Missing fixed hah–kaf junction fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file); stream >> page.page;
+        page.resolveWordBoundaries(23, &font);
+        check(page.segmentSubword(22, 11, 5, 2, &font, true, &config),
+              "The nearly coincident hah and kaf cuts did not assemble");
+        const auto& word = page.page.lines[11].words[5];
+        const auto& sub = word.wordResultInfo.subWords[2];
+        check(sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+              sub.letterDiagnostics.at(2).toObject().value("template") == "kaf-fork-medi" &&
+              sub.kashidaPaths.size() == 4 && sub.kashidaPaths[1].isEmpty() &&
+              !sub.kashidaPaths[2].isEmpty() && coversOriginalInk(word, sub),
+              "Resolving the hah–kaf junction changed the kaf–meem connector");
+    }
     QFile foldedPage("pages/page21.dat");
     check(foldedPage.open(QIODevice::ReadOnly), "Missing folded seen–yeh fixture");
     PageAnalysisResult folded;
@@ -281,20 +312,21 @@ static void checkFixedAnchors(const QJsonObject& config) {
     }
     checkRecoveryPriority(legacy, font);
 
-    // The normal fork cannot share the final kāf's established bowl entry.
+    // The lām–kāf return separates the two stems and keeps the bowl.
     QFile pageFile("pages/page42.dat");
     check(pageFile.open(QIODevice::ReadOnly), "Missing terminal-bowl ownership fixture");
     PageAnalysisResult analysis;
     QDataStream pageStream(&pageFile); pageStream >> analysis.page;
     analysis.resolveWordBoundaries(42, &font);
-    const auto segment = [&](const QJsonObject& forms) {
-        return analysis.segmentSubword(41, 0, 1, 0, &font, true, &forms);
-    };
-    check(segment(legacy), "Missing original terminal-bowl partition");
-    auto& sub = analysis.page.lines[0].words[1].wordResultInfo.subWords[0];
-    const auto expected = sub;
-    check(segment(config) && sameAnchoredPartition(sub, expected),
-          "The fixed fork displaced a recognized terminal bowl");
+    const auto& word = analysis.page.lines[0].words[1];
+    const auto& sub = word.wordResultInfo.subWords[0];
+    check(analysis.segmentSubword(41, 0, 1, 0, &font, true, &config),
+          "Lām–kāf return lost its partition");
+    check(sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+          sub.letterDiagnostics.last().toObject().value("template") == "kaf-return-fina",
+          "Lām–kāf did not select the terminal return");
+    check(sub.kashidaPaths.size() == 2 && !sub.kashidaPaths.back().isEmpty() &&
+          coversOriginalInk(word, sub), "Lām–kāf lost its connecting stroke or source ink");
 
     for (const auto& f : {Fixture{36, 14, 10, 1}, Fixture{313, 8, 3, 2}}) {
         QFile file(QString("pages/page%1.dat").arg(f.page));

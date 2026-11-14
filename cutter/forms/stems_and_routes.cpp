@@ -92,6 +92,17 @@ std::optional<Stretching> uprightStemFoot(const SearchContext& context, const St
     return foot;
 }
 
+std::optional<Stretching> descenderEntry(const SearchContext& context, const Stretching& entry, double penWidth) {
+    const QLineF cap(entry.topBaseLine.point, entry.bottomBaseLine.point);
+    const double width = cap.length();
+    if (width < .25 * penWidth || width > 2.7 * penWidth ||
+        std::abs(cap.dy()) < .4 * width || std::abs(cap.dy()) > .91 * width) return {};
+    auto turn = strokeFlankTurn(context, entry.topBaseLine, width, 1, true, 13, 1.1);
+    if (!turn || !cutPrecedes(*turn, entry, context.orientation)) return {};
+    const QLineF section(turn->topBaseLine.point, turn->bottomBaseLine.point);
+    return section.center().x() - cap.center().x() >= 1.6 * width ? turn : std::nullopt;
+}
+
 std::optional<PathExtrema> horizontalOpposite(const SearchContext& context,
                                                      const PathExtrema& anchor, bool left) {
     const double edge = left ? context.bbox.left() - 1 : context.bbox.right() + 1;
