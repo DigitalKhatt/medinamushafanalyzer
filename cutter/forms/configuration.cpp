@@ -854,6 +854,11 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         bodyKeys << "maxShoulderBacktrackWidths";
     if (shape == "layered-head")
         bodyKeys << "neck";
+    if (cuts.contains("sharedExit")) {
+        if (phase != "medial" || shape != "paired-route" || cuts.value("sharedExit") != "receiving-corners")
+            return id + ": sharedExit needs a medial paired route and receiving corners";
+        cutKeys << "sharedExit";
+    }
     if (phase == "final" && (shape == "contour-route" || shape == "open-bowl")) {
         cutKeys << "junction";
         if (cuts.contains("junction")) {

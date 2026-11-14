@@ -47,6 +47,17 @@ bool sharesTightEntry(const AnchoredBody& sending, const AnchoredBody& receiving
                     QLineF(exit.bottomBaseLine.point, entry.bottomBaseLine.point).length()) <= tolerance;
 }
 
+bool sharesCornerExit(const AnchoredBody& sending, const Stretching& entry,
+                      Orientation orientation, double tolerance) {
+    if (!sending.sharesExitAtCorners || !entry.topBaseLine.isSharp || !entry.bottomBaseLine.isSharp) return false;
+    const auto& exit = *sending.exit;
+    if (orderedSections(exit, entry, orientation)) return false;
+    const double topGap = QLineF(exit.topBaseLine.point, entry.topBaseLine.point).length();
+    const double bottomGap = QLineF(exit.bottomBaseLine.point, entry.bottomBaseLine.point).length();
+    return std::min(topGap, bottomGap) <= tolerance &&
+           std::max(topGap, bottomGap) <= sectionLine(exit).length();
+}
+
 bool leavesSendingStroke(const SearchContext& source, const Stretching& exit, double penWidth) {
     const auto side = getJoinTime(exit, source.orientation);
     const int count = baseContourCurves(source.transformedPath).size();
@@ -132,7 +143,8 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         const bool sharesRim = receiving.sharesRimEntry &&
             (!orderedSections(exit, entry, source.orientation) ||
              QLineF(sectionLine(exit).center(), sectionLine(entry).center()).length() <= tightTolerance);
-        if (sharesRim || (receiving.sharesJunctionEntry && !orderedSections(exit, entry, source.orientation)) ||
+        if (sharesRim || sharesCornerExit(sending, entry, source.orientation, tightTolerance) ||
+            (receiving.sharesJunctionEntry && !orderedSections(exit, entry, source.orientation)) ||
             (slot + 1 == bodies.size() &&
                          (sharesFinalFold || sharesTightEntry(sending, receiving, tightTolerance)))) {
             if (!retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &entry, source.orientation))
@@ -272,7 +284,8 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
                     if (!sameSection(exit, *body.entry) &&
                         !orderedSections(exit, *body.entry, source.orientation) &&
                         !sharesIncomingSection(exit, body, source.orientation) && !body.sharesRimEntry &&
-                        !body.sharesJunctionEntry) {
+                        !body.sharesJunctionEntry && !sharesCornerExit(sending, *body.entry, source.orientation,
+                                                                      tightTolerance)) {
                         // An overlapping fork can still fit the terminal
                         // bowl through the existing attachment policy.
                         if (sending.preservesTerminalBody && terminal &&

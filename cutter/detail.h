@@ -1269,6 +1269,7 @@ struct AnchoredBody {
     bool sharesJunctionEntry = false;
     bool keepsEntryJunction = false;
     bool keepsExitHollow = false;
+    bool sharesExitAtCorners = false;
     bool sharesIncoming = false;
     QString tightEntryAfter;
     bool preservesTerminalBody = false;

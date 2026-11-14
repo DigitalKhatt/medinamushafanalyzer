@@ -232,7 +232,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                     if (pieces.size() != 3 || toSubpaths(pieces[1].path).size() - 1 !=
                         form.value("bodyCounters").toInt()) continue;
                 }
-                result.push_back({.formId = id, .entry = entry, .exit = exit, .landmarks = {candidate.anchor}});
+                result.push_back({.formId = id, .entry = entry, .exit = exit, .landmarks = {candidate.anchor},
+                                  .sharesExitAtCorners = cuts.value("sharedExit") == "receiving-corners"});
             }
         }
     } else if (shape == "tooth-cluster") {

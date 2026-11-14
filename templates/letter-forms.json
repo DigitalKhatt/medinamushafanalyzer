@@ -5229,6 +5229,7 @@
     },
     {
       "id": "hah-low-return-medi",
+      "fixedAnchors": true,
       "current": "جحخ",
       "tightJoin": true,
       "body": {
@@ -5280,6 +5281,7 @@
         "counters": 0
       },
       "cuts": {
+        "sharedExit": "receiving-corners",
         "routes": {
           "right": {
             "bottomProbe": "left"

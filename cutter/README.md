@@ -228,7 +228,11 @@ outline and backtracks over compatible bodies. Their entry and exit sections
 stay fixed. Coincident sections share a seam. A template with
 `cuts.tightJoin: "shared-boundary"` can use the sending section when the two
 proposed sections overlap and the shared cut retains the receiving body's
-landmarks and ink. A separate connector must enclose a single stroke. Catalog
+landmarks and ink. A medial contour route can declare
+`cuts.sharedExit: "receiving-corners"` for a tight joint. If its exit and the
+receiving entry overlap and meet at the same flank, assembly can use the
+receiving body's two-corner seam if the sending body keeps its landmarks.
+A separate connector must enclose a single stroke. Catalog
 export also checks that every letter owns source pixels. A rejected partition
 returns control to the same search with the original anchor candidates. If no
 complete partition fits, the existing cutter handles the subword.
