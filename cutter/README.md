@@ -204,6 +204,10 @@ before assembly. A hanging mīm recognizes its own upper entry and exit
 corners and keeps its counter, regardless of the preceding letter. When
 a rim entry meets the sending section at a tight join, assembly can use
 the rim as the shared seam if both bodies retain their landmarks and counters.
+Final nūn identifies the tip, floor and shoulder of the open bowl before
+proposing its entry. During migration, `fixedAnchorsMaxLetters` limits where
+a migrated form can participate. Final nūn starts in two-letter subwords
+while the longer sequences with medial joins are checked.
 Medial sīn and shīn use the first tooth junction for entry and the inward
 hollow beyond the third tooth for exit. Each candidate must retain all
 three tips and both valleys on one counter-free contour. The two

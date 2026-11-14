@@ -6259,6 +6259,8 @@
     },
     {
       "id": "noon-fina",
+      "fixedAnchors": true,
+      "fixedAnchorsMaxLetters": 2,
       "current": "ن",
       "ownsLeftTip": true,
       "tryNext": true,

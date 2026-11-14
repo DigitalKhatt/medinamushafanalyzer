@@ -210,6 +210,8 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
 bool applies(const QJsonObject& form, const QString& letters, int slot) {
     if (!form.value("current").toString().contains(letters[slot]) ||
         !form.value("kashida").toObject().isEmpty() || form.contains("sharedFoldWithFinal")) return false;
+    const auto maxLetters = form.value("fixedAnchorsMaxLetters");
+    if (maxLetters.isDouble() && letters.size() > maxLetters.toInt()) return false;
     const auto following = slot == 0 ? form.value("ligatureWith").toString() : medialFinalLetters(form);
     return following.isEmpty() || hasFollowingLetter(letters, slot, following, slot > 0);
 }

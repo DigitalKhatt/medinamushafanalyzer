@@ -48,6 +48,9 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             if (enabled.isUndefined()) continue;
             if (!enabled.isBool()) return id + ": fixedAnchors must be a boolean";
             if (!enabled.toBool()) continue;
+            const auto maxLetters = declaration.value("fixedAnchorsMaxLetters");
+            if (!maxLetters.isUndefined() && maxLetters.toInt() < 2)
+                return id + ": fixedAnchorsMaxLetters must be an integer of at least two";
             const auto form = bodyConstraintForm(config, declaration);
             const auto body = form.value("body").toObject();
             const auto shape = body.value("shape");
@@ -61,7 +64,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                     form.value("cuts").toObject().value("cluster").toObject().value("exitAtHollow").toBool()) :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn" ||
-                shape == "upright-stem";
+                shape == "upright-stem" || shape == "open-bowl";
             if (!supported)
                 return id + ": this body does not supply fixed anchors for its position";
             for (const auto letter : form.value("current").toString())
@@ -299,6 +302,26 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             if (!cutTailBranches(source, {tail.tip, tail.curveCount, {branch}}, settings, entry)) continue;
             result.push_back({.formId = id, .entry = entry, .landmarks = {tail.tip, branch.corner}});
         }
+    } else if (shape == "open-bowl") {
+        const auto evidence = recognizedSharedShape(source, body);
+        if (!evidence->openBowl || !cutOpenBowl(source, *evidence->openBowl, cuts.value("bowl").toObject()))
+            return result;
+        const auto& bowl = *evidence->openBowl;
+        const auto junction = cuts.value("junction").toObject();
+        auto entry = source.res;
+        if (!junction.isEmpty()) {
+            // The rounded bowl turn and its short corner can occupy nearly
+            // the same spot. Use the full contour inventory to refine the cut.
+            SearchContext outline{.transformedPath = source.transformedPath, .res = entry,
+                                  .subword = source.subword};
+            if (readTerminalOutline(outline) && refineContourJunction(outline, junction) &&
+                retainsOpenBowl(source, bowl, outline.res))
+                entry = outline.res;
+        }
+        if (!matchesBoundaryBody(source, form, entry, false)) return result;
+        QVector<PathExtrema> landmarks{bowl.tip, bowl.floor};
+        if (bowl.crest) landmarks.append(*bowl.crest);
+        result.push_back({.formId = id, .entry = entry, .landmarks = std::move(landmarks)});
     } else if (shape == "bowl-turn") {
         const auto evidence = recognizedSharedShape(source, body);
         if (evidence->bowlTurn && declaredSharedBoundary(source, form) &&
