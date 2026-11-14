@@ -85,7 +85,9 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     source.nextIter = std::next(source.xSorted.begin());
     if (shape == "contour-route") {
         const bool initial = position == 0;
-        if (declaredSharedBoundary(source, form) && matchesBoundaryBody(source, form, source.res, initial)) {
+        if (declaredSharedBoundary(source, form) &&
+            matchesOffset(form.value("chord").toObject(), source.res.bottomBaseLine.point - source.res.topBaseLine.point) &&
+            matchesBoundaryBody(source, form, source.res, initial)) {
             if (form.contains("bodyCounters")) {
                 const auto pieces = cutRegions(source.transformedPath, {}, {source.res}, source.orientation, true);
                 if (pieces.size() != 2 || toSubpaths(pieces[initial ? 0 : 1].path).size() - 1 !=

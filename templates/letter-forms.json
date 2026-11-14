@@ -1344,6 +1344,7 @@
     },
     {
       "id": "kaf-elbow-init",
+      "fixedAnchors": true,
       "current": "ك",
       "chord": {
         "maxDistance": 2.5
