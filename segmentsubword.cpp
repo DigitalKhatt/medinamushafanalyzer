@@ -81,7 +81,14 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         if (previousConfig != sourceConfig) {
             previousConfig = compiledConfig = sourceConfig;
             compileAnchorForms(sourceConfig, anchorForms);
-            const auto finals = finalRetryCandidates(sourceConfig.value("final").toArray(), compiledRetryParents);
+            for (const auto* position : {"initial", "medial", "final"}) {
+                const auto forms = sourceConfig.value(position).toArray();
+                QJsonArray legacyForms;
+                for (const auto& form : forms)
+                    if (!form.toObject().value("fixedAnchorsOnly").toBool()) legacyForms.append(form);
+                if (legacyForms.size() != forms.size()) compiledConfig.insert(position, legacyForms);
+            }
+            const auto finals = finalRetryCandidates(compiledConfig.value("final").toArray(), compiledRetryParents);
             if (!compiledRetryParents.isEmpty()) compiledConfig.insert("final", finals);
         }
         auto anchored = pageIndex >= 0 ? segmentWithAnchors(word, sub, sourceConfig, anchorForms, acceptAnchors) : std::nullopt;

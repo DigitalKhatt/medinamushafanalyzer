@@ -544,6 +544,11 @@ static QString validateToothShape(const QJsonObject& form, const QString& phase)
                 return id + ": cuts.baselineEntry supports turnAngle and minTurnRun";
     }
     QStringList policyKeys{"boundaries", "offsetUnit", "tightJoin", "baselineEntry", "turnBoundaries"};
+    if (cuts.contains("shareLoopNeck")) {
+        if (phase != "medial" || !cuts.value("shareLoopNeck").isBool())
+            return id + ": shareLoopNeck requires a medial tooth";
+        policyKeys << "shareLoopNeck";
+    }
     policyKeys += pair ? QStringList{"leftOffset", "rightOffset", "normalOffsetTolerance"} :
                          QStringList{"flankMode", "flankOffset", "maxSectionWidth"};
     for (auto key = cuts.begin(); key != cuts.end(); ++key)
@@ -728,6 +733,14 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         if (phase != "initial" || shape != "contour-route" || !cuts.value("shareTerminalReturn").isBool())
             return id + ": shareTerminalReturn needs an initial contour route";
         cutKeys << "shareTerminalReturn";
+    }
+    if (cuts.contains("useOwnedCrest")) {
+        const auto ownedCrest = cuts.value("useOwnedCrest");
+        if (phase != "initial" || shape != "contour-route" ||
+            (!ownedCrest.isBool() && ownedCrest.toString().isEmpty()) ||
+            body.value("features").toObject().isEmpty())
+            return id + ": useOwnedCrest needs a measured initial contour body and a boolean or final letters";
+        cutKeys << "useOwnedCrest";
     }
     if (const auto value = cuts.value("restoreStackedExit"); !value.isUndefined()) {
         const auto restore = value.toObject();
@@ -1265,7 +1278,8 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": invalid spacing limits for the last tooth";
         for (auto it = policy.begin(); it != policy.end(); ++it) {
             const bool flag = QStringList{"entryAtJunction", "entryCornerOptional", "allowUnshiftedEntry",
-                "exitBendFirst", "terminalBowl", "roundedEntry", "exitAtHollow"}.contains(it.key());
+                "exitBendFirst", "terminalBowl", "roundedEntry", "exitAtHollow", "exitAtFlank",
+                "shareLoopNeck"}.contains(it.key());
             const bool distance = QStringList{"rightOffset", "exitOffset", "retryBendOffset", "exitDrop"}.contains(it.key());
             if (!(flag ? it.value().isBool() : distance ? it.value().isDouble() &&
                   std::isfinite(it.value().toDouble()) && it.value().toDouble() >= 0 :
@@ -1276,6 +1290,10 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": this cut setting requires a tooth cluster with an exit";
         if (phase == "initial" && policy.contains("entryAtJunction"))
             return id + ": entryAtJunction requires a tooth cluster with an entry";
+        if (policy.contains("exitAtFlank") && (phase != "medial" || !policy.value("exitAtHollow").toBool()))
+            return id + ": exitAtFlank requires a medial cluster with a preferred hollow";
+        if (policy.contains("shareLoopNeck") && (phase != "medial" || !policy.value("entryAtJunction").toBool()))
+            return id + ": shareLoopNeck requires a medial cluster entry junction";
         if ((policy.contains("terminalBowl") && phase != "final") ||
             (policy.contains("roundedEntry") && !policy.value("terminalBowl").toBool()))
             return id + ": terminalBowl and roundedEntry require a final tooth cluster";
@@ -1575,6 +1593,9 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
     }
     if (config.contains("retryUnresolvedForms") && !config.value("retryUnresolvedForms").isBool())
         return "retryUnresolvedForms must be true or false";
+    if (config.contains("fixedAnchorAlternatesEnding") &&
+        config.value("fixedAnchorAlternatesEnding").toString().isEmpty())
+        return "fixedAnchorAlternatesEnding must list final letters";
     if (config.contains("unresolvedInitialShaft")) {
         const auto shaft = config.value("unresolvedInitialShaft").toObject();
         if (shaft.value("letters").toString().isEmpty()) return "The initial shaft needs a letter selector";

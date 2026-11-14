@@ -83,11 +83,12 @@ static void checkRecoveryPriority(const QJsonObject& config, AFont& font) {
 static void checkFixedAnchors(const QJsonObject& config) {
     auto legacy = config;
     for (const auto* phase : {"initial", "medial", "final"}) {
-        auto forms = config.value(phase).toArray();
-        for (int i = 0; i < forms.size(); ++i) {
-            auto form = forms.at(i).toObject();
+        QJsonArray forms;
+        for (const auto& value : config.value(phase).toArray()) {
+            auto form = value.toObject();
+            if (form.value("fixedAnchorsOnly").toBool()) continue;
             form.remove("fixedAnchors");
-            forms[i] = form;
+            forms.append(form);
         }
         legacy.insert(phase, forms);
     }
@@ -227,6 +228,56 @@ static void checkFixedAnchors(const QJsonObject& config) {
         else
             check(sub.letterDiagnostics.first().toObject().value("template") == "seen-init",
                   "Fixed anchors lost the recognized initial seen");
+    }
+    for (const auto& f : {Fixture{3, 9, 2, 2}, Fixture{36, 11, 11, 2}, Fixture{486, 11, 11, 2},
+                          Fixture{533, 3, 2, 1}, Fixture{603, 9, 8, 1}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing fixed-anchor dal migration fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file); stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        check(page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &config),
+              "Fixed anchors lost a dal-ending subword");
+        const auto& sub = page.page.lines[f.line - 1].words[f.word - 1].wordResultInfo.subWords[f.subword - 1];
+        check(sub.templateTrace.value(0).startsWith("Fixed anchors") &&
+              sub.letterDiagnostics.last().toObject().value("template") == "dal-fina",
+              "A dal-ending fixture fell back to the original cutter");
+        if (f.page == 486)
+            check(sub.letterDiagnostics.at(1).toObject().value("template") == "hah-raised-open-lip-medi" &&
+                  sub.kashidaPaths.at(0).isEmpty() && sub.kashidaPaths.at(1).isEmpty(),
+                  "The open lip lost one of its attachment seams");
+    }
+    QFile foldedPage("pages/page21.dat");
+    check(foldedPage.open(QIODevice::ReadOnly), "Missing folded seen–yeh fixture");
+    PageAnalysisResult folded;
+    QDataStream foldedStream(&foldedPage); foldedStream >> folded.page;
+    folded.resolveWordBoundaries(21, &font);
+    auto foldedAlternates = config;
+    foldedAlternates.insert("fixedAnchorAlternatesEnding", QStringLiteral("ي"));
+    check(folded.segmentSubword(20, 3, 4, 1, &font, true, &foldedAlternates),
+          "The folded seen–yeh fixture lost its partition");
+    const auto& foldedWord = folded.page.lines[3].words[4].wordResultInfo.subWords[1];
+    check(foldedWord.kashidaPaths.back().isEmpty() &&
+          foldedWord.letterDiagnostics.at(2).toObject().value("template") == "seen-folded-medi",
+          "Fixed-anchor alternatives separated a folded seen–yeh join");
+    for (const auto& f : {Fixture{5, 14, 8, 2}, Fixture{21, 3, 5, 2}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing lam–yeh fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file); stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        const auto segment = [&](const QJsonObject& forms) {
+            return page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &forms);
+        };
+        const auto& sub = page.page.lines[f.line - 1].words[f.word - 1].wordResultInfo.subWords[f.subword - 1];
+        check(segment(legacy), "Missing established lam–yeh partition");
+        const auto expected = sub;
+        check(expected.kashidaPaths.front().isEmpty() == (f.page == 5),
+              "The lam–yeh fixture no longer exercises the expected join");
+        auto alternates = config;
+        alternates.insert("fixedAnchorAlternatesEnding", QStringLiteral("يئى"));
+        check(segment(alternates) && sameAnchoredPartition(sub, expected),
+              "Fixed-anchor alternatives changed lam–yeh stroke ownership");
     }
     checkRecoveryPriority(legacy, font);
 

@@ -140,10 +140,31 @@ bool canUseReceivingEntry(const AnchoredBody& sending, const AnchoredBody& recei
     return retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &*receiving.entry, orientation);
 }
 
+bool sharesLoopNeck(const AnchoredBody& sending, const AnchoredBody& receiving,
+                    Orientation orientation, double tightTolerance) {
+    if (sending.counters.size() != 1 || sending.entry ||
+        (!receiving.sharesLoopNeck && receiving.sharedEntryFrom != sending.formId) ||
+        leavesEntryClearance(*sending.exit, *receiving.entry, orientation, tightTolerance)) return false;
+    const auto exit = sectionLine(*sending.exit), entry = sectionLine(*receiving.entry);
+    const double width = exit.length();
+    if (width <= 0 || QLineF(exit.p1(), entry.p1()).length() > 1.5 * width ||
+        QLineF(exit.p2(), entry.p2()).length() > 1.5 * width ||
+        QPointF::dotProduct(exit.p2() - exit.p1(), entry.p2() - entry.p1()) <= 0) return false;
+    return retainsLandmarks(sending, nullptr, &*receiving.entry, orientation);
+}
+
+bool separatesFoldedTooth(SearchContext& source, const AnchoredBody& sending,
+                          const AnchoredBody& receiving) {
+    if (!sending.toothExitFlank || sameSection(*sending.exit, *receiving.entry)) return false;
+    const auto& [tip, increasingTime] = *sending.toothExitFlank;
+    return seenTipMeetsFold(source, tip, increasingTime, *receiving.entry);
+}
+
 
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
         const SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
-        const std::vector<bool>& requiredConnectors, double tightTolerance, double penWidth) {
+        const std::vector<bool>& requiredConnectors, double tightTolerance, double penWidth,
+        bool allowAlternateAnchors) {
     Subword trial{};
     trial.text = sub.text;
     trial.paths = sub.paths;
@@ -168,6 +189,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
              QLineF(sectionLine(exit).center(), sectionLine(entry).center()).length() <= tightTolerance);
         if (sharesRim || sharesCornerExit(sending, entry, source.orientation, tightTolerance) ||
             canUseReceivingEntry(sending, receiving, source.orientation) ||
+            (allowAlternateAnchors && sharesLoopNeck(sending, receiving, source.orientation, tightTolerance)) ||
             (receiving.sharesJunctionEntry && !orderedSections(exit, entry, source.orientation)) ||
             (slot + 1 == bodies.size() &&
                          (sharesFinalFold || sharesTightEntry(sending, receiving, tightTolerance)))) {
@@ -298,17 +320,22 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
         }
         return saved->second && sameSection(*saved->second, *receiving.entry);
     };
-    const auto search = [&](auto&& self, size_t slot) -> std::optional<Subword> {
+    const auto search = [&](auto&& self, size_t slot, bool allowAlternates) -> std::optional<Subword> {
         if (slot == forms.size()) {
             auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(),
-                                      requiredConnectors, tightTolerance, penWidth);
+                                      requiredConnectors, tightTolerance, penWidth, allowAlternates);
             if (partition && accept && !accept(*partition)) return {};
             return partition;
         }
         for (const auto& form : *forms[slot]) {
             if (!applies(form, letters, int(slot))) continue;
             const bool terminal = slot + 1 == forms.size();
+            const bool checkFoldedTooth = slot && terminal &&
+                form.value("_foldedToothPreceders").toString().contains(letters.at(int(slot - 1)));
+            const auto ownedCrestEndings = form.value("cuts").toObject().value("useOwnedCrest").toString();
             for (const auto& body : bodiesFor(form, slot)) {
+                if (body.alternateAnchor && (!allowAlternates ||
+                    (!ownedCrestEndings.isEmpty() && !ownedCrestEndings.contains(letters.back())))) continue;
                 if (slot) {
                     const auto& sending = *selected.back();
                     const auto& exit = *sending.exit;
@@ -316,9 +343,11 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
                         (!body.requiresSharedEntry || !sameSection(exit, *body.entry))) continue;
                     if (body.requiresSharedSource && !sending.requiresSharedExit) continue;
                     if (body.stemFootCandidate && !sending.sharesIncoming) continue;
+                    if (checkFoldedTooth && separatesFoldedTooth(source, sending, body)) continue;
                     if (!sameSection(exit, *body.entry) &&
                         !orderedSections(exit, *body.entry, source.orientation) &&
                         !canUseReceivingEntry(sending, body, source.orientation) &&
+                        !(allowAlternates && sharesLoopNeck(sending, body, source.orientation, tightTolerance)) &&
                         !sharesIncomingSection(exit, body, source.orientation) && !body.sharesRimEntry &&
                         !body.sharesJunctionEntry && !sharesCornerExit(sending, *body.entry, source.orientation,
                                                                       tightTolerance)) {
@@ -331,13 +360,16 @@ std::optional<Subword> searchSequence(const Word& word, const Subword& sub, cons
                     }
                 }
                 selected.push_back(&body);
-                if (auto complete = self(self, slot + 1)) return complete;
+                if (auto complete = self(self, slot + 1, allowAlternates)) return complete;
                 selected.pop_back();
             }
         }
         return {};
     };
-    return search(search, 0);
+    auto primary = search(search, 0, false);
+    if (primary || !config.value("fixedAnchorAlternatesEnding").toString().contains(letters.back()))
+        return primary;
+    return search(search, 0, true);
 }
 
 } // namespace

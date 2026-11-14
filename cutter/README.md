@@ -223,6 +223,18 @@ section along that flank, up to the fork. The route can also recognize
 an earlier concave shoulder on a stacked outline. Each candidate keeps
 its own fork and free tip. The policy applies at any subword length and
 both searches use the same cuts for the final letter.
+For endings listed in `fixedAnchorAlternatesEnding`, the search can reuse
+the same body candidates with alternative sections when its preferred
+partitions fail. A medial tooth or tooth cluster can use its own entry as a
+shared seam with a nearby initial loop neck if the loop retains its counter.
+When a folded tooth reaches the next letter's cut through one continuous
+turn, the two bodies must use the same seam.
+`exitAtFlank` allows a medial sīn or shīn to use the descending flank of
+its third tooth when there is no facing hollow. `useOwnedCrest` locates a
+crest inside the measured initial body when a neighboring shape extends
+farther up or right. It can be limited to a list of final letters.
+`lam-normal-init` uses that alternative for dāl and dhāl, preserving the
+established lām–yeh fold. A `fixedAnchorsOnly` form participates in anchor search.
 An initial stacked tooth recognizes the descending arm above a horizontal
 attachment. The stacked medial ḥāʾ variants share the attachment's corner and
 flank definition and keep their own contour routes around the mouth. A

@@ -1279,6 +1279,7 @@ struct AnchoredBody {
     bool retainsCounterRim = false;
     bool sharesRimEntry = false;
     bool sharesJunctionEntry = false;
+    bool sharesLoopNeck = false;
     bool keepsEntryJunction = false;
     bool keepsExitHollow = false;
     bool sharesExitAtCorners = false;
@@ -1287,12 +1288,15 @@ struct AnchoredBody {
     bool requiresSharedEntry = false;
     bool requiresSharedExit = false;
     bool requiresSharedSource = false;
+    bool alternateAnchor = false;
     QString tightEntryAfter;
+    QString sharedEntryFrom;
     bool preservesTerminalBody = false;
     bool stemFootCandidate = false;
     bool footExitCandidate = false;
     std::optional<PathExtrema> entryLimit;
     QJsonObject sharedFold;
+    std::optional<std::pair<PathExtrema, bool>> toothExitFlank;
 };
 
 using AnchorForms = std::array<QHash<QChar, std::vector<QJsonObject>>, 3>;

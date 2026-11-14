@@ -1,6 +1,7 @@
 {
   "version": 2,
   "strokeWidth": 1,
+  "fixedAnchorAlternatesEnding": "دذ",
   "joinDefaults": {
     "lookback": 4,
     "previousOffset": 1,
@@ -578,6 +579,7 @@
         }
       },
       "cuts": {
+        "useOwnedCrest": "دذ",
         "beforeFinal": {
           "letters": "اآأإٱ",
           "boundaries": {
@@ -750,6 +752,7 @@
         "counters": 0
       },
       "cuts": {
+        "useOwnedCrest": true,
         "route": {
           "bottomProbe": "corner",
           "oppositeCorner": {
@@ -2871,6 +2874,8 @@
       "cuts": {
         "cluster": {
           "entryAtJunction": true,
+          "exitAtFlank": true,
+          "shareLoopNeck": true,
           "retryBendOffset": 0.5,
           "rightOffset": 0.5,
           "maxExitBendDistance": 2,
@@ -3127,6 +3132,7 @@
         "allowFlatBend": true
       },
       "cuts": {
+        "shareLoopNeck": true,
         "turnBoundaries": {
           "left": "trim",
           "right": "trim"
@@ -4114,6 +4120,80 @@
       }
     },
     {
+      "id": "hah-raised-open-lip-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsOnly": true,
+      "fixedAnchorsEnding": "دذ",
+      "current": "جحخ",
+      "onUnresolved": true,
+      "body": {
+        "shape": "paired-route",
+        "counters": 0,
+        "routes": {
+          "anchor": {
+            "xExtremum": true,
+            "flanks": [
+              {
+                "maxX": 0,
+                "minY": 0.65
+              },
+              {
+                "maxX": 0,
+                "maxY": 0
+              }
+            ]
+          },
+          "right": {
+            "anchor": {
+              "sharp": true,
+              "xExtremum": true,
+              "offset": {
+                "minX": -8,
+                "maxX": -2,
+                "minY": -4,
+                "maxY": -0.7
+              },
+              "flanks": {
+                "maxX": 0
+              }
+            },
+            "topAtAnchor": true
+          },
+          "left": {
+            "anchor": {
+              "sharp": true,
+              "xExtremum": true,
+              "offset": {
+                "minX": -9,
+                "maxX": -3,
+                "minY": 0.2,
+                "maxY": 3
+              },
+              "flanks": {
+                "minX": 0
+              }
+            },
+            "topAtAnchor": true
+          }
+        }
+      },
+      "cuts": {
+        "routes": {
+          "right": {
+            "bottomProbe": "normal"
+          },
+          "left": {
+            "bottomProbe": "normal",
+            "anchorSide": "bottom"
+          }
+        },
+        "boundaries": {
+          "left": "route-left",
+          "right": "route-right"
+        }
+      }
+    },
+    {
       "id": "hah-returning-lips-medi",
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
@@ -4342,6 +4422,8 @@
         },
         "cluster": {
           "entryAtJunction": true,
+          "exitAtFlank": true,
+          "shareLoopNeck": true,
           "maxExitBendDistance": 2,
           "exitBendFirst": true,
           "exitAtHollow": true,

@@ -149,6 +149,7 @@ bool seenTipMeetsFold(SearchContext& context, const PathExtrema& tip, bool incre
         inner->point.y() >= outer->point.y() ||
         !interiorChord(context.transformedPath, *outer, *inner)) return false;
     auto current = context.timeSorted.find(tip);
+    if (current == context.timeSorted.end()) return false;
     while (current != outer) {
         const auto next = increasingTime ? context.prev(current) : context.next(current);
         if (next->point.x() >= current->point.x() || next->point.y() <= current->point.y()) return false;
@@ -383,7 +384,16 @@ std::optional<std::pair<Stretching, Stretching>> medialClusterAnchors(SearchCont
     if (!followsUpperFlank(context, cluster)) return {};
     const auto entry = clusterEntryAtJunction(context, cluster, penWidth);
     if (!entry) return {};
-    const auto exit = clusterExitAtHollow(context, cluster, penWidth, 2 * std::max(penWidth, entry->referenceWidth), cuts);
+    auto exit = clusterExitAtHollow(context, cluster, penWidth, 2 * std::max(penWidth, entry->referenceWidth), cuts);
+    if (!exit && cuts.value("exitAtFlank").toBool()) {
+        // A shallow lower contour may have no hollow facing the last
+        // tooth. Project from that tooth's descending upper flank.
+        const auto policy = mergeShapeSettings(settings, cuts);
+        Stretching unusedEntry{}, flank{};
+        if (cutToothClusters(context, {cluster}, policy, context.bbox.left(), context.bbox.right() + 1e-6,
+                             &unusedEntry, &flank) &&
+            keepsClusterAtExit(cluster, flank, context.orientation)) exit = flank;
+    }
     if (!exit || !cutPrecedes(*entry, *exit, context.orientation)) return {};
     const auto sections = cutRegions(context.transformedPath, {}, {*entry, *exit}, context.orientation, true);
     if (sections.size() != 3 || toSubpaths(sections[1].path).size() != 1) return {};
