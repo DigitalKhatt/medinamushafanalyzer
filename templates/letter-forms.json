@@ -3,6 +3,27 @@
   "strokeWidth": 1,
   "fixedAnchorExpansion": {
     "forms": {
+      "seen-init": {
+        "fixedAnchorsEnding": null
+      },
+      "seen-fina": {
+        "fixedAnchors": true
+      },
+      "seen-bowl-entry-fina": {
+        "fixedAnchors": true
+      },
+      "sad-tah-fina": {
+        "fixedAnchors": true
+      },
+      "sad-lower-rim-fina": {
+        "fixedAnchors": true
+      },
+      "sad-diagonal-fina": {
+        "fixedAnchors": true
+      },
+      "tah-diagonal-fina": {
+        "fixedAnchors": true
+      },
       "ain-neck-init": {
         "fixedAnchorsEnding": null
       },
@@ -35,9 +56,6 @@
       },
       "beh-under-blade-init": {
         "fixedAnchorsEnding": null
-      },
-      "feh-fina": {
-        "fixedAnchorsRetry": true
       },
       "hah-compact-medi": {
         "fixedAnchorsEnding": null
@@ -106,7 +124,7 @@
         "fixedAnchors": true
       },
       "kaf-descending-hook-init": {
-        "fixedAnchorsEnding": "وؤماآأإٱنعغبتث"
+        "fixedAnchorsEnding": "وؤماآأإٱنعغبتثهة"
       },
       "kaf-descending-blade-medi": {
         "fixedAnchorsBeforeFinal": "وؤم"
@@ -221,8 +239,20 @@
           "fixedAnchors": true
         },
         "kaf-descending-blade-medi": {
-          "fixedAnchorsEnding": "دذاآأإٱبتثهم",
-          "fixedAnchorsBeforeFinal": "وؤمة"
+          "fixedAnchorsEnding": "دذاآأإٱبتثهمرزن",
+          "fixedAnchorsBeforeFinal": "وؤمةن"
+        },
+        "kaf-descending-heel-init": {
+          "fixedAnchors": true
+        },
+        "beh-slender-foot-init": {
+          "fixedAnchors": true
+        },
+        "lam-inward-foot-init": {
+          "fixedAnchors": true
+        },
+        "reh-rounded-return-fina": {
+          "fixedAnchors": true
         },
         "heh-paired-rim-init": {
           "fixedAnchors": true
@@ -239,14 +269,17 @@
         "lam-bowl-fina": {
           "fixedAnchors": true
         },
+        "lam-stem-fork-fina": {
+          "fixedAnchors": true
+        },
         "lam-turning-flanks-medi": {
           "fixedAnchorsEnding": "دذاآأإٱوؤمكهة"
         },
         "kaf-bent-neck-medi": {
-          "fixedAnchorsEnding": "دذهوؤ"
+          "fixedAnchorsEnding": "دذهوؤن"
         },
         "kaf-descending-hook-init": {
-          "fixedAnchorsEnding": "وؤيئى"
+          "fixedAnchorsEnding": "وؤيئىرز"
         },
         "hah-recurved-lip-init": {
           "fixedAnchorsEnding": "دذوؤ"
@@ -614,6 +647,8 @@
         }
       },
       "cuts": {
+        "minimumExitAtBend": true,
+        "minimumExitBefore": "رز",
         "minConnectorWidths": 2,
         "cluster": {
           "retryBendOffset": 0.5,
@@ -1049,6 +1084,8 @@
         }
       },
       "cuts": {
+        "minimumExitAtFlank": true,
+        "minimumExitBefore": "سش",
         "flankExitAngle": 20,
         "route": {
           "bottomProbe": "down"
@@ -1835,6 +1872,10 @@
         "counters": 1
       },
       "cuts": {
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 4
+        },
         "loop": {
           "sideOffset": 0.3,
           "normalCut": true
@@ -3125,6 +3166,8 @@
         }
       },
       "cuts": {
+        "minimumExitBefore": "طظ",
+        "minimumExitWalk": 1,
         "cluster": {
           "entryAtJunction": true,
           "exitAtFlank": true,
@@ -3385,6 +3428,8 @@
         "allowFlatBend": true
       },
       "cuts": {
+        "minimumEntryWalk": 0.45,
+        "minimumEntryAfterForm": "hah-stacked-medi",
         "shareLoopNeck": true,
         "turnBoundaries": {
           "left": "trim",
@@ -3862,6 +3907,8 @@
         "counters": 0
       },
       "cuts": {
+        "minimumExitBefore": "ن",
+        "minimumExitWalk": 0.5,
         "routes": {
           "right": {
             "bottomProbe": "down",
@@ -4025,6 +4072,8 @@
         }
       },
       "cuts": {
+        "minimumExitBefore": "ل",
+        "minimumExitWalk": 0.5,
         "inherit": "hah-stacked-medi",
         "routes": {
           "right": {
@@ -4209,6 +4258,85 @@
         "boundaries": {
           "left": "route-left",
           "right": "route-right"
+        }
+      }
+    },
+    {
+      "id": "hah-joining-lip-medi",
+      "fixedAnchors": true,
+      "fixedAnchorsOnly": true,
+      "current": "جحخ",
+      "ligatureAfter": "ف",
+      "body": {
+        "inherit": "hah-open-mouth-medi",
+        "routes": {
+          "anchor": {
+            "sharp": true,
+            "xExtremum": true,
+            "flanks": [
+              {
+                "maxX": -2,
+                "maxY": -0.5
+              },
+              {
+                "maxX": -2,
+                "minY": 0.5
+              }
+            ]
+          },
+          "right": {
+            "anchor": {
+              "sharp": true,
+              "offset": {
+                "minX": -3,
+                "maxX": 0,
+                "minY": -3.5,
+                "maxY": -1
+              },
+              "flanks": {
+                "maxX": 0
+              }
+            },
+            "top": [
+              "left"
+            ]
+          },
+          "left": {
+            "top": [
+              {
+                "direction": "left",
+                "minY": 0.5
+              },
+              {
+                "direction": "left",
+                "maxY": 0,
+                "end": {
+                  "sharp": true
+                }
+              }
+            ],
+            "topUseStepEnd": true
+          }
+        }
+      },
+      "cuts": {
+        "inherit": "hah-open-mouth-medi",
+        "minimumEntryWalk": 1.5,
+        "routes": {
+          "right": {
+            "bottomProbe": "normal"
+          },
+          "left": {
+            "bottomProbe": "corner",
+            "oppositeCorner": {
+              "minX": -0.65,
+              "maxX": 0.15,
+              "minY": 0.45,
+              "maxY": 1.65,
+              "maxDistance": 1.75,
+              "yExtremum": true
+            }
+          }
         }
       }
     },
@@ -4642,6 +4770,7 @@
         "counters": 0
       },
       "cuts": {
+        "acceptCounterRim": true,
         "shareOverlappingEntryAfter": ["hah-open-init", "hah-stacked-medi"],
         "turnBoundaries": {
           "right": "descender"
@@ -4679,6 +4808,8 @@
         }
       },
       "cuts": {
+        "minimumExitBefore": "طظ",
+        "minimumExitWalk": 1,
         "turnBoundaries": {
           "left": "trim"
         },
@@ -6525,6 +6656,7 @@
         }
       },
       "cuts": {
+        "minimumEntryAtCounter": true,
         "counter": {
           "entryCorner": {
             "strokeOffsetX": 0.5,
@@ -6535,21 +6667,6 @@
         "boundaries": {
           "right": "counter-neck",
           "left": "free"
-        }
-      },
-      "finalRetry": {
-        "terminalAttachment": true,
-        "body": {
-          "inherit": "feh-fina"
-        },
-        "cuts": {
-          "inherit": "feh-fina",
-          "counter": {
-            "normalCut": true,
-            "entryCorner": {
-              "strokeOffsetX": 0
-            }
-          }
         }
       }
     },
@@ -6752,7 +6869,6 @@
     {
       "id": "dal-fina",
       "fixedAnchors": true,
-      "fixedAnchorsTatweel": true,
       "pairedOnly": true,
       "tightJoin": true,
       "current": "دذ",
@@ -6812,41 +6928,8 @@
       "cuts": {
         "cluster": {
           "entryAtJunction": true,
-          "rightOffset": 0.35,
           "entryCornerOptional": true,
           "terminalBowl": true
-        },
-        "boundaries": {
-          "right": "tooth-entry",
-          "left": "free"
-        }
-      }
-    },
-    {
-      "id": "seen-rounded-entry-fina",
-      "tryNext": true,
-      "current": "سش",
-      "tightJoin": true,
-      "returningStroke": true,
-      "terminalAttachment": true,
-      "retainBodyFeatures": true,
-      "onFinalRetry": true,
-      "body": {
-        "shape": "tooth-cluster",
-        "cluster": {
-          "minToothRise": 0.18,
-          "minPitch": 0.32,
-          "maxPitch": 8,
-          "maxTipHeightSpreadRatio": 2
-        }
-      },
-      "cuts": {
-        "cluster": {
-          "entryAtJunction": true,
-          "rightOffset": 0.35,
-          "entryCornerOptional": true,
-          "terminalBowl": true,
-          "roundedEntry": true
         },
         "boundaries": {
           "right": "tooth-entry",
@@ -7152,6 +7235,7 @@
         }
       },
       "cuts": {
+        "acceptCounterRim": true,
         "precedingTooth": {
           "probeEntry": true
         },
@@ -7180,6 +7264,7 @@
         }
       },
       "cuts": {
+        "acceptCounterRim": true,
         "boundaries": {
           "right": "fork-normal",
           "left": "free"
@@ -7793,6 +7878,7 @@
         "counters": 1
       },
       "cuts": {
+        "fixEntryJunction": true,
         "counter": {
           "entryCorner": {
             "normalCut": true

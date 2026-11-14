@@ -544,6 +544,16 @@ static QString validateToothShape(const QJsonObject& form, const QString& phase)
                 return id + ": cuts.baselineEntry supports turnAngle and minTurnRun";
     }
     QStringList policyKeys{"boundaries", "offsetUnit", "tightJoin", "baselineEntry", "turnBoundaries"};
+    if (cuts.contains("minimumEntryWalk")) {
+        if (!positive(cuts.value("minimumEntryWalk")))
+            return id + ": minimumEntryWalk needs a positive distance";
+        policyKeys << "minimumEntryWalk";
+    }
+    if (cuts.contains("minimumEntryAfterForm")) {
+        if (!cuts.contains("minimumEntryWalk") || cuts.value("minimumEntryAfterForm").toString().isEmpty())
+            return id + ": minimumEntryAfterForm needs an entry walk and a preceding body form";
+        policyKeys << "minimumEntryAfterForm";
+    }
     if (cuts.contains("shareLoopNeck")) {
         if (phase != "medial" || !cuts.value("shareLoopNeck").isBool())
             return id + ": shareLoopNeck requires a medial tooth";
@@ -901,10 +911,10 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     if (const auto value = cuts.value("sharedExitAtAttachment"); !value.isUndefined()) {
         const auto attachment = value.toObject();
         const auto partner = namedLetterForm(config, attachment.value("template").toString());
-        if (phase != "initial" || shape != "contour-route" || attachment.size() != 2 ||
+        if (phase != "initial" || (shape != "contour-route" && shape != "counter-loop") || attachment.size() != 2 ||
             !partner.value("upperAttachment").isObject() ||
             !positive(attachment.value("maxDistanceWidths")))
-            return id + ": sharedExitAtAttachment needs an initial route, upper attachment and positive distance";
+            return id + ": sharedExitAtAttachment needs an initial route or loop, upper attachment and positive distance";
         cutKeys << "sharedExitAtAttachment";
     }
     for (const auto& [field, expectedShape] : {std::pair{"minimumEntryWidths", "inclined-blade"},
@@ -999,6 +1009,49 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         if (phase != "final" || !form.value("sharedBoundary").toBool() || !sharedEntry.isBool())
             return id + ": shareEntryWhenUnresolved requires a boolean and a final shared boundary";
         cutKeys << "shareEntryWhenUnresolved";
+    }
+    if (cuts.contains("minimumEntryWalk")) {
+        if (phase != "medial" || shape != "paired-route" || !positive(cuts.value("minimumEntryWalk")))
+            return id + ": minimumEntryWalk needs a positive walk on an open head";
+        cutKeys << "minimumEntryWalk";
+    }
+    if (form.contains("ligatureAfter") &&
+        (phase != "medial" || form.value("ligatureAfter").toString().isEmpty()))
+        return id + ": ligatureAfter needs preceding letters on a medial form";
+    if (cuts.contains("minimumExitWalk")) {
+        if (phase != "medial" || (shape != "paired-route" && shape != "tooth-cluster") ||
+            !positive(cuts.value("minimumExitWalk")))
+            return id + ": minimumExitWalk needs a positive walk on a medial contour";
+        cutKeys << "minimumExitWalk";
+    }
+    if (cuts.contains("minimumExitBefore")) {
+        if ((!cuts.contains("minimumExitWalk") && !cuts.value("minimumExitAtFlank").toBool() &&
+                !cuts.value("minimumExitAtBend").toBool()) || cuts.value("minimumExitBefore").toString().isEmpty())
+            return id + ": minimumExitBefore needs an exit limit and following letters";
+        cutKeys << "minimumExitBefore";
+    }
+    if (cuts.contains("minimumExitAtBend")) {
+        if (phase != "initial" || shape != "tooth-cluster" || !cuts.value("minimumExitAtBend").isBool())
+            return id + ": minimumExitAtBend needs an initial tooth cluster";
+        cutKeys << "minimumExitAtBend";
+    }
+    if (cuts.contains("minimumExitAtFlank")) {
+        if (!cutKeys.contains("flankExitAngle") || !cuts.value("minimumExitAtFlank").isBool())
+            return id + ": minimumExitAtFlank needs a flank exit angle";
+        cutKeys << "minimumExitAtFlank";
+    }
+    if (cuts.contains("acceptCounterRim")) {
+        if ((shape != "paired-route" && shape != "terminal-fork" && shape != "stemmed-bowl") ||
+            phase == "initial" || !cuts.value("acceptCounterRim").isBool())
+            return id + ": acceptCounterRim needs a receiving route or stem";
+        cutKeys << "acceptCounterRim";
+    }
+    if (cuts.contains("minimumEntryAtCounter")) {
+        const auto corner = body.value("counter").toObject().value("entryCorner").toObject();
+        if (phase != "final" || shape != "counter-neck" || !cuts.value("minimumEntryAtCounter").isBool() ||
+            corner.value("placement") != "right-corner-pair")
+            return id + ": minimumEntryAtCounter needs a final counter neck with a preferred corner pair";
+        cutKeys << "minimumEntryAtCounter";
     }
     cutKeys << "turnBoundaries";
     for (auto it = cuts.begin(); it != cuts.end(); ++it)
@@ -1333,7 +1386,7 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": invalid spacing limits for the last tooth";
         for (auto it = policy.begin(); it != policy.end(); ++it) {
             const bool flag = QStringList{"entryAtJunction", "entryCornerOptional", "allowUnshiftedEntry",
-                "exitBendFirst", "terminalBowl", "roundedEntry", "exitAtHollow", "exitAtFlank",
+                "exitBendFirst", "terminalBowl", "exitAtHollow", "exitAtFlank",
                 "shareLoopNeck"}.contains(it.key());
             const bool distance = QStringList{"rightOffset", "exitOffset", "retryBendOffset", "exitDrop"}.contains(it.key());
             if (!(flag ? it.value().isBool() : distance ? it.value().isDouble() &&
@@ -1349,10 +1402,11 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": exitAtFlank requires a medial cluster with a preferred hollow";
         if (policy.contains("shareLoopNeck") && (phase != "medial" || !policy.value("entryAtJunction").toBool()))
             return id + ": shareLoopNeck requires a medial cluster entry junction";
-        if ((policy.contains("terminalBowl") && phase != "final") ||
-            (policy.contains("roundedEntry") && !policy.value("terminalBowl").toBool()))
-            return id + ": terminalBowl and roundedEntry require a final tooth cluster";
-        if ((policy.contains("entryCornerOptional") && !policy.contains("rightOffset")) ||
+        if (policy.contains("terminalBowl") && phase != "final")
+            return id + ": terminalBowl requires a final tooth cluster";
+        if (phase == "final" && policy.contains("rightOffset"))
+            return id + ": final tooth clusters use the unshifted entry junction";
+        if ((policy.contains("entryCornerOptional") && phase != "final" && !policy.contains("rightOffset")) ||
             (policy.contains("allowUnshiftedEntry") && (phase != "medial" || policy.value("rightOffset").toDouble() <= 0)))
             return id + ": optional and unshifted entries require a configured rightOffset";
     }

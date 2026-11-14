@@ -298,7 +298,10 @@ int main(int argc, char** argv) {
     PageAnalysisResult forkAnalysis;
     QDataStream forkStream(&forkPage);
     forkStream >> forkAnalysis.page;
-    const auto withoutFork = withForkOffset(QJsonValue());
+    auto withoutFork = withForkOffset(QJsonValue());
+    // This fixture exercises the contour route used by the legacy cutter
+    // when the draft omits the fork measurement.
+    withoutFork.remove("fixedAnchorExpansion");
     check(forkAnalysis.segmentSubword(371, 8, 8, 1, nullptr, true, &withoutFork), "Medial lam fallback became partial");
     const auto& fork = forkAnalysis.page.lines[8].words[8].wordResultInfo.subWords[1];
     check(fork.letterDiagnostics[1].toObject()["template"] == "lam-medi" &&

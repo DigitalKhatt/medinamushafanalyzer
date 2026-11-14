@@ -95,8 +95,9 @@ bool isSeparateFoldedArm(const QPainterPath& body, const QPainterPath& arm, bool
 } // namespace MedinaCutter
 
 // Separate a terminal arm at its root or use its existing detached contour.
-bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
-                                          bool attached) {
+template <typename AssemblePrefix>
+static bool assembleTerminalArm(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
+                                bool attached, AssemblePrefix assemblePrefix) {
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (letters.size() < 3 || sub.paths.empty())
         return false;
@@ -205,16 +206,8 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
         }
         prefixForms.insert("final", rules);
     }
-    bool prefixComplete;
-    if (attached) {
-        prefixForms["reconsiderForms"] =
-            QJsonObject{{"initial", result.text}, {"medial", result.text}, {"final", result.text}};
-        prefixComplete = prefix.segmentSubword(-2, 0, 0, 0, nullptr, true, &prefixForms);
-    } else {
-        OutlineSearchCache outlineCache;
-        prefixComplete = prefix.segmentWithLetterForms(-2, 0, 0, 0, nullptr, prefixForms, outlineCache, true);
-    }
-    if (!prefixComplete || result.baseGlyphs.size() + 1 != size_t(letters.size()))
+    if (!assemblePrefix(prefix, result, prefixForms, prefixForm.value("id")) ||
+        result.baseGlyphs.size() + 1 != size_t(letters.size()))
         return false;
     const auto prefixBody = toPage(result.baseGlyphs.back().path);
     QPainterPathStroker envelope;
@@ -275,7 +268,46 @@ bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInf
     return true;
 }
 
+bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
+                                         bool attached) {
+    return assembleTerminalArm(word, sub, config, attached, [attached](PageAnalysisResult& prefix, auto& result,
+            QJsonObject& forms, const QJsonValue&) {
+        if (attached) {
+            forms["reconsiderForms"] =
+                QJsonObject{{"initial", result.text}, {"medial", result.text}, {"final", result.text}};
+            return prefix.segmentSubword(-2, 0, 0, 0, nullptr, true, &forms);
+        }
+        OutlineSearchCache cache;
+        return prefix.segmentWithLetterForms(-2, 0, 0, 0, nullptr, forms, cache, true);
+    });
+}
+
 namespace MedinaCutter {
+
+bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+    return assembleTerminalArm(word, sub, config, false, [](PageAnalysisResult& prefix, auto& result,
+            QJsonObject& config, const QJsonValue& prefixId) {
+        auto finals = config.value("final").toArray();
+        for (qsizetype i = 0; i < finals.size(); ++i) {
+            auto form = finals.at(i).toObject();
+            if (form.value("id") != prefixId) continue;
+            form.insert("fixedAnchors", true);
+            finals.replace(i, form);
+            break;
+        }
+        config.insert("final", finals);
+        const auto expanded = expandedAnchorConfig(config, true);
+        AnchorForms forms;
+        if (!compileAnchorForms(expanded, forms).isEmpty()) return false;
+        const auto& prefixWord = prefix.page.lines.front().words.front();
+        const std::array priorities{AnchorPriority{expanded, forms,
+            cutGeometryMemo && cutGeometryMemo->verifyContourGeometry}};
+        auto partition = segmentWithAnchors(prefixWord, result, priorities, {});
+        if (!partition) return false;
+        result = std::move(*partition);
+        return true;
+    });
+}
 
 // Isolate an established entry seam, then recognize the exposed letter by its
 // own outline. Accept the reconstruction only if every suffix letter fits.
@@ -396,7 +428,8 @@ bool assembleSplitEntry(const Word& word, WordResultInfo::SubWordInfo& sub,
 // In some overhanging heads the pen lifts between the incoming attachment
 // and the head, even though the transcript remains joined. Recover the
 // attachment from its own contour and the head from the other contour.
-bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJsonObject& config) {
+static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo& result,
+                                   const QJsonObject& config, bool anchored) {
     const auto letters = PageAnalysisResult::bodyLetters(result.text);
     if (letters.size() < 4 || result.paths.empty())
         return false;
@@ -434,10 +467,31 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
     if (!contact.createStroke(world(pieces[0].ink)).intersects(world(pieces[1].ink)))
         return false;
     auto fit = [&](const Component& component, const QString& text, const QJsonObject& forms,
-                   bool penLiftAtEnd = false) {
+                   bool penLiftAtEnd = false, const QPainterPath* head = nullptr) {
         auto analysis = componentPage(shape, component.ink, text);
         auto& localWord = analysis.page.lines.front().words.front();
         auto& local = localWord.wordResultInfo.subWords.front();
+        if (anchored) {
+            const auto expanded = expandedAnchorConfig(forms, true);
+            AnchorForms primary, continuation;
+            if (!compileAnchorForms(forms, primary).isEmpty() ||
+                !compileAnchorForms(expanded, continuation).isEmpty()) return std::move(local);
+            const std::array priorities{AnchorPriority{forms, primary},
+                AnchorPriority{expanded, continuation},
+                AnchorPriority{expanded, continuation, true}};
+            const auto accepts = [&](const WordResultInfo::SubWordInfo& partition) {
+                if (!head) return true;
+                const auto stub = world(partition.baseGlyphs.back().path);
+                const auto box = stub.boundingRect();
+                return toSubpaths(stub).size() == 1 && box.width() > box.height() &&
+                    box.width() <= settings.value("maxEntryToHead").toDouble() * head->boundingRect().width() &&
+                    contact.createStroke(stub).intersects(*head);
+            };
+            if (auto partition = segmentWithAnchors(localWord, local, priorities, accepts,
+                    head ? form.value("id").toString() : QString{}))
+                return std::move(*partition);
+            return std::move(local);
+        }
         analysis.segmentSubword(-2, 0, 0, 0, nullptr, true, &forms);
         if (penLiftAtEnd && local.correct) {
             auto refined = local;
@@ -469,8 +523,11 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
             }
             prefixForms.insert("final", finals);
         }
-        auto prefix = fit(pieces[0], letters.left(prefixSize), prefixForms, separate);
         auto suffix = fit(pieces[1], letters.mid(slot), config);
+        if (!suffix.correct || suffix.baseGlyphs.empty()) continue;
+        const auto head = world(suffix.baseGlyphs.front().path);
+        auto prefix = fit(pieces[0], letters.left(prefixSize), prefixForms, separate,
+                          anchored && !separate ? &head : nullptr);
         if (!suffix.correct ||
             prefix.baseGlyphs.size() != size_t(prefixSize) || suffix.baseGlyphs.size() != size_t(letters.size() - slot) ||
             prefix.joins.size() != size_t(prefixSize - 1) || suffix.joins.size() + 1 != suffix.baseGlyphs.size() ||
@@ -478,7 +535,7 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
             continue;
         if (std::any_of(prefix.letterDiagnostics.constBegin(), prefix.letterDiagnostics.constEnd() - 1,
                         [](const auto& v) { return v.toObject().value("status") != "matched"; })) continue;
-        const auto attachment = world(prefix.baseGlyphs.back().path), head = world(suffix.baseGlyphs.front().path);
+        const auto attachment = world(prefix.baseGlyphs.back().path);
         if (!contact.createStroke(attachment).intersects(head)) continue;
         if (separate) {
             const auto accepts = [](const QJsonObject& rule, const QJsonValue& letter) {
@@ -567,6 +624,14 @@ bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJ
         return false;
     result = std::move(*accepted);
     return true;
+}
+
+bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+    return assembleHeadComponents(word, sub, config, false);
+}
+
+bool assembleDetachedHeadEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
+    return assembleHeadComponents(word, sub, config, true);
 }
 
 } // namespace MedinaCutter

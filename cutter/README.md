@@ -219,10 +219,10 @@ For a stacked join, `cuts.sharedEntryAtAttachment` reuses the upper
 attachment geometry of a medial template. The horizontal cut applies to
 an already shared join when the entry and exit meet at the same corner
 and both bodies retain their landmarks.
-An initial contour route can use `cuts.sharedExitAtAttachment` to propose the
-same horizontal section as its exit. The section must follow the route's
-original exit within `maxDistanceWidths` global stroke widths. Assembly
-requires a receiving body with the same section.
+An initial contour route or counter loop can use `cuts.sharedExitAtAttachment`
+to propose a horizontal exit within `maxDistanceWidths` global stroke widths
+of its own neck. The loop must keep its counter and crest. Assembly accepts
+the attachment when the declared receiving body supplies the same section.
 For a short attachment, the search can use a shared section when the caps
 nearly coincide and the sending form keeps all its landmarks. A short separate
 connector must still fit the configured stroke envelope. An explicit tatweel
@@ -250,9 +250,9 @@ With `cuts.shareOverlappingEntryAfter`, the receiving form can provide
 the shared seam after any of the listed sending forms. The original caps
 must overlap within one entry stroke width, and the shared seam must
 preserve the sending body's landmarks and counters.
-A final form can enable `fixedAnchorsTatweel` so assembly accepts explicit
-tatweel. The corresponding join must retain a separate stroke for the
-catalog to assign to that character.
+The transcript marks each explicit tatweel's join before the search.
+Assembly requires a separate stroke at that join for the catalog to assign
+to the tatweel.
 Final dāl and dhāl recognize the fork at the start of their descending
 contour run. `cuts.route.descendingTurn` uses the same tangent-turn
 projection as final alef. The preferred cut is the normal where the flank
@@ -261,6 +261,37 @@ section along that flank, up to the fork. The route can also recognize
 an earlier concave shoulder on a stacked outline. Each candidate keeps
 its own fork and free tip. The policy applies at any subword length and
 both searches use the same cuts for the final letter.
+
+`lam-stem-fork-fina` finds the notch between the final lām's shaft and
+its bowl. The preferred entry follows the short walk in `cuts.stem`;
+the section through the notch bounds how far assembly can move that entry
+toward the lām body. `lam-bowl-fina` recognizes the stem and bowl directly.
+
+For a final counter neck with `cuts.minimumEntryAtCounter`, the preferred
+section uses the configured corner pair and offset. The limit uses the
+unshifted counter neck. A normal projected from the counter provides that
+section when the neck is rounded and no corner pair exists. Both sections
+must retain the counter.
+
+An initial suspended loop supplies a minimum section under its counter.
+A receiving form that declares `cuts.acceptCounterRim` can use that
+section to bound a shared cut when its entry overlaps the loop's preferred
+exit. Compatible placements that leave a connector take priority at that
+join. `cuts.minimumEntryWalk` and `cuts.minimumExitWalk` bound an inward
+walk in global stroke widths. `cuts.minimumExitBefore` restricts the
+overlap policy to the declared joins. `cuts.minimumEntryAfterForm` restricts
+an entry walk to joins with a named sending form. For an initial tooth,
+`cuts.minimumExitAtFlank` places its bound on its own flank and preserves
+the connector if the following body owns the preferred exit landmark.
+For an initial three-tooth form, `cuts.minimumExitAtBend` takes the bound
+from its own outgoing bend, so a fixed receiving junction can define the
+shared cut within that limit.
+
+For separate contours, the anchor search fits each component. A detached
+head can own the incoming stroke on the preceding contour when the stroke
+meets the recognized head and fits its attachment envelope. The assembled
+letters and connectors must cover the original ink.
+
 For endings listed in `fixedAnchorAlternatesEnding`, the search can reuse
 the same body candidates with alternative sections when its preferred
 partitions fail. A medial tooth or tooth cluster can use its own entry as a
@@ -284,6 +315,9 @@ three tips and both valleys on one counter-free contour. The two
 neighboring cuts must meet the anchors or leave enough room for genuine
 connectors. Folded returns and candidates without both anchors continue
 through the existing cutter.
+Final sīn and shīn use the junction under the first tooth as their fixed
+entry. On a continuous contour, the matched body retains all three tips,
+both valleys and the terminal bowl.
 Medial lām traces both sides of its shaft to the fork and projects the
 two configured contour walks. When there is no room, both normals can
 start at the fork tip. The declared folded return can share final yeh's

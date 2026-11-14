@@ -371,18 +371,48 @@ bool sharesFixedJunction(SearchContext& source, const AnchoredBody& sending, con
            matchesBoundaryBody(source, *sending.sharedEntryBody, entry, true);
 }
 
-bool hasOverlapLimits(const AnchoredBody& sending, const AnchoredBody& receiving, double tolerance, double penWidth) {
+const std::optional<Stretching>& exitLimitAtJoin(const AnchoredBody& sending, const AnchoredBody& receiving,
+                                                 QChar following) {
+    static const std::optional<Stretching> noLimit;
+    if (receiving.acceptsCounterRim && receiving.entryLimit && sending.rimExitLimit) return sending.rimExitLimit;
+    if (sending.minimumExitBefore.isEmpty() || sending.minimumExitBefore.contains(following)) return sending.minimumExit;
+    return noLimit;
+}
+
+const std::optional<Stretching>& entryLimitAtJoin(const AnchoredBody& sending, const AnchoredBody& receiving) {
+    static const std::optional<Stretching> noLimit;
+    return receiving.minimumEntryAfterForm.isEmpty() || receiving.minimumEntryAfterForm == sending.formId
+        ? receiving.minimumEntry : noLimit;
+}
+
+const Stretching* exitBeforeFollowingTooth(const AnchoredBody& sending, const AnchoredBody& receiving,
+                                           Orientation orientation, QChar following) {
+    if (!sending.minimumExitAtFlank || !sending.minimumExitBefore.contains(following) ||
+        orderedSections(*sending.exit, *receiving.entry, orientation) ||
+        !orderedSections(*sending.minimumExit, *receiving.entry, orientation)) return nullptr;
+    const auto onExit = [&](const PathExtrema& landmark) {
+        return landmark.time == sending.exit->topBaseLine.time || landmark.time == sending.exit->bottomBaseLine.time;
+    };
+    return std::any_of(receiving.landmarks.begin(), receiving.landmarks.end(), onExit) ? &*sending.minimumExit : nullptr;
+}
+
+bool hasOverlapLimits(const AnchoredBody& sending, const AnchoredBody& receiving,
+                      QChar following, double tolerance, double penWidth) {
     const auto& exit = *sending.exit;
     const auto& entry = *receiving.entry;
     if (sending.requiresSharedExit || receiving.requiresSharedEntry ||
         exit.counterEntry.pathIndex > 0 || entry.counterEntry.pathIndex > 0) return false;
-    if (receiving.minimumEntry) return true;
-    if (!sending.minimumExit) return false;
+    if (entryLimitAtJoin(sending, receiving)) return true;
+    if (!exitLimitAtJoin(sending, receiving, following)) return false;
     if (receiving.fixedEntryJunction || receiving.keepsEntryJunction) return true;
     const auto a = sectionLine(exit), b = sectionLine(entry);
     const double upperGap = QLineF(a.p1(), b.p1()).length();
     const double lowerGap = QLineF(a.p2(), b.p2()).length();
     if (std::max(upperGap, lowerGap) <= tolerance) return true;
+    if (receiving.entryLimit &&
+        std::max(upperGap, lowerGap) <= std::max(penWidth, b.length()) &&
+        QPointF::dotProduct(a.p2() - a.p1(), b.p2() - b.p1()) >= .7 * a.length() * b.length())
+        return true;
     // A stacked sender already has a shared entry. Its lower lip can meet
     // the next letter at that letter's fixed seam when both flanks agree.
     return sending.requiresSharedEntry && receiving.acceptsCloseSharedJoin &&
@@ -401,11 +431,13 @@ bool withinBodyLimit(const Stretching& cut, const std::optional<Stretching>& min
 }
 
 std::optional<Stretching> resolveOverlap(const SearchContext& source, const AnchoredBody& sending,
-                                         const AnchoredBody& receiving) {
+                                         const AnchoredBody& receiving, QChar following) {
     const auto& exit = *sending.exit;
     const auto& entry = *receiving.entry;
-    const bool fixedExit = !sending.minimumExit || sending.keepsExitHollow;
-    const bool fixedEntry = !receiving.minimumEntry || receiving.fixedEntryJunction || receiving.keepsEntryJunction;
+    const auto& minimumExit = exitLimitAtJoin(sending, receiving, following);
+    const bool fixedExit = !minimumExit;
+    const auto& minimumEntry = entryLimitAtJoin(sending, receiving);
+    const bool fixedEntry = !minimumEntry || receiving.fixedEntryJunction || receiving.keepsEntryJunction;
     if (fixedExit && fixedEntry) return {};
     auto seam = fixedExit ? exit : entry;
     if (!fixedExit && !fixedEntry) {
@@ -416,8 +448,8 @@ std::optional<Stretching> resolveOverlap(const SearchContext& source, const Anch
         }
         if (exitSide.isRight(entry.bottomBaseLine.time)) seam.bottomBaseLine = exit.bottomBaseLine;
     }
-    if (!withinBodyLimit(seam, sending.minimumExit, source.orientation, false) ||
-        !withinBodyLimit(seam, receiving.minimumEntry, source.orientation, true) ||
+    if (!withinBodyLimit(seam, minimumExit, source.orientation, false) ||
+        !withinBodyLimit(seam, minimumEntry, source.orientation, true) ||
         seam.topBaseLine.time == seam.bottomBaseLine.time ||
         !interiorChord(source.transformedPath, seam.topBaseLine, seam.bottomBaseLine, seam.topEndpointTolerance) ||
         (sending.entry && !orderedSections(*sending.entry, seam, source.orientation)) ||
@@ -441,7 +473,7 @@ struct JoinSections {
 };
 
 std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBody& sending,
-        const AnchoredBody& receiving, QChar preceding, QChar last, bool terminal, bool sharesFinalFold,
+        const AnchoredBody& receiving, QChar preceding, QChar following, QChar last, bool terminal, bool sharesFinalFold,
         const QJsonObject& config, bool requiredConnector, double tightTolerance, double penWidth,
         bool allowAlternateAnchors, bool allowShortAttachments) {
     auto exit = *sending.exit;
@@ -449,6 +481,8 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
     if (!fitsAnchorGap(sending, receiving, source.orientation, penWidth,
             config.value("_anchorContinuation").toBool() ||
             (cutGeometryMemo && cutGeometryMemo->verifyContourGeometry))) return {};
+    if (const auto* flank = exitBeforeFollowingTooth(sending, receiving, source.orientation, following))
+        return JoinSections{*flank, entry, false, false, {}};
     const bool sharedCounter = !terminal &&
         sharesCounterSection(exit, receiving, source.orientation);
     if (sharedCounter) entry = exit;
@@ -460,13 +494,13 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
     const bool continuation = config.value("_anchorContinuation").toBool();
     const bool canShareFixedCut = continuation && !requiredConnector;
     if (!sameSection(exit, entry) && !orderedSections(exit, entry, source.orientation) &&
-        hasOverlapLimits(sending, receiving, tightTolerance, penWidth)) {
+        hasOverlapLimits(sending, receiving, following, tightTolerance, penWidth)) {
         if (requiredConnector) return {};
-        const auto seam = resolveOverlap(source, sending, receiving);
-        if (!seam) return {};
-        if (sending.footExitCandidate ||
-            keepsStrokeAtEntry(sending, receiving, source, penWidth)) return {};
-        return JoinSections{*seam, *seam, true, sameSection(*seam, entry), {}};
+        const auto seam = resolveOverlap(source, sending, receiving, following);
+        if (seam && !sending.footExitCandidate && !keepsStrokeAtEntry(sending, receiving, source, penWidth))
+            return JoinSections{*seam, *seam, true, sameSection(*seam, entry), {}};
+        if (entryLimitAtJoin(sending, receiving) || (sending.minimumExit && (sending.minimumExitBefore.isEmpty() ||
+                sending.minimumExitBefore.contains(following)))) return {};
     }
     const bool preserveHollow = continuation && sending.keepsExitHollow &&
         !leavesEntryClearance(exit, entry, source.orientation, tightTolerance) &&
@@ -523,11 +557,11 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
     const bool shared = sameSection(exit, entry) || sharesIncomingSection(exit, receiving, source.orientation);
     const auto& actualEntry = shared ? exit : entry;
     if ((continuation && receiving.fixedEntryJunction && !sameSection(actualEntry, *receiving.entry)) ||
-        !withinBodyLimit(exit, sending.minimumExit, source.orientation, false) ||
-        !withinBodyLimit(actualEntry, receiving.minimumEntry, source.orientation, true)) return {};
+        !withinBodyLimit(exit, exitLimitAtJoin(sending, receiving, following), source.orientation, false) ||
+        !withinBodyLimit(actualEntry, entryLimitAtJoin(sending, receiving), source.orientation, true)) return {};
     if ((sending.exitLimit && !retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &exit,
                                                 source.orientation)) ||
-        (receiving.minimumEntry && !retainsLandmarks(receiving, &actualEntry,
+        (entryLimitAtJoin(sending, receiving) && !retainsLandmarks(receiving, &actualEntry,
             receiving.exit ? &*receiving.exit : nullptr, source.orientation))) return {};
     if (shared && receiving.keepsEntryConnector && !sending.entry &&
         !leavesEntryClearance(*sending.exit, *receiving.entry, source.orientation, tightTolerance)) {
@@ -548,17 +582,8 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
         !leavesEntryClearance(exit, entry, source.orientation, tightTolerance) &&
         !preserveHollow && !(continuation && receiving.keepsEntryJunction &&
                              hasShortConnector(source, exit, entry))) return {};
-    if (!shared && receiving.keepsEntryJunction && !leavesSendingStroke(source, exit, penWidth)) {
-        // A tall body's flank can be nearly parallel to a vertical exit.
-        // Keep that exit if the separate ink is a short, single stroke.
-        const auto chord = sectionLine(exit);
-        const bool stemFoot = continuation && !sending.entry && sending.sharedEntryBody &&
-            sending.sharedEntryBody->value("body").toObject().value("features").toObject()
-                .value("minHeight").toDouble() >= 3 * penWidth &&
-            std::abs(chord.dy()) >= .95 * chord.length() &&
-            hasShortConnector(source, exit, entry);
-        if (!stemFoot) return {};
-    }
+    if (!shared && receiving.keepsEntryJunction && !leavesSendingStroke(source, exit, penWidth) &&
+        !(continuation && hasShortConnector(source, exit, entry))) return {};
     return JoinSections{exit, entry, shared, sharedAtEntry, terminalJunction};
 }
 
@@ -597,7 +622,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         std::optional<JoinSections> computed;
         const auto* seam = slot <= selectedJoins.size() ? selectedJoins[slot - 1] : nullptr;
         if (!seam) {
-            computed = resolveJoin(source, sending, receiving, letters[int(slot) - 1], letters.back(),
+            computed = resolveJoin(source, sending, receiving, letters[int(slot) - 1], letters[int(slot)], letters.back(),
                 slot + 1 == bodies.size(), sharesFinalFold, config, requiredConnectors[slot - 1], tightTolerance,
                 penWidth, allowAlternateAnchors, allowShortAttachments);
             if (!computed) return {};
@@ -729,6 +754,8 @@ bool allowsInitialAttachment(const QJsonObject& form, const QString& letters, in
 bool applies(const QJsonObject& form, const QString& letters, int slot) {
     if (!form.value("current").toString().contains(letters[slot]) ||
         !form.value("kashida").toObject().isEmpty()) return false;
+    const auto preceding = form.value("ligatureAfter").toString();
+    if (!preceding.isEmpty() && (slot == 0 || !preceding.contains(letters[slot - 1]))) return false;
     const auto sharedFold = form.value("sharedFoldWithFinal").toString();
     if (!sharedFold.isEmpty() && !hasFollowingLetter(letters, slot, sharedFold, true)) return false;
     const auto maxLetters = form.value("fixedAnchorsMaxLetters");
@@ -768,6 +795,7 @@ struct AnchorTraversal {
     double penWidth;
     const std::vector<bool>& requiredConnectors;
     const AnchorPartitionCheck& accept;
+    const QString& attachedStroke;
     AnchorSearchMemo memo;
     std::vector<const AnchoredBody*> selected;
     size_t partitionAttempts = 0;
@@ -889,8 +917,9 @@ struct AnchorTraversal {
                 (checkFoldedTooth && separatesFoldedTooth(source, sending, body))) return {false};
             if (sharedCounter || sameSection(exit, *body.entry) ||
                 orderedSections(exit, *body.entry, source.orientation) ||
+                exitBeforeFollowingTooth(sending, body, source.orientation, letters[int(slot)]) ||
                 (!requiredConnectors[slot - 1] &&
-                    (hasOverlapLimits(sending, body, tightTolerance, penWidth) ||
+                    (hasOverlapLimits(sending, body, letters[int(slot)], tightTolerance, penWidth) ||
                      (continuation && sharesFixedJunction(source, sending, body, penWidth)))) ||
                 canUseReceivingEntry(sending, body, source.orientation, letters[int(slot) - 1], penWidth) ||
                 fitsDeclaredSharedEntry(sending, body, source, letters.back(), penWidth) ||
@@ -964,8 +993,14 @@ struct AnchorTraversal {
     std::optional<Subword> bodiesAfter(const AnchorBranch& branch, size_t slot, const AnchoredBody* sending,
                                       AttachmentPolicy policy, int& remaining, TryBody tryBody) {
         const bool terminal = slot + 1 == letters.size();
+        if (terminal && !attachedStroke.isEmpty()) {
+            if (!sending || !sending->exit || requiredConnectors[slot - 1]) return {};
+            const AnchoredBody stroke{.formId = attachedStroke, .entry = sending->exit, .requiresSharedEntry = true};
+            return tryBody(stroke);
+        }
         const auto stemReturnEndings = branch.config.value("fixedAnchorStemReturnEnding").toString();
         const QChar last = letters.back();
+        std::vector<const AnchoredBody*> rimAttachments;
         for (const auto* declaration : branch.forms[slot]) {
             const auto& form = *declaration;
             if (restrictedEnding(form, letters, int(slot)) && !allowsInitialAttachment(form, letters, int(slot)) &&
@@ -997,6 +1032,14 @@ struct AnchorTraversal {
                     if (!join.allowed || !fitsAnchorGap(*sending, *body, branch.source.orientation, penWidth,
                                                        branch.continuation || branch.verifyContours) ||
                         (slot == 1 && !terminal && !canKeepInitialBody(branch, *sending, *body, policy))) continue;
+                    // Prefer bodies whose own entry leaves room for a connector.
+                    // A rim attachment is useful only where the preferred caps overlap.
+                    if (sending->rimExitLimit && body->acceptsCounterRim && body->entryLimit &&
+                        !sameSection(*sending->exit, *body->entry) &&
+                        !orderedSections(*sending->exit, *body->entry, branch.source.orientation)) {
+                        rimAttachments.push_back(body);
+                        continue;
+                    }
                 }
                 if (auto complete = tryBody(*body)) return complete;
             }
@@ -1005,6 +1048,10 @@ struct AnchorTraversal {
             // would take the preceding body.
             if (!branch.continuation && branch.verifyContours && terminal && sending->preservesTerminalBody &&
                 form.value("body").toObject().value("shape") == "stemmed-bowl") return {};
+        }
+        for (const auto* body : rimAttachments) {
+            if (!remaining) break;
+            if (auto complete = tryBody(*body)) return complete;
         }
         return {};
     }
@@ -1032,7 +1079,8 @@ struct AnchorTraversal {
                     const size_t slot = selected.size() - 1;
                     const bool terminal = slot + 1 == letters.size();
                     const auto resolve = [&]() -> std::optional<JoinSections> {
-                        auto seam = resolveJoin(branch.source, *sending, body, letters[int(slot) - 1], letters.back(),
+                        auto seam = resolveJoin(branch.source, *sending, body, letters[int(slot) - 1],
+                            letters[int(slot)], letters.back(),
                             terminal, terminal && sharesFinalFold(branch), branch.config, requiredConnectors[slot - 1],
                             branch.tightTolerance, penWidth, policy.alternateAnchors, policy.shortConnectors);
                         if (!seam || seam->shared || body.retainsCounterRim || branch.limit <= 0 ||
@@ -1087,9 +1135,9 @@ struct AnchorTraversal {
         const auto settings = config.value("kashidaDefaults").toObject();
         if (!settings.value("enabled").toBool(true) || settings.value("trackingEnabled").toBool() ||
             settings.value("minSpan").toDouble() > 0) return {};
-        const bool tatweel = sub.text.contains(QChar(0x0640));
         FormChoices forms(letters.size());
         for (int slot = 0; slot < letters.size(); ++slot) {
+            if (slot == letters.size() - 1 && !attachedStroke.isEmpty()) continue;
             const auto position = letterPosition(slot, letters.size());
             const auto& byLetter = templates[position];
             const auto found = byLetter.constFind(letters[slot]);
@@ -1103,9 +1151,6 @@ struct AnchorTraversal {
                 return {};
             };
             if (found == byLetter.cend()) return blocked("no enabled template");
-            if (slot + 1 == letters.size() && tatweel && std::none_of(found->begin(), found->end(),
-                    [](const auto& form) { return form.value("fixedAnchorsTatweel").toBool(); }))
-                return blocked("tatweel unsupported");
             for (const auto& form : found.value())
                 if (applies(form, letters, slot)) forms[slot].push_back(&form);
             if (forms[slot].empty()) return blocked("template selectors excluded this context");
@@ -1180,9 +1225,9 @@ struct AnchorTraversal {
 } // namespace
 
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, const Subword& sub,
-        std::span<const AnchorPriority> priorities, const AnchorPartitionCheck& accept) {
+        std::span<const AnchorPriority> priorities, const AnchorPartitionCheck& accept, const QString& attachedStroke) {
     if (priorities.empty() || sub.paths.empty() || sub.paths.front() < 0 ||
-        sub.paths.front() >= int(word.paths.size()) || sub.secondaryBodyPath >= 0) return {};
+        sub.paths.front() >= int(word.paths.size()) || (sub.secondaryBodyPath >= 0 && !sub.bodyCounter)) return {};
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (letters.size() < 2) return {};
     const auto connectors = explicitConnectors(sub.text, letters);
@@ -1199,7 +1244,7 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
     });
 
     AnchorTraversal traversal{word, sub, shape, letters, priorities.front().config.value("strokeWidth").toDouble(1),
-                              *connectors, accept};
+                              *connectors, accept, attachedStroke};
     auto result = traversal.search(ink, priorities);
     if (result && cutGeometryMemo && cutGeometryMemo->profiling) cutGeometryMemo->anchorSearch = "matched";
     return result;

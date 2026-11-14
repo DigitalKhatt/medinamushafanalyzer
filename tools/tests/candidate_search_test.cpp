@@ -504,10 +504,84 @@ static void checkFixedAnchors(const QJsonObject& config) {
     }
 }
 
+static void checkMigratedAnchors(const QJsonObject& config) {
+    struct Case {
+        int page, line, word, subword;
+        const char* final;
+    };
+    const auto old = qgetenv("MEDINA_AUDIT_NO_LEGACY");
+    qputenv("MEDINA_AUDIT_NO_LEGACY", "1");
+    PageAnalysisResult::initQuranText();
+    QFile fontFile("input/font.dat");
+    check(fontFile.open(QIODevice::ReadOnly), "Missing migration font");
+    QDataStream fontStream(&fontFile);
+    AFont font;
+    fontStream >> font;
+    for (const auto& f : {Case{10, 8, 5, 1, "noon-fina"},
+                          Case{27, 1, 2, 1, "seen-fina"},
+                          Case{44, 3, 7, 1, "lam-stem-fork-fina"},
+                          Case{56, 5, 4, 2, "reh-fina"},
+                          Case{56, 6, 7, 1, "heh-counter-fina"},
+                          Case{76, 7, 8, 2, "seen-fina"},
+                          Case{107, 11, 9, 1, "lam-stem-fork-fina"},
+                          Case{119, 11, 1, 1, "alef-detached-fina"},
+                          Case{145, 12, 3, 1, "reh-fina"},
+                          Case{532, 6, 1, 1, "heh-counter-fina"},
+                          Case{583, 11, 8, 2, "feh-fina"},
+                          Case{584, 3, 8, 1, "reh-fina"},
+                          Case{590, 15, 3, 1, "sad-tah-fina"}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing migration page");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        const int line = f.line - 1, word = f.word - 1, slot = f.subword - 1;
+        check(page.segmentSubword(f.page - 1, line, word, slot, &font, true, &config),
+              "Previously unresolved subword still requires legacy cutter");
+        const auto& item = page.page.lines[line].words[word];
+        const auto& result = item.wordResultInfo.subWords[slot];
+        check(result.letterDiagnostics.last().toObject().value("template") == f.final &&
+              coversOriginalInk(item, result), "Migrated fixed anchors changed body ownership");
+        if (f.page == 10)
+            check(result.kashidaPaths.size() == 3 && !result.kashidaPaths[1].isEmpty(),
+                  "Explicit tatweel lost its stroke");
+        if (f.page == 56 && f.line == 5)
+            check(result.kashidaPaths.size() == 1 && result.kashidaPaths.front().isEmpty(),
+                  "Three-tooth body and final ra must share the junction");
+        if (f.page == 56 && f.line == 6)
+            check(result.letterDiagnostics.at(0).toObject().value("template") == "kaf-descending-hook-init" &&
+                  result.letterDiagnostics.at(1).toObject().value("template") == "heh-body-medi" &&
+                  !result.kashidaPaths.empty() && !result.kashidaPaths.front().isEmpty(),
+                  "Kaf joined the wrong medial heh body");
+        if (f.page == 76) {
+            const auto& entry = *result.joins.rbegin();
+            check(result.kashidaPaths.size() == 2 && !result.kashidaPaths.back().isEmpty() &&
+                  std::abs(entry.topLeft.time - 5) < 1e-6 && std::abs(entry.bottomLeft.time - 30) < 1e-6,
+                  "Final seen missed the first tooth junction");
+        }
+        if (f.page == 532)
+            check(!result.kashidaPaths.empty() && !result.kashidaPaths.front().isEmpty(),
+                  "The initial tooth took the connector before sin");
+        if (f.page == 590)
+            check(result.letterDiagnostics.at(1).toObject().value("template") == "hah-stacked-medi" &&
+                  result.kashidaPaths.size() == 3 && result.kashidaPaths.at(0).isEmpty() &&
+                  result.kashidaPaths.at(1).isEmpty() && !result.kashidaPaths.at(2).isEmpty(),
+                  "Meem and stacked hah lost their shared attachments");
+        if (f.page == 584)
+            check(result.letterDiagnostics.at(1).toObject().value("template") == "hah-joining-lip-medi" &&
+                  result.kashidaPaths.size() == 3 && result.kashidaPaths[1].isEmpty(),
+                  "The lower lip of medial hah became a connector");
+    }
+    if (old.isNull()) qunsetenv("MEDINA_AUDIT_NO_LEGACY");
+    else qputenv("MEDINA_AUDIT_NO_LEGACY", old);
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
     const auto config = PageAnalysisResult::letterForms();
+    checkMigratedAnchors(config);
     checkFixedAnchors(config);
     CutGeometryMemoScope memo;
     cutGeometryMemo->profiling = true;

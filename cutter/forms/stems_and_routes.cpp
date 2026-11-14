@@ -900,13 +900,16 @@ std::vector<size_t> stemForks(const SearchContext& context, const PathExtrema& c
 
 // The incoming branch leaves a notch between the upstroke and the bowl.
 // A horizontal slice above that notch must cross only the slim upright.
-bool cutTerminalStemFork(SearchContext &ctx, const QJsonObject &form, Stretching &best) {
+bool cutTerminalStemFork(SearchContext &ctx, const QJsonObject &form, Stretching &best,
+                        PathExtrema* fork, std::optional<Stretching>* minimum) {
     const auto &ink = ctx.transformedPath;
     const auto tail = std::prev(ctx.xSorted.end());
     const double pen = form.value("penWidth").toDouble(.5);
     const double inset = form.value("walkWidths").toDouble(.5) * pen;
     const int count = int(baseContourCurves(ink).size());
     double score = std::numeric_limits<double>::infinity();
+    timesortedtype::iterator selected = ctx.timeSorted.end();
+    bool selectedDirection = false;
     for (auto p = ctx.timeSorted.begin(); p != ctx.timeSorted.end(); ++p) {
         if (p->point.x() < tail->point.x() + 2 * pen)
             continue;
@@ -975,10 +978,21 @@ bool cutTerminalStemFork(SearchContext &ctx, const QJsonObject &form, Stretching
             if (fit < score) {
                 score = fit;
                 best = cut;
+                selected = p;
+                selectedDirection = forward;
             }
         }
     }
-    return std::isfinite(score);
+    if (selected == ctx.timeSorted.end()) return false;
+    if (fork) *fork = *selected;
+    if (minimum) {
+        *minimum = cutForkFlank(ctx, *selected, {}, selectedDirection, 1, 0);
+        if (*minimum) {
+            orientSection(ctx, **minimum, tail->time, true);
+            if (!orderedSections(best, **minimum, ctx.orientation)) minimum->reset();
+        }
+    }
+    return true;
 }
 
 // Follow the descending edge from the cap. The first steep-to-shallow

@@ -237,6 +237,27 @@ static bool followsUpperFlank(const SearchContext& context, const ToothClusterBo
     return body.advancePrevious == (context.orientation == Orientation::CounterClockwise);
 }
 
+std::optional<Stretching> wideClusterExit(SearchContext& context, const ToothClusterBody& cluster,
+        const QJsonObject& settings, std::optional<Stretching>& minimum) {
+    if (cluster.ordinary || !cluster.wide || !followsUpperFlank(context, cluster)) return {};
+    const auto& tip = cluster.turns.back();
+    const double reach = settings.value("maxExitBendDistance").toDouble(2) * meanToothPitch(cluster);
+    const auto section = [&](double walk) -> std::optional<Stretching> {
+        Stretching cut{};
+        if (!seenExitBendCut(context, tip, cluster.advancePrevious, reach, cut, walk)) return {};
+        orientSection(context, cut, tip.time, false);
+        const auto side = getJoinTime(cut, context.orientation);
+        if (!std::all_of(cluster.turns.begin(), cluster.turns.end(),
+                        [&](const auto& turn) { return side.isStrictRight(turn.time); })) return {};
+        return cut;
+    };
+    minimum = section(0);
+    const auto preferred = section(settings.value("retryBendOffset").toDouble(.5));
+    if (!preferred) return std::exchange(minimum, std::nullopt);
+    if (minimum && !orderedSections(*minimum, *preferred, context.orientation)) minimum.reset();
+    return preferred;
+}
+
 static std::optional<std::array<PathExtrema, 2>> seenBowlLandmarks(
         const SearchContext& context, const ToothClusterBody& body, const QRectF& bounds) {
     const auto& tip = body.turns.back();
@@ -359,7 +380,7 @@ std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const T
     return junction;
 }
 
-static std::optional<Stretching> clusterExitAtBend(SearchContext& context, const ToothClusterBody& cluster,
+std::optional<Stretching> clusterExitAtBend(SearchContext& context, const ToothClusterBody& cluster,
                                                 const QJsonObject& settings) {
     const SeenExitRetry retry{0, SeenExitMode::AlongContour};
     Stretching boundary{};
@@ -572,7 +593,8 @@ ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body,
 bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody> &bodies,
                              const QJsonObject &form, double minX, double maxX, Stretching *right, Stretching *left,
                              const Stretching *finalFold, std::array<PathExtrema, 3> *matchedTips,
-                             const SeenExitRetry *retry) {
+                             const SeenExitRetry *retry, std::optional<std::array<PathExtrema, 2>> *matchedBowl,
+                             double penWidth) {
     const auto mode = retry ? retry->mode : SeenExitMode::Configured;
     const bool wideLastPitch = retry && retry->wideLastPitch;
     const bool retryBend = mode != SeenExitMode::Configured;
@@ -641,69 +663,12 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
             };
         Stretching r{}, l{};
         bool cornerEntry = false;
-        if (right && form.value("terminalBowl").toBool() && !form.value("roundedEntry").toBool()) {
-            const auto tail = std::prev(context.xSorted.end());
-            const double pitch = (pitch1 + pitch2) / 2;
-            // Follow the incoming flank from the first tip to its root.
-            // The opposed landmark is on the underside of the same stroke.
-            auto upper = first;
-            double best = std::numeric_limits<double>::infinity();
-            for (int step = 0; step < 4; ++step) {
-                const auto next = (context.*reverse)(upper);
-                if (next->point.y() < upper->point.y() - .06 ||
-                    QLineF(next->point, first->point).length() > 1.15 * pitch)
-                    break;
-                upper = next;
-                if (upper->point.y() - first->point.y() < .25)
-                    continue;
-                for (const auto &lower : context.timeSorted) {
-                    const auto d = lower.point - upper->point;
-                    if (d.y() < .3 || d.y() > 2.5 || std::abs(d.x()) > 1.7 * d.y() ||
-                        !interiorChord(ink, *upper, lower))
-                        continue;
-                    Stretching candidate{};
-                    candidate.topBaseLine = *upper;
-                    candidate.bottomBaseLine = lower;
-                    if (getJoinTime(candidate, context.orientation).isStrictRight(tail->time))
-                        std::swap(candidate.topBaseLine, candidate.bottomBaseLine);
-                    const auto side = getJoinTime(candidate, context.orientation);
-                    if (!side.isStrictLeft(turns[0].time) || !side.isStrictLeft(turns[2].time) ||
-                        !side.isStrictLeft(turns[4].time))
-                        continue;
-                    const double fit = std::hypot(d.x(), d.y()) + .35 * std::abs(upper->point.y() - turns[1].point.y());
-                    if (fit < best) {
-                        best = fit;
-                        r = candidate;
-                        cornerEntry = true;
-                    }
-                }
-            }
-        }
-        if (right && form.value("roundedEntry").toBool()) {
-            const auto tail = std::prev(context.xSorted.end());
-            // Stay on the incoming stroke beside the first tooth, including
-            // when the contour normal from its sharp tip crosses the tooth.
-            for (double offset : {.25, .5, .75}) {
-                Stretching vertical{};
-                if (!medialChordAt(context, turns[0].point.x() + offset, turns[1].point.y(), 2.5, vertical))
-                    continue;
-                auto normal = vertical;
-                const bool hasNormal = strokeNormalCut(context, normal);
-                for (auto option : {hasNormal ? normal : vertical, vertical}) {
-                    if (getJoinTime(option, context.orientation).isStrictRight(tail->time))
-                        std::swap(option.topBaseLine, option.bottomBaseLine);
-                    const auto side = getJoinTime(option, context.orientation);
-                    const QLineF chord(option.topBaseLine.point, option.bottomBaseLine.point);
-                    if (chord.length() < .3 || chord.length() > 2.8 || !side.isStrictLeft(turns[0].time) ||
-                        !side.isStrictLeft(turns[2].time) || !side.isStrictLeft(turns[4].time))
-                        continue;
-                    r = option;
-                    cornerEntry = true;
-                    break;
-                }
-                if (cornerEntry)
-                    break;
-            }
+        if (final) {
+            const auto junction = clusterEntryAtJunction(context, body, penWidth,
+                form.value("entryCornerOptional").toBool());
+            if (!junction) continue;
+            r = *junction;
+            cornerEntry = true;
         }
         if (right && !cornerEntry && form.contains("rightOffset")) {
             const auto entry =
@@ -787,8 +752,9 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
         const auto pieces = cutRegions(ink, {}, cuts, context.orientation, true);
         if (pieces.size() != cuts.size() + 1 || toSubpaths(pieces[right ? 1 : 0].path).size() != 1)
             continue;
+        std::optional<std::array<PathExtrema, 2>> bowl;
         if (needsBowl) {
-            const auto bowl = seenBowlLandmarks(context, body, pieces[1].path.boundingRect());
+            bowl = seenBowlLandmarks(context, body, pieces[1].path.boundingRect());
             const auto entry = getJoinTime(r, context.orientation);
             if (!bowl || !entry.isStrictLeft(turns.front().time) ||
                 !std::all_of(bowl->begin(), bowl->end(), [&](const auto& point) { return entry.isStrictLeft(point.time); }))
@@ -799,6 +765,7 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
         firstX = first->point.x();
         if (matchedTips)
             *matchedTips = {turns[0], turns[2], turns[4]};
+        if (matchedBowl && bowl) *matchedBowl = *bowl;
         match = std::pair{r, l};
     }
     if (!match) {
@@ -808,7 +775,8 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
             form.value("rightOffset").toDouble() <= 0) return false;
         auto unshifted = form;
         unshifted.insert("rightOffset", 0);
-        return cutToothClusters(context, bodies, unshifted, minX, maxX, right, left, finalFold, matchedTips, retry);
+        return cutToothClusters(context, bodies, unshifted, minX, maxX, right, left,
+                               finalFold, matchedTips, retry, matchedBowl, penWidth);
     }
     if (right) *right = match->first;
     if (left) *left = match->second;

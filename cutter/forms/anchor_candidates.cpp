@@ -131,15 +131,13 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto beforeFinal = declaration.value("fixedAnchorsBeforeFinal");
             if (!beforeFinal.isUndefined() && (position != 1 || beforeFinal.toString().isEmpty()))
                 return id + ": fixedAnchorsBeforeFinal needs final letters on a medial form";
-            const auto tatweel = declaration.value("fixedAnchorsTatweel");
-            if (!tatweel.isUndefined() && (position != 2 || !tatweel.isBool()))
-                return id + ": fixedAnchorsTatweel must be a boolean on a final form";
             const auto priority = declaration.value("preferSharedAttachment");
             if (!priority.isUndefined() && (position != 0 || !priority.isBool() ||
                 declaration.value("ligatureWith").toString().isEmpty()))
                 return id + ": preferSharedAttachment requires an initial form with ligatureWith";
             auto form = bodyConstraintForm(config, declaration);
             const auto body = form.value("body").toObject();
+            const auto cuts = form.value("cuts").toObject();
             const auto shape = body.value("shape");
             if (config.value("fixedAnchorBodyChecks").toBool()) form.insert("_expandedAnchorForm", true);
             if (config.value("_anchorContinuation").toBool()) form.insert("_anchorContinuation", true);
@@ -166,8 +164,9 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                     form.value("cuts").toObject().value("cluster").toObject().value("exitAtHollow").toBool())) :
                 shape == "stemmed-bowl" || shape == "tail-branch" || shape == "contour-route" ||
                 shape == "counter-neck" || shape == "counter-shoulder" || shape == "bowl-turn" ||
-                shape == "upright-stem" || shape == "open-bowl" || shape == "profile-neck" ||
+                shape == "upright-stem" || shape == "open-bowl" || shape == "profile-neck" || shape == "terminal-fork" ||
                 shape == "folded-return" || shape == "rising-return" || shape == "tapered-arm" ||
+                (shape == "tooth-cluster" && cuts.value("cluster").toObject().value("entryAtJunction").toBool()) ||
                 shape == "counter-bridge" || shape == "forked-bowl" || shape == "counter-outline";
             if (!supported && !exposedHead)
                 return id + ": this body does not supply fixed anchors for its position";
@@ -221,6 +220,25 @@ static std::optional<Stretching> normalAtLimit(const SearchContext& source, cons
     if (!contourNormalCut(source, anchor, forward, false, cut)) return {};
     orientSection(source, cut, ownedPoint.time, entry);
     return cut;
+}
+
+static std::optional<Stretching> insetLimit(const SearchContext& source, const AnchoredBody& body,
+                                          double distance, bool entry) {
+    if (distance <= 0) return {};
+    const auto& cap = entry ? *body.entry : *body.exit;
+    const auto side = getJoinTime(cap, source.orientation);
+    for (const auto& end : {cap.topBaseLine, cap.bottomBaseLine}) {
+        const bool forward = entry != (side.startAtLeft == (end.time == side.minTime));
+        const auto point = walkBoundaryLimit(source, end, end, forward, distance);
+        if (!point) continue;
+        const auto limit = normalAtLimit(source, *point, forward, body.landmarks.front(), entry);
+        if (limit && (entry ? orderedSections(cap, *limit, source.orientation)
+                           : orderedSections(*limit, cap, source.orientation)) &&
+            retainsLandmarks(body, entry ? &*limit : body.entry ? &*body.entry : nullptr,
+                entry ? body.exit ? &*body.exit : nullptr : &*limit, source.orientation))
+            return limit;
+    }
+    return {};
 }
 
 static void keepLowerLip(const SearchContext& source, AnchoredBody& body, const MouthLips& lips,
@@ -394,8 +412,19 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                                           .counters = counters, .requiresSharedExit = true});
                     }
                 }
+                std::optional<Stretching> minimum;
+                if (cuts.value("minimumExitAtFlank").toBool()) {
+                    for (const auto& flank : declaredFlankExits(source, body, cuts, penWidth))
+                        if (orderedSections(flank, projected, source.orientation) &&
+                            matchesBoundaryBody(source, form, flank, true)) {
+                            minimum = flank;
+                            break;
+                        }
+                }
                 result.push_back({.formId = id, .exit = projected, .landmarks = {origin},
-                                  .counters = std::move(counters)});
+                                  .counters = std::move(counters), .minimumExitAtFlank = minimum.has_value(),
+                                  .minimumExitBefore = cuts.value("minimumExitBefore").toString(),
+                                  .minimumExit = minimum});
             } else {
                 auto landmarks = terminalCrest(source, source.res, form);
                 landmarks.push_back(*source.xSorted.rbegin());
@@ -497,9 +526,31 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             counters = {evidence->initialNeck->counter.index};
         }
         if (!counters.isEmpty() && declaredSharedBoundary(source, form) &&
-            matchesBoundaryBody(source, form, source.res, true))
-            result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()},
-                              .counters = std::move(counters)});
+            matchesBoundaryBody(source, form, source.res, true)) {
+            const auto exit = source.res;
+            const auto crest = *source.xSorted.begin();
+            std::optional<Stretching> minimum;
+            if (evidence->head && evidence->head->edge) {
+                const auto& counter = evidence->head->counter;
+                const auto cap = sectionLine(exit);
+                Stretching section{};
+                if (medialChordAt(source, counter.box.center().x(), cap.center().y(), 2 * cap.length(), section) &&
+                    strokeNormalCut(source, section) &&
+                    std::min(section.topBaseLine.point.y(), section.bottomBaseLine.point.y()) >= counter.box.bottom()) {
+                    orientSection(source, section, crest.time, false);
+                    if (orderedSections(section, exit, source.orientation)) {
+                        const auto pieces = cutRegions(source.transformedPath, {}, {section}, source.orientation, true);
+                        const QPointF rim((evidence->head->edge->point.x() + counter.box.left()) / 2,
+                                          counter.box.center().y());
+                        if (pieces.size() == 2 && pieces.front().path.contains(rim) &&
+                            toSubpaths(pieces.front().path).contains(source.subPaths[counter.index]))
+                            minimum = section;
+                    }
+                }
+            }
+            result.push_back({.formId = id, .exit = exit, .landmarks = {crest},
+                              .counters = std::move(counters), .rimExitLimit = minimum});
+        }
     } else if (shape == "stacked-counters") {
         const auto evidence = recognizedSharedShape(source, body);
         const auto policy = cuts.value("pair").toObject();
@@ -544,6 +595,30 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                         result.push_back({.formId = id, .entry = rim, .exit = sections->second,
                                           .counters = counters, .retainsCounterRim = true,
                                           .sharesRimEntry = form.value("tightJoin").toBool()});
+                }
+            }
+            const auto attachment = cuts.value("sharedExitAtAttachment").toObject();
+            if (position == 0 && !attachment.isEmpty()) {
+                const auto& minimum = sections->second;
+                const auto& counter = source.subPaths[loop.anchor.index];
+                const auto side = getJoinTime(minimum, source.orientation);
+                const auto& box = loop.anchor.box;
+                const auto crest = std::find_if(source.ySorted.rbegin(), source.ySorted.rend(), [&](const auto& p) {
+                    return p.point.y() < box.top() && p.point.x() >= box.left() - penWidth &&
+                        p.point.x() <= box.right() + penWidth && side.isStrictRight(p.time);
+                });
+                if (crest != source.ySorted.rend()) {
+                    for (auto seam : upperAttachmentSections(source, form.value("_upperAttachment").toObject())) {
+                        orientSection(source, seam, crest->time, false);
+                        if (!orderedSections(minimum, seam, source.orientation) ||
+                            QLineF(sectionLine(minimum).center(), sectionLine(seam).center()).length() >
+                                attachment.value("maxDistanceWidths").toDouble() * penWidth) continue;
+                        const auto pieces = cutRegions(source.transformedPath, {}, {seam}, source.orientation, true);
+                        if (pieces.size() == 2 && toSubpaths(pieces.front().path).contains(counter))
+                            result.push_back({.formId = id, .exit = seam, .landmarks = {*crest}, .counters = counters,
+                                .requiresSharedExit = true, .requiredExitTemplate = attachment.value("template").toString(),
+                                .minimumExit = minimum});
+                    }
                 }
             }
             result.push_back({.formId = id,
@@ -683,7 +758,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             const auto section = source.res;
             source.nextIter = std::next(source.xSorted.begin());
             if (matchesBoundaryBody(source, form, section, false))
-                result.push_back({.formId = id, .entry = section, .sharesFinalEntry = form.value("sharedBoundary").toBool()});
+                result.push_back({.formId = id, .entry = section, .sharesFinalEntry = form.value("sharedBoundary").toBool(),
+                                  .entryLimit = section.topBaseLine});
         }
     } else if (position == 0 && (shape == "profile-neck" || shape == "descending-stem")) {
         if (declaredSharedBoundary(source, form) && matchesBoundaryBody(source, form, source.res, true)) {
@@ -918,6 +994,9 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                                       .requiresSharedEntry = atUpperAttachment || attachment,
                                       .requiresSharedExit = sharedExit != nullptr,
                                       .requiresSharedSource = !atUpperAttachment && attachment};
+                    if (cuts.value("turnBoundaries").toObject().value("right") == "descender")
+                        body.entryLimit = section.topBaseLine;
+                    body.minimumEntry = insetLimit(source, body, cuts.value("minimumEntryWalk").toDouble() * penWidth, true);
                     if (!lips.empty() && body.requiresSharedEntry && !body.requiresSharedExit) {
                         const auto entrySide = getJoinTime(section, source.orientation);
                         const auto exitSide = getJoinTime(exit, source.orientation);
@@ -939,6 +1018,10 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                             if (body.minimumExit && !retainsLandmarks(body, &section, &exit, source.orientation))
                                 body.exit = body.minimumExit;
                         }
+                    }
+                    if (!body.minimumExit && !body.exitLimit) {
+                        body.minimumExit = insetLimit(source, body, cuts.value("minimumExitWalk").toDouble() * penWidth, false);
+                        body.minimumExitBefore = cuts.value("minimumExitBefore").toString();
                     }
                     result.push_back(std::move(body));
                 }
@@ -964,22 +1047,58 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                                       .usesSharedEntry = form.value("sharedEntry").toBool(), .requiresSharedExit = true});
                 }
             } else if (position == 0) {
+                if (!cluster.ordinary && cluster.wide) {
+                    std::optional<Stretching> minimum;
+                    if (const auto exit = wideClusterExit(source, cluster, settings, minimum))
+                        result.push_back({.formId = id, .exit = exit,
+                            .landmarks = {cluster.turns.begin(), cluster.turns.end()}, .minimumExit = minimum});
+                    continue;
+                }
+                const auto minimum = cuts.value("minimumExitAtBend").toBool()
+                    ? clusterExitAtBend(source, cluster, settings) : std::nullopt;
+                const auto addPreferred = [&](const Stretching& exit) {
+                    result.push_back({.formId = id, .exit = exit, .landmarks = {cluster.turns.begin(), cluster.turns.end()},
+                        .minimumExitBefore = cuts.value("minimumExitBefore").toString(),
+                        .minimumExit = minimum && orderedSections(*minimum, exit, source.orientation) ? minimum : std::nullopt});
+                };
                 if (policy.value("exitAtHollow").toBool())
                     if (const auto exit = clusterExitAtHollow(source, cluster, penWidth, 2 * penWidth, policy))
-                        result.push_back({.formId = id, .exit = exit,
-                                          .landmarks = {cluster.turns.begin(), cluster.turns.end()}});
+                        addPreferred(*exit);
                 const auto add = [&](const SeenExitRetry* retry) {
                     Stretching exit{};
                     if (cutToothClusters(source, {cluster}, settings, source.bbox.left(), source.bbox.right() + 1e-6,
                                          nullptr, &exit, nullptr, nullptr, retry))
-                        result.push_back({.formId = id, .exit = exit,
-                                          .landmarks = {cluster.turns.begin(), cluster.turns.end()}});
+                        addPreferred(exit);
                 };
                 add(nullptr);
                 const SeenExitRetry bend{0, SeenExitMode::AlongContour};
                 if (bend.supports(settings)) add(&bend);
+            } else if (position == 2) {
+                Stretching entry{};
+                std::optional<std::array<PathExtrema, 2>> bowl;
+                if (!cutToothClusters(source, {cluster}, settings, source.bbox.left(),
+                                      source.bbox.right() + 1e-6, &entry, nullptr, nullptr, nullptr, nullptr, &bowl, penWidth))
+                    continue;
+                QVector<PathExtrema> landmarks(cluster.turns.begin(), cluster.turns.end());
+                if (bowl) {
+                    landmarks.append(bowl->front());
+                    landmarks.append(bowl->back());
+                } else if (!settings.value("_penLiftExit").toBool()) continue;
+                result.push_back({.formId = id, .entry = entry, .landmarks = std::move(landmarks),
+                    .fixedEntryJunction = true, .keepsEntryJunction = true});
             } else {
                 const auto geometry = body.value("cluster").toObject();
+                if (!cluster.ordinary && cluster.wide) {
+                    const auto entry = clusterEntryAtJunction(source, cluster, penWidth,
+                        policy.value("entryCornerOptional").toBool());
+                    std::optional<Stretching> minimum;
+                    const auto exit = entry ? wideClusterExit(source, cluster, settings, minimum) : std::nullopt;
+                    if (exit && orderedSections(*entry, *exit, source.orientation))
+                        result.push_back({.formId = id, .entry = entry, .exit = exit,
+                            .landmarks = {cluster.turns.begin(), cluster.turns.end()},
+                            .fixedEntryJunction = true, .keepsEntryJunction = true, .minimumExit = minimum});
+                    continue;
+                }
                 auto primary = policy;
                 primary.remove("exitAtFlank");
                 auto sections = medialClusterAnchors(source, cluster, evidence->clusters, geometry, primary, penWidth);
@@ -994,6 +1113,10 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                                   .fixedEntryJunction = true, .keepsEntryJunction = true, .keepsExitHollow = true,
                                   .alternateAnchor = !preferred,
                                   .toothExitFlank = {{cluster.turns.back(), cluster.advancePrevious}}});
+                auto& candidate = result.back();
+                candidate.minimumExit = insetLimit(source, candidate,
+                    cuts.value("minimumExitWalk").toDouble() * penWidth, false);
+                candidate.minimumExitBefore = cuts.value("minimumExitBefore").toString();
             }
         }
         std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
@@ -1012,6 +1135,9 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 tooth.curvedAxis.isEmpty() ? QVector<QPointF>{axis.pointAt(.05), axis.pointAt(.95)} : tooth.curvedAxis});
             result.back().sharesIncoming = cuts.value("tightJoin") == "shared-boundary";
             result.back().sharesLoopNeck = cuts.value("shareLoopNeck").toBool();
+            auto& candidate = result.back();
+            candidate.minimumEntry = insetLimit(source, candidate, cuts.value("minimumEntryWalk").toDouble() * penWidth, true);
+            candidate.minimumEntryAfterForm = cuts.value("minimumEntryAfterForm").toString();
         }
     } else if (shape == "upright-stem") {
         const auto evidence = recognizedSharedShape(source, body);
@@ -1046,6 +1172,15 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             }
             result.push_back(std::move(candidate));
         }
+    } else if (shape == "terminal-fork") {
+        Stretching entry{};
+        PathExtrema fork{};
+        std::optional<Stretching> minimum;
+        if (cutTerminalStemFork(source, shapeSettings(form, "stem"), entry, &fork, &minimum))
+            result.push_back({.formId = id, .entry = entry, .landmarks = {*source.xSorted.rbegin()},
+                .fixedEntryJunction = !minimum && (entry.topBaseLine.time == fork.time ||
+                    entry.bottomBaseLine.time == fork.time),
+                .entryLimit = fork, .minimumEntry = minimum});
     } else if (shape == "stemmed-bowl") {
         const auto evidence = recognizedSharedShape(source, body);
         auto stems = evidence->terminalStems;
@@ -1125,7 +1260,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         if (!matchesBoundaryBody(source, form, entry, false)) return result;
         QVector<PathExtrema> landmarks{bowl.tip, bowl.floor};
         if (bowl.crest) landmarks.append(*bowl.crest);
-        result.push_back({.formId = id, .entry = entry, .landmarks = std::move(landmarks)});
+        result.push_back({.formId = id, .entry = entry, .landmarks = std::move(landmarks),
+                          .entryLimit = entry.topBaseLine});
     } else if (shape == "bowl-turn") {
         const auto evidence = recognizedSharedShape(source, body);
         if (evidence->bowlTurn && declaredSharedBoundary(source, form) &&
@@ -1133,9 +1269,27 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             result.push_back({.formId = id, .entry = source.res, .landmarks = {evidence->bowlTurn->tip}});
     } else if (shape == "counter-neck" || shape == "counter-shoulder") {
         const auto evidence = recognizedSharedShape(source, body);
-        if (!evidence->boundaryCounter || !declaredSharedBoundary(source, form)) return result;
+        if (!evidence->boundaryCounter) return result;
         const auto& counter = *evidence->boundaryCounter;
-        const auto entry = source.res;
+        const bool preferred = declaredSharedBoundary(source, form);
+        const auto preferredEntry = source.res;
+        std::optional<Stretching> minimum;
+        if (cuts.value("minimumEntryAtCounter").toBool()) {
+            auto policy = cuts;
+            auto counterCut = policy.value("counter").toObject();
+            auto corner = counterCut.value("entryCorner").toObject();
+            corner.insert("strokeOffsetX", 0);
+            corner.insert("required", false);
+            counterCut.insert("entryCorner", corner);
+            counterCut.insert("normalCut", true);
+            policy.insert("counter", counterCut);
+            auto atCorner = form;
+            atCorner.insert("cuts", policy);
+            if (declaredSharedBoundary(source, atCorner)) minimum = source.res;
+        }
+        if (!preferred && !minimum) return result;
+        const auto entry = preferred ? preferredEntry : *minimum;
+        if (!preferred || (minimum && !orderedSections(entry, *minimum, source.orientation))) minimum.reset();
         const auto rim = cuts.value("entryRim").toObject();
         const QLineF section(entry.topBaseLine.point, entry.bottomBaseLine.point);
         const bool fixedEntry = cuts.value("fixEntryJunction").toBool();
@@ -1145,7 +1299,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                               .counters = {counter.index}, .retainsCounterRim = retainsRim,
                               .sharesRimEntry = retainsRim && form.value("tightJoin").toBool(),
                               .fixedEntryJunction = fixedEntry,
-                              .tightEntryAfter = cuts.value("tightEntryAfter").toString()});
+                              .tightEntryAfter = cuts.value("tightEntryAfter").toString(), .minimumEntry = minimum});
             return true;
         };
         if (needsCounterRim(section, rim, penWidth))
@@ -1190,6 +1344,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     if (cuts.value("counterJoin") == "preserve-entry" &&
         cuts.value("boundaries").toObject().value("right") == "fork-normal")
         for (auto& candidate : result) candidate.keepsSharedCounterEntry = true;
+    if (cuts.value("acceptCounterRim").toBool())
+        for (auto& candidate : result) candidate.acceptsCounterRim = true;
     if (cuts.value("tightJoin").toString() == "shared-boundary" || form.value("tightJoin").toBool() ||
         (position == 2 && (shape == "counter-neck" || shape == "counter-shoulder" ||
                            shape == "counter-bridge" || shape == "upright-stem")))

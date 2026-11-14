@@ -682,6 +682,10 @@ std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const T
                                                  double penWidth, bool allowSmoothUpper = false);
 std::optional<Stretching> clusterExitAtHollow(SearchContext& context, const ToothClusterBody& cluster,
         double penWidth, double maxWidth, const QJsonObject& cutSettings);
+std::optional<Stretching> clusterExitAtBend(SearchContext& context, const ToothClusterBody& cluster,
+        const QJsonObject& settings);
+std::optional<Stretching> wideClusterExit(SearchContext& context, const ToothClusterBody& cluster,
+        const QJsonObject& settings, std::optional<Stretching>& minimum);
 std::optional<std::pair<Stretching, Stretching>> medialClusterAnchors(SearchContext& context,
         const ToothClusterBody& cluster, const std::vector<ToothClusterBody>& clusters,
         const QJsonObject& settings, const QJsonObject& cuts, double penWidth);
@@ -713,7 +717,8 @@ ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body,
 bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody> &bodies,
                              const QJsonObject &form, double minX, double maxX, Stretching *right, Stretching *left,
                              const Stretching *finalFold = nullptr, std::array<PathExtrema, 3> *matchedTips = nullptr,
-                             const SeenExitRetry *retry = nullptr);
+                             const SeenExitRetry *retry = nullptr,
+                             std::optional<std::array<PathExtrema, 2>> *matchedBowl = nullptr, double penWidth = 1);
 
 bool seenTeethBoundaries(SearchContext &context, const QJsonObject &form, double minX, double maxX,
                                 Stretching *right, Stretching *left, const Stretching *finalFold = nullptr,
@@ -1321,8 +1326,12 @@ struct AnchoredBody {
     QString sharedEntryFrom;
     bool preservesTerminalBody = false;
     bool footExitCandidate = false;
+    bool acceptsCounterRim = false;
+    bool minimumExitAtFlank = false;
+    QString minimumEntryAfterForm;
+    QString minimumExitBefore;
     std::optional<PathExtrema> entryLimit, exitLimit;
-    std::optional<Stretching> minimumEntry, minimumExit;
+    std::optional<Stretching> minimumEntry, minimumExit, rimExitLimit;
     std::optional<Stretching> upperAttachment;
     std::optional<std::pair<double, double>> forkEntry;
     QJsonObject sharedFold;
@@ -1351,8 +1360,10 @@ struct AnchorPriority {
 
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
         const WordResultInfo::SubWordInfo& sub, std::span<const AnchorPriority> priorities,
-        const AnchorPartitionCheck& accept);
+        const AnchorPartitionCheck& accept, const QString& attachedStroke = {});
 bool sameAnchoredPartition(const WordResultInfo::SubWordInfo& a, const WordResultInfo::SubWordInfo& b);
+bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
+bool assembleDetachedHeadEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 
 bool assembleToothClusterCuts(const Word& word, WordResultInfo::SubWordInfo& sub,
                              const QJsonObject& config, bool penLiftAtEnd = false);
@@ -1394,7 +1405,8 @@ std::vector<std::pair<Stretching, Stretching>> rimSections(SearchContext &ctx, c
 
 std::optional<Stretching> recognizeDescendingStemSection(const InkOutline& outline, const QJsonObject& body);
 
-bool cutTerminalStemFork(SearchContext& context, const QJsonObject& settings, Stretching& result);
+bool cutTerminalStemFork(SearchContext& context, const QJsonObject& settings, Stretching& result,
+    PathExtrema* fork = nullptr, std::optional<Stretching>* minimum = nullptr);
 
 std::vector<PathExtrema> recognizeLoopShoulders(const InkOutline &outline, const QRectF &hole,
                                                        const QJsonObject &body);

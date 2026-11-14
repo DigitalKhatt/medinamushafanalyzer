@@ -127,6 +127,16 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
                 }
             }
             anchored = segmentWithAnchors(word, sub, priorities, acceptAnchors);
+            if (!anchored && sub.secondaryBodyPath >= 0 && !sub.bodyCounter) {
+                auto component = sub;
+                if ((assembleDetachedTerminalArm(word, component, sourceConfig) ||
+                     assembleDetachedHeadEntry(word, component, sourceConfig)) &&
+                    coversOriginalInk(word, component) && (!acceptAnchors || acceptAnchors(component))) {
+                    anchored = std::move(component);
+                    if (cutGeometryMemo->profiling)
+                        cutGeometryMemo->anchorSearch = "matched-component";
+                }
+            }
         }
         if (anchored && (noLegacy || !cutGeometryMemo->profiling || !qEnvironmentVariableIsSet("MEDINA_COMPARE_ANCHORS"))) {
             sub = std::move(*anchored);
