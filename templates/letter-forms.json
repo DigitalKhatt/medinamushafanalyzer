@@ -5459,6 +5459,7 @@
     },
     {
       "id": "sad-short-return-medi",
+      "fixedAnchors": true,
       "current": "صض",
       "tightJoin": true,
       "body": {
@@ -7787,6 +7788,7 @@
     },
     {
       "id": "waw-returning-shoulder-fina",
+      "fixedAnchors": true,
       "current": "وؤ",
       "tryNext": true,
       "body": {
@@ -7921,6 +7923,7 @@
     },
     {
       "id": "lam-rising-bowl-fina",
+      "fixedAnchors": true,
       "current": "ل",
       "tryNext": true,
       "body": {
