@@ -2185,6 +2185,7 @@
     },
     {
       "id": "tah-compact-exit-init",
+      "fixedAnchors": true,
       "current": "طظ",
       "tryNext": true,
       "body": {
