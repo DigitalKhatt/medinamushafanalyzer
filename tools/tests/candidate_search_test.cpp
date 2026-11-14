@@ -120,7 +120,7 @@ static void checkFixedAnchors(const QJsonObject& config) {
                           Fixture{1, 4, 2, 3}, Fixture{53, 12, 12, 1}, Fixture{5, 13, 5, 2},
                           Fixture{4, 2, 1, 2}, Fixture{2, 3, 4, 2}, Fixture{3, 2, 10, 2},
                           Fixture{1, 5, 1, 2}, Fixture{3, 1, 2, 3}, Fixture{107, 13, 8, 4},
-                          Fixture{22, 11, 6, 2}, Fixture{3, 1, 2, 2}}) {
+                          Fixture{22, 11, 6, 2}}) {
         QFile pageFile(QString("pages/page%1.dat").arg(f.page));
         check(pageFile.open(QIODevice::ReadOnly), "Missing fixed anchor fixture");
         PageAnalysisResult analysis;
@@ -148,6 +148,54 @@ static void checkFixedAnchors(const QJsonObject& config) {
                   !restored.templateTrace.value(0).startsWith("Fixed anchors"),
                   "A rejected fixed-anchor partition survived validation");
         }
+    }
+    for (const auto& f : {Fixture{3, 1, 2, 2}, Fixture{3, 1, 9, 1},
+                          Fixture{48, 6, 6, 2}, Fixture{61, 10, 2, 2}, Fixture{221, 13, 10, 1}}) {
+        QFile file(QString("pages/page%1.dat").arg(f.page));
+        check(file.open(QIODevice::ReadOnly), "Missing final dal fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file); stream >> page.page;
+        page.resolveWordBoundaries(f.page, &font);
+        check(page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &config),
+              "Final dal did not assemble with its preceding bodies");
+        const auto& word = page.page.lines[f.line - 1].words[f.word - 1];
+        const auto& sub = word.wordResultInfo.subWords[f.subword - 1];
+        check(sub.templateTrace.value(0).startsWith("Fixed anchors") && !sub.kashidaPaths.back().isEmpty(),
+              "Final dal fell back or lost the connector");
+        const auto source = word.bodyShape(sub);
+        auto ink = source.transform.map(source.path).translated(source.pos);
+        ink.setFillRule(Qt::WindingFill);
+        WordResultInfo::SubWordInfo empty;
+        OutlineSearchCache cache;
+        SearchContext geometry{.transformedPath = ink, .bbox = ink.boundingRect(), .subword = empty,
+                               .outlineCache = &cache};
+        check(preparePassOutline(geometry, cache), "Cannot prepare the final dal outline");
+        const auto form = bodyConstraintForm(config, namedLetterForm(config, "dal-fina"));
+        const auto candidates = anchoredBodies(geometry, form, 2, 1);
+        const auto& seam = sub.kashidaCuts.back().second;
+        const auto chosen = std::find_if(candidates.begin(), candidates.end(), [&](const auto& body) {
+            return QLineF(body.entry->topBaseLine.point, body.entry->bottomBaseLine.point) == seam;
+        });
+        check(chosen != candidates.end() && chosen->entryLimit &&
+              getJoinTime(*chosen->entry, geometry.orientation).isLeft(chosen->entryLimit->time),
+              "Assembly moved final dal's cut past the recognized fork");
+        const std::map<int, double> expectedFork{{3, f.word == 2 ? 14. : 8.}, {48, 29.}, {61, 28.}, {221, 9.}};
+        check(chosen->entryLimit->time == expectedFork.at(f.page), "Final dal borrowed a neighboring fork");
+        if (f.page == 221) {
+            const auto preferred = std::find_if(candidates.begin(), chosen, [&](const auto& body) {
+                return body.entryLimit->time == chosen->entryLimit->time;
+            });
+            check(preferred != chosen && seam.p2().y() < preferred->entry->bottomBaseLine.point.y(),
+                  "Tight qaf–dal join did not retreat up the same flank");
+        }
+
+        geometry.pairedStrokeWidth = 100;
+        const auto independent = anchoredBodies(geometry, form, 2, 1);
+        check(independent.size() == candidates.size() &&
+              std::equal(candidates.begin(), candidates.end(), independent.begin(), [](const auto& a, const auto& b) {
+                  return a.entry->topBaseLine.point == b.entry->topBaseLine.point &&
+                         a.entry->bottomBaseLine.point == b.entry->bottomBaseLine.point;
+              }), "Final dal's entries depend on the preceding stroke width");
     }
     checkRecoveryPriority(legacy, font);
 

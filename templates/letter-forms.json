@@ -6344,7 +6344,6 @@
     {
       "id": "dal-fina",
       "fixedAnchors": true,
-      "fixedAnchorsMaxLetters": 2,
       "pairedOnly": true,
       "tightJoin": true,
       "current": "دذ",
@@ -6366,7 +6365,6 @@
             }
           ],
           "shoulder": {
-            "minRise": 2,
             "flankSampleWidths": 0.25
           }
         }
@@ -6376,12 +6374,7 @@
           "probeEntry": true
         },
         "route": {
-          "bottomProbe": "walk-stroke-normal",
-          "strokeSource": "paired",
-          "range": {
-            "minWidths": 0,
-            "preferredWidths": 1
-          }
+          "descendingTurn": 45
         },
         "boundaries": {
           "left": "free",

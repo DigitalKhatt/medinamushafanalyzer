@@ -86,7 +86,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
 }
 
 std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
-                                        double penWidth, double attachmentWidth) {
+                                        double penWidth) {
     const auto id = form.value("id").toString();
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto shape = body.value("shape");
@@ -94,16 +94,18 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     InspectFormScope inspection(form, source.transformedPath);
     source.res = {};
     source.nextIter = std::next(source.xSorted.begin());
-    if (shape == "contour-route" && position == 2 && cuts.value("route").toObject().value("strokeSource") == "paired") {
+    const auto turn = cuts.value("route").toObject().value("descendingTurn");
+    if (shape == "contour-route" && position == 2 && turn.isDouble()) {
         const auto evidence = recognizedSharedShape(source, body);
-        if (!evidence->route || attachmentWidth <= 0) return result;
+        if (!evidence->route) return result;
         const auto& route = *evidence->route;
-        auto policy = cuts.value("route").toObject();
-        policy.insert("penWidth", attachmentWidth);
-        if (projectSavedRoute(source, evidence->route, body.value("route").toObject(), policy) &&
-            matchesBoundaryBody(source, form, source.res, false))
-            result.push_back({.formId = id, .entry = source.res, .landmarks = {route.origin, route.anchor},
-                              .pairedEntry = true});
+        const auto policy = cuts.value("route").toObject();
+        for (const auto& [cut, fork] : descendingRouteEntries(source, route, policy,
+                evidence->tail ? &*evidence->tail : nullptr)) {
+            inspectLandmark("Entry limit at fork", fork);
+            if (matchesBoundaryBody(source, form, cut, false))
+                result.push_back({.formId = id, .entry = cut, .landmarks = {route.origin}, .entryLimit = fork});
+        }
     } else if (shape == "contour-route") {
         const bool initial = position == 0;
         if (declaredSharedBoundary(source, form) &&
@@ -134,10 +136,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                         result.push_back({.formId = id, .exit = exit, .landmarks = {*source.xSorted.begin()}});
                     }
                 }
-                result.push_back({.formId = id, .exit = projected, .landmarks = {*source.xSorted.begin()},
-                                  .trimsExit = cuts.value("turnBoundaries").toObject().value("left") == "trim"});
-                if (cuts.value("route").toObject().value("trimExitToNormal").toBool())
-                    for (auto& candidate : result) candidate.keepsExitReferenceWidth = true;
+                result.push_back({.formId = id, .exit = projected, .landmarks = {*source.xSorted.begin()}});
             } else
                 result.push_back({.formId = id, .entry = source.res, .landmarks = {*source.xSorted.rbegin()}});
         }

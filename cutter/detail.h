@@ -594,6 +594,15 @@ bool projectSavedRoute(SearchContext &context, const std::optional<SavedContourR
                               const QJsonObject &route, const QJsonObject &policy,
                               std::optional<ForkRefinement> *fork = nullptr);
 
+struct ContourEntry {
+    Stretching cut;
+    PathExtrema fork;
+};
+
+struct TailBody;
+std::vector<ContourEntry> descendingRouteEntries(SearchContext& context, const SavedContourRoute& route,
+        const QJsonObject& policy, const TailBody* shoulders);
+
 QVector<QPainterPath> toSubpaths(const QPainterPath& path);
 
 std::vector<GlyphInfo> computeCutRegions(const QPainterPath& path, const QString& text,
@@ -1275,9 +1284,7 @@ struct AnchoredBody {
     bool preservesTerminalBody = false;
     bool stemFootCandidate = false;
     bool footExitCandidate = false;
-    bool trimsExit = false;
-    bool keepsExitReferenceWidth = false;
-    bool pairedEntry = false;
+    std::optional<PathExtrema> entryLimit;
     QJsonObject sharedFold;
 };
 
@@ -1285,7 +1292,7 @@ using AnchorForms = std::array<QHash<QChar, std::vector<QJsonObject>>, 3>;
 
 QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms);
 std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
-                                         double penWidth, double attachmentWidth = 0);
+                                         double penWidth);
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
         const WordResultInfo::SubWordInfo& sub, const QJsonObject& config, const AnchorForms& forms,
         const AnchorPartitionCheck& accept);

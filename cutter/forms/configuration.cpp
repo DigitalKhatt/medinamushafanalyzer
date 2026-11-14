@@ -1004,11 +1004,15 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     }
     if (shape == "contour-route") {
         const auto route = body.value("route").toObject(), policy = cuts.value("route").toObject();
+        if (const auto turn = policy.value("descendingTurn"); !turn.isUndefined() &&
+            (phase != "final" || route.value("start") != "left" || policy.contains("bottomProbe") ||
+             policy.contains("range") || !turn.isDouble() || !(turn.toDouble() > 0 && turn.toDouble() < 90)))
+            return id + ": descendingTurn requires a final left-origin route and an angle between 0 and 90 degrees";
         if (route.contains("shoulder") || policy.contains("range")) {
             const auto shoulder = route.value("shoulder").toObject();
             const auto range = policy.value("range").toObject();
-            if (!route.value("shoulder").isObject() || range.isEmpty() ||
-                policy.value("bottomProbe") != "walk-stroke-normal")
+            if (!route.value("shoulder").isObject() || (!policy.contains("descendingTurn") &&
+                (range.isEmpty() || policy.value("bottomProbe") != "walk-stroke-normal")))
                 return id + ": a contour cut range needs a shoulder and a normal probe";
             for (auto field = shoulder.begin(); field != shoulder.end(); ++field) {
                 if (!QStringList{"minRise", "minRun", "maxRun", "flankSampleWidths"}.contains(field.key()) ||
@@ -1020,11 +1024,11 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
                 return id + ": invalid contour shoulder flank or run limits";
             const auto minimum = range.value("minWidths"), preferred = range.value("preferredWidths");
             const auto maximum = range.value("maxWidths");
-            if (range.size() != 2 + range.contains("maxWidths") ||
+            if (!policy.contains("descendingTurn") && (range.size() != 2 + range.contains("maxWidths") ||
                 !minimum.isDouble() || !std::isfinite(minimum.toDouble()) || minimum.toDouble() < 0 ||
                 !preferred.isDouble() || !std::isfinite(preferred.toDouble()) || preferred.toDouble() < minimum.toDouble() ||
                 (!maximum.isUndefined() && (!maximum.isDouble() || !std::isfinite(maximum.toDouble()) ||
-                                            maximum.toDouble() < preferred.toDouble())))
+                                            maximum.toDouble() < preferred.toDouble()))))
                 return id + ": contour cut range needs ordered minWidths, preferredWidths and optional maxWidths";
         }
     }

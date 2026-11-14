@@ -377,6 +377,85 @@ bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
     return false;
 }
 
+std::vector<ContourEntry> descendingRouteEntries(SearchContext& context, const SavedContourRoute& route,
+        const QJsonObject& policy, const TailBody* shoulders) {
+    const auto curves = baseContourCurves(context.transformedPath);
+    const int count = static_cast<int>(curves.size());
+    if (!count) return {};
+
+    const bool forward = route.topPrevious;
+    const auto distance = [&](double from, double to) {
+        double delta = forward ? to - from : from - to;
+        return delta < 0 ? delta + count : delta;
+    };
+    std::vector<ContourEntry> entries;
+    const auto addFlank = [&](const PathExtrema& fork, const PathExtrema& end) {
+        const auto add = [&](Stretching cut) {
+            orientSection(context, cut, route.origin.time, true);
+            const auto side = getJoinTime(cut, context.orientation);
+            if (!side.isStrictLeft(route.origin.time) || !side.isLeft(fork.time)) return;
+            cut.fixedRightBoundary = true;
+            cut.referenceWidth = QLineF(cut.topBaseLine.point, cut.bottomBaseLine.point).length();
+            if (std::none_of(entries.begin(), entries.end(), [&](const auto& previous) {
+                    return cut.topBaseLine.time == previous.cut.topBaseLine.time &&
+                           cut.bottomBaseLine.time == previous.cut.bottomBaseLine.time;
+                })) entries.push_back({cut, fork});
+        };
+        const auto addNormal = [&](const PathExtrema& lower, bool atEnd = false) {
+            Stretching cut{};
+            if (contourNormalCut(context, lower, forward, atEnd, cut)) add(cut);
+        };
+
+        // Use the same tangent turn as an ascending letter's lower stem. A
+        // continuously steep flank can end at a corner before reaching it.
+        Stretching turn{};
+        auto preferred = end;
+        const double reach = std::hypot(context.bbox.width(), context.bbox.height());
+        if (alefTurnCut(context, end, policy.value("descendingTurn").toDouble(), reach,
+                        turn, &fork, forward ? 1 : -1, true)) {
+            preferred = turn.topBaseLine;
+            add(turn);
+        } else {
+            addNormal(preferred, true);
+        }
+
+        preferred.time = fork.time + (forward ? 1 : -1) * distance(fork.time, preferred.time);
+        const double low = std::min(fork.time, preferred.time), high = std::max(fork.time, preferred.time);
+        double length = 0;
+        for (int i = int(std::floor(low)); i < int(std::ceil(high)); ++i)
+            length += curves[(i % count + count) % count].getSubRange(std::max(0., low - i),
+                                                                    std::min(1., high - i)).length(.001);
+        for (double fraction : {.75, .5, .25}) {
+            PathExtrema point;
+            QPointF tangent;
+            if (advanceOnContour(context.transformedPath, fork, preferred, forward, length * fraction, point, tangent))
+                addNormal(point);
+        }
+        addNormal(fork);
+    };
+
+    addFlank(route.anchor, route.topEnd);
+    if (!shoulders) return entries;
+    // The directional route can follow a later fork on stacked ink. A
+    // concave shoulder closer to the terminal tip is a separate body
+    // candidate, with its own limit and descending flank.
+    const auto step = forward ? &SearchContext::prev : &SearchContext::next;
+    for (const auto& branch : shoulders->branches) {
+        if (branch.forward != forward ||
+            distance(route.origin.time, branch.corner.time) >= distance(route.origin.time, route.anchor.time))
+            continue;
+        const auto start = context.timeSorted.find(branch.corner);
+        if (start == context.timeSorted.end()) continue;
+        auto end = start;
+        for (auto next = (context.*step)(end); next != start; next = (context.*step)(end)) {
+            if (next->point.x() <= end->point.x() || next->point.y() <= end->point.y()) break;
+            end = next;
+        }
+        if (end != start) addFlank(branch.corner, *end);
+    }
+    return entries;
+}
+
 static bool walkContourSteps(SearchContext& context, timesortedtype::iterator origin,
         const QJsonArray& steps, ContourAdvance advance,
         PathExtrema& anchor, PathExtrema& before, PathExtrema& end) {

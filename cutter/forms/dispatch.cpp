@@ -539,28 +539,41 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
     bool found = false;
     if (shape == "contour-route") {
         const auto route = body.value("route").toObject(), policy = cuts.value("route").toObject();
-        if (routeSearch && policy.contains("range") && evidence->tail) {
-            const auto range = policy.value("range").toObject();
-            const auto shoulder = route.value("shoulder").toObject();
-            const auto project = [&] { return contourShoulderCuts(context, *evidence->tail, shoulder, range); };
+        const bool descending = policy.value("descendingTurn").isDouble();
+        const bool shoulderRange = routeSearch && policy.contains("range") && evidence->tail;
+        if (descending || shoulderRange) {
+            const auto project = [&] {
+                if (shoulderRange)
+                    return contourShoulderCuts(context, *evidence->tail, route.value("shoulder").toObject(),
+                                               policy.value("range").toObject());
+                std::vector<std::optional<Stretching>> result;
+                if (!evidence->route) return result;
+                for (const auto& [cut, fork] : descendingRouteEntries(context, *evidence->route,
+                        policy, evidence->tail ? &*evidence->tail : nullptr)) {
+                    inspectLandmark("Entry limit at fork", fork);
+                    result.emplace_back(cut);
+                }
+                return result;
+            };
             std::vector<std::optional<Stretching>> local;
-            const auto* positions = &local;
+            const auto* entries = &local;
             if (context.outlineCache && context.outlineCache->outline &&
                 context.outlineCache->outline->ink == context.transformedPath) {
                 auto& cached = context.outlineCache->routeCuts;
-                const auto key = bodyDescriptionKey({{"shoulder", shoulder}, {"range", range}});
-                auto entry = cached.find(key);
-                if (entry == cached.end()) entry = cached.emplace(key, project()).first;
-                positions = &entry->second;
+                const auto key = bodyDescriptionKey({{"route", route}, {"policy", policy}});
+                auto [entry, inserted] = cached.try_emplace(key);
+                if (inserted) entry->second = project();
+                entries = &entry->second;
             } else local = project();
-            routeSearch->count = std::max(routeSearch->count, positions->size());
-            const auto index = routeSearch->position;
-            if (index < positions->size() && (*positions)[index]) {
-                context.res = *(*positions)[index];
+            const auto index = routeSearch ? routeSearch->position : 0;
+            if (routeSearch) routeSearch->count = std::max(routeSearch->count, entries->size());
+            if (index < entries->size() && (*entries)[index]) {
+                context.res = *(*entries)[index];
                 found = true;
             }
         }
-        if (!found && (!routeSearch || !policy.contains("range") || routeSearch->position == 0))
+        if (!found && !descending &&
+            (!routeSearch || !policy.contains("range") || routeSearch->position == 0))
             found = projectSavedRoute(context, evidence->route, route, policy);
     } else if (shape == "tapered-arm")
         found = cutTaperedArms(evidence->taperedArms, cuts.value("arm").toObject(), context.res);

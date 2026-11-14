@@ -211,11 +211,13 @@ proposing its entry. During migration, `fixedAnchorsMaxLetters` limits where
 a migrated form can participate. Final nūn starts in two-letter subwords
 while the longer sequences with medial joins are checked.
 Final dāl and dhāl recognize the fork at the start of their descending
-contour run. The entry policy walks from it by one sending stroke width
-and projects a normal to the opposite edge. The route is recognized on
-the uncut ink, and each projected entry is fixed during assembly.
-This migration starts with two-letter subwords. Joins that still need
-a separate sending-side trim use the existing cutter.
+contour run. `cuts.route.descendingTurn` uses the same tangent-turn
+projection as final alef. The preferred cut is the normal where the flank
+turns toward the connector. On a tight join, assembly can choose a higher
+section along that flank, up to the fork. The route can also recognize
+an earlier concave shoulder on a stacked outline. Each candidate keeps
+its own fork and free tip. The policy applies at any subword length and
+both searches use the same cuts for the final letter.
 Medial sīn and shīn use the first tooth junction for entry and the inward
 hollow beyond the third tooth for exit. Each candidate must retain all
 three tips and both valleys on one counter-free contour. The two
