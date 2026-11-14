@@ -2,6 +2,11 @@
 
 namespace MedinaCutter {
 
+static int anchorPriority(const QJsonObject& form) {
+    if (form.value("onUnresolved").toBool()) return 2;
+    return form.value("onIncomplete").toBool() ? 1 : 0;
+}
+
 static std::optional<Stretching> initialFootExit(const SearchContext& source, const Stretching& section,
                                                 double penWidth) {
     const auto axis = section.bottomBaseLine.point - section.topBaseLine.point;
@@ -71,6 +76,11 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 compiled[position][letter].push_back(form);
         }
     }
+    for (auto& position : compiled)
+        for (auto& candidates : position)
+            std::stable_sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+                return anchorPriority(a) < anchorPriority(b);
+            });
     forms = std::move(compiled);
     return {};
 }

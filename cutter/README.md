@@ -194,7 +194,9 @@ sources and headers.
 
 Set `fixedAnchors: true` on a migrated template. The search uses the transcript
 to look up enabled templates by letter in the `initial`, `medial` and `final`
-lists. Their order in each list sets priority. A subword can use the search
+lists. At each position, ordinary forms precede `onIncomplete` forms, followed
+by `onUnresolved` forms. The order in the template list breaks ties.
+A subword can use the search
 when every letter has an eligible form. Each form proposes sections on the
 uncut outline and identifies the landmarks and ink it must retain. Counter
 forms identify the source contours their body must own.
