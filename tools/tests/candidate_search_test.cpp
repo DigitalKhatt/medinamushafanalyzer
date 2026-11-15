@@ -79,6 +79,8 @@ static void checkTemplatePriority(const QJsonObject& config, AFont& font) {
         {92, 6, 7, 3, {"heh-init", "meem-upper-neck-fina"}, 0},
         {103, 6, 3, 1, {"lam-init", "feh-descending-rim-medi", "yeh-first-turn-fina"}, 1},
         {161, 4, 7, 2, {"lam-init", "meem-medi", "hah-returning-lips-medi", "reh-fina"}, 2, true},
+        {71, 2, 10, 1, {"hah-returning-lip-init", "waw-fina"}, 0, true},
+        {406, 14, 1, 1, {"hah-open-init", "waw-fina"}, 0},
     };
     for (const auto& f : fixtures) {
         QFile file(QString("pages/page%1.dat").arg(f.page));
@@ -100,6 +102,12 @@ static void checkTemplatePriority(const QJsonObject& config, AFont& font) {
             check(sub.kashidaPaths.size() > size_t(f.join) &&
                   (!sub.kashidaPaths[f.join].isEmpty()) == f.hasConnector,
                   "Template priority changed the connector at the checked join");
+        if (f.page == 406) {
+            const auto& seam = *sub.joins.begin();
+            check(seam.topBaseLine.time == 5 && seam.bottomBaseLine.time == 14 &&
+                  sub.letterDiagnostics.last().toObject().value("entryPolicy") == "counter-bridge",
+                  "The shared wāw cut moved away from its fixed counter bridge");
+        }
     }
 }
 

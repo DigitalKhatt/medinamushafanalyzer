@@ -2240,67 +2240,29 @@ std::vector<Stretching> loopShoulderCuts(SearchContext& ctx, const QRectF& hole,
     return result;
 }
 
-std::optional<LoopBridgeBody> recognizeLoopBridge(const InkOutline &outline) {
-    if (outline.contours.size() < 2)
-        return {};
-    auto hole = outline.contours[1].boundingRect();
-    for (size_t i = 2; i < outline.contours.size(); ++i)
-        if (outline.contours[i].boundingRect().center().x() < hole.center().x())
-            hole = outline.contours[i].boundingRect();
-    const auto tip = *std::prev(outline.x.end());
-    const double h = hole.height();
-    if (h <= 0 || hole.left() - tip.point.x() < h)
-        return {};
-    LoopBridgeBody result{hole, tip, {}};
-    const QPointF target(hole.right(), hole.bottom());
-    for (const auto &p : outline.time) {
-        if (!p.isSharp || p.point.x() < hole.right() - .15 * h || QLineF(p.point, target).length() > 2 * h)
-            continue;
-        for (const auto &q : outline.time) {
-            const auto delta = q.point - p.point;
-            if (q.isSharp && delta.y() >= .3 * h && std::abs(delta.x()) <= delta.y() &&
-                q.point.x() >= hole.right() - .15 * h && interiorChord(outline.ink, p, q))
-                result.pairs.emplace_back(p, q);
-        }
-    }
-    return result;
-}
+bool retainsCounterBridge(SearchContext& source, const CounterHole& counter, const Stretching& entry,
+                          double maxWidthInCounterHeights) {
+    const auto& hole = counter.box;
+    const double height = hole.height();
+    const auto& upper = entry.topBaseLine;
+    const auto& lower = entry.bottomBaseLine;
+    const QPointF delta = lower.point - upper.point;
+    const QLineF seam(upper.point, lower.point);
+    if (height <= 0 || hole.left() - source.xSorted.rbegin()->point.x() < height ||
+        !upper.isSharp || !lower.isSharp || delta.y() < .3 * height || std::abs(delta.x()) > delta.y() ||
+        std::min(upper.point.x(), lower.point.x()) < hole.right() - .15 * height ||
+        QLineF(upper.point, QPointF(hole.right(), hole.bottom())).length() > 2 * height ||
+        seam.length() > maxWidthInCounterHeights * height ||
+        !interiorChord(source.transformedPath, upper, lower)) return false;
 
-bool cutLoopBridge(SearchContext &ctx, const LoopBridgeBody &body, const QJsonObject &settings,
-                          Stretching &best) {
-    const auto *tip = &body.tip;
-    const auto &hole = body.hole;
-    const auto &ink = ctx.transformedPath;
-    const double h = hole.height();
-    if (h <= 0 || hole.left() - tip->point.x() < h)
-        return false;
-    const QPointF target(hole.right(), hole.bottom());
-    double bestFit = std::numeric_limits<double>::infinity();
-    for (const auto &pair : body.pairs) {
-        const auto *p = &pair.first;
-        const auto *q = &pair.second;
-        const QLineF edge(p->point, q->point);
-        if (edge.length() > settings.value("maxWidth").toDouble(3) * h)
-            continue;
-        Stretching cut{};
-        cut.topBaseLine = *p;
-        cut.bottomBaseLine = *q;
-        orientSection(ctx, cut, tip->time, true);
-        const auto parts = cutRegions(ink, {}, {cut}, ctx.orientation, true);
-        if (parts.size() != 2)
-            continue;
-        const auto outlines = toSubpaths(parts[1].path);
-        const auto box = parts[1].path.boundingRect();
-        if (outlines.size() != 2 || outlines[1].boundingRect() != hole || box.right() > edge.center().x() + .7 * h ||
-            box.bottom() - hole.bottom() < 1.2 * h || box.top() < hole.top() - 2.5 * h)
-            continue;
-        const double fit = QLineF(edge.center(), target).length() + .2 * edge.length();
-        if (fit < bestFit) {
-            bestFit = fit;
-            best = cut;
-        }
-    }
-    return std::isfinite(bestFit);
+    // The existing section must keep the complete counter and descending tail.
+    const auto parts = cutRegions(source.transformedPath, {}, {entry}, source.orientation, true);
+    if (parts.size() != 2) return false;
+    const auto outlines = toSubpaths(parts[1].path);
+    const auto bounds = parts[1].path.boundingRect();
+    return outlines.size() == 2 && outlines[1].boundingRect() == hole &&
+           bounds.right() <= seam.center().x() + .7 * height &&
+           bounds.bottom() - hole.bottom() >= 1.2 * height && bounds.top() >= hole.top() - 2.5 * height;
 }
 
 std::vector<CounterOutlineBody> recognizeCounterOutlines(const InkOutline &outline, const QJsonObject &body) {

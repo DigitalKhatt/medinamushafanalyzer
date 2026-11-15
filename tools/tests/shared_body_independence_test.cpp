@@ -43,16 +43,6 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         hole(*e.boundaryCounter);
     corner(e.terminalNeck);
     points(e.shoulders);
-    out << bool(e.bridge);
-    if (e.bridge) {
-        out << e.bridge->hole;
-        point(e.bridge->tip);
-        out << quint64(e.bridge->pairs.size());
-        for (const auto &pair : e.bridge->pairs) {
-            point(pair.first);
-            point(pair.second);
-        }
-    }
     out << quint64(e.loops.size());
     for (const auto &loop : e.loops) {
         hole(loop.anchor);
@@ -448,11 +438,6 @@ int main(int argc, char **argv) {
             invalid.insert(phase, QJsonArray{bad});
             check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Unknown boundary policy accepted");
         }
-    QHash<QString, QString> retryParents;
-    for (const auto& candidate : finalRetryCandidates(config.value("final").toArray(), retryParents)) {
-        const auto form = resolvedBodyForm(config, candidate.toObject());
-        if (retryParents.contains(form.value("id").toString())) addForm(form);
-    }
     const auto& schemas = sharedShapeSchemas();
     for (auto schema = schemas.cbegin(); schema != schemas.cend(); ++schema)
         if (!shapes.contains(schema.key()))

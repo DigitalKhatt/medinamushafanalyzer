@@ -51,12 +51,13 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     }
 
     struct SearchForms {
-        QJsonObject primary, requested, expanded, preciseExpanded, continuation;
-        AnchorForms forms, expandedForms, preciseForms, preciseExpandedForms, continuationForms;
+        QJsonObject primary, requested, expanded, continuation, preciseExpanded, preciseContinuation;
+        AnchorForms forms, expandedForms, continuationForms, preciseForms, preciseExpandedForms, preciseContinuationForms;
     };
     const auto& requestedForms = draft ? *draft : letterForms();
     auto& geometry = *cutGeometryMemo;
-    const auto attempt = [&](const QJsonObject& sourceConfig) -> bool {
+    const auto assemble = [&]() -> bool {
+        const auto& sourceConfig = geometryMemo.owned ? primaryLetterForms(requestedForms) : requestedForms;
         const auto ligature = segmentDeclaredLigature(word, sub, sourceConfig);
         if (ligature == LigatureMatch::SharedCut || ligature == LigatureMatch::Failed) {
             if (geometry.profiling) geometry.anchorSearch = "declared-ligature";
@@ -78,6 +79,8 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
                     compileAnchorForms(requestedForms, compiled.preciseForms);
                     compiled.preciseExpanded = expandedAnchorConfig(requestedForms);
                     compileAnchorForms(compiled.preciseExpanded, compiled.preciseExpandedForms);
+                    compiled.preciseContinuation = expandedAnchorConfig(requestedForms, true);
+                    compileAnchorForms(compiled.preciseContinuation, compiled.preciseContinuationForms);
                 }
             }
         }
@@ -92,7 +95,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
             priorities.push_back({compiled.continuation, compiled.continuationForms, verify});
             if (!verify) {
                 priorities.push_back({compiled.preciseExpanded, compiled.preciseExpandedForms, true});
-                priorities.push_back({compiled.continuation, compiled.continuationForms, true});
+                priorities.push_back({compiled.preciseContinuation, compiled.preciseContinuationForms, true});
             }
         }
         if (auto partition = segmentWithAnchors(word, sub, priorities, acceptAnchors)) {
@@ -111,24 +114,9 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         }
         return false;
     };
-    const auto source = sub;
-    const auto& primary = geometryMemo.owned ? primaryLetterForms(requestedForms) : requestedForms;
-    if (attempt(primary)) {
+    if (assemble()) {
         collectUsedTemplates(sub);
         return true;
-    }
-    if (geometryMemo.owned) {
-        // Use the bracketed intersection solver on the original contours.
-        auto incomplete = std::exchange(sub, source);
-        geometry.partitions.clear();
-        geometry.inkSegments.clear();
-        geometry.verifyContourGeometry = true;
-        if (attempt(requestedForms)) {
-            sub.templateTrace.append("Matched using bracketed contour intersections");
-            collectUsedTemplates(sub);
-            return true;
-        }
-        sub = std::move(incomplete);
     }
     if (sub.letterDiagnostics.isEmpty()) {
         const auto expanded = expandedAnchorConfig(requestedForms, true);

@@ -123,7 +123,7 @@ struct InspectFormScope {
         if (inspectingForm) formInspection->attempted = true;
     }
     explicit InspectFormScope(const QJsonObject& form)
-        : InspectFormScope(form.value("_finalRetryFor").toString(form.value("id").toString())) {}
+        : InspectFormScope(form.value("id").toString()) {}
     InspectFormScope(const QJsonObject& form, const QPainterPath& ink) : InspectFormScope(form) {
         if (inspectingForm) {
             inspectionCoordinates = ink == formInspection->ink;
@@ -398,7 +398,6 @@ QJsonObject descendingStemDescription(const QJsonObject& config, const QJsonObje
 
 QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form);
 
-QJsonArray finalRetryCandidates(const QJsonArray& forms, QHash<QString, QString>& parents);
 
 
 QJsonObject bodyCutPolicy(const QJsonObject& description, const QString& letters, int slot);
@@ -1389,18 +1388,8 @@ void inspectStemEvidence(const MedialStemEvidence& evidence);
 std::vector<MedialCandidate> turningShaftCuts(SearchContext& context,
         const MedialStemEvidence& evidence, const QJsonObject& shape, const QJsonObject& cuts);
 
-// At a tight loop-to-stroke junction, both edges of the bridge can end at
-// corners. Join those corners while retaining the counter and the complete tail.
-struct LoopBridgeBody {
-    QRectF hole;
-    PathExtrema tip;
-    std::vector<std::pair<PathExtrema, PathExtrema>> pairs;
-};
-
-std::optional<LoopBridgeBody> recognizeLoopBridge(const InkOutline &outline);
-
-bool cutLoopBridge(SearchContext &ctx, const LoopBridgeBody &body, const QJsonObject &settings,
-                          Stretching &best);
+bool retainsCounterBridge(SearchContext& source, const CounterHole& counter, const Stretching& entry,
+                          double maxWidthInCounterHeights);
 
 struct CounterOutlineBody {
     std::vector<CounterHole> counters;
@@ -1478,7 +1467,6 @@ struct SharedShapeEvidence {
     std::optional<CounterHole> boundaryCounter;
     CounterCornerEvidence terminalNeck;
     std::vector<PathExtrema> shoulders;
-    std::optional<LoopBridgeBody> bridge;
     std::vector<LoopBodyEvidence> loops;
     std::vector<RimBodyEvidence> rims;
     std::optional<SavedContourRoute> route;

@@ -80,7 +80,7 @@ bool matchesBoundaryBody(SearchContext& context, const QJsonObject& rule,
     };
     const auto features = rule.value("bodyFeatures").toObject();
     const auto shape = rule.value("body").toObject().value("shape");
-    const bool finalCounter = !initial && (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge");
+    const bool finalCounter = !initial && (shape == "counter-neck" || shape == "counter-shoulder");
     const bool protectOpening = initial && !initialLips.isEmpty();
     const bool protectTail = !initial && rule.value("ownsLeftTip").toBool();
     if (!initial && shape == "open-bowl") {
@@ -227,7 +227,7 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
         result.rims = recognizeRimBodies(outline);
     else if (shape == "counter-outline")
         result.outlines = recognizeCounterOutlines(outline, body);
-    if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
+    if (shape == "counter-neck" || shape == "counter-shoulder") {
         result.holes = recognizeCounterHoles(outline);
         for (size_t i = 1; i < outline.contours.size(); ++i) {
             CounterHole hole{i, outline.contours[i].boundingRect()};
@@ -247,8 +247,6 @@ SharedShapeEvidence recognizeSharedShape(const InkOutline &outline, const QJsonO
             result.bowlTurn = recognizeBowlTurn(outline, body.value("junction").toObject());
     } else if (shape == "counter-shoulder" && result.boundaryCounter)
         result.shoulders = recognizeLoopShoulders(outline, result.boundaryCounter->box, body.value("shoulder").toObject());
-    else if (shape == "counter-bridge")
-        result.bridge = recognizeLoopBridge(outline);
     return result;
 }
 
@@ -468,11 +466,6 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
             inspectLandmark("Rim landmark", p);
     for (const auto &p : evidence.shoulders)
         inspectLandmark("Shoulder", p);
-    if (evidence.bridge)
-        for (const auto &pair : evidence.bridge->pairs) {
-            inspectLandmark("Bridge corner", pair.first);
-            inspectLandmark("Bridge corner", pair.second);
-        }
 }
 
 std::vector<Stretching> declaredExitAlternatives(SearchContext& context, const QJsonObject& config,
@@ -694,10 +687,7 @@ bool declaredSharedBoundary(SearchContext& context, const QJsonObject& form, con
             evidence->shoulders, shapeSettings(form, "shoulder"), context.xSorted.rbegin()->time, true);
         found = !shoulders.empty();
         if (found) context.res = shoulders.front();
-    } else if (shape == "counter-bridge")
-        found =
-            evidence->bridge && cutLoopBridge(context, *evidence->bridge, cuts.value("bridge").toObject(), context.res);
-    else if (shape == "counter-loop") {
+    } else if (shape == "counter-loop") {
         const auto candidate =
             selectLoopBody(context, evidence->loops, context.bbox.left(), context.bbox.right(), nullptr);
         const auto pair =

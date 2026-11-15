@@ -182,9 +182,6 @@
       "meem-upper-bridge-fina": {
         "fixedAnchors": true
       },
-      "qaf-fina": {
-        "fixedAnchorsRetry": true
-      },
       "sad-corner-tooth-medi": {
         "fixedAnchors": true
       },
@@ -211,9 +208,6 @@
       },
       "seen-folded-medi": {
         "fixedAnchors": true
-      },
-      "waw-fina": {
-        "fixedAnchorsRetry": true
       },
       "yeh-fina": {
         "sharedBoundary": true,
@@ -2671,8 +2665,8 @@
     {
       "id": "lam-descending-shaft-medi",
       "current": "ل",
-      "onUnresolved": true,
       "onUnresolvedPartition": true,
+      "onUnresolved": true,
       "tightJoin": true,
       "body": {
         "inherit": "lam-medi",
@@ -6569,24 +6563,6 @@
           "right": "corner-junction",
           "left": "free"
         }
-      },
-      "finalRetry": {
-        "terminalAttachment": true,
-        "tightJoin": true,
-        "returningStroke": true,
-        "body": {
-          "shape": "counter-bridge",
-          "counters": 1
-        },
-        "cuts": {
-          "boundaries": {
-            "left": "free",
-            "right": "counter-bridge"
-          },
-          "bridge": {
-            "maxWidth": 3
-          }
-        }
       }
     },
     {
@@ -6703,6 +6679,9 @@
       },
       "cuts": {
         "fixEntryJunction": true,
+        "entryBridge": {
+          "maxWidth": 3
+        },
         "boundaries": {
           "left": "free",
           "right": "corner-junction"
@@ -6711,24 +6690,6 @@
           "entryCorner": {
             "normalCut": true,
             "required": true
-          }
-        }
-      },
-      "finalRetry": {
-        "terminalAttachment": true,
-        "tightJoin": true,
-        "returningStroke": true,
-        "body": {
-          "shape": "counter-bridge",
-          "counters": 1
-        },
-        "cuts": {
-          "boundaries": {
-            "left": "free",
-            "right": "counter-bridge"
-          },
-          "bridge": {
-            "maxWidth": 3
           }
         }
       }
@@ -6778,7 +6739,6 @@
       "current": "سش",
       "tightJoin": true,
       "returningStroke": true,
-      "terminalAttachment": true,
       "retainBodyFeatures": true,
       "onFinalRetry": true,
       "body": {
@@ -7078,7 +7038,6 @@
       "ownsLeftTip": true,
       "returningStroke": true,
       "tightJoin": true,
-      "terminalAttachment": true,
       "onFinalRetry": true,
       "body": {
         "minFlankSpan": 0.25,

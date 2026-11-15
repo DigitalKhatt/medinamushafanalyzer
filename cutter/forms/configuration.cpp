@@ -249,7 +249,6 @@ const QHash<QString, SharedShapeSchema> &sharedShapeSchemas() {
     static const QHash<QString, SharedShapeSchema> schemas{
         {"counter-neck", {"counter", {"free", "counter-neck", "counter-shoulder", "counter-bridge", "corner-junction"}}},
         {"counter-shoulder", {"counter", {"free", "counter-neck", "counter-shoulder", "counter-bridge"}}},
-        {"counter-bridge", {"counter", {"free", "counter-neck", "counter-shoulder", "counter-bridge"}}},
         {"counter-loop", {"loop", {"free", "loop-entry", "loop-exit"}}},
         {"counter-rim", {"rim", {"free", "loop-entry", "loop-exit"}}},
         {"counter-outline", {"outline", {"free", "outline-entry", "outline-exit"}}},
@@ -980,9 +979,9 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         if (!returning.isUndefined() && (!returning.isBool() || !loop.value("exitTooth").isObject()))
             return id + ": exitTooth.returningFoot must be a boolean on a declared loop exit tooth";
     }
-    if (shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge") {
+    if (shape == "counter-neck" || shape == "counter-shoulder") {
         bodyKeys << "shoulder";
-        cutKeys << "shoulder" << "bridge";
+        cutKeys << "shoulder";
         if (const auto tight = cuts.value("tightEntryAfter"); !tight.isUndefined()) {
             const auto sender = tight.toString();
             if (phase != "final" || sender.isEmpty() || namedLetterForm(config, sender).isEmpty())
@@ -990,8 +989,13 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             cutKeys << "tightEntryAfter";
         }
     }
-    if (shape == "counter-bridge" && (phase != "final" || !positive(cuts.value("bridge").toObject().value("maxWidth"))))
-        return id + ": a final counter bridge needs a positive maximum width in counter heights";
+    if (cuts.contains("entryBridge")) {
+        const auto bridge = cuts.value("entryBridge").toObject();
+        if (phase != "final" || shape != "counter-neck" || bridge.size() != 1 ||
+            !positive(bridge.value("maxWidth")) || !cuts.value("fixEntryJunction").toBool())
+            return id + ": entryBridge needs a fixed final counter junction and a positive width in counter heights";
+        cutKeys << "entryBridge";
+    }
     const auto normalValley = cuts.value("counter").toObject().value("normalValley");
     if (!normalValley.isUndefined() && (shape != "counter-neck" || phase != "initial" || !normalValley.isBool()))
         return id + ": normalValley must be a boolean on an initial counter-neck cut";
@@ -1094,7 +1098,7 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     };
     if (!checkBody(checkBody, body))
         return id + ": projection settings cannot change recognized body evidence";
-    if ((shape == "counter-neck" || shape == "counter-shoulder" || shape == "counter-bridge" ||
+    if ((shape == "counter-neck" || shape == "counter-shoulder" ||
          shape == "contour-route") &&
         phase == "medial")
         return id + ": this boundary shape needs an initial or final position";
@@ -1523,31 +1527,6 @@ QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form) {
     return form;
 }
 
-QJsonArray finalRetryCandidates(const QJsonArray& forms, QHash<QString, QString>& parents) {
-    QJsonArray candidates;
-    parents.clear();
-    for (const auto& value : forms) {
-        auto form = value.toObject();
-        if (!form.contains("finalRetry")) {
-            candidates.append(value);
-            continue;
-        }
-        auto retry = form.take("finalRetry").toObject();
-        const auto parent = form.value("id").toString();
-        const auto key = parent + "#final-retry";
-        // Keep separate search keys for the two sets of body evidence.
-        retry.insert("id", key);
-        retry.insert("_finalRetryFor", parent);
-        retry.insert("current", form.value("current"));
-        retry.insert(form.value("onIncomplete").toBool() ? "onIncomplete" : "onFinalRetry", true);
-        if (form.value("onUnresolved").toBool()) retry.insert("onUnresolved", true);
-        candidates.append(retry);
-        candidates.append(form);
-        parents.insert(key, parent);
-    }
-    return candidates;
-}
-
 } // namespace MedinaCutter
 
 QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
@@ -1602,26 +1581,9 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
     auto problem = invalidKashidaSettings(config.value("kashidaDefaults"), defaults, "kashidaDefaults");
     if (!problem.isEmpty()) return problem;
     const auto effective = withOverrides(defaults, config.value("kashidaDefaults").toObject());
-    for (const auto* phase : {"initial", "medial", "final"}) {
-        for (const auto& value : config.value(phase).toArray()) {
-            const auto form = value.toObject();
-            if (!form.contains("finalRetry")) continue;
-            const auto retry = form.value("finalRetry").toObject();
-            const auto id = form.value("id").toString();
-            if (QString(phase) != "final" || form.value("onFinalRetry").toBool() ||
-                !retry.value("body").isObject() || !retry.value("cuts").isObject())
-                return id + ": finalRetry needs a final template and a body and cuts declaration";
-            for (auto setting = retry.begin(); setting != retry.end(); ++setting)
-                if (!QStringList{"body", "cuts", "terminalAttachment", "tightJoin", "returningStroke",
-                                 "ownsLeftTip"}.contains(setting.key()))
-                    return id + ": unknown finalRetry setting " + setting.key();
-        }
-    }
-    QHash<QString, QString> retryParents;
-    const auto finals = finalRetryCandidates(config.value("final").toArray(), retryParents);
     QSet<QString> ids;
     for (const auto* phase : {"initial", "medial", "final"}) {
-        const auto forms = QString(phase) == "final" ? finals : config.value(phase).toArray();
+        const auto forms = config.value(phase).toArray();
         for (const auto& entry : forms) {
             if (!entry.isObject()) return QString(phase) + ": every template must be an object";
             auto rule = entry.toObject();
@@ -1763,10 +1725,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     !positive(lip.value("maxDrop")))
                     return id + ": a stacked head needs a paired letter, ordered lip reach and positive drop";
             }
-            if (rule.contains("terminalAttachment") &&
-                (QString(phase) != "final" || !rule.value("terminalAttachment").isBool() ||
-                 !rule.value("onFinalRetry").toBool()))
-                return id + ": terminalAttachment needs a final form with onFinalRetry";
             if (rule.contains("stemFoot") && (method != "bowl-fork" || !rule.value("stemFoot").isBool() ||
                                               (rule.contains("penWidth") && !positive(rule.value("penWidth")))))
                 return id + ": stemFoot requires a bowl fork and a positive pen width";
@@ -1999,7 +1957,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 const auto shape = sharedBody.value("shape");
                 if (declaredBody.isEmpty() && shape != "component-arm" && shape != "tapered-arm" && shape != "open-bowl" &&
                     shape != "terminal-fork" && shape != "tooth-cluster" && shape != "counter-neck" &&
-                    shape != "counter-shoulder" && shape != "counter-bridge" && shape != "stacked-tooth" &&
+                    shape != "counter-shoulder" && shape != "stacked-tooth" &&
                     !(QString(phase) == "initial" ? initialMethods : finalMethods).contains(method))
                     return id + ": an explicit body method for this position is required; generic join rules are unsupported";
             }
@@ -2150,7 +2108,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 return "Invalid fixed-anchor expansion template " + form.key();
             const auto settings = form.value().toObject();
             for (auto field = settings.begin(); field != settings.end(); ++field)
-                if (!QStringList{"fixedAnchors", "fixedAnchorsRetry", "fixedAnchorsEnding",
+                if (!QStringList{"fixedAnchors", "fixedAnchorsEnding",
                                  "fixedAnchorsBeforeFinal", "fixedAnchorsMaxLetters", "sharedBoundary", "sharedBoundaryWith"}
                          .contains(field.key()))
                     return "Unsupported fixed-anchor expansion setting " + field.key();

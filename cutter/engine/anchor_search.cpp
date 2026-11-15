@@ -355,6 +355,9 @@ bool sharesFixedJunction(SearchContext& source, const AnchoredBody& sending, con
     const auto& entry = *receiving.entry;
     if (sameSection(exit, entry) || exit.counterEntry.pathIndex > 0 || entry.counterEntry.pathIndex > 0 ||
         orderedSections(exit, entry, source.orientation)) return false;
+    if (!sending.entry && receiving.coversSharedEntry &&
+        sharesCloseAttachment(sending, receiving, source.orientation, .75 * penWidth, penWidth))
+        return true;
     const auto preferred = sectionLine(exit), junction = sectionLine(entry);
     const double width = std::min(penWidth, junction.length());
     const double topGap = QLineF(preferred.p1(), junction.p1()).length();
@@ -512,8 +515,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
         canUseReceivingEntry(sending, receiving, source.orientation, preceding, penWidth) ||
         (allowAlternateAnchors && sharesLoopNeck(sending, receiving, source.orientation, tightTolerance)) ||
         (allowShortAttachments && !requiredConnector &&
-         (sharesCloseAttachment(sending, receiving, source.orientation, std::max(tightTolerance, .75 * penWidth),
-             continuation ? penWidth : 0) ||
+         (sharesCloseAttachment(sending, receiving, source.orientation, std::max(tightTolerance, .75 * penWidth)) ||
           sharesIntrinsicJunction(sending, receiving, source.orientation, penWidth) ||
           (continuation &&
            (sharesTightJunction(sending, receiving, source.orientation, penWidth) ||
@@ -692,6 +694,8 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         auto diagnostic = QJsonObject{{"letterIndex", int(slot + 1)}, {"character", letters.mid(int(slot), 1)},
             {"position", slot == 0 ? "initial" : slot + 1 == bodies.size() ? "final" : "medial"},
             {"status", "matched"}, {"template", body.formId}, {"candidates", QJsonArray{body.formId}}};
+        if (slot > 0 && body.coversSharedEntry && sharedAtEntry[slot - 1])
+            diagnostic.insert("entryPolicy", "counter-bridge");
         if (body.forkEntry) {
             diagnostic.insert("bodyForm", "lam-fork");
             diagnostic.insert("cutPolicy", "lam-fork-flanks");
@@ -925,8 +929,7 @@ struct AnchorTraversal {
                 fitsDeclaredSharedEntry(sending, body, source, letters.back(), penWidth) ||
                 (allowAlternates && sharesLoopNeck(sending, body, source.orientation, tightTolerance)) ||
                 (allowShortAttachments && !requiredConnectors[slot - 1] &&
-                 (sharesCloseAttachment(sending, body, source.orientation, std::max(tightTolerance, .75 * penWidth),
-                     continuation ? penWidth : 0) ||
+                 (sharesCloseAttachment(sending, body, source.orientation, std::max(tightTolerance, .75 * penWidth)) ||
                   sharesIntrinsicJunction(sending, body, source.orientation, penWidth) ||
                   (continuation && (sharesTightJunction(sending, body, source.orientation, penWidth) ||
                       sharesStemmedBowl(sending, body, source.orientation, penWidth))))) ||
@@ -974,18 +977,7 @@ struct AnchorTraversal {
                                   config, requiredConnectors, tightTolerance, penWidth,
                                   allowAlternates, allowShortAttachments,
                                   config.value("fixedAnchorBodyChecks").toBool() ? &bodyChecks : nullptr, selectedJoins);
-        if (partition) {
-            if (!partition->letterDiagnostics.isEmpty()) {
-                auto d = partition->letterDiagnostics.last().toObject();
-                const auto id = d.value("template").toString();
-                if (id.endsWith("#final-retry")) {
-                    d.insert("template", id.chopped(QStringLiteral("#final-retry").size()));
-                    d.insert("cutPolicy", "final-retry");
-                    partition->letterDiagnostics[partition->letterDiagnostics.size() - 1] = d;
-                }
-            }
-            if (!accept || accept(*partition)) return partition;
-        }
+        if (partition && (!accept || accept(*partition))) return partition;
         return {};
     }
 
