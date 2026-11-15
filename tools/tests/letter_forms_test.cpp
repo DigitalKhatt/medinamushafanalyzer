@@ -446,6 +446,7 @@ int main(int argc, char** argv) {
                            ReviewedJoin{274, 6, 7, 2, 2, 33.9905, 45},
                            ReviewedJoin{357, 12, 6, 2, 2, 28.3481, 35},
                            ReviewedJoin{456, 1, 8, 3, 0, 8.0687, 17},
+                           ReviewedJoin{510, 1, 5, 1, 4, 7.77689, 17},
                            ReviewedJoin{521, 1, 8, 1, 0, 40, 30},
                            ReviewedJoin{539, 13, 7, 1, 1, 5.731, 15}}) {
         QFile fixture(QString("pages/page%1.dat").arg(at.page));
