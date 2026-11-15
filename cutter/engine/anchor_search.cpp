@@ -34,7 +34,7 @@ struct AnchorSearchMemo {
     std::map<AnchorCandidateKey, std::vector<AnchoredBody>> bodies;
     std::map<std::tuple<const AnchoredBody*, QByteArray, size_t, bool>, std::vector<AnchoredBody>> sharedEntries;
     std::map<std::tuple<const QJsonObject*, QString, bool>, std::optional<Stretching>> folds;
-    std::map<std::tuple<const AnchoredBody*, const AnchoredBody*, size_t, bool, bool, bool, double>, JoinCompatibility> joins;
+    std::map<std::tuple<const AnchoredBody*, const AnchoredBody*, size_t, bool, bool, double>, JoinCompatibility> joins;
 
     const QByteArray& key(const QJsonObject& form) {
         auto [entry, inserted] = formKeys.try_emplace(&form);
@@ -249,47 +249,6 @@ bool sharesCloseAttachment(const AnchoredBody& sending, const AnchoredBody& rece
         retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &entry, orientation);
 }
 
-bool sharesTightJunction(const AnchoredBody& sending, const AnchoredBody& receiving,
-                        Orientation orientation, double penWidth) {
-    if (!receiving.acceptsCloseSharedJoin || !sending.entry ||
-        sending.keepsExitHollow || receiving.requiresSharedEntry) return false;
-    const auto& exit = *sending.exit;
-    const auto& entry = *receiving.entry;
-    if (exit.counterEntry.pathIndex > 0 || entry.counterEntry.pathIndex > 0 ||
-        orderedSections(exit, entry, orientation)) return false;
-    const auto a = sectionLine(exit), b = sectionLine(entry);
-    const double width = std::min(penWidth, b.length());
-    const double top = QLineF(a.p1(), b.p1()).length(), bottom = QLineF(a.p2(), b.p2()).length();
-    return std::min(top, bottom) <= .3 * width && std::max(top, bottom) <= 1.3 * width &&
-        QPointF::dotProduct(a.p2() - a.p1(), b.p2() - b.p1()) > 0 &&
-        orderedSections(*sending.entry, entry, orientation) &&
-        retainsLandmarks(sending, &*sending.entry, &entry, orientation);
-}
-
-bool sharesStemmedBowl(const AnchoredBody& sending, const AnchoredBody& receiving,
-                        Orientation orientation, double penWidth) {
-    if (!sending.forkEntry || !receiving.stemmedBowl || !sending.entry ||
-        orderedSections(*sending.exit, *receiving.entry, orientation)) return false;
-    const auto a = sectionLine(*sending.exit), b = sectionLine(*receiving.entry);
-    return QLineF(a.center(), b.center()).length() <= 1.3 * penWidth &&
-        orderedSections(*sending.entry, *receiving.entry, orientation) &&
-        retainsLandmarks(sending, &*sending.entry, &*receiving.entry, orientation);
-}
-
-bool sharesIntrinsicJunction(const AnchoredBody& sending, const AnchoredBody& receiving,
-                             Orientation orientation, double penWidth) {
-    if (!sending.prefersIntrinsicSharedExit || !receiving.acceptsCloseSharedJoin) return false;
-    const auto& exit = *sending.exit;
-    const auto& entry = *receiving.entry;
-    if ((!entry.topBaseLine.isSharp && !entry.bottomBaseLine.isSharp) || orderedSections(exit, entry, orientation))
-        return false;
-    const auto a = sectionLine(exit), b = sectionLine(entry);
-    return QLineF(a.p1(), b.p1()).length() <= 1.35 * penWidth &&
-        QLineF(a.p2(), b.p2()).length() <= a.length() &&
-        orderedSections(*sending.entry, entry, orientation) &&
-        retainsLandmarks(sending, &*sending.entry, &entry, orientation);
-}
-
 bool keepsStrokeAtEntry(const AnchoredBody& sending, const AnchoredBody& receiving, SearchContext& source,
                         double penWidth) {
     if (!receiving.keepsEntryConnector || sending.entry || !orderedSections(*sending.exit, *receiving.entry, source.orientation))
@@ -427,13 +386,17 @@ bool hasOverlapLimits(const AnchoredBody& sending, const AnchoredBody& receiving
         QPointF::dotProduct(a.p2() - a.p1(), b.p2() - b.p1()) > 0;
 }
 
-bool hasLoopTurnOverlap(const AnchoredBody& sending, const AnchoredBody& receiving, Orientation orientation) {
-    if (!sending.minimumExitAtTurn || !sending.minimumExit || sending.requiresSharedExit ||
-        receiving.requiresSharedEntry) return false;
+bool canResolveOverlappingAnchors(const AnchoredBody& sending, const AnchoredBody& receiving,
+                                  Orientation orientation, QChar following) {
+    if (sending.requiresSharedExit || receiving.requiresSharedEntry) return false;
     const auto& exit = *sending.exit;
     const auto& entry = *receiving.entry;
-    return exit.counterEntry.pathIndex <= 0 && entry.counterEntry.pathIndex <= 0 &&
-        !sameSection(exit, entry) && !orderedSections(exit, entry, orientation);
+    if (exit.counterEntry.pathIndex > 0 || entry.counterEntry.pathIndex > 0 ||
+        sameSection(exit, entry) || orderedSections(exit, entry, orientation)) return false;
+    return entryLimitAtJoin(sending, receiving).has_value() ||
+           (sending.minimumExitAtTurn && sending.minimumExit) ||
+           (exitLimitAtJoin(sending, receiving, following) &&
+            (receiving.acceptsCloseSharedJoin || receiving.keepsEntryJunction));
 }
 
 bool withinBodyLimit(const Stretching& cut, const std::optional<Stretching>& minimum,
@@ -493,7 +456,7 @@ struct JoinSections {
 std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBody& sending,
         const AnchoredBody& receiving, QChar preceding, QChar following, QChar last, bool terminal, bool sharesFinalFold,
         const QJsonObject& config, bool continuation, bool requiredConnector, double tightTolerance, double penWidth,
-        bool allowNeckJoin, bool allowShortAttachments) {
+        bool allowNeckJoin) {
     auto exit = *sending.exit;
     auto entry = *receiving.entry;
     if (!fitsAnchorGap(sending, receiving, source.orientation, penWidth,
@@ -541,12 +504,6 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
         sharesCornerExit(sending, entry, source.orientation, tightTolerance) ||
         canUseReceivingEntry(sending, receiving, source.orientation, preceding, penWidth) ||
         (allowNeckJoin && sharesLoopNeck(sending, receiving, source.orientation, tightTolerance)) ||
-        (allowShortAttachments && !requiredConnector &&
-         (sharesCloseAttachment(sending, receiving, source.orientation, std::max(tightTolerance, .75 * penWidth)) ||
-          sharesIntrinsicJunction(sending, receiving, source.orientation, penWidth) ||
-          (continuation &&
-           (sharesTightJunction(sending, receiving, source.orientation, penWidth) ||
-            sharesStemmedBowl(sending, receiving, source.orientation, penWidth))))) ||
         (receiving.sharesJunctionEntry && !orderedSections(exit, entry, source.orientation)) ||
         (!receiving.requiresSharedEntry &&
             fitsDeclaredSharedEntry(sending, receiving, source, last, penWidth)) ||
@@ -557,8 +514,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
         if (receiving.prefersTightIncoming && !sending.counters.isEmpty() && !sending.entry &&
             !fitsDeclaredSharedEntry(sending, receiving, source, last, penWidth) &&
             getJoinTime(exit, source.orientation).isStrictLeft(entry.topBaseLine.time)) return {};
-        if (config.value("fixedAnchorBodyChecks").toBool() && terminal &&
-            !sending.sharedReturnJunction.isEmpty() &&
+        if (terminal && !sending.sharedReturnJunction.isEmpty() &&
             sending.sharedReturnWith.contains(last)) {
             SearchContext geometry = source;
             Stretching junction{};
@@ -617,19 +573,16 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
 }
 
 bool validConnector(const QPainterPath& connector, const Apath& shape, const QLineF& right, const QLineF& left,
-                    bool allowShortAttachments, bool continuation, double penWidth) {
+                    bool continuation, double penWidth) {
     return !connector.boundingRect().isEmpty() && toSubpaths(connector).size() == 1 &&
-        ((allowShortAttachments && QLineF(right.center(), left.center()).length() <=
-            2 * (continuation ? std::max(right.length(), left.length()) : std::min(right.length(), left.length()))) ||
-         followsOneStroke(shape.transform.map(connector).translated(shape.pos), right, left,
-                          ConnectorEndpointMatch::NearestVertex, continuation ? penWidth : 0));
+        followsOneStroke(shape.transform.map(connector).translated(shape.pos), right, left,
+                         ConnectorEndpointMatch::NearestVertex, continuation ? penWidth : 0);
 }
 
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
         SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
         const QJsonObject& config, bool continuation, const std::vector<bool>& requiredConnectors,
         double tightTolerance, double penWidth,
-        const QJsonObject* bodyChecks,
         std::span<const JoinSections* const> selectedJoins = {}) {
     Subword trial{};
     trial.text = sub.text;
@@ -654,7 +607,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         if (!seam) {
             computed = resolveJoin(source, sending, receiving, letters[int(slot) - 1], letters[int(slot)], letters.back(),
                 slot + 1 == bodies.size(), sharesFinalFold, config, continuation, requiredConnectors[slot - 1], tightTolerance,
-                penWidth, false, false);
+                penWidth, false);
             if (!computed) return {};
             seam = &*computed;
         }
@@ -735,9 +688,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         if (slot + 1 == bodies.size() || trial.kashidaCuts[slot].first.isNull()) continue;
         const auto& [right, left] = trial.kashidaCuts[slot];
         auto& connector = regions[region++].path;
-        const bool compact = slot < selectedJoins.size() && selectedJoins[slot]->rank == PartitionRank::AdjustedJoin;
-        if (!validConnector(connector, shape, right, left, compact,
-                            continuation, penWidth)) return {};
+        if (!validConnector(connector, shape, right, left, continuation, penWidth)) return {};
         trial.kashidaPaths[slot] = std::move(connector);
     }
     for (size_t slot = 0; slot < sharedAtEntry.size(); ++slot)
@@ -763,9 +714,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
             recordBoundaryTemplate(trial, sender + 1, true, terminalJunction);
         }
     }
-    if ((bodyChecks && !plausibleRecoveredBodies(word, trial, *bodyChecks,
-            continuation ? penWidth : 0)) ||
-        !coversOriginalInk(word, trial)) return {};
+    if (!coversOriginalInk(word, trial)) return {};
     trial.correct = true;
     trial.templateTrace.append("Fixed anchors · " + bodyForms.join(" → "));
     return trial;
@@ -930,7 +879,7 @@ struct AnchorTraversal {
     }
 
     JoinCompatibility follows(const AnchorBranch& branch, size_t slot, const AnchoredBody& sending,
-            const AnchoredBody& body, bool checkFoldedTooth, bool allowCompactJoins) {
+            const AnchoredBody& body, bool checkFoldedTooth) {
         auto& source = branch.source;
         const auto tightTolerance = branch.tightTolerance;
         const auto continuation = branch.continuation();
@@ -951,16 +900,11 @@ struct AnchorTraversal {
                 exitBeforeFollowingTooth(sending, body, source.orientation, letters[int(slot)]) ||
                 (!requiredConnectors[slot - 1] &&
                     (hasOverlapLimits(sending, body, letters[int(slot)], tightTolerance, penWidth) ||
-                     hasLoopTurnOverlap(sending, body, source.orientation) ||
+                     canResolveOverlappingAnchors(sending, body, source.orientation, letters[int(slot)]) ||
                      (continuation && sharesFixedJunction(source, sending, body, penWidth)))) ||
                 canUseReceivingEntry(sending, body, source.orientation, letters[int(slot) - 1], penWidth) ||
                 fitsDeclaredSharedEntry(sending, body, source, letters.back(), penWidth) ||
                 sharesLoopNeck(sending, body, source.orientation, tightTolerance) ||
-                (allowCompactJoins && !requiredConnectors[slot - 1] &&
-                 (sharesCloseAttachment(sending, body, source.orientation, std::max(tightTolerance, .75 * penWidth)) ||
-                  sharesIntrinsicJunction(sending, body, source.orientation, penWidth) ||
-                  (continuation && (sharesTightJunction(sending, body, source.orientation, penWidth) ||
-                      sharesStemmedBowl(sending, body, source.orientation, penWidth))))) ||
                 sharesIncomingSection(exit, body, source.orientation) || body.sharesRimEntry ||
                 body.sharesJunctionEntry || sharesCornerExit(sending, *body.entry, source.orientation, tightTolerance))
                 return {true};
@@ -968,7 +912,7 @@ struct AnchorTraversal {
         };
         if (cutGeometryMemo && cutGeometryMemo->memoizeIntersections) {
             auto [entry, inserted] = memo.joins.try_emplace(
-                {&sending, &body, slot, continuation, checkFoldedTooth, allowCompactJoins, tightTolerance},
+                {&sending, &body, slot, continuation, checkFoldedTooth, tightTolerance},
                 JoinCompatibility{false});
             if (inserted) entry->second = compatible();
             return entry->second;
@@ -976,40 +920,20 @@ struct AnchorTraversal {
         return compatible();
     }
 
-    bool canKeepInitialBody(const AnchorBranch& branch, const AnchoredBody& sending,
-                            const AnchoredBody& receiving, bool allowCompactJoins) {
-        if (!branch.continuation() || !branch.config.value("fixedAnchorBodyChecks").toBool() ||
-            sending.entry || !sending.counters.isEmpty() || sending.exit->counterEntry.pathIndex > 0 ||
-            !orderedSections(*sending.exit, *receiving.entry, branch.source.orientation)) return true;
-        const auto cut = cutRegions(branch.source.transformedPath, {}, {*sending.exit}, branch.source.orientation, false);
-        if (cut.size() != 2 || hasMinimumBodyArea(cut.front().path.boundingRect())) return true;
-        // Keep both possibilities when either form asks to use the
-        // receiver's boundary as a shared seam.
-        if (receiving.requiresSharedEntry || receiving.sharesRimEntry || receiving.sharesJunctionEntry ||
-            receiving.sharesFinalEntry || canUseReceivingEntry(sending, receiving, branch.source.orientation,
-                letters.front(), penWidth) || fitsDeclaredSharedEntry(sending, receiving, branch.source, letters.back(), penWidth) ||
-            sharesLoopNeck(sending, receiving, branch.source.orientation, branch.tightTolerance) ||
-            (allowCompactJoins && !requiredConnectors.front() &&
-             sharesCloseAttachment(sending, receiving, branch.source.orientation, std::max(branch.tightTolerance, .75 * penWidth))))
-            return true;
-        return false;
-    }
-
     std::optional<Subword> finish(const AnchorBranch& branch) {
         auto& source = branch.source;
         const auto& config = branch.config;
         const auto tightTolerance = branch.tightTolerance;
-        const auto bodyChecks = config.value("recoveryChecks").toObject();
         auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(branch),
                                   config, branch.continuation(), requiredConnectors, tightTolerance, penWidth,
-                                  config.value("fixedAnchorBodyChecks").toBool() ? &bodyChecks : nullptr, selectedJoins);
+                                  selectedJoins);
         if (partition && (!accept || accept(*partition))) return partition;
         return {};
     }
 
     template<typename TryBody>
     std::optional<Subword> bodiesAfter(const AnchorBranch& branch, size_t slot, const AnchoredBody* sending,
-                                      bool allowCompactJoins, int& remaining, TryBody tryBody) {
+                                      int& remaining, TryBody tryBody) {
         const bool terminal = slot + 1 == letters.size();
         if (terminal && !attachedStroke.isEmpty()) {
             if (!sending || !sending->exit || requiredConnectors[slot - 1]) return {};
@@ -1042,14 +966,13 @@ struct AnchorTraversal {
                 if (body->alternateAnchor && !body->hasStemReturn &&
                     !ownedCrestEndings.isEmpty() && !ownedCrestEndings.contains(last)) continue;
                 if (sending) {
-                    const auto join = follows(branch, slot, *sending, *body, checkFoldedTooth, allowCompactJoins);
+                    const auto join = follows(branch, slot, *sending, *body, checkFoldedTooth);
                     if (join.stopAtBowl) {
                         if (!branch.continuation()) return {};
                         continue;
                     }
                     if (!join.allowed || !fitsAnchorGap(*sending, *body, branch.source.orientation, penWidth,
-                                                       branch.continuation() || branch.verifyContours) ||
-                        (slot == 1 && !terminal && !canKeepInitialBody(branch, *sending, *body, allowCompactJoins))) continue;
+                                                       branch.continuation() || branch.verifyContours)) continue;
                     // Prefer bodies whose own entry leaves room for a connector.
                     // A rim attachment is useful only where the preferred caps overlap.
                     if (sending->rimExitLimit && body->acceptsCounterRim && body->entryLimit &&
@@ -1079,7 +1002,7 @@ struct AnchorTraversal {
         std::optional<Subword> result;
     };
 
-    std::optional<Subword> match(const AnchorBranch& branch, bool allowCompactJoins, int& remaining,
+    std::optional<Subword> match(const AnchorBranch& branch, int& remaining,
                                  BestPartition& best, PartitionRank rank = PartitionRank::Preferred) {
         if (remaining == 0 || rank >= best.rank) return {};
         if (selected.size() == letters.size()) {
@@ -1097,7 +1020,7 @@ struct AnchorTraversal {
         const auto suffix = std::tuple{selected.size(), sending, rank};
         if (sending && deadSuffixes.contains(suffix)) return {};
         const auto before = partitionAttempts;
-        auto result = bodiesAfter(branch, selected.size(), sending, allowCompactJoins, remaining,
+        auto result = bodiesAfter(branch, selected.size(), sending, remaining,
             [&](const AnchoredBody& body) -> std::optional<Subword> {
                 const auto bodyRank = body.alternateAnchor && !body.hasStemReturn
                     ? PartitionRank::SecondaryBody : PartitionRank::Preferred;
@@ -1115,20 +1038,19 @@ struct AnchorTraversal {
                     const bool terminal = slot + 1 == letters.size();
                     const auto resolve = [&](PartitionRank joinRank) -> std::optional<JoinSections> {
                         const bool neckJoin = joinRank == PartitionRank::SecondaryBody;
-                        const bool compactJoin = joinRank == PartitionRank::AdjustedJoin;
                         auto seam = resolveJoin(branch.source, *sending, body, letters[int(slot) - 1],
                             letters[int(slot)], letters.back(),
                             terminal, terminal && sharesFinalFold(branch), branch.config, branch.continuation(),
                             requiredConnectors[slot - 1],
-                            branch.tightTolerance, penWidth, neckJoin, compactJoin);
+                            branch.tightTolerance, penWidth, neckJoin);
                         if (!seam) return {};
                         seam->rank = joinRank;
-                        if (seam->shared || body.retainsCounterRim || (branch.limit <= 0 && !allowCompactJoins) ||
+                        if (seam->shared || body.retainsCounterRim || branch.limit <= 0 ||
                             seam->exit.counterEntry.pathIndex > 0 || seam->entry.counterEntry.pathIndex > 0) return seam;
                         const auto parts = cutRegions(shape.path, {}, {seam->exit, seam->entry},
                                                       branch.source.orientation, !branch.continuation());
                         if (parts.size() != 3 || !validConnector(parts[1].path, shape, sectionLine(seam->exit),
-                            sectionLine(seam->entry), compactJoin, branch.continuation(), penWidth)) return {};
+                            sectionLine(seam->entry), branch.continuation(), penWidth)) return {};
                         return seam;
                     };
                     const auto chooseJoin = [&]() -> std::optional<JoinSections> {
@@ -1137,12 +1059,14 @@ struct AnchorTraversal {
                             sharesLoopNeck(*sending, body, branch.source.orientation, branch.tightTolerance)) {
                             if (auto neck = resolve(PartitionRank::SecondaryBody)) return neck;
                         }
-                        if (!requiredConnectors[slot - 1] && hasLoopTurnOverlap(*sending, body, branch.source.orientation)) {
-                            if (const auto seam = resolveOverlap(branch.source, *sending, body, letters[int(slot)], true))
+                        const auto following = letters[int(slot)];
+                        if (!requiredConnectors[slot - 1] &&
+                            canResolveOverlappingAnchors(*sending, body, branch.source.orientation, following)) {
+                            if (const auto seam = resolveOverlap(branch.source, *sending, body, following, sending->minimumExitAtTurn))
                                 return JoinSections{*seam, *seam, true, sameSection(*seam, *body.entry), {},
                                                     PartitionRank::AdjustedJoin};
                         }
-                        return allowCompactJoins ? resolve(PartitionRank::AdjustedJoin) : std::nullopt;
+                        return {};
                     };
                     const std::optional<JoinSections>* seam;
                     if (branch.limit > 0) {
@@ -1165,7 +1089,7 @@ struct AnchorTraversal {
                     best.rank = candidateRank;
                     best.result = std::move(complete);
                 }
-                if (auto complete = match(branch, allowCompactJoins, remaining, best, candidateRank)) return complete;
+                if (auto complete = match(branch, remaining, best, candidateRank)) return complete;
                 return {};
             });
         // A failed final partition can depend on any earlier letter.
@@ -1182,7 +1106,7 @@ struct AnchorTraversal {
         const AnchoredBody receiving{.formId = body.formId, .entry = body.exit, .requiresSharedEntry = true};
         selected.push_back(&receiving);
         auto partition = assemble(word, sub, shape, branch.source, letters, selected, false, branch.config,
-                                  branch.continuation(), requiredConnectors, branch.tightTolerance, penWidth, nullptr, selectedJoins);
+                                  branch.continuation(), requiredConnectors, branch.tightTolerance, penWidth, selectedJoins);
         selected.pop_back();
         if (partition && (!accept || accept(*partition))) return partition;
         return {};
@@ -1262,10 +1186,9 @@ struct AnchorTraversal {
                 continue;
             }
             int remaining = branch->limit > 0 ? branch->limit : -1;
-            const bool allowCompactJoins = branch->config.value("fixedAnchorBodyChecks").toBool() && letters.size() <= 5;
             deadSuffixes.clear();
             BestPartition best;
-            if (auto complete = match(*branch, allowCompactJoins, remaining, best)) return complete;
+            if (auto complete = match(*branch, remaining, best)) return complete;
             if (best.result) return std::move(best.result);
         }
         return {};

@@ -18,7 +18,7 @@ The application, catalog exporter and review tools use `PageAnalysisResult::segm
 1. Recognize each candidate from the original outline. Record its entry and exit sections, the landmarks it must retain, and any counters the body must own. An initial or final form has one free end.
 2. Follow the transcript in reading order. Check a candidate's entry against the previous candidate's exit. Backtracking chooses another body candidate and reuses candidates and compatible joins already calculated for that outline.
 3. Use separate sections when the gap contains a complete connecting stroke. A shared junction uses one seam. If a template declares an inward limit, assembly may resolve overlapping preferred sections within that limit while retaining both bodies' landmarks.
-4. Partition the source ink and check the complete result. The catalog exporter also checks that every letter owns source pixels. A rejected result returns control to the same anchor search.
+4. Partition the source ink. The chosen cuts must retain the bodies’ landmarks and counters, join through a valid connector or shared seam, and cover the source ink. The catalog exporter also checks that every letter owns source pixels. A rejected result returns control to the same anchor search.
 
 Forms enter the primary anchor search by default. A form's `anchorPass` can delay its eligibility to `expanded` or `continuation`, or reserve it for a ligature or component recipe with `assembly`. Per-form `anchorOverrides` hold changes for later passes. The bracketed intersection solver can verify tight sections against the original curves. `fixedAnchorExpansionChecks` limits the number of candidates visited by the expanded search. `strokeWidth` is the global width in page units for policies measured in pen widths. `kashidaDefaults.sharedCutTolerance` controls how close two sections can be when sharing a cut.
 
@@ -27,6 +27,7 @@ Within each pass, lower `priorityWithinPass` values are tried first. The default
 ## Shape and join policies
 
 - Medial teeth recognize an outer tip, its opposing bend and their flanks. The cut policies place sections on those flanks. Some tooth forms use a stem-foot turn at the entry. `minimumEntryWalk` bounds the inward motion, and `minimumEntryAfterForm` can restrict it to a particular preceding shape.
+- The initial tooth can require `body.features.minWidth` and `minBoxArea` in global stroke widths and square stroke widths. An open head or counter body can declare `cuts.minimumExitWalk` to retain its body when neighboring preferred sections overlap.
 - Sīn and shīn retain three tips and two valleys. Medial forms use the first tooth junction and the last hollow. Final forms use the first tooth junction as their fixed entry and keep the terminal bowl on a continuous contour.
 - Medial lām follows the shaft edges to its fork and places the cuts along its flanks. The two normals can start at a shared tip for a tight join. Lām–alef retains the lower return with lām and can use the inward corners of the alef entry for a shared seam.
 - A suspended counter or stacked body can declare an attachment section in `cuts.sharedExitAtAttachment` or `cuts.sharedEntryAtAttachment`. Both shapes retain their landmarks at the shared section.

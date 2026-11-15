@@ -1178,7 +1178,6 @@ struct AnchoredBody {
     QString keepInitialExitAfter;
     bool keepsEntryConnector = false;
     bool stemmedBowl = false;
-    bool prefersIntrinsicSharedExit = false;
     bool prefersTightIncoming = false;
     bool needsSharedInwardCorner = false;
     QString shareEntryWith;
@@ -1512,12 +1511,6 @@ bool leavesEntryClearance(const Stretching& sending, const Stretching& receiving
 bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLineF& left,
                       ConnectorEndpointMatch match = ConnectorEndpointMatch::FirstWithinTolerance,
                       double nominalWidth = 0);
-
-inline bool hasMinimumBodyArea(const QRectF& bounds) {
-    return bounds.width() * bounds.height() >= .12;
-}
-bool plausibleRecoveredBodies(const Word& word, const WordResultInfo::SubWordInfo& sub,
-                                     const QJsonObject& settings, double nominalWidth = 0);
 
 bool sourceLandmark(PathExtrema& mark, const std::vector<std::vector<QBezier>>& paths);
 

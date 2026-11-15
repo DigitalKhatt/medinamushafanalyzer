@@ -412,9 +412,7 @@ static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo
         assembled.templateTrace << (separate ? QStringLiteral("Pen lift between two independently matched bodies") :
                                      form.value("id").toString() + " · incoming stroke and overhanging head share one letter");
         assembled.correct = true;
-        if (!plausibleRecoveredBodies(word, assembled, config.value("recoveryChecks").toObject()) ||
-            !coversOriginalInk(word, assembled))
-            continue;
+        if (!coversOriginalInk(word, assembled)) continue;
         if (accepted)
             return false;
         accepted = std::move(assembled);

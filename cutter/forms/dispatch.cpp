@@ -100,6 +100,10 @@ bool matchesBoundaryBody(SearchContext& context, const QJsonObject& rule,
         return reject("cut separates the lips of the initial head");
     const auto bounds = pieces[initial ? 0 : 1].path.boundingRect();
     if (bounds.isEmpty()) return false;
+    if (bounds.width() < features.value("minWidth").toDouble())
+        return reject("body is narrower than its minimum width");
+    if (bounds.width() * bounds.height() < features.value("minBoxArea").toDouble())
+        return reject("body bounding box is smaller than its minimum area");
     if (finalCounter) {
         const auto evidence = recognizedSharedShape(context, rule.value("body").toObject());
         const auto& holes = evidence->holes;

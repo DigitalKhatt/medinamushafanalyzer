@@ -23,8 +23,7 @@ QJsonObject expandedAnchorConfig(QJsonObject config, bool continuation) {
         }
         config.insert(phase, forms);
     }
-    for (const auto* key : {"fixedAnchorStemReturnEnding", "fixedAnchorBodyChecks",
-                            "fixedAnchorExpansionChecks"})
+    for (const auto* key : {"fixedAnchorStemReturnEnding", "fixedAnchorExpansionChecks"})
         if (expansion.contains(key)) config.insert(key, expansion.value(key));
     return config;
 }
@@ -117,7 +116,6 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto body = form.value("body").toObject();
             const auto cuts = form.value("cuts").toObject();
             const auto shape = body.value("shape");
-            if (config.value("fixedAnchorBodyChecks").toBool()) form.insert("_expandedAnchorForm", true);
             const auto assembly = declaration.value("assembly").toObject();
             const bool exposedHead = position == 1 && assembly.value("operation") == "exposed-head";
             if (exposedHead) {
@@ -203,12 +201,15 @@ static std::optional<Stretching> insetLimit(const SearchContext& source, const A
                                           double distance, bool entry) {
     if (distance <= 0) return {};
     const auto& cap = entry ? *body.entry : *body.exit;
+    const auto& opposite = entry ? body.exit : body.entry;
+    if (body.landmarks.isEmpty() && !opposite) return {};
+    const auto& witness = body.landmarks.isEmpty() ? opposite->topBaseLine : body.landmarks.front();
     const auto side = getJoinTime(cap, source.orientation);
     for (const auto& end : {cap.topBaseLine, cap.bottomBaseLine}) {
         const bool forward = entry != (side.startAtLeft == (end.time == side.minTime));
         const auto point = walkBoundaryLimit(source, end, end, forward, distance);
         if (!point) continue;
-        const auto limit = normalAtLimit(source, *point, forward, body.landmarks.front(), entry);
+        const auto limit = normalAtLimit(source, *point, forward, witness, entry);
         if (limit && (entry ? orderedSections(cap, *limit, source.orientation)
                            : orderedSections(*limit, cap, source.orientation)) &&
             retainsLandmarks(body, entry ? &*limit : body.entry ? &*body.entry : nullptr,
@@ -1309,12 +1310,10 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
          cuts.value("shareTerminalReturn").toBool()))
         for (auto& candidate : result) candidate.sharedEntryBody = form;
     if (continuation) {
-        const bool intrinsicSharedExit = position == 1 && shape == "paired-route" && form.value("tightJoin").toBool();
         const bool tightIncoming = position == 1 && shape == "counter-loop" && form.value("sharedEntry").toBool();
         for (auto& candidate : result) {
             candidate.keepsEntryConnector = position == 1 &&
                 cuts.value("mouth").toObject().value("separateSharedEntry").toBool();
-            candidate.prefersIntrinsicSharedExit = intrinsicSharedExit;
             candidate.keepInitialExitAfter = cuts.value("sharedEntryAfter").toString();
             if (position == 0 && shape == "descending-stem")
                 candidate.requiresSharedExit = form.value("tightJoin").toBool();
@@ -1338,6 +1337,14 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             candidate.sharedReturnWith = terminal.value("letters").toString();
             candidate.sharedReturnJunction = terminal.value("junction").toObject().value("template").toString();
         }
+    if (position == 1 && (shape == "counter-loop" || shape == "counter-outline") && cuts.contains("minimumExitWalk")) {
+        const double distance = cuts.value("minimumExitWalk").toDouble() * penWidth;
+        const auto following = cuts.value("minimumExitBefore").toString();
+        for (auto& candidate : result) {
+            candidate.minimumExit = insetLimit(source, candidate, distance, false);
+            candidate.minimumExitBefore = following;
+        }
+    }
     if (inspectingForm) for (const auto& candidate : result) {
         for (const auto& mark : candidate.landmarks) inspectLandmark("Body landmark", mark);
         if (candidate.entry) inspectCandidate("Entry anchor", *candidate.entry);

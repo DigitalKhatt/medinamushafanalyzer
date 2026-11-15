@@ -1014,7 +1014,8 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         (phase != "medial" || form.value("ligatureAfter").toString().isEmpty()))
         return id + ": ligatureAfter needs preceding letters on a medial form";
     if (cuts.contains("minimumExitWalk")) {
-        if (phase != "medial" || (shape != "paired-route" && shape != "tooth-cluster") ||
+        if (phase != "medial" ||
+            (shape != "paired-route" && shape != "tooth-cluster" && shape != "counter-loop" && shape != "counter-outline") ||
             !positive(cuts.value("minimumExitWalk")))
             return id + ": minimumExitWalk needs a positive walk on a medial contour";
         cutKeys << "minimumExitWalk";
@@ -1515,7 +1516,13 @@ QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form) {
         form = sharedShapeProjectionForm(resolved);
     }
     if (toothDescription(body)) form.insert("tightJoin", cuts.value("tightJoin") == "shared-boundary");
-    if (body.value("features").isObject()) form.insert("bodyFeatures", body.value("features"));
+    if (body.value("features").isObject()) {
+        auto features = body.value("features").toObject();
+        const double width = config.value("strokeWidth").toDouble(1);
+        if (features.contains("minWidth")) features.insert("minWidth", width * features.value("minWidth").toDouble());
+        if (features.contains("minBoxArea")) features.insert("minBoxArea", width * width * features.value("minBoxArea").toDouble());
+        form.insert("bodyFeatures", features);
+    }
     if (body.value("counters").isDouble()) form.insert("bodyCounters", body.value("counters"));
     const auto stem = body.value("stem").toObject();
     if (stem.contains("headLip")) form.insert("_bodyPenWidth", stem.value("penWidth"));
@@ -1565,39 +1572,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
         return "strokeWidth must be a positive width in page units";
     for (const auto* obsolete : {"preferred", "fallback", "medialBodies"})
         if (config.contains(obsolete)) return QString("Obsolete template section: %1").arg(obsolete);
-    if (config.contains("recoveryChecks")) {
-        const auto checks = config.value("recoveryChecks").toObject();
-        const auto bowl = checks.value("finalBowl").toObject();
-        const auto valid = [](const QJsonValue& x) {
-            return x.isDouble() && std::isfinite(x.toDouble()) && x.toDouble() > 0;
-        };
-        if (!valid(checks.value("connectorMargin")) || !valid(checks.value("connectorBend")) ||
-            bowl.value("letters").toString().isEmpty() || !valid(bowl.value("minWidth")) ||
-            !valid(bowl.value("minHeight")) || !valid(bowl.value("tipTolerance")))
-            return "Invalid recovery ownership measurements";
-        if (checks.contains("longConnectorWidths") && !valid(checks.value("longConnectorWidths")))
-            return "longConnectorWidths needs a positive dimension in stroke widths";
-        if (checks.contains("bodyExtents") && !checks.value("bodyExtents").isArray())
-            return "bodyExtents must be an array";
-        for (const auto& v : checks.value("bodyExtents").toArray()) {
-            const auto bounds = v.toObject();
-            const auto position = bounds.value("position").toString();
-            if ((bounds.contains("protectHead") &&
-                 (!bounds.value("protectHead").isBool() || !bounds.contains("lips") ||
-                  (position != "initial" && position != "medial"))) ||
-                (bounds.contains("minHeadRiseWidths") &&
-                 (position != "final" || !valid(bounds.value("minHeadRiseWidths")))) ||
-                (bounds.contains("onUnresolved") && !bounds.value("onUnresolved").isBool()) ||
-                (bounds.contains("lips") && (!valid(bounds.value("lips").toObject().value("minRun")) ||
-                                             !valid(bounds.value("lips").toObject().value("minGap")))) ||
-                (bounds.contains("maxWidthToHeight") && !valid(bounds.value("maxWidthToHeight"))) ||
-                (bounds.contains("template") && bounds.value("template").toString().isEmpty()) ||
-                bounds.value("letters").toString().isEmpty() ||
-                !QStringList{"initial", "medial", "final"}.contains(position) || !valid(bounds.value("minWidth")) ||
-                !valid(bounds.value("minHeight")))
-                return "Invalid finished letter-body dimensions";
-        }
-    }
     static const auto bundled = readFormConfig(":/templates/letter-forms.json");
     const auto defaults = bundled.value("kashidaDefaults").toObject();
     auto problem = invalidKashidaSettings(config.value("kashidaDefaults"), defaults, "kashidaDefaults");
@@ -1831,7 +1805,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                     return id + ": bodyFeatures requires an initial or final body";
                 const auto features = rule.value("bodyFeatures").toObject();
                 for (auto feature = features.begin(); feature != features.end(); ++feature)
-                    if (!QStringList{"minHeight", "minWidthToHeight", "maxWidthToHeight", "maxUpperPeaks"}.contains(feature.key()) ||
+                    if (!QStringList{"minHeight", "minWidth", "minBoxArea", "minWidthToHeight", "maxWidthToHeight",
+                                     "maxUpperPeaks"}.contains(feature.key()) ||
                         !feature.value().isDouble() || !std::isfinite(feature.value().toDouble()) ||
                         feature.value().toDouble() <= 0 ||
                         (feature.key() == "maxUpperPeaks" && feature.value().toDouble() != std::floor(feature.value().toDouble())))

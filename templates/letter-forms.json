@@ -3,7 +3,6 @@
   "strokeWidth": 1,
   "fixedAnchorExpansion": {
     "fixedAnchorStemReturnEnding": "يىئ",
-    "fixedAnchorBodyChecks": true,
     "fixedAnchorExpansionChecks": 4096,
     "continuation": true
   },
@@ -649,6 +648,8 @@
           ]
         },
         "features": {
+          "minWidth": 0.45,
+          "minBoxArea": 0.12,
           "maxWidthToHeight": 0.6
         }
       },
@@ -681,6 +682,8 @@
           ]
         },
         "features": {
+          "minWidth": 0.45,
+          "minBoxArea": 0.12,
           "minWidthToHeight": 0.16,
           "maxWidthToHeight": 0.6
         }
@@ -2865,6 +2868,8 @@
         }
       },
       "cuts": {
+        "minimumExitWalk": 0.65,
+        "minimumExitBefore": "طظ",
         "loop": {
           "sideOffset": 0.5,
           "baselineOffset": 0.2,
@@ -3107,6 +3112,8 @@
         }
       },
       "cuts": {
+        "minimumExitWalk": 0.65,
+        "minimumExitBefore": "م",
         "loop": {
           "sideOffset": 0.15,
           "baselineOffset": 0.15,
@@ -3311,6 +3318,8 @@
         "counters": 0
       },
       "cuts": {
+        "minimumExitWalk": 1.5,
+        "minimumExitBefore": "قوؤبتثك",
         "routes": {
           "right": {
             "bottomProbe": "normal"
@@ -3580,6 +3589,8 @@
         "counters": 0
       },
       "cuts": {
+        "minimumExitWalk": 1.5,
+        "minimumExitBefore": "قوؤ",
         "routes": {
           "right": {
             "bottomProbe": "normal"
@@ -4662,6 +4673,8 @@
         }
       },
       "cuts": {
+        "minimumExitWalk": 1.35,
+        "minimumExitBefore": "بتثنيئى",
         "outline": {
           "entry": {
             "x": [
@@ -6795,76 +6808,5 @@
       "ownsLeftTip": true,
       "onUnresolvedPartition": true
     }
-  ],
-  "recoveryChecks": {
-    "connectorMargin": 0.9,
-    "connectorBend": 0.25,
-    "finalBowl": {
-      "letters": "يئى",
-      "minWidth": 2.5,
-      "minHeight": 1.4,
-      "tipTolerance": 0.25
-    },
-    "bodyExtents": [
-      {
-        "position": "medial",
-        "letters": "جحخ",
-        "protectHead": true,
-        "minWidth": 3,
-        "minHeight": 1.5,
-        "lips": {
-          "minRun": 0.5,
-          "minGap": 0.15
-        }
-      },
-      {
-        "position": "initial",
-        "letters": "بتثنيئى",
-        "minWidth": 0.45,
-        "minHeight": 1.25
-      },
-      {
-        "position": "medial",
-        "letters": "ل",
-        "minWidth": 0.65,
-        "minHeight": 3
-      },
-      {
-        "position": "medial",
-        "letters": "ل",
-        "template": "lam-medi",
-        "minWidth": 0.65,
-        "minHeight": 3,
-        "maxWidthToHeight": 1
-      },
-      {
-        "position": "initial",
-        "letters": "عغ",
-        "protectHead": true,
-        "minWidth": 3.2,
-        "minHeight": 1.9,
-        "onUnresolved": true,
-        "lips": {
-          "minRun": 0.38,
-          "minGap": 0.16
-        }
-      },
-      {
-        "position": "medial",
-        "letters": "عغ",
-        "minWidth": 1.65,
-        "minHeight": 1.8,
-        "onUnresolved": true
-      },
-      {
-        "position": "final",
-        "letters": "عغ",
-        "minWidth": 6,
-        "minHeight": 6,
-        "onUnresolved": true,
-        "minHeadRiseWidths": 0.6
-      }
-    ],
-    "longConnectorWidths": 4
-  }
+  ]
 }
