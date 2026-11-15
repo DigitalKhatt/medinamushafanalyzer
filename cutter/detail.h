@@ -1211,19 +1211,22 @@ bool orderedSections(const Stretching& right, const Stretching& left, Orientatio
 bool retainsLandmarks(const AnchoredBody& body, const Stretching* entry, const Stretching* exit,
                       Orientation orientation);
 
+enum class AnchorPass { Primary, Expanded, Continuation };
+
 using AnchorForms = std::array<QHash<QChar, std::vector<QJsonObject>>, 3>;
 
 QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms);
 QJsonObject expandedAnchorConfig(QJsonObject config, bool continuation = false);
 std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
                                          double penWidth, bool tryEntryTurn = false,
-                                         const Stretching* sharedExit = nullptr);
+                                         const Stretching* sharedExit = nullptr, AnchorPass pass = AnchorPass::Primary);
 std::vector<AnchoredBody> anchoredBodiesAtSharedEntry(SearchContext& source, const QJsonObject& form,
         std::span<const AnchoredBody* const> intrinsic, const Stretching& incoming, double penWidth, bool counter);
 struct AnchorPriority {
     const QJsonObject& config;
     const AnchorForms& forms;
     bool verifyContours = false;
+    AnchorPass pass = AnchorPass::Primary;
 };
 
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,

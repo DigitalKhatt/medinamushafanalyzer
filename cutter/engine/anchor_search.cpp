@@ -17,9 +17,10 @@ struct AnchorCandidateKey {
     size_t slot;
     bool verifyContours;
     bool entryTurn;
+    bool continuation;
     const Stretching* sharedExit = nullptr;
 
-    auto tie() const { return std::tie(form, slot, verifyContours, entryTurn, sharedExit); }
+    auto tie() const { return std::tie(form, slot, verifyContours, entryTurn, continuation, sharedExit); }
     bool operator<(const AnchorCandidateKey& other) const { return tie() < other.tie(); }
 };
 
@@ -51,10 +52,11 @@ struct AnchorSearchMemo {
 
     const std::vector<AnchoredBody>& candidates(SearchContext& source, const QJsonObject& form,
             size_t position, size_t slot, size_t count, double penWidth, bool verifyContours, bool entryTurn,
-            const Stretching* sharedExit = nullptr) {
-        auto [saved, inserted] = bodies.try_emplace(AnchorCandidateKey{key(form), slot, verifyContours, entryTurn, sharedExit});
+            AnchorPass pass, const Stretching* sharedExit = nullptr) {
+        auto [saved, inserted] = bodies.try_emplace(AnchorCandidateKey{key(form), slot, verifyContours,
+            entryTurn, pass == AnchorPass::Continuation, sharedExit});
         if (inserted) {
-            saved->second = anchoredBodies(source, form, position, penWidth, entryTurn, sharedExit);
+            saved->second = anchoredBodies(source, form, position, penWidth, entryTurn, sharedExit, pass);
             std::erase_if(saved->second, [&](const auto& body) { return !fitsBody(body, source, slot, count); });
         }
         return saved->second;
@@ -490,12 +492,12 @@ struct JoinSections {
 
 std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBody& sending,
         const AnchoredBody& receiving, QChar preceding, QChar following, QChar last, bool terminal, bool sharesFinalFold,
-        const QJsonObject& config, bool requiredConnector, double tightTolerance, double penWidth,
+        const QJsonObject& config, bool continuation, bool requiredConnector, double tightTolerance, double penWidth,
         bool allowNeckJoin, bool allowShortAttachments) {
     auto exit = *sending.exit;
     auto entry = *receiving.entry;
     if (!fitsAnchorGap(sending, receiving, source.orientation, penWidth,
-            config.value("_anchorContinuation").toBool() ||
+            continuation ||
             (cutGeometryMemo && cutGeometryMemo->verifyContourGeometry))) return {};
     if (const auto* flank = exitBeforeFollowingTooth(sending, receiving, source.orientation, following))
         return JoinSections{*flank, entry, false, false, {}};
@@ -507,7 +509,6 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
          QLineF(sectionLine(exit).center(), sectionLine(entry).center()).length() <= tightTolerance);
     bool sharedAtEntry = false;
     QString terminalJunction;
-    const bool continuation = config.value("_anchorContinuation").toBool();
     const bool canShareFixedCut = continuation && !requiredConnector;
     if (!sameSection(exit, entry) && !orderedSections(exit, entry, source.orientation) &&
         hasOverlapLimits(sending, receiving, following, tightTolerance, penWidth)) {
@@ -626,7 +627,8 @@ bool validConnector(const QPainterPath& connector, const Apath& shape, const QLi
 
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
         SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
-        const QJsonObject& config, const std::vector<bool>& requiredConnectors, double tightTolerance, double penWidth,
+        const QJsonObject& config, bool continuation, const std::vector<bool>& requiredConnectors,
+        double tightTolerance, double penWidth,
         const QJsonObject* bodyChecks,
         std::span<const JoinSections* const> selectedJoins = {}) {
     Subword trial{};
@@ -651,7 +653,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         const auto* seam = slot <= selectedJoins.size() ? selectedJoins[slot - 1] : nullptr;
         if (!seam) {
             computed = resolveJoin(source, sending, receiving, letters[int(slot) - 1], letters[int(slot)], letters.back(),
-                slot + 1 == bodies.size(), sharesFinalFold, config, requiredConnectors[slot - 1], tightTolerance,
+                slot + 1 == bodies.size(), sharesFinalFold, config, continuation, requiredConnectors[slot - 1], tightTolerance,
                 penWidth, false, false);
             if (!computed) return {};
             seam = &*computed;
@@ -687,7 +689,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
 
     // Partition only after choosing a compatible sequence. Each section
     // comes directly from the chosen body, including the two ends of a connector.
-    const bool rejectSameCurve = !config.value("_anchorContinuation").toBool();
+    const bool rejectSameCurve = !continuation;
     auto regions = cutRegions(shape.path, sub.text, sections, source.orientation, rejectSameCurve);
     if (regions.size() != sections.size() + 1) return {};
     const auto inPage = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
@@ -698,13 +700,13 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         const auto mask = inPage(regions[region].path);
         if (mask.boundingRect().isEmpty() || std::any_of(body.samples.begin(), body.samples.end(),
                 [&](const auto& point) { return !mask.contains(point); })) return {};
-        if (config.value("_anchorContinuation").toBool() && slot == 0 && bodies[1]->requiresSharedEntry &&
+        if (continuation && slot == 0 && bodies[1]->requiresSharedEntry &&
             body.counters.isEmpty()) {
             const auto validated = cutRegions(source.transformedPath, {}, {*body.exit}, source.orientation, false);
             if (validated.size() != 2 || mask.boundingRect().height() + .5 * penWidth <
                 validated.front().path.boundingRect().height()) return {};
         }
-        if (config.value("_anchorContinuation").toBool() && slot == 0 && body.sharedEntryBody &&
+        if (continuation && slot == 0 && body.sharedEntryBody &&
             body.sharedEntryBody->value("body").toObject().value("shape") == "contour-route" &&
             bodies.size() > 2 && sharedAtEntry.front()) {
             const auto proposal = sectionLine(*body.exit);
@@ -735,7 +737,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         auto& connector = regions[region++].path;
         const bool compact = slot < selectedJoins.size() && selectedJoins[slot]->rank == PartitionRank::AdjustedJoin;
         if (!validConnector(connector, shape, right, left, compact,
-                            config.value("_anchorContinuation").toBool(), penWidth)) return {};
+                            continuation, penWidth)) return {};
         trial.kashidaPaths[slot] = std::move(connector);
     }
     for (size_t slot = 0; slot < sharedAtEntry.size(); ++slot)
@@ -762,7 +764,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         }
     }
     if ((bodyChecks && !plausibleRecoveredBodies(word, trial, *bodyChecks,
-            config.value("_anchorContinuation").toBool() ? penWidth : 0)) ||
+            continuation ? penWidth : 0)) ||
         !coversOriginalInk(word, trial)) return {};
     trial.correct = true;
     trial.templateTrace.append("Fixed anchors · " + bodyForms.join(" → "));
@@ -779,12 +781,12 @@ bool restrictedEnding(const QJsonObject& form, QStringView letters, int slot) {
         !appliesBeforeFinal(form, letters, slot);
 }
 
-bool allowsInitialAttachment(const QJsonObject& form, const QString& letters, int slot) {
-    return slot == 1 && form.value("_anchorContinuation").toBool() &&
+bool allowsInitialAttachment(const QJsonObject& form, const QString& letters, int slot, bool continuation) {
+    return slot == 1 && continuation &&
         form.value("cuts").toObject().value("sharedEntryAfter").toString().contains(letters.front());
 }
 
-bool applies(const QJsonObject& form, const QString& letters, int slot) {
+bool applies(const QJsonObject& form, const QString& letters, int slot, bool continuation) {
     if (!form.value("current").toString().contains(letters[slot]) ||
         !form.value("kashida").toObject().isEmpty()) return false;
     const auto preceding = form.value("ligatureAfter").toString();
@@ -793,9 +795,9 @@ bool applies(const QJsonObject& form, const QString& letters, int slot) {
     if (!sharedFold.isEmpty() && !hasFollowingLetter(letters, slot, sharedFold, true)) return false;
     const auto maxLetters = form.value("fixedAnchorsMaxLetters");
     if (maxLetters.isDouble() && letters.size() > maxLetters.toInt()) return false;
-    if (restrictedEnding(form, letters, slot) && !allowsInitialAttachment(form, letters, slot)) return false;
+    if (restrictedEnding(form, letters, slot) && !allowsInitialAttachment(form, letters, slot, continuation)) return false;
     const auto exitTemplate = form.value("requiresExitTemplate").toString();
-    if (form.value("_anchorContinuation").toBool() && !exitTemplate.isEmpty() &&
+    if (continuation && !exitTemplate.isEmpty() &&
         slot + 2 != letters.size()) return false;
     const auto attachment = form.value("cuts").toObject().value("attachment").toObject();
     const auto terminal = form.value("cuts").toObject().value("beforeFinal").toObject();
@@ -816,8 +818,10 @@ struct AnchorBranch {
     SearchContext& source;
     int limit;
     bool verifyContours;
-    bool continuation;
+    AnchorPass pass;
     double tightTolerance;
+
+    bool continuation() const { return pass == AnchorPass::Continuation; }
 };
 
 struct AnchorTraversal {
@@ -843,7 +847,7 @@ struct AnchorTraversal {
         auto& source = branch.source;
         const auto& forms = branch.forms;
         const bool verifyContours = branch.verifyContours;
-        const bool continuation = branch.continuation;
+        const bool continuation = branch.continuation();
         auto [saved, inserted] = choices.try_emplace({&branch.config, &form, slot, verifyContours});
         auto& result = saved->second;
         if (!inserted) return result;
@@ -857,7 +861,7 @@ struct AnchorTraversal {
              terminal.value("boundaries").toObject().value("left") == "shared-return"));
         const auto add = [&](const Stretching* seam) {
             for (const auto& body : memo.candidates(source, form, letterPosition(slot, forms.size()), slot,
-                                                   forms.size(), penWidth, verifyContours, entryTurn, seam))
+                                                   forms.size(), penWidth, verifyContours, entryTurn, branch.pass, seam))
                 result.push_back(&body);
         };
         if (!folded) add(nullptr);
@@ -868,7 +872,7 @@ struct AnchorTraversal {
                 if (!folded && finalId.isEmpty() && !final->value("sharedBoundary").toBool()) continue;
                 const size_t last = forms.size() - 1;
                 for (const auto& receiving : memo.candidates(source, *final, 2, last, forms.size(), penWidth,
-                                                             verifyContours, appliesBeforeFinal(*final, letters, int(last))))
+                                                             verifyContours, appliesBeforeFinal(*final, letters, int(last)), branch.pass))
                     add(&*receiving.entry);
             }
         }
@@ -929,7 +933,7 @@ struct AnchorTraversal {
             const AnchoredBody& body, bool checkFoldedTooth, bool allowCompactJoins) {
         auto& source = branch.source;
         const auto tightTolerance = branch.tightTolerance;
-        const auto continuation = branch.continuation;
+        const auto continuation = branch.continuation();
         const bool terminal = slot + 1 == letters.size();
         const auto compatible = [&]() -> JoinCompatibility {
             const auto& exit = *sending.exit;
@@ -974,7 +978,7 @@ struct AnchorTraversal {
 
     bool canKeepInitialBody(const AnchorBranch& branch, const AnchoredBody& sending,
                             const AnchoredBody& receiving, bool allowCompactJoins) {
-        if (!branch.continuation || !branch.config.value("fixedAnchorBodyChecks").toBool() ||
+        if (!branch.continuation() || !branch.config.value("fixedAnchorBodyChecks").toBool() ||
             sending.entry || !sending.counters.isEmpty() || sending.exit->counterEntry.pathIndex > 0 ||
             !orderedSections(*sending.exit, *receiving.entry, branch.source.orientation)) return true;
         const auto cut = cutRegions(branch.source.transformedPath, {}, {*sending.exit}, branch.source.orientation, false);
@@ -997,7 +1001,7 @@ struct AnchorTraversal {
         const auto tightTolerance = branch.tightTolerance;
         const auto bodyChecks = config.value("recoveryChecks").toObject();
         auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(branch),
-                                  config, requiredConnectors, tightTolerance, penWidth,
+                                  config, branch.continuation(), requiredConnectors, tightTolerance, penWidth,
                                   config.value("fixedAnchorBodyChecks").toBool() ? &bodyChecks : nullptr, selectedJoins);
         if (partition && (!accept || accept(*partition))) return partition;
         return {};
@@ -1017,34 +1021,34 @@ struct AnchorTraversal {
         std::vector<const AnchoredBody*> rimAttachments;
         for (const auto* declaration : branch.forms[slot]) {
             const auto& form = *declaration;
-            if (restrictedEnding(form, letters, int(slot)) && !allowsInitialAttachment(form, letters, int(slot)) &&
+            if (restrictedEnding(form, letters, int(slot)) && !allowsInitialAttachment(form, letters, int(slot), branch.continuation()) &&
                 (!sending || !sending->requiresSharedExit || sending->requiredExitTemplate != form.value("id").toString()))
                 continue;
             const auto& intrinsic = bodiesFor(branch, form, slot);
             std::vector<const AnchoredBody*> paired;
-            const auto& options = sending && !terminal && branch.continuation &&
+            const auto& options = sending && !terminal && branch.continuation() &&
                 sharedLigatureCandidates(branch, *sending, form, intrinsic, slot, paired) ? paired : intrinsic;
             const auto ownedCrestEndings = form.value("cuts").toObject().value("useOwnedCrest").toString();
             const bool checkFoldedTooth = sending && terminal &&
                 form.value("_foldedToothPreceders").toString().contains(letters.at(int(slot) - 1));
-            const bool requiresSharedExit = branch.continuation && form.contains("requiresExitTemplate");
+            const bool requiresSharedExit = branch.continuation() && form.contains("requiresExitTemplate");
             for (const auto* body : options) {
                 if (remaining == 0) return {};
                 if (remaining > 0) --remaining;
                 if (sending && body->stemFootSkipAfter.contains(letters[int(slot) - 1])) continue;
                 if (requiresSharedExit && !body->requiresSharedExit) continue;
                 if (body->hasStemReturn && !stemReturnEndings.contains(last) &&
-                    !(branch.continuation && body->sharedReturnWith.contains(last))) continue;
+                    !(branch.continuation() && body->sharedReturnWith.contains(last))) continue;
                 if (body->alternateAnchor && !body->hasStemReturn &&
                     !ownedCrestEndings.isEmpty() && !ownedCrestEndings.contains(last)) continue;
                 if (sending) {
                     const auto join = follows(branch, slot, *sending, *body, checkFoldedTooth, allowCompactJoins);
                     if (join.stopAtBowl) {
-                        if (!branch.continuation) return {};
+                        if (!branch.continuation()) return {};
                         continue;
                     }
                     if (!join.allowed || !fitsAnchorGap(*sending, *body, branch.source.orientation, penWidth,
-                                                       branch.continuation || branch.verifyContours) ||
+                                                       branch.continuation() || branch.verifyContours) ||
                         (slot == 1 && !terminal && !canKeepInitialBody(branch, *sending, *body, allowCompactJoins))) continue;
                     // Prefer bodies whose own entry leaves room for a connector.
                     // A rim attachment is useful only where the preferred caps overlap.
@@ -1060,7 +1064,7 @@ struct AnchorTraversal {
             // The established search stops at this form. The continuation
             // can use the receiving shape's own return when its stem proposal
             // would take the preceding body.
-            if (!branch.continuation && branch.verifyContours && terminal && sending->preservesTerminalBody &&
+            if (!branch.continuation() && branch.verifyContours && terminal && sending->preservesTerminalBody &&
                 form.value("body").toObject().value("shape") == "stemmed-bowl") return {};
         }
         for (const auto* body : rimAttachments) {
@@ -1114,16 +1118,17 @@ struct AnchorTraversal {
                         const bool compactJoin = joinRank == PartitionRank::AdjustedJoin;
                         auto seam = resolveJoin(branch.source, *sending, body, letters[int(slot) - 1],
                             letters[int(slot)], letters.back(),
-                            terminal, terminal && sharesFinalFold(branch), branch.config, requiredConnectors[slot - 1],
+                            terminal, terminal && sharesFinalFold(branch), branch.config, branch.continuation(),
+                            requiredConnectors[slot - 1],
                             branch.tightTolerance, penWidth, neckJoin, compactJoin);
                         if (!seam) return {};
                         seam->rank = joinRank;
                         if (seam->shared || body.retainsCounterRim || (branch.limit <= 0 && !allowCompactJoins) ||
                             seam->exit.counterEntry.pathIndex > 0 || seam->entry.counterEntry.pathIndex > 0) return seam;
                         const auto parts = cutRegions(shape.path, {}, {seam->exit, seam->entry},
-                                                      branch.source.orientation, !branch.continuation);
+                                                      branch.source.orientation, !branch.continuation());
                         if (parts.size() != 3 || !validConnector(parts[1].path, shape, sectionLine(seam->exit),
-                            sectionLine(seam->entry), compactJoin, branch.continuation, penWidth)) return {};
+                            sectionLine(seam->entry), compactJoin, branch.continuation(), penWidth)) return {};
                         return seam;
                     };
                     const auto chooseJoin = [&]() -> std::optional<JoinSections> {
@@ -1177,14 +1182,15 @@ struct AnchorTraversal {
         const AnchoredBody receiving{.formId = body.formId, .entry = body.exit, .requiresSharedEntry = true};
         selected.push_back(&receiving);
         auto partition = assemble(word, sub, shape, branch.source, letters, selected, false, branch.config,
-                                  requiredConnectors, branch.tightTolerance, penWidth, nullptr, selectedJoins);
+                                  branch.continuation(), requiredConnectors, branch.tightTolerance, penWidth, nullptr, selectedJoins);
         selected.pop_back();
         if (partition && (!accept || accept(*partition))) return partition;
         return {};
     }
 
     std::optional<AnchorBranch> prepareBranch(const AnchorPriority& priority, SearchContext& source) const {
-        const auto& [config, templates, verify] = priority;
+        const auto& [config, templates, verify, pass] = priority;
+        const bool continuation = pass == AnchorPass::Continuation;
         const auto settings = config.value("kashidaDefaults").toObject();
         FormChoices forms(letters.size());
         for (int slot = 0; slot < letters.size(); ++slot) {
@@ -1203,10 +1209,9 @@ struct AnchorTraversal {
             };
             if (found == byLetter.cend()) return blocked("no enabled template");
             for (const auto& form : found.value())
-                if (applies(form, letters, slot)) forms[slot].push_back(&form);
+                if (applies(form, letters, slot, continuation)) forms[slot].push_back(&form);
             if (forms[slot].empty()) return blocked("template selectors excluded this context");
         }
-        const bool continuation = config.value("_anchorContinuation").toBool();
         if (continuation) {
             std::stable_partition(forms.front().begin(), forms.front().end(), [&](const auto* form) {
                 const auto body = form->value("body").toObject();
@@ -1218,7 +1223,7 @@ struct AnchorTraversal {
             });
         }
         return AnchorBranch{config, std::move(forms), source, config.value("fixedAnchorExpansionChecks").toInt(),
-                            verify, continuation, penWidth * settings.value("sharedCutTolerance").toDouble(.25)};
+                            verify, pass, penWidth * settings.value("sharedCutTolerance").toDouble(.25)};
     }
 
     std::optional<Subword> search(const QPainterPath& ink, std::span<const AnchorPriority> priorities) {
@@ -1230,7 +1235,7 @@ struct AnchorTraversal {
         for (const auto& priority : priorities) {
             const bool verify = priority.verifyContours;
             // The continuation branch also reads the tangent across the closed outline's seam.
-            const bool closed = verify && priority.config.value("_anchorContinuation").toBool();
+            const bool closed = verify && priority.pass == AnchorPass::Continuation;
             const size_t outline = closed ? 2 : verify ? 1 : 0;
             auto& source = sources[outline];
             const bool first = &priority == &priorities.front();

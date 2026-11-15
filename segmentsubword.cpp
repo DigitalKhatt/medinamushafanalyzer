@@ -88,14 +88,14 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
             geometry.anchorSearch = sub.secondaryBodyPath >= 0 ? "compound-body" : "ineligible";
         const bool verify = geometry.verifyContourGeometry;
         std::vector<AnchorPriority> priorities{{sourceConfig, compiled.forms, verify}};
-        if (!compiled.expanded.isEmpty()) priorities.push_back({compiled.expanded, compiled.expandedForms, verify});
+        if (!compiled.expanded.isEmpty()) priorities.push_back({compiled.expanded, compiled.expandedForms, verify, AnchorPass::Expanded});
         if (!compiled.continuation.isEmpty()) {
             if (!verify && sourceConfig != requestedForms)
                 priorities.push_back({requestedForms, compiled.preciseForms, true});
-            priorities.push_back({compiled.continuation, compiled.continuationForms, verify});
+            priorities.push_back({compiled.continuation, compiled.continuationForms, verify, AnchorPass::Continuation});
             if (!verify) {
-                priorities.push_back({compiled.preciseExpanded, compiled.preciseExpandedForms, true});
-                priorities.push_back({compiled.preciseContinuation, compiled.preciseContinuationForms, true});
+                priorities.push_back({compiled.preciseExpanded, compiled.preciseExpandedForms, true, AnchorPass::Expanded});
+                priorities.push_back({compiled.preciseContinuation, compiled.preciseContinuationForms, true, AnchorPass::Continuation});
             }
         }
         if (auto partition = segmentWithAnchors(word, sub, priorities, acceptAnchors)) {

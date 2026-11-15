@@ -225,7 +225,7 @@ bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& 
         if (!compileAnchorForms(expanded, forms).isEmpty()) return false;
         const auto& prefixWord = prefix.page.lines.front().words.front();
         const std::array priorities{AnchorPriority{expanded, forms,
-            cutGeometryMemo && cutGeometryMemo->verifyContourGeometry}};
+            cutGeometryMemo && cutGeometryMemo->verifyContourGeometry, AnchorPass::Continuation}};
         auto partition = segmentWithAnchors(prefixWord, result, priorities, {});
         if (!partition) return false;
         result = std::move(*partition);
@@ -284,8 +284,8 @@ static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo
         if (!compileAnchorForms(forms, primary).isEmpty() ||
             !compileAnchorForms(expanded, continuation).isEmpty()) return std::move(local);
         const std::array priorities{AnchorPriority{forms, primary},
-            AnchorPriority{expanded, continuation},
-            AnchorPriority{expanded, continuation, true}};
+            AnchorPriority{expanded, continuation, false, AnchorPass::Continuation},
+            AnchorPriority{expanded, continuation, true, AnchorPass::Continuation}};
         const auto accepts = [&](const WordResultInfo::SubWordInfo& partition) {
             if (!head) return true;
             const auto stub = world(partition.baseGlyphs.back().path);

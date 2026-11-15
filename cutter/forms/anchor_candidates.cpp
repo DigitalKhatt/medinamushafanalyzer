@@ -4,7 +4,6 @@ namespace MedinaCutter {
 
 QJsonObject expandedAnchorConfig(QJsonObject config, bool continuation) {
     const auto expansion = config.take("fixedAnchorExpansion").toObject();
-    if (continuation) config.insert("_anchorContinuation", true);
     for (const auto* phase : {"initial", "medial", "final"}) {
         auto forms = config.value(phase).toArray();
         for (qsizetype i = 0; i < forms.size(); ++i) {
@@ -125,7 +124,6 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
             const auto cuts = form.value("cuts").toObject();
             const auto shape = body.value("shape");
             if (config.value("fixedAnchorBodyChecks").toBool()) form.insert("_expandedAnchorForm", true);
-            if (config.value("_anchorContinuation").toBool()) form.insert("_anchorContinuation", true);
             const auto assembly = declaration.value("assembly").toObject();
             const bool exposedHead = position == 1 && assembly.value("operation") == "exposed-head";
             if (exposedHead) {
@@ -243,11 +241,11 @@ static void keepLowerLip(const SearchContext& source, AnchoredBody& body, const 
 }
 
 std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
-                                        double penWidth, bool tryEntryTurn, const Stretching* sharedExit) {
+                                        double penWidth, bool tryEntryTurn, const Stretching* sharedExit, AnchorPass pass) {
     const auto id = form.value("id").toString();
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto shape = body.value("shape");
-    const bool continuation = form.value("_anchorContinuation").toBool();
+    const bool continuation = pass == AnchorPass::Continuation;
     std::vector<AnchoredBody> result;
     InspectFormScope inspection(form, source.transformedPath);
     source.res = {};
@@ -455,7 +453,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 }
             }
         }
-        if (!initial && form.value("_anchorContinuation").toBool()) {
+        if (!initial && continuation) {
             const auto evidence = recognizedSharedShape(source, body);
             const auto range = cuts.value("route").toObject().value("range").toObject();
             if (evidence->tail && !range.isEmpty())
@@ -484,7 +482,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             QVector<size_t> counters;
             for (size_t i = 1; i < source.subPaths.size(); ++i)
                 if (contours.contains(source.subPaths[i])) counters.append(i);
-            const bool openHead = form.value("_anchorContinuation").toBool() && evidence->layeredHead &&
+            const bool openHead = continuation && evidence->layeredHead &&
                 !evidence->layeredHead->exitCounter;
             const bool hasLips = openHead &&
                 containsHeadLips(pieces.front().path, {{"minRun", .5 * penWidth}, {"minGap", .15 * penWidth}});
@@ -623,7 +621,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                               .entry = position == 1 ? std::optional{sections->first} : std::nullopt,
                               .exit = sections->second,
                               .counters = std::move(counters)});
-            if (form.value("_anchorContinuation").toBool() && position == 1 &&
+            if (continuation && position == 1 &&
                 form.value("sharedEntry").toBool())
                 result.back().usesSharedEntry = true;
             if (continuation && position == 1 && loop.stackedFeet &&
@@ -671,7 +669,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             for (const auto& hole : outline.counters) counters.append(hole.index);
             auto entries = sectionsAt("entry", true);
             auto exits = sharedExit ? std::vector<std::optional<Stretching>>{*sharedExit} : sectionsAt("exit", false);
-            if (sharedExit && form.value("_anchorContinuation").toBool() && form.value("rimOffset").isDouble()) {
+            if (sharedExit && continuation && form.value("rimOffset").isDouble()) {
                 Stretching rim{};
                 const double x = eye.right() + form.value("rimOffset").toDouble() * eye.height();
                 if (entries.empty() && medialChordAt(source, x, eye.center().y(), 1.3 * eye.height(), rim)) {
@@ -756,7 +754,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         if (declaredSharedBoundary(source, form) && matchesBoundaryBody(source, form, source.res, true)) {
             auto exit = source.res;
             auto landmark = shape == "descending-stem" ? *source.ySorted.rbegin() : *source.xSorted.begin();
-            if (shape == "descending-stem" && form.value("_anchorContinuation").toBool()) {
+            if (shape == "descending-stem" && continuation) {
                 // The taller counterstroke of the following letter can be
                 // outside this shaft's descending contour span.
                 const auto side = getJoinTime(exit, source.orientation);
@@ -817,7 +815,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                     const auto add = [&](const Stretching& preferred) {
                         AnchoredBody candidate{.formId = id, .entry = preferred, .exit = exit,
                             .landmarks = {blade.elbow, blade.tip},
-                            .usesSharedEntry = form.value("_anchorContinuation").toBool() &&
+                            .usesSharedEntry = continuation &&
                                 form.value("reclaimEntry").toBool(),
                             .entryLimit = limit, .minimumEntry = minimum};
                         if (minimum && !retainsLandmarks(candidate, &preferred, &exit, source.orientation))
@@ -883,7 +881,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         if (!evidence->medialStem || offset <= 0) return result;
         const auto& stems = *evidence->medialStem;
         const bool tight = cuts.value("tightJoin") == "tip-normal";
-        const bool levelCap = form.value("_anchorContinuation").toBool();
+        const bool levelCap = continuation;
         for (const auto& stem : stems.stems) {
             for (const auto index : stem.forks) {
                 const auto& fork = stems.features.forks[index];
@@ -920,7 +918,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                     .sharedFold = cuts.value("sharedFold").toObject()});
             }
         }
-        if (form.value("_anchorContinuation").toBool() && sharedExit) {
+        if (continuation && sharedExit) {
             const auto expanded = recognizedSharedShape(source, body);
             if (!expanded->medialStem) return result;
             for (const auto& stem : expanded->medialStem->stems) {
@@ -943,7 +941,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         const auto route = body.value("routes").toObject();
         const auto policy = cuts.value("routes").toObject();
         QStringList overlappingSenders;
-        if (tryEntryTurn || form.value("_anchorContinuation").toBool()) {
+        if (tryEntryTurn || continuation) {
             const auto sender = cuts.value("shareOverlappingEntryAfter");
             const auto senders = sender.isString() ? QJsonArray{sender} : sender.toArray();
             for (const auto& id : senders)
@@ -1297,7 +1295,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 if (add(boundary, true) && fixedEntry && continuation) break;
         if (result.empty()) add(entry, false);
     }
-    if (form.value("_anchorContinuation").toBool() && position == 0) {
+    if (continuation && position == 0) {
         for (auto& candidate : result) {
             if (!candidate.exit || candidate.counters.isEmpty() || candidate.landmarks.size() != 1) continue;
             const auto side = getJoinTime(*candidate.exit, source.orientation);
@@ -1312,11 +1310,11 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     }
     if (form.value("alternateAnchor").toBool())
         for (auto& candidate : result) candidate.alternateAnchor = true;
-    if (form.value("_anchorContinuation").toBool() && position == 0 &&
+    if (continuation && position == 0 &&
         (shape == "horizontal-counters" || shape == "descending-stem" || shape == "layered-head" ||
          cuts.value("shareTerminalReturn").toBool()))
         for (auto& candidate : result) candidate.sharedEntryBody = form;
-    if (form.value("_anchorContinuation").toBool()) {
+    if (continuation) {
         const bool intrinsicSharedExit = position == 1 && shape == "paired-route" && form.value("tightJoin").toBool();
         const bool tightIncoming = position == 1 && shape == "counter-loop" && form.value("sharedEntry").toBool();
         for (auto& candidate : result) {
