@@ -22,6 +22,8 @@ The application, catalog exporter and review tools use `PageAnalysisResult::segm
 
 Forms enter the primary anchor search by default. A form's `anchorPass` can delay its eligibility to `expanded` or `continuation`, or reserve it for a ligature or component recipe with `assembly`. Per-form `anchorOverrides` hold changes for later passes. The bracketed intersection solver can verify tight sections against the original curves. `fixedAnchorExpansionChecks` limits the number of candidates visited by the expanded search. `strokeWidth` is the global width in page units for policies measured in pen widths. `kashidaDefaults.sharedCutTolerance` controls how close two sections can be when sharing a cut.
 
+Within each pass, lower `priorityWithinPass` values are tried first. The default is `0`, and ties follow template declaration order. Continuation can move a declared initial attachment to the front when its ligature context matches.
+
 ## Shape and join policies
 
 - Medial teeth recognize an outer tip, its opposing bend and their flanks. The cut policies place sections on those flanks. Some tooth forms use a stem-foot turn at the entry. `minimumEntryWalk` bounds the inward motion, and `minimumEntryAfterForm` can restrict it to a particular preceding shape.

@@ -29,12 +29,6 @@ QJsonObject expandedAnchorConfig(QJsonObject config, bool continuation) {
     return config;
 }
 
-static int anchorPriority(const QJsonObject& form) {
-    if (form.value("onFinalRetry").toBool()) return 3;
-    if (form.value("onUnresolved").toBool()) return 2;
-    return form.value("onIncomplete").toBool() ? 1 : 0;
-}
-
 static QVector<PathExtrema> terminalCrest(const SearchContext& source, const Stretching& section,
                                           const QJsonObject& form) {
     QVector<PathExtrema> landmarks;
@@ -180,7 +174,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
     for (auto& position : compiled)
         for (auto& candidates : position)
             std::stable_sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-                return anchorPriority(a) < anchorPriority(b);
+                return a.value("priorityWithinPass").toInt() < b.value("priorityWithinPass").toInt();
             });
     forms = std::move(compiled);
     return {};

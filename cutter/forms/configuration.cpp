@@ -1524,11 +1524,41 @@ QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form) {
 
 } // namespace MedinaCutter
 
-QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
+static QString normalizePassPriorities(QJsonObject& config) {
+    // Saved drafts may still use the original ordering flags.
+    constexpr std::array flags{"onIncomplete", "onUnresolved", "onFinalRetry"};
+    for (const auto* position : {"initial", "medial", "final"}) {
+        auto forms = config.value(position).toArray();
+        for (qsizetype i = 0; i < forms.size(); ++i) {
+            if (!forms.at(i).isObject()) continue;
+            auto form = forms.at(i).toObject();
+            const auto id = form.value("id").toString();
+            const auto priority = form.value("priorityWithinPass");
+            if (!priority.isUndefined() && priority.toInt(-1) < 0)
+                return id + ": priorityWithinPass must be a nonnegative integer";
+            int legacyPriority = 0;
+            for (size_t index = 0; index < flags.size(); ++index) {
+                const auto flag = form.value(flags[index]);
+                if (flag.isUndefined()) continue;
+                if (!flag.isBool()) return id + ": " + flags[index] + " must be true or false";
+                if (flag.toBool()) legacyPriority = int(index + 1);
+                form.remove(flags[index]);
+            }
+            if (priority.isUndefined() && legacyPriority) form.insert("priorityWithinPass", legacyPriority);
+            forms.replace(i, form);
+        }
+        config.insert(position, forms);
+    }
+    return {};
+}
+
+QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
+    auto config = draft;
     if (config.value("version").toInt() != 2 || !config.value("initial").isArray() ||
         !config.value("medial").isArray() || !config.value("final").isArray()) {
         return "Expected a version 2 config with initial, medial and final lists";
     }
+    if (const auto problem = normalizePassPriorities(config); !problem.isEmpty()) return problem;
     const auto strokeWidth = config.value("strokeWidth");
     if (!strokeWidth.isUndefined() && (!strokeWidth.isDouble() ||
         !std::isfinite(strokeWidth.toDouble()) || strokeWidth.toDouble() <= 0))
@@ -1623,7 +1653,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 }
             }
             for (const auto* key : {"tightJoin", "sharedEntry", "sharedBoundary",
-                                    "onIncomplete", "onUnresolved", "onUnresolvedPartition", "reclaimEntry",
+                                    "onUnresolvedPartition", "reclaimEntry",
                                     "returningStroke", "alternateAnchor"})
                 if (rule.contains(key) && !rule.value(key).isBool()) return id + ": " + key + " must be true or false";
             if (rule.contains("sharedEntry") && QString(phase) != "medial")
@@ -1691,7 +1721,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                            std::isfinite(bounds[0].toDouble()) && std::isfinite(bounds[1].toDouble()) &&
                            bounds[0].toDouble() <= bounds[1].toDouble() && (!positive || bounds[0].toDouble() > 0);
                 };
-                if (!rule.value("onUnresolved").toBool() || !interval(outline.value("aspect"), true) ||
+                if (!interval(outline.value("aspect"), true) ||
                     (outline.value("counters") != 1 && outline.value("counters") != 2))
                     return id + ": a counter outline needs one or two counters and a positive aspect range";
                 if (rule.contains("requiresExitTemplate") && (QString(phase) != "medial" ||
@@ -1713,8 +1743,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 }
                 continue;
             }
-            if (rule.contains("onFinalRetry") && (!rule.value("onFinalRetry").isBool() || rule.contains("onIncomplete")))
-                return id + ": onFinalRetry must be a separate boolean retry phase";
             QString descriptionError;
             if (rule.contains("lamBody") || rule.contains("lamCuts"))
                 return id + ": use body / cuts for declared forms";
@@ -1926,7 +1954,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 if (rule.contains("penLift")) {
                     const auto lift = rule.value("penLift").toObject();
                     if (!QStringList{"entry", "exit"}.contains(lift.value("side").toString()) ||
-                        lift.value("forms").toArray().isEmpty() || !rule.value("onUnresolved").toBool())
+                        lift.value("forms").toArray().isEmpty())
                         return id + ": a pen lift needs an exposed side and its allowed forms";
                     continue;
                 }
@@ -1936,7 +1964,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     const auto entry = assembly.value("entry").toObject();
                     const auto source = entry.value("source").toString();
                     if (assembly.size() != 3 || assembly.value("operation") != "exposed-head" || heads.isEmpty() ||
-                        !rule.value("onUnresolved").toBool() || rule.contains("method") || rule.contains("body") ||
+                        rule.contains("method") || rule.contains("body") ||
                         !QStringList{"matched-boundary", "form"}.contains(source) ||
                         (source == "matched-boundary" && entry.size() != 1) ||
                         (source == "form" && (entry.size() != 2 || entry.value("form").toString().isEmpty())))
@@ -2126,6 +2154,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
         }
     }
     config.insert("kashidaDefaults", effective);
+    draft = std::move(config);
     return {};
 }
 

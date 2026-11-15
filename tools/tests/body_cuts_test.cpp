@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
         if (failure == 5) policy.insert("flankOffset", -1);
         if (failure == 6) shape.insert("baselineEntry", QJsonObject{{"minRise", 2}, {"turnAngle", 45}});
         if (failure == 7) rule.insert("anchorOverrides", QJsonObject{{"expanded", QJsonObject{{"unknown", 4}}}});
-        if (failure == 8) rule.insert("onUnresolved", 1.5);
+        if (failure == 8) rule.insert("priorityWithinPass", 1.5);
         if (failure == 9) policy.insert("boundaries", QJsonObject{{"left", "tooth-flank"}});
         rule.insert("body", shape); rule.insert("cuts", policy);
         auto forms = invalid.value("medial").toArray();

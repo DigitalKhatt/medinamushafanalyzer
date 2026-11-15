@@ -12,6 +12,20 @@ int main(int argc, char** argv) {
     Q_INIT_RESOURCE(application);
     auto config = PageAnalysisResult::letterForms();
     check(PageAnalysisResult::prepareLetterForms(config).isEmpty(), "Position schema rejected bundled forms");
+    {
+        auto legacy = config;
+        auto initial = legacy.value("initial").toArray();
+        auto form = initial.first().toObject();
+        form.remove("priorityWithinPass");
+        form.insert("onIncomplete", true);
+        form.insert("onUnresolved", true);
+        initial.replace(0, form);
+        legacy.insert("initial", initial);
+        check(PageAnalysisResult::prepareLetterForms(legacy).isEmpty(), "Legacy priority flags were rejected");
+        const auto migrated = legacy.value("initial").toArray().first().toObject();
+        check(migrated.value("priorityWithinPass").toInt() == 2 && !migrated.contains("onIncomplete") &&
+              !migrated.contains("onUnresolved"), "Legacy priority flags changed template order");
+    }
     for (const auto& bad : {QJsonObject{{"boundaries", QJsonObject{{"right", "vertical"}, {"left", "free"}}}}, QJsonObject{{"preserveEntryAfter", true}}}) {
         auto invalid = config;
         auto forms = invalid.value("medial").toArray();
@@ -101,7 +115,7 @@ int main(int argc, char** argv) {
         auto forms = invalid.value("final").toArray();
         const auto rim = QJsonObject{{"top", QJsonArray{0, 1}}, {"bottom", QJsonArray{0, 1}},
                                      {"left", QJsonArray{0, 1}}, {"right", QJsonArray{0, 1}}};
-        forms.append(QJsonObject{{"id", "missing-rim-attachment"}, {"current", "م"}, {"onUnresolved", true},
+        forms.append(QJsonObject{{"id", "missing-rim-attachment"}, {"current", "م"}, {"priorityWithinPass", 2},
             {"body", QJsonObject{{"shape", "counter-outline"}, {"counters", 1},
                                  {"outline", QJsonObject{{"aspect", QJsonArray{1, 2}}, {"rim", rim}}}}},
             {"cuts", QJsonObject{{"boundaries", QJsonObject{{"left", "free"}, {"right", "outline-entry"}}}}}});
