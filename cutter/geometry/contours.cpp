@@ -619,6 +619,48 @@ bool projectUpwardCut(const SearchContext& context, PathExtrema bottom, Stretchi
     return true;
 }
 
+static bool projectReturnCut(const SearchContext& context, const PathExtrema& turn,
+        ContourAdvance direction, double inset, Stretching& cut) {
+    const auto start = context.timeSorted.find(turn);
+    if (start == context.timeSorted.end()) return false;
+    // Follow the lip that leaves the inner corner. Its first horizontal
+    // reversal determines where to cut across the stroke entering the corner.
+    auto tip = start;
+    for (auto next = (context.*direction)(tip); next != start; next = (context.*direction)(tip)) {
+        const double run = tip->point.x() - turn.point.x();
+        if (std::abs(run) > 1e-5 && (next->point.x() - tip->point.x()) * run < -1e-8) break;
+        tip = next;
+    }
+    const double dx = tip->point.x() - turn.point.x();
+    if (std::abs(dx) < 1e-5) return false;
+    const double x = tip->point.x() - inset * dx;
+    const double period = baseContourCurves(context.transformedPath).size();
+    if (period == 0) return false;
+    const bool forward = direction != &SearchContext::prev;
+    const auto opposite = forward ? &SearchContext::prev : &SearchContext::next;
+    const auto distance = [&](double time) {
+        const double offset = forward ? time - turn.time : turn.time - time;
+        return offset < -1e-8 ? offset + period : offset;
+    };
+    // A vertical line can meet both lips and the neighboring body. Keep
+    // only the first crossing on the opposite flank of this corner.
+    for (auto current = start; ; ) {
+        const auto next = (context.*opposite)(current);
+        if (next == start || (next->point.x() - current->point.x()) * dx < -1e-8) return false;
+        if ((next->point.x() - x) * dx >= 0) {
+            const QLineF probe(x, context.bbox.top() - 1, x, context.bbox.bottom() + 1);
+            const auto crossings = FindInterections(context.transformedPath, probe, true);
+            const auto hit = std::find_if(crossings.begin(), crossings.end(), [&](const auto& point) {
+                return point.pathIndex == 0 && distance(point.time) > 1e-8 &&
+                    distance(point.time) >= distance(current->time) - 1e-8 &&
+                    distance(point.time) <= distance(next->time) + 1e-8;
+            });
+            return hit != crossings.end() && contourNormalCut(context, *hit, forward, false, cut);
+        }
+        current = next;
+    }
+}
+
 bool projectContourRoute(SearchContext& context, const QJsonObject& form,
         const ContourRouteEvidence& evidence, std::optional<ForkRefinement>* fork) {
     const auto& [start, origin, forward, topDirection, anchor, topBefore, topEnd, tolerance] = evidence;
@@ -719,6 +761,10 @@ bool projectContourRoute(SearchContext& context, const QJsonObject& form,
         if (!projectUpwardCut(context, foot, join)) return false;
         if (walk > 0 && !anchoredStrokeNormalCut(context, join, increasing)) return false;
         if (form.value("normalCut").toBool() && !anchoredStrokeNormalCut(context, join, lowerFlank)) return false;
+    } else if (probeMode == "return") {
+        if (!projectReturnCut(context, topEnd, topDirection, form.value("returnInset").toDouble(), join))
+            return false;
+        join.fixedRightBoundary = true;
     } else if (probeMode == "below") {
         const auto anchor = join.topBaseLine;
         const auto hits = FindInterections(context.transformedPath,

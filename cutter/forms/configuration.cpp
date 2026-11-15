@@ -41,7 +41,7 @@ static QString invalidKashidaSettings(const QJsonValue& value, const QJsonObject
 }
 
 QString invalidWalkSettings(const QJsonObject& route, const QString& location) {
-    static const QStringList probes{"down", "up", "left", "right", "below", "normal", "corner", "walk-stroke-up", "down-stroke", "walk-stroke-normal"};
+    static const QStringList probes{"down", "up", "left", "right", "below", "normal", "corner", "return", "walk-stroke-up", "down-stroke", "walk-stroke-normal"};
     if (route.contains("bottomProbe") && !probes.contains(route.value("bottomProbe").toString()))
         return location + ": unsupported contour-walk bottomProbe";
     if (route.contains("trimExitToNormal") && (!route.value("trimExitToNormal").isBool() ||
@@ -82,6 +82,11 @@ QString invalidWalkSettings(const QJsonObject& route, const QString& location) {
         return location + ": a visible chord needs two contour walks and a top or bottom anchor";
     if (route.contains("topUseStepEnd") && !route.value("topUseStepEnd").isBool())
         return location + ": topUseStepEnd must be true or false";
+    const auto returnInset = route.value("returnInset");
+    if ((route.value("bottomProbe") == "return" || !returnInset.isUndefined()) &&
+        (route.value("bottomProbe") != "return" || !route.value("topUseStepEnd").toBool() || !returnInset.isDouble() ||
+         !(returnInset.toDouble() >= 0 && returnInset.toDouble() < 1)))
+        return location + ": a return probe requires a walk endpoint and returnInset in [0, 1)";
     if (route.contains("topAtAnchor") && (!route.value("topAtAnchor").isBool() ||
         !route.value("top").toArray().isEmpty() || route.value("topUseStepEnd").toBool()))
         return location + ": topAtAnchor needs a boolean, without a top walk or step end";
@@ -1088,7 +1093,7 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         "required",   "strokeOffsetX", "bottomProbe",      "oppositeCorner", "normalOffset", "normalOffsetTolerance",
         "penWidth",   "strokeSource",  "walkNormalOffset", "anchorSide",     "visibleFrom",  "maxProjectionInset", "maxChordToRun",
         "returningFoot", "floorExit", "snapOppositeToOrigin", "allowUnshiftedEntry", "normalWalkBack", "normalFrom",
-        "rimWalkWidths"};
+        "returnInset", "rimWalkWidths"};
     const auto checkBody = [&](auto &&self, const QJsonObject &value, const QString& sectionName = {}) -> bool {
         for (auto it = value.begin(); it != value.end(); ++it) {
             const bool scale = sectionName == "stem" && it.key() == "penWidth" &&

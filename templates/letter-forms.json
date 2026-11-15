@@ -1775,8 +1775,8 @@
       },
       "cuts": {
         "route": {
-          "bottomProbe": "down",
-          "normalCut": true
+          "bottomProbe": "return",
+          "returnInset": 0.16
         },
         "boundaries": {
           "right": "free",
