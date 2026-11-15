@@ -435,6 +435,16 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                                   .minimumExitBefore = cuts.value("minimumExitBefore").toString(),
                                   .minimumExit = minimum});
             } else {
+                if (form.value("retainEntryCrest").toBool()) {
+                    const auto crest = cutAfterEntryCrest(source, source.res, nullptr, true);
+                    // The section must rise along the return without widening
+                    // into the preceding tooth or shaft.
+                    if (crest && crest->topBaseLine.point.y() < source.res.topBaseLine.point.y() &&
+                        crest->bottomBaseLine.point.y() < source.res.bottomBaseLine.point.y() &&
+                        sectionLine(*crest).length() <= sectionLine(source.res).length() &&
+                        matchesBoundaryBody(source, form, *crest, false))
+                        source.res = *crest;
+                }
                 auto landmarks = terminalCrest(source, source.res, form);
                 landmarks.push_back(*source.xSorted.rbegin());
                 const auto entry = source.res;

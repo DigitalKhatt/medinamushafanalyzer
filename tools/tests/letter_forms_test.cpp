@@ -425,5 +425,17 @@ int main(int argc, char** argv) {
     check(!analysis.segmentSubword(2, 1, 8, 0, nullptr, true, &missingFinal), "Missing final body reported complete");
     check(target.baseGlyphs.empty() && target.letterDiagnostics.last().toObject().value("status") == "no-template",
           "The cutter kept a stale partition after the final template was removed");
+
+    QFile rehPage("pages/page131.dat");
+    check(rehPage.open(QIODevice::ReadOnly), "Missing raised reh crest fixture");
+    PageAnalysisResult raisedReh;
+    QDataStream rehStream(&rehPage);
+    rehStream >> raisedReh.page;
+    check(raisedReh.segmentSubword(130, 7, 5, 0, nullptr, true), "Raised reh crest did not match");
+    const auto& raised = raisedReh.page.lines[7].words[5].wordResultInfo.subWords[0];
+    check(raised.baseGlyphs.size() == 3 && raised.joins.size() == 2 && raised.kashidaPaths.size() == 2 &&
+          !raised.kashidaPaths.back().isEmpty() && raised.joins.rbegin()->bottomLeft.time == 7,
+          "The raised reh lost its crest or the genuine incoming connector");
+
     qInfo("Native letter-form checks passed: schema rejection, 307 subwords, seven reviewed controls, nine lam-alef ligatures, three leaning medial lams, fixed ain/ligature/meem anchors and missing-body coverage.");
 }

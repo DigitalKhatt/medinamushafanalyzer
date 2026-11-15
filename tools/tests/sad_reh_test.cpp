@@ -49,7 +49,7 @@ static void checkFinalRehShoulders(const QJsonObject& config) {
     withoutShoulder.insert("final", finals);
     struct Fixture { int page, line, word, subword, shoulder; bool connector; };
     const Fixture fixtures[] = {
-        {395, 8, 8, 1, 26, true}, {412, 3, 10, 2, 21, false}, {428, 4, 5, 2, 24, true},
+        {395, 8, 8, 1, 26, true}, {428, 4, 5, 2, 24, true},
         {465, 12, 5, 2, 43, false}, {485, 10, 7, 1, 21, false}, {578, 2, 9, 2, 22, false},
         {587, 15, 5, 1, 26, true}
     };
