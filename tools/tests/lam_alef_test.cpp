@@ -6,13 +6,6 @@ using namespace MedinaCutter;
 
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 
-static const StemAttachmentEvidence& bodyEvidence(const SubwordBodyRecognition& recognition, const QJsonObject& config) {
-    const auto body = formDescription(config, namedLetterForm(config, "lam-medi"), "body");
-    const auto* found = recognizedStemAttachment(recognition, body);
-    check(found != nullptr, "Missing declared lam body evidence");
-    return *found;
-}
-
 static SearchContext geometry(QPainterPath path, WordResultInfo::SubWordInfo& dummy,
                               const QJsonObject& form, const QJsonObject& defaults) {
     path.setFillRule(Qt::WindingFill);
@@ -85,74 +78,6 @@ static void checkDeclaredLamRoutes() {
           "Failed lām declaration fell back to a legacy walk");
 }
 
-static void checkBodyRecognitionSeparation() {
-    Word absent{};
-    WordResultInfo::SubWordInfo missing{};
-    missing.text = QStringLiteral("ل");
-    missing.paths = {0};
-    check(!recognizeSubwordBodies(absent, missing, PageAnalysisResult::letterForms()).valid,
-          "Missing source must not be passed to body geometry");
-    QFile file("pages/page296.dat");
-    check(file.open(QIODevice::ReadOnly), "Missing body recognition fixture");
-    PageAnalysisResult analysis;
-    QDataStream stream(&file);
-    stream >> analysis.page;
-    analysis.resolveWordBoundaries(296, nullptr);
-    auto& word = analysis.page.lines[14].words[3];
-    auto& sub = word.wordResultInfo.subWords[0];
-    analysis.resolveCompoundBody(295, 14, 3);
-    const auto config = PageAnalysisResult::letterForms();
-    const auto evidence = recognizeSubwordBodies(word, sub, config);
-    check(evidence.valid && !bodyEvidence(evidence, config).forkEvidence.forks.empty() && !bodyEvidence(evidence, config).forkEvidence.crests.empty(),
-          "Uncut ink did not produce reusable lam body evidence");
-
-    const auto hasProfile = [&](const SubwordBodyRecognition& recognized, const char* id) {
-        return recognizedStemAttachment(recognized, formDescription(config, namedLetterForm(config, id), "body")) != nullptr;
-    };
-    auto initialLam = sub;
-    initialLam.text = QStringLiteral("لَهُمْ");
-    const auto initialEvidence = recognizeSubwordBodies(word, initialLam, config);
-    check(!hasProfile(initialEvidence, "lam-medi") && !hasProfile(initialEvidence, "lam-bowl-fina"),
-          "Initial lām admitted an attachment profile for another position");
-
-    // Changing every lam cut option must not change body recognition. Nor may
-    // leftover masks or joins from a previous preview affect its landmarks.
-    auto changed = config;
-    auto forms = changed.value("medial").toArray();
-    for (int i = 0; i < forms.size(); ++i) {
-        auto form = forms[i].toObject();
-        if (form.value("id") != "lam-medi") continue;
-        form.insert("cuts", QJsonObject{{"forkOffset", 1.25}});
-        forms[i] = form;
-    }
-    changed.insert("medial", forms);
-    auto contaminated = sub;
-    contaminated.baseGlyphs = {{QStringLiteral("wrong preview"), QPainterPath{}}};
-    contaminated.joins.insert(Stretching{});
-    const auto repeated = recognizeSubwordBodies(word, contaminated, changed);
-    check(repeated.source == evidence.source && bodyEvidence(repeated, config).forkEvidence.crests.size() == bodyEvidence(evidence, config).forkEvidence.crests.size() &&
-          bodyEvidence(repeated, config).forkEvidence.forks.size() == bodyEvidence(evidence, config).forkEvidence.forks.size(), "Cuts changed body evidence");
-    for (size_t i = 0; i < bodyEvidence(evidence, config).forkEvidence.forks.size(); ++i) {
-        const auto& a = bodyEvidence(evidence, config).forkEvidence.forks[i];
-        const auto& b = bodyEvidence(repeated, config).forkEvidence.forks[i];
-        check(a.tip.point == b.tip.point && a.tip.time == b.tip.time &&
-              a.forwardFlank == b.forwardFlank && a.backwardFlank == b.backwardFlank &&
-              a.rightForward == b.rightForward && a.fork == b.fork && a.positiveTurn == b.positiveTurn,
-              "A policy moved recognized landmarks");
-    }
-    check(analysis.segmentSubword(295, 14, 3, 0, nullptr, true), "Counter attachment proposal failed");
-    auto plan = makeSubwordCutPlan(sub, config);
-    check(std::any_of(plan.bodies.begin(), plan.bodies.end(), [](const auto& body) {
-        return body.letterIndex == 2 && body.attachment == BodyAttachmentPolicy::PreserveCounterEntry;
-    }), "Kaf-lam did not select the shared counter attachment policy");
-    const auto saved = sub;
-    check(resolveSubwordCutPlan(word, evidence, plan, config), "Independent cut-policy preview failed");
-    check(sub.kashidaCuts == saved.kashidaCuts && sub.baseGlyphs.size() == saved.baseGlyphs.size(),
-          "Policy preview changed the published partition");
-    for (size_t i = 0; i < sub.baseGlyphs.size(); ++i)
-        check(sub.baseGlyphs[i].path == saved.baseGlyphs[i].path, "Policy preview mutated a published body");
-}
-
 static void checkSeparateAlefTip() {
     QFile pageFile("pages/page360.dat"), fontFile("input/font.dat");
     check(pageFile.open(QIODevice::ReadOnly) && fontFile.open(QIODevice::ReadOnly), "Missing detached alef fixture");
@@ -199,8 +124,8 @@ static void checkSeparateAlefTip() {
     medial.insert("id", "test-prefix-medi");
     medial.insert("current", prefix.value("current"));
     medial.insert("terminalArmRecovery", QJsonObject{{"prefixForm", prefix.value("id")},
-        {"detached", QJsonObject{{"form", arm.value("id")}, {"variant", "test-detached-arm"}}},
-        {"cuts", medial.value("terminalArmRecovery").toObject().value("cuts")}});
+        {"detached", QJsonObject{{"form", arm.value("id")}, {"variant", "test-detached-arm"},
+                                 {"allowPointContact", true}}}});
     auto finals = config.value("final").toArray();
     finals.append(prefix);
     finals.append(arm);
@@ -328,20 +253,7 @@ static void checkSharedAlefJunctionPolicy() {
         forms[i] = form;
     }
     routePolicy.insert("medial", forms);
-    const auto evidence = recognizeSubwordBodies(word, sub, config);
     const auto receiver = QStringLiteral("alef-tapered-arm-fina");
-    const auto seam = evidence.terminalJunctions.constFind(receiver);
-    check(seam != evidence.terminalJunctions.cend() && seam->topBaseLine.time == 5 &&
-          seam->bottomBaseLine.time == 13, "The receiving arm did not supply its own junction");
-    auto separated = sub;
-    separated.text = PageAnalysisResult::bodyLetters(sub.text);
-    separated.text.insert(separated.text.size() - 1, QChar(0x0628));
-    const auto separatedEvidence = recognizeSubwordBodies(word, separated, config);
-    check(!separatedEvidence.terminalJunctions.contains(receiver), "A nonadjacent alef triggered arm recognition");
-    const auto otherPolicy = recognizeSubwordBodies(word, sub, routePolicy);
-    check(!otherPolicy.terminalJunctions.contains(receiver), "A disabled shared cut still produced a junction proposal");
-    check(otherPolicy.stemProfiles.keys() == evidence.stemProfiles.keys(),
-          "Disabling a shared cut changed the recognized stem profiles");
     check(analysis.segmentSubword(443, 12, 5, 1, &font, true, &routePolicy), "Original return-arm route failed");
     const auto old = sub;
     check(std::abs(old.joins.rbegin()->bottomBaseLine.time - 12.924620117624805) < 1e-7,
@@ -482,9 +394,6 @@ static void checkTerminalLamEntryPolicy() {
             }
             custom.insert("final", finals);
             check(PageAnalysisResult::prepareLetterForms(custom).isEmpty(), "Independent final policy override rejected");
-            const auto evidence = recognizeSubwordBodies(word, sub, config);
-            const auto sameBody = recognizeSubwordBodies(word, sub, custom);
-            check(evidence.stemProfiles.keys() == sameBody.stemProfiles.keys(), "A final cut override changed recognized bodies");
             check(a.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.sub - 1, &font, true, &custom),
                   "Renamed declarative final lam became partial");
             check(sub.letterDiagnostics[f.lam].toObject().value("template") == "renamed-terminal-lam" &&
@@ -726,7 +635,6 @@ int main(int argc, char** argv) {
         check(attachedBodies[i].path == attached.baseGlyphs[i].path, "Repeated attached segmentation changed a mask");
     checkSeparateAlefTip();
     checkDeclaredLamRoutes();
-    checkBodyRecognitionSeparation();
     checkTerminalReturnPolicy();
     checkTaperedArmJunction();
     checkSharedAlefJunctionPolicy();

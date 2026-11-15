@@ -454,140 +454,30 @@ std::optional<std::pair<Stretching, Stretching>> medialClusterAnchors(SearchCont
     return std::pair{*entry, *exit};
 }
 
-static std::vector<ToothClusterExit> nearerConnectorExits(SearchContext& context, const ToothClusterBody& cluster,
-        const Stretching& current, double penWidth, const QJsonObject& clusterSettings, const QJsonObject& cutsSettings) {
-    const auto& tip = cluster.turns.back();
-    const auto cap = toothCutLine(current);
-    const double width = std::max(penWidth, cap.length());
-    if (tip.point.x() - cap.center().x() <= std::max(2 * width, 1.65 * meanToothPitch(cluster))) return {};
-
-    std::vector<ToothClusterExit> cuts;
-    bool foundTurn = false;
-    const auto add = [&](std::optional<Stretching> turn) {
-        if (!turn) return;
-        orientSection(context, *turn, tip.time, false);
-        const auto excess = toothCutLine(*turn).center() - cap.center();
-        if (excess.x() <= 2 * width || std::abs(excess.y()) >= .5 * excess.x() ||
-            !getJoinTime(*turn, context.orientation).isStrictRight(tip.time) ||
-            !cutPrecedes(*turn, current, context.orientation)) return;
-        foundTurn = true;
-        if (!keepsClusterAtExit(cluster, *turn, context.orientation)) return;
-        if (std::none_of(cuts.begin(), cuts.end(), [&](const auto& cut) {
-                return toothCutLine(cut.cut) == toothCutLine(*turn);
-            })) cuts.push_back({*turn});
-    };
-    add(strokeFlankTurn(context, tip, penWidth, -1, true, 43, .65));
-    // The tip can lean back. The turn may be clearer walking from the cap.
-    add(strokeFlankTurn(context, current.topBaseLine, width, 1, false, 43, 2));
-    add(strokeFlankTurn(context, current.topBaseLine, width, 1, false, 25, 2));
-    add(strokeFlankTurn(context, current.bottomBaseLine, width, 1, false, 43, 2));
-    if (!cuts.empty() || !foundTurn || tip.point.x() <= cluster.turns[3].point.x()) return cuts;
-
-    // A normal at the first turn can cross a backturned tooth's valley.
-    // Try the existing offset along its own exit bend.
-    const auto bend = clusterExitAtBend(context, cluster, mergeShapeSettings(clusterSettings, cutsSettings));
-    if (bend && toothCutLine(*bend).center().x() - cap.center().x() >= .5 * width &&
-        cutPrecedes(*bend, current, context.orientation)) cuts.push_back({*bend});
-    return cuts;
-}
-
-static std::optional<Stretching> exitAfterFoldedTooth(SearchContext& context, const ToothClusterBody& cluster,
-        const QJsonObject& settings, const Stretching& current, double penWidth) {
-    const auto& valley = cluster.turns[3];
-    const auto& tip = cluster.turns.back();
-    const auto cap = toothCutLine(current);
-    // A shared seam can start in the valley before a tooth that bends back
-    // to the right. Its peak is then across the seam despite its page x.
-    if (QLineF(valley.point, cap.p1()).length() > .08 * penWidth ||
-        tip.point.x() <= valley.point.x() ||
-        getJoinTime(current, context.orientation).isRight(tip.time)) return {};
-
-    const double reach = std::max(2 * penWidth, meanToothPitch(cluster));
-    const auto boundary = clusterExitAtBend(context, cluster, settings);
-    if (boundary && QLineF(cap.center(), toothCutLine(*boundary).center()).length() <= reach &&
-        cutPrecedes(current, *boundary, context.orientation)) return boundary;
-    return {};
-}
-
-ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body, const QJsonObject& cuts,
-                               const QPainterPath& mask, bool terminal, double penWidth,
-                               const ToothClusterAttachment& attachment, bool proposeBoundaries) {
+bool retainsToothCluster(SearchContext& context, const QJsonObject& body, const QPainterPath& mask,
+                         bool terminal, const Stretching* seam, bool followsSeam, double penWidth) {
     const auto evidence = recognizedSharedShape(context, body);
+    const auto bounds = mask.boundingRect().adjusted(-1e-4, -1e-4, 1e-4, 1e-4);
+    const auto side = seam ? getJoinTime(*seam, context.orientation) : JoinTime{};
+    const auto owns = [&](const PathExtrema& p) {
+        return bounds.contains(p.point) && (!seam ||
+            (followsSeam ? side.isStrictLeft(p.time) : side.isStrictRight(p.time)));
+    };
     const ToothClusterBody* accepted = nullptr;
-    const auto clusterSettings = body.value("cluster").toObject();
-    const auto cutSettings = cuts.value("cluster").toObject();
-    const auto rise = clusterSettings.value("minToothRise").toDouble(.55);
-    QString reason = QStringLiteral("mask does not own all three teeth and both valleys");
-    const auto ownedBounds = mask.boundingRect().adjusted(-1e-4, -1e-4, 1e-4, 1e-4);
-    const auto entry = attachment.entry ? getJoinTime(*attachment.entry, context.orientation) : JoinTime{};
-    const auto exit = attachment.exit ? getJoinTime(*attachment.exit, context.orientation) : JoinTime{};
-    std::vector<std::vector<QBezier>> maskCurves;
-    const auto owns = [&](PathExtrema point) {
-        if (!ownedBounds.contains(point.point)) return false;
-        if (attachment.sameContour)
-            return (!attachment.entry || entry.isStrictLeft(point.time)) &&
-                   (!attachment.exit || exit.isStrictRight(point.time));
-        // A recovered component can have different contour numbering.
-        if (maskCurves.empty())
-            for (const auto& contour : toSubpaths(mask)) maskCurves.push_back(baseContourCurves(contour));
-        return sourceLandmark(point, maskCurves);
-    };
-    const auto upper = [&](const ToothClusterBody& cluster) {
-        return (cluster.ordinary || cluster.wide) && followsUpperFlank(context, cluster);
-    };
+    const double rise = body.value("cluster").toObject().value("minToothRise").toDouble(.55);
     for (const auto& cluster : evidence->clusters) {
-        if (!upper(cluster) || !std::all_of(cluster.turns.begin(), cluster.turns.end(), owns)) continue;
+        if (!(cluster.ordinary || cluster.wide) || !followsUpperFlank(context, cluster) ||
+            !std::all_of(cluster.turns.begin(), cluster.turns.end(), owns)) continue;
         if (terminal) {
             const auto bowl = seenBowlLandmarks(context, cluster, mask.boundingRect());
-            if (!bowl || !std::all_of(bowl->begin(), bowl->end(), owns)) {
-                reason = QStringLiteral("third tooth does not descend into the owned terminal bowl");
-                continue;
-            }
-        } else {
-            const bool meetsFold = attachment.followingFold &&
-                seenTipMeetsFold(context, cluster.turns.back(), cluster.advancePrevious, *attachment.followingFold);
-            if ((attachment.requiresFold && !meetsFold) || (meetsFold && attachment.separateConnector)) {
-                reason = QStringLiteral("third tooth and the folded yeh require one shared cut");
-                continue;
-            }
+            if (!bowl || !std::all_of(bowl->begin(), bowl->end(), owns)) continue;
         }
         if (accepted) {
             for (int i : {0, 2, 4})
-                if (distinctToothTips(context, cluster.turns[i], accepted->turns[i], penWidth, rise))
-                    return {QStringLiteral("more than one distinct set of teeth supports the mask"), {}};
+                if (distinctToothTips(context, cluster.turns[i], accepted->turns[i], penWidth, rise)) return false;
         } else accepted = &cluster;
     }
-    if (accepted) {
-        ToothClusterFit fit{};
-        if (!proposeBoundaries) return fit;
-        if (attachment.sameContour && attachment.entry && cutSettings.value("entryAtJunction").toBool())
-            fit.entry = clusterEntryAtJunction(context, *accepted, penWidth);
-        if (!attachment.exit) return fit;
-        auto hollow = attachment.canFitHollow && cutSettings.value("exitAtHollow").toBool()
-            ? clusterExitAtHollow(context, *accepted, penWidth,
-                2 * std::max(penWidth, toothCutLine(*attachment.receiving).length()), cutSettings) : std::nullopt;
-        if (hollow && !cutPrecedes(*hollow, *attachment.receiving, context.orientation)) hollow.reset();
-        if (hollow && QLineF(hollow->topBaseLine.point, attachment.exit->topBaseLine.point).length() < 1e-4 &&
-            QLineF(hollow->bottomBaseLine.point, attachment.exit->bottomBaseLine.point).length() < 1e-4) return fit;
-        if (attachment.separateConnector)
-            fit.exits = nearerConnectorExits(context, *accepted, *attachment.exit, penWidth, clusterSettings, cutSettings);
-        if (hollow) fit.exits.insert(fit.exits.begin(), {*hollow, true});
-        return fit;
-    }
-
-    if (!proposeBoundaries || terminal || !attachment.sameContour || !attachment.exit || attachment.separateConnector ||
-        attachment.requiresFold || attachment.followingFold) return {reason, {}};
-
-    const auto settings = mergeShapeSettings(clusterSettings, cutSettings);
-    std::optional<Stretching> shared;
-    for (const auto& cluster : evidence->clusters) {
-        if (!upper(cluster) || !std::all_of(cluster.turns.begin(), cluster.turns.begin() + 3, owns)) continue;
-        const auto boundary = exitAfterFoldedTooth(context, cluster, settings, *attachment.exit, penWidth);
-        if (!boundary) continue;
-        if (shared && toothCutLine(*shared) != toothCutLine(*boundary)) return {reason, {}};
-        shared = boundary;
-    }
-    return shared ? ToothClusterFit{reason, {{*shared}}} : ToothClusterFit{reason, {}};
+    return accepted != nullptr;
 }
 
 bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody> &bodies,

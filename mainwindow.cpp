@@ -1638,7 +1638,19 @@ void MainWindow::inspectSubword(const QPoint& pos) {
                     if (!exists) break;
                 }
                 rule.insert("id", id);
-                if (QString(phase) != "medial") rule.insert("tryNext", true);
+                const auto copyEligibility = [&](QJsonObject& plan) {
+                    auto forms = plan.value("forms").toObject();
+                    if (!forms.contains(sourceId)) return false;
+                    forms.insert(id, forms.value(sourceId));
+                    plan.insert("forms", forms);
+                    return true;
+                };
+                auto expansion = config.value("fixedAnchorExpansion").toObject();
+                auto continuation = expansion.value("continuation").toObject();
+                const bool expanded = copyEligibility(expansion);
+                const bool continued = copyEligibility(continuation);
+                if (continued) expansion.insert("continuation", continuation);
+                if (expanded || continued) config.insert("fixedAnchorExpansion", expansion);
                 entries.insert(index, rule);
                 config.insert(phase, entries);
                 editor->setPlainText(QString::fromUtf8(QJsonDocument(config).toJson()));
@@ -1680,16 +1692,23 @@ void MainWindow::inspectSubword(const QPoint& pos) {
             letter + 1 == baseText.size() ? QStringLiteral("final") : QStringLiteral("medial");
         const auto suffix = position == "initial" ? "init" : position == "medial" ? "medi" : "fina";
         const auto id = QString("form-%1-%2").arg(QUuid::createUuid().toString(QUuid::WithoutBraces).left(8), suffix);
-        QJsonObject rule{{"id", id}, {"current", baseText.mid(letter, 1)}};
+        QJsonObject rule{{"id", id}, {"current", baseText.mid(letter, 1)}, {"fixedAnchors", true}};
         if (position == "medial") {
-            rule.insert("right", QJsonObject{{"walk", QJsonArray{"down", "right"}}});
-            rule.insert("left", QJsonObject{{"walk", QJsonArray{"down", "left"}}});
+            rule.insert("body", QJsonObject{{"shape", "paired-route"}, {"routes", QJsonObject{
+                {"anchor", QJsonObject{{"xExtremum", true}}},
+                {"right", QJsonObject{{"top", QJsonArray{"down", "right"}}}},
+                {"left", QJsonObject{{"top", QJsonArray{"down", "left"}}}}}}});
+            rule.insert("cuts", QJsonObject{{"boundaries", QJsonObject{{"right", "route-right"}, {"left", "route-left"}}},
+                {"routes", QJsonObject{{"right", QJsonObject{{"bottomProbe", "normal"}}},
+                                       {"left", QJsonObject{{"bottomProbe", "normal"}}}}}});
         } else {
-            rule.insert("method", "walk");
-            rule.insert("top", QJsonArray{"down", "left"});
-            rule.insert("bottomProbe", "down");
-            rule.insert("tryNext", true);
-            if (position == "final") rule.insert("start", "left");
+            const bool terminal = position == "final";
+            QJsonObject route{{"top", QJsonArray{"down", "left"}}};
+            if (terminal) route.insert("start", "left");
+            rule.insert("body", QJsonObject{{"shape", "contour-route"}, {"route", route}});
+            rule.insert("cuts", QJsonObject{{"route", QJsonObject{{"bottomProbe", "normal"}}},
+                {"boundaries", QJsonObject{{"right", terminal ? "contour-route" : "free"},
+                                           {"left", terminal ? "free" : "contour-route"}}}});
         }
         auto entries = config.value(position).toArray();
         entries.prepend(rule);

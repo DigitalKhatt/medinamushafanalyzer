@@ -1133,8 +1133,6 @@ struct AnchorTraversal {
     std::optional<AnchorBranch> prepareBranch(const AnchorPriority& priority, SearchContext& source) const {
         const auto& [config, templates, verify] = priority;
         const auto settings = config.value("kashidaDefaults").toObject();
-        if (!settings.value("enabled").toBool(true) || settings.value("trackingEnabled").toBool() ||
-            settings.value("minSpan").toDouble() > 0) return {};
         FormChoices forms(letters.size());
         for (int slot = 0; slot < letters.size(); ++slot) {
             if (slot == letters.size() - 1 && !attachedStroke.isEmpty()) continue;
@@ -1194,7 +1192,7 @@ struct AnchorTraversal {
             }
             if (cutGeometryMemo) {
                 if (cutGeometryMemo->profiling) {
-                    cutGeometryMemo->anchorSearch = "fallback";
+                    cutGeometryMemo->anchorSearch = "search-exhausted";
                     cutGeometryMemo->anchorBlocker.clear();
                 }
                 cutGeometryMemo->verifyContourGeometry = verify;
@@ -1248,28 +1246,6 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
     auto result = traversal.search(ink, priorities);
     if (result && cutGeometryMemo && cutGeometryMemo->profiling) cutGeometryMemo->anchorSearch = "matched";
     return result;
-}
-
-bool sameAnchoredPartition(const Subword& a, const Subword& b) {
-    const auto count = a.baseGlyphs.size();
-    if (!a.correct || !b.correct || a.paths != b.paths || a.secondaryBodyPath != b.secondaryBodyPath ||
-        count != b.baseGlyphs.size() || a.letterDiagnostics.size() != int(count) ||
-        b.letterDiagnostics.size() != int(count) || a.kashidaPaths.size() != a.joins.size() || a.kashidaPaths != b.kashidaPaths ||
-            a.kashidaCuts != b.kashidaCuts || a.joins.size() != b.joins.size()) return false;
-    for (size_t slot = 0; slot < count; ++slot) {
-        const auto& first = a.baseGlyphs[slot].path;
-        const auto& second = b.baseGlyphs[slot].path;
-        if (first != second || first.fillRule() != second.fillRule()) return false;
-        const auto one = a.letterDiagnostics.at(int(slot)).toObject(), two = b.letterDiagnostics.at(int(slot)).toObject();
-        if (one.value("template") != two.value("template") || one.value("variant") != two.value("variant")) return false;
-    }
-    auto second = b.joins.begin();
-    size_t join = 0;
-    for (const auto& first : a.joins) {
-        if (a.kashidaPaths[join++].isEmpty() && first.cutSegments() != second->cutSegments()) return false;
-        ++second;
-    }
-    return true;
 }
 
 } // namespace MedinaCutter

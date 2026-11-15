@@ -47,7 +47,7 @@ def review_targets(db, pages, templates, form):
     return targets
 
 
-def compare_page(db, pid, folder, targets, *, complete_only=False):
+def compare_page(db, pid, folder, targets):
     data = json.loads((folder/(pid+'.json')).read_bytes())
     after = json.loads(zlib.decompress((folder/(pid+'.vectors')).read_bytes()))
     before = json.loads(zlib.decompress(db.execute(
@@ -71,8 +71,7 @@ def compare_page(db, pid, folder, targets, *, complete_only=False):
         complete = result['status'] == 'template'
         if not complete:
             issues.append(dict(id=sid, issue='unresolved', status=result['status'], text=spec['text']))
-            if complete_only:
-                continue
+            continue
         elif sum(p['role']=='body' for p in result.get('parts', [])) != spec['letter_count']:
             issues.append(dict(id=sid, issue='letter-count'))
         keys = [o['id']+'/'+role for o in owners[sid] for role in ('body','kashida')]
@@ -174,7 +173,7 @@ def render_report(folder, report):
             svg = review_crop(change[side], changed, f'{x0} {y0} {width} {height}')
             name = change['id'].replace(':','-')+'-'+side+'.svg'
             (folder/name).write_text(svg)
-            preview = f'<img src="{name}" loading="lazy" alt="{side.title()} cuts">' if report.get('noLegacy') else svg
+            preview = f'<img src="{name}" loading="lazy" alt="{side.title()} cuts">'
             panels.append(f'<section><h3>{side.title()}</h3><a href="{name}">{preview}</a></section>')
         sid = escape(change['id'])
         connector_count = sum(k.endswith('/kashida') for k in change['after']) - sum(
@@ -186,11 +185,8 @@ def render_report(folder, report):
                      +caption+
                      '<div class="pair">'+''.join(panels)+'</div></article>')
     summary = {k:v for k,v in report.items() if k not in ('changes','issues')}
-    if not report.get('noLegacy'):
-        summary['issues'] = report['issues']
-    migration = ('<p>Fixed-anchor audit with the legacy cutter disabled. '
-                 '<a href="remaining-migration.csv">Download all unresolved subwords and their blockers</a>.</p>'
-                 if report.get('noLegacy') else '')
+    diagnostics = ('<p><a href="unresolved.csv">Download unresolved subwords and their blockers</a>.</p>'
+                   if report.get('unresolvedCsv') else '')
     search = report.get('candidateSearch', {})
     forms = search.get('forms', {})
     candidates = ''
@@ -210,7 +206,7 @@ h2{font-size:16px}h3{font-size:13px;margin:4px}.pair{display:grid;grid-template-
 svg,.pair img{width:100%;height:190px;object-fit:contain}
 pre{white-space:pre-wrap}input{padding:10px;width:300px}table{border-collapse:collapse}th,td{text-align:left;padding:6px 12px;border-bottom:1px solid #d2dae0}@media(max-width:500px){.grid{grid-template-columns:1fr}}</style>
 <h1>Cutter changes</h1><p>__SUMMARY__</p><p>Teal marks changed bodies, gray marks unchanged bodies, and gold marks kashidas. Pink lines show cuts at shared joins and at both ends of a kashida. Dashed pink lines show where the two body outlines have slightly different boundaries. Click an image to enlarge.</p>
-__MIGRATION__
+__DIAGNOSTICS__
 <input id="subword" placeholder="Filter by subword ID" oninput="filterCuts()">
 <label>Changes <select id="change-type" onchange="filterCuts()">
 <option value="">All cuts</option><option value="raster">Pixel ownership</option>
@@ -231,12 +227,12 @@ function filterCuts() {
         f"{report['pages']} pages · {report['subwords']:,} multi-letter subwords · {changed} changed complete cuts · "
         f"{unresolved} unresolved · {failures} validation issues"))
         .replace('__JSON__',escape(json.dumps(summary,ensure_ascii=False,indent=2)))
-        .replace('__MIGRATION__',migration)
+        .replace('__DIAGNOSTICS__',diagnostics)
         .replace('__CANDIDATES__',candidates)
         .replace('__CARDS__',''.join(cards)))
 
 
-def review(database, destination, pages, workers, templates, *, compare_anchors=False, no_legacy=False, form=None):
+def review(database, destination, pages, workers, templates, *, form=None):
     started = time.perf_counter()
     folder = destination.resolve()
     require(not folder.exists() or not any(folder.iterdir()), 'Choose an empty review directory')
@@ -260,8 +256,7 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
     cut_started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=workers) as pool, (folder/'cutter.log').open('w') as log:
         jobs = {pool.submit(prepare_page,folder/'reference.sqlite',pid,binary,folder/'pages',
-                            targets[pid],folder/'letter-forms.json',profile=True,
-                            compare_anchors=compare_anchors,no_legacy=no_legacy):pid for pid in chosen}
+                            targets[pid],folder/'letter-forms.json',profile=True):pid for pid in chosen}
         for n,job in enumerate(as_completed(jobs),1):
             pid = jobs[job]
             revisions.add(job.result())
@@ -274,12 +269,9 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
             for subword in timing['subwords']:
                 search = subword.get('search', {})
                 candidate_totals.update({k:v for k,v in search.items() if k not in ('forms','anchorSearch','anchorBlocker')})
-                if no_legacy:
-                    routes[subword['id']] = (search.get('anchorSearch','unrecorded'),search.get('anchorBlocker',''))
+                routes[subword['id']] = (search.get('anchorSearch','unrecorded'),search.get('anchorBlocker',''))
                 if status := search.get('anchorSearch'):
                     anchors[status] += 1
-                    if status == 'different-cuts':
-                        issues.append(dict(id=subword['id'], issue='anchor-search-difference'))
                 for form, statistics in search.get('forms', {}).items():
                     candidate_forms[form].update(statistics)
             if n%25==0 or n==len(chosen):
@@ -289,7 +281,7 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
     require(len(revisions)==1, 'Mixed cutter revisions')
     with closing(read(folder/'reference.sqlite')) as db:
         for pid in chosen:
-            altered, labels, errors = compare_page(db,pid,folder/'pages',targets[pid],complete_only=no_legacy)
+            altered, labels, errors = compare_page(db,pid,folder/'pages',targets[pid])
             changes.extend(altered); label_changes.extend(labels); issues.extend(errors)
     (folder/'label-changes.json').write_text(encoded(label_changes))
     differences = dict(bodyOutlines=sum(any(k.endswith('/body') and 'd' in fields
@@ -301,21 +293,18 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
                        templateLabels=len(label_changes),
                        labelsOnly=sum(not c['geometryChanged'] for c in label_changes))
     remaining = Counter()
-    if no_legacy:
-        with (folder/'remaining-migration.csv').open('w',encoding='utf-8-sig',newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(('Subword','Text','Status','Route','Blocker'))
-            for issue in sorted(issues,key=lambda i:i['id']):
-                if issue['issue'] != 'unresolved':
-                    continue
-                sid = issue['id']
-                route, blocker = routes.get(sid,('unrecorded',''))
-                if route == 'fallback':
-                    route = 'search-exhausted'
-                remaining[blocker or route] += 1
-                writer.writerow((sid,issue['text'],issue['status'],route,blocker))
+    with (folder/'unresolved.csv').open('w',encoding='utf-8-sig',newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(('Subword','Text','Status','Route','Blocker'))
+        for issue in sorted(issues,key=lambda i:i['id']):
+            if issue['issue'] != 'unresolved':
+                continue
+            sid = issue['id']
+            route, blocker = routes.get(sid,('unrecorded',''))
+            remaining[blocker or route] += 1
+            writer.writerow((sid,issue['text'],issue['status'],route,blocker))
     report = dict(pages=len(chosen), subwords=sum(counts.values()), statusCounts=counts,
-                  noLegacy=no_legacy,remainingMigration=dict(remaining.most_common()),
+                  unresolvedCsv=True, unresolvedByBlocker=dict(remaining.most_common()),
                   anchorSearch=dict(sorted(anchors.items())),
                   changes=changes, issues=issues, inputCacheHits=cache_hits, form=form, differences=differences,
                   cutSeconds=cut_seconds, elapsedSeconds=time.perf_counter()-started,
@@ -329,6 +318,6 @@ def review(database, destination, pages, workers, templates, *, compare_anchors=
     (folder/'comparison.json').write_text(encoded(report))
     render_report(folder,report)
     return dict(report=str(folder/'index.html'),pages=len(chosen),subwords=report['subwords'],
-                changed=len(changes),differences=differences,issues=len(issues) if no_legacy else issues,
-                remainingMigration=report['remainingMigration'],anchorSearch=report['anchorSearch'],
+                changed=len(changes),differences=differences,issues=len(issues),
+                unresolvedByBlocker=report['unresolvedByBlocker'],anchorSearch=report['anchorSearch'],
                 cutSeconds=cut_seconds,elapsedSeconds=report['elapsedSeconds'])

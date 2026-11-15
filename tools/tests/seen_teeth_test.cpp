@@ -191,23 +191,15 @@ static void checkFinalSeenLandmarkOwnership(const QJsonObject& config) {
     auto hits = FindInterections(ink, QLineF(x, bounds.top() - 1, x, bounds.bottom() + 1));
     std::sort(hits.begin(), hits.end(), [](const auto& a, const auto& b) { return a.point.y() < b.point.y(); });
     check(hits.size() == 2, "Missing the two contour intersections of the invalid receiving cap");
-    auto wrong = sub;
-    auto last = std::prev(wrong.joins.end());
-    auto join = *last;
-    join.topLeft = hits[0];
-    join.bottomLeft = hits[1];
-    join.fixedLeftBoundary = true;
-    wrong.joins.erase(last);
-    wrong.joins.insert(join);
-    auto final = wrong.letterDiagnostics.last().toObject();
-    final.insert("template", "seen-fina");
-    wrong.letterDiagnostics[2] = final;
-    check(assembleBodyPartition(word, wrong, config) && coversOriginalInk(word, wrong) &&
-          wrong.kashidaCuts.back().second == QLineF(hits[0].point, hits[1].point),
-          "The invalid receiving cap must still partition every source pixel");
-    check(!assembleToothClusterCuts(word, wrong, config) && !wrong.correct &&
-          wrong.letterDiagnostics.last().toObject().value("status") == "no-match",
-          "A complete partition with a first tooth in the connector was certified");
+    WordResultInfo::SubWordInfo unused;
+    auto context = geometry(ink, unused);
+    Stretching bad{.topBaseLine = hits[0], .bottomBaseLine = hits[1]};
+    orientSection(context, bad, context.xSorted.rbegin()->time, true);
+    const auto pieces = cutRegions(ink, {}, {bad}, context.orientation, true);
+    check(pieces.size() == 2, "The invalid cap must partition the source contour");
+    const auto body = formDescription(config, namedLetterForm(config, "seen-fina"), "body");
+    check(!retainsToothCluster(context, body, pieces.back().path, true, &bad, true, 1),
+          "The terminal body accepted a cut through its first tooth");
 }
 
 static void checkSeenTailOwnership(const QJsonObject& config) {
@@ -495,7 +487,6 @@ int main(int argc, char** argv) {
         const auto& sub = word.wordResultInfo.subWords[1];
         auto narrow = config;
         // Isolate the spacing rule from the corpus-wide contour retries.
-        narrow.insert("retryUnresolvedForms", false);
         auto medial = narrow.value("medial").toArray();
         for (int i = 0; i < medial.size(); ++i) {
             auto form = medial[i].toObject();
@@ -575,7 +566,6 @@ int main(int argc, char** argv) {
         auto& word = sample.page.lines[line].words[7];
         auto& sub = word.wordResultInfo.subWords[part];
         auto noBend = config;
-        noBend.insert("retryUnresolvedForms", false);
         auto initial = noBend.value("initial").toArray();
         for (int i = 0; i < initial.size(); ++i) {
             auto rule = initial[i].toObject();

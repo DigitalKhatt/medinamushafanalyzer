@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     const Fixture fixtures[] = {
         {3,1,9,3,"heh-init"}, {3,1,6,5,"heh-body-medi"}, {3,2,5,2,"heh-counter-fina"},
         {3,1,6,5,"beh-init"}, {13,2,6,3,"beh-shallow-step-init"},
-        {3,1,3,1,"reh-fina"}, {1,7,2,1,"reh-rising-tail-fina"},
+        {3,1,3,1,"reh-fina"}, {11,5,6,1,"reh-rising-tail-fina"},
         {600,2,9,1,"yeh-first-turn-fina"},
         {13,15,5,1,"kaf-flat-medi"},
         {3,13,3,1,"hah-stacked-medi"},
@@ -55,9 +55,8 @@ int main(int argc, char** argv) {
         if (QString(f.id) == "reh-rising-tail-fina") {
             check(baseline && expected.letterDiagnostics.last().toObject().value("template") == f.id,
                   "Rising reh fixture did not select its body template");
-            check(std::any_of(inspection.candidates.cbegin(), inspection.candidates.cend(), [](const auto& candidate) {
-                return candidate.label == "Raised entry recovery";
-            }), "The selected reh template did not expose its recovery cut");
+            check(!inspection.selectedBody.isEmpty() && inspection.assembly.contains("Entry cut · reh-rising-tail-fina"),
+                  "The selected reh did not expose its anchor and body");
         }
         qInfo().noquote() << f.id << "landmarks" << inspection.landmarks.size() << "cuts" << inspection.candidates.size()
                          << "attempted" << inspection.attempted;
@@ -106,15 +105,10 @@ int main(int argc, char** argv) {
         samePartition(expected, analysis.page.lines[f.line-1].words[f.word-1].wordResultInfo.subWords[f.sub-1]);
     }
     {
-        auto analysis = fixture(3);
-        const auto usedForEntry = inspectLetterForm(analysis, 2, 4, 0, 0, nullptr, config, "hah-stacked-medi");
-        const auto& sub = analysis.page.lines[4].words[0].wordResultInfo.subWords[0];
-        const auto hah = sub.letterDiagnostics[1].toObject();
-        check(usedForEntry.complete && hah.value("template") == "hah-rising-entry-medi" &&
-              hah.value("entryTemplate") == "hah-stacked-medi" && sub.matchedTemplates.contains("hah-stacked-medi") &&
-              usedForEntry.assembly.contains("Entry cut · hah-stacked-medi") &&
-              !usedForEntry.candidates.isEmpty() && usedForEntry.selectedBody.isEmpty(),
-              "The cut inspector hid the template that supplied the shared entry");
+        auto analysis = fixture(600);
+        const auto entry = inspectLetterForm(analysis, 599, 1, 8, 0, nullptr, config, "yeh-first-turn-fina");
+        check(entry.complete && entry.assembly.contains("Entry cut · yeh-first-turn-fina") &&
+              !entry.selectedBody.isEmpty(), "The inspector hid the receiving body's shared anchor");
     }
     check(PageAnalysisResult::letterForms() == config, "Preview activated a draft globally");
 

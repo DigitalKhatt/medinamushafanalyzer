@@ -37,7 +37,6 @@ int main(int argc, char** argv) {
         check(contourBodyBoundaries(context,pairedRouteSettings(stacked)).empty(),
               "Wrapped stacked-hah cut excludes its own defining anchor");
         auto unguarded=config;
-        unguarded.insert("retryUnresolvedForms", false);
         auto forms=unguarded.value("medial").toArray();
         for(int i=0;i<forms.size();++i){auto f=forms[i].toObject();f.remove("bodyCounters");if(f.contains("body")){auto b=f.value("body").toObject();b.remove("counters");f.insert("body",b);}forms[i]=f;}
         unguarded.insert("medial",forms);

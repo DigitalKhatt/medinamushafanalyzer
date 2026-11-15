@@ -34,19 +34,8 @@ static QString invalidKashidaSettings(const QJsonValue& value, const QJsonObject
         if (!expected.isDouble()) continue;
 
         const double number = setting.value().toDouble();
-        const bool sampleCount = key == "seedSteps" || key == "maxTrackSteps";
-        const bool fraction = key == "steepAnchorRatio" || key == "neighborSearchRatio" || key == "sharedCutTolerance";
-        if (!std::isfinite(number) || number < 0 ||
-            (sampleCount && (number != std::floor(number) || number > 1000)) ||
-            (fraction && number > 1) || (key == "samplesPerAnchorWidth" && number <= 0)) {
+        if (!std::isfinite(number) || number < 0 || number > 1)
             return location + ": out-of-range value for " + key;
-        }
-    }
-    const auto effective = withOverrides(defaults, settings);
-    for (const auto& range : {std::pair{"minSeedWidthRatio", "maxSeedWidthRatio"},
-                              std::pair{"minTrackWidthRatio", "maxTrackWidthRatio"}}) {
-        if (effective.value(range.first).toDouble() > effective.value(range.second).toDouble())
-            return location + ": minimum exceeds maximum for " + QString::fromLatin1(range.first);
     }
     return {};
 }
@@ -314,6 +303,10 @@ QJsonObject mergeShapeSettings(QJsonObject body, const QJsonObject &cuts) {
                         ? QJsonValue(mergeShapeSettings(body.value(it.key()).toObject(), it.value().toObject()))
                         : it.value());
     return body;
+}
+
+QByteArray bodyDescriptionKey(const QJsonObject& body) {
+    return QJsonDocument(body).toJson(QJsonDocument::Compact);
 }
 
 QJsonObject shapeSettings(const QJsonObject &form, const QString &key) {
@@ -1548,110 +1541,11 @@ QJsonArray finalRetryCandidates(const QJsonArray& forms, QHash<QString, QString>
         retry.insert("current", form.value("current"));
         retry.insert(form.value("onIncomplete").toBool() ? "onIncomplete" : "onFinalRetry", true);
         if (form.value("onUnresolved").toBool()) retry.insert("onUnresolved", true);
-        retry.insert("tryNext", true);
         candidates.append(retry);
         candidates.append(form);
         parents.insert(key, parent);
     }
     return candidates;
-}
-
-const PreparedPassRules& preparePassRules(const QJsonObject& config, bool recoverTeeth,
-                                                OutlineSearchCache& cache) {
-    for (const auto& rules : cache.rules)
-        if (rules->config == config && rules->recoverTeeth == recoverTeeth) return *rules;
-    auto prepared = std::make_unique<PreparedPassRules>();
-    prepared->config = config;
-    prepared->recoverTeeth = recoverTeeth;
-    for (const auto* position : {"initial", "medial", "final"}) {
-        for (const auto& value : config.value(position).toArray()) {
-            auto rule = bodyConstraintForm(config, value.toObject());
-            prepared->constraints.insert(rule.value("id").toString(), rule);
-            const auto shape = rule.value("body").toObject().value("shape");
-            if (QString(position) == "medial" || shape == "component-arm" || shape == "stacked-tooth") continue;
-            if (rule.value("retryWithVariants").toBool()) rule.insert("tryNext", true);
-            if (!recoverTeeth && rule.value("onPartial").toBool()) continue;
-            if (QString(position) == "initial") {
-                rule.insert("first", true);
-                rule.insert("bodyBoundary", "current");
-            } else {
-                rule.insert("next", rule.take("current"));
-                rule.insert("last", true);
-                rule.insert("bodyBoundary", "next");
-                prepared->finals.append(rule);
-                if (rule.value("body").toObject().value("shape") == "upright-stem")
-                    prepared->alefTurns.append(rule);
-            }
-            prepared->boundaries.append(rule);
-        }
-    }
-    const auto& result = *prepared;
-    cache.rules.push_back(std::move(prepared));
-    return result;
-}
-
-// The cutter alternates between the full declarations and the smaller sets
-// used by the search and recovery passes. Keep those programs ready across
-// subwords. Compare declarations by value so template previews see edits.
-const BodyCutProgram& bodyCutProgram(const QJsonObject& config) {
-    constexpr std::array sections{"initial", "medial", "final"};
-    using DeclarationLists = std::array<QJsonArray, sections.size()>;
-    const DeclarationLists declarations{config.value(sections[0]).toArray(), config.value(sections[1]).toArray(),
-                                        config.value(sections[2]).toArray()};
-    static thread_local std::array<std::pair<DeclarationLists, BodyCutProgram>, 4> programs;
-    static thread_local size_t nextProgram = 0;
-    for (const auto& [compiled, program] : programs)
-        if (compiled == declarations) return program;
-    auto& [compiled, program] = programs[nextProgram];
-    nextProgram = (nextProgram + 1) % programs.size();
-    program = {};
-    for (size_t position = 0; position < declarations.size(); ++position) {
-        for (const auto& value : declarations[position]) {
-            const auto form = value.toObject();
-            if (!form.contains("body") || !form.contains("cuts")) continue;
-            const auto id = form.value("id").toString();
-            const auto body = formDescription(config, form, "body");
-            const auto letters = form.value("current").toString();
-            QString nextLetters;
-            if (position == 0) nextLetters = form.value("ligatureWith").toString();
-            if (position == 1) nextLetters = medialFinalLetters(form);
-            program.forms.insert(id, {body, formDescription(config, form, "cuts"), bodyDescriptionKey(body),
-                                      nextLetters, form.value("sharedFoldWithFinal").toString()});
-            if (body.value("shape") == "tooth-cluster")
-                for (QChar letter : letters)
-                    if (!program.toothClusterLetters.contains(letter)) program.toothClusterLetters += letter;
-            for (QChar letter : letters)
-                program.formsByPosition[position][letter].append(id);
-            if (position != 1) continue;
-            const auto recipe = form.value("terminalArmRecovery").toObject();
-            if (recipe.isEmpty()) continue;
-            const auto prefix = namedLetterForm(config, recipe.value("prefixForm").toString());
-            if (prefix.isEmpty()) continue;
-            const auto recoveredBody = formDescription(config, prefix, "body");
-            auto followers = recipe.value("letters").toString();
-            for (const auto* mode : {"attached", "detached"}) {
-                const auto final = namedLetterForm(config, recipe.value(mode).toObject().value("form").toString());
-                followers += final.value("current").toString();
-            }
-            program.recoveryBodies.insert(id, {recoveredBody,
-                withOverrides(formDescription(config, form, "cuts"), recipe.value("cuts").toObject()),
-                bodyDescriptionKey(recoveredBody), followers});
-        }
-    }
-    compiled = declarations;
-    return program;
-}
-
-QByteArray bodyDescriptionKey(const QJsonObject& body) {
-    return QJsonDocument(body).toJson(QJsonDocument::Compact);
-}
-
-QJsonObject bodyCutPolicy(const QJsonObject& description, const QString& letters, int slot) {
-    auto policy = description;
-    const auto terminal = policy.take("beforeFinal").toObject();
-    if (hasFollowingLetter(letters, slot, terminal.value("letters").toString(), true))
-        policy = withOverrides(policy, terminal);
-    return policy;
 }
 
 } // namespace MedinaCutter
@@ -1700,32 +1594,9 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 return "Invalid finished letter-body dimensions";
         }
     }
-    if (config.contains("retryUnresolvedForms") && !config.value("retryUnresolvedForms").isBool())
-        return "retryUnresolvedForms must be true or false";
     if (config.contains("fixedAnchorAlternatesEnding") &&
         config.value("fixedAnchorAlternatesEnding").toString().isEmpty())
         return "fixedAnchorAlternatesEnding must list final letters";
-    if (config.contains("unresolvedInitialShaft")) {
-        const auto shaft = config.value("unresolvedInitialShaft").toObject();
-        if (shaft.value("letters").toString().isEmpty()) return "The initial shaft needs a letter selector";
-        for (const auto* field : {"minHeight", "maxWidthToHeight", "edgeTolerance"}) {
-            const auto value = shaft.value(field);
-            if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() <= 0)
-                return QString("Invalid initial shaft dimension: ") + field;
-        }
-    }
-    if (config.contains("reconsiderFinalAttachments") &&
-        (!config.value("reconsiderFinalAttachments").isString() || config.value("reconsiderFinalAttachments").toString().isEmpty()))
-        return "reconsiderFinalAttachments needs a nonempty final letter selector";
-    if (config.contains("reconsiderForms")) {
-        const auto groups = config.value("reconsiderForms").toObject();
-        if (groups.isEmpty())
-            return "reconsiderForms needs positional letter selectors";
-        for (auto it = groups.begin(); it != groups.end(); ++it)
-            if (!QStringList{"initial", "medial", "final"}.contains(it.key()) || !it.value().isString() ||
-                it.value().toString().isEmpty())
-                return "reconsiderForms supports nonempty initial, medial and final selectors";
-    }
     static const auto bundled = readFormConfig(":/templates/letter-forms.json");
     const auto defaults = bundled.value("kashidaDefaults").toObject();
     auto problem = invalidKashidaSettings(config.value("kashidaDefaults"), defaults, "kashidaDefaults");
@@ -1776,9 +1647,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 return id + ": current must name the letters represented by this form";
             for (const auto* obsolete : {"next", "first", "last", "bodyBoundary", "deferAfterMedial"})
                 if (rule.contains(obsolete)) return id + ": position is determined by its section; remove " + obsolete;
-            for (const auto* key : {"tryNext", "retryOnPartial", "pairedOnly", "tightJoin", "sharedEntry", "sharedBoundary",
-                                    "onPartial", "onIncomplete", "onUnresolved", "onUnresolvedPartition", "reclaimEntry", "returningStroke",
-                                    "retryWithVariants", "onHeadConflict", "preferAtHeadOverlap"})
+            for (const auto* key : {"tightJoin", "sharedEntry", "sharedBoundary",
+                                    "onIncomplete", "onUnresolved", "onUnresolvedPartition", "reclaimEntry", "returningStroke"})
                 if (rule.contains(key) && !rule.value(key).isBool()) return id + ": " + key + " must be true or false";
             if (rule.contains("sharedEntry") && QString(phase) != "medial")
                 return id + ": sharedEntry belongs to a medial ligature form";
@@ -1812,22 +1682,16 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 if (QString(phase) != "medial" || prefix.isEmpty() ||
                     !prefix.value("body").isObject() || !prefix.value("cuts").isObject() ||
                     std::any_of(letters.begin(), letters.end(), [&](QChar letter) { return !prefixLetters.contains(letter); }) ||
-                    (!recipe.contains("attached") && !recipe.contains("detached")) ||
-                    (recipe.contains("cuts") && !recipe.value("cuts").isObject()))
-                    return id + ": terminalArmRecovery needs a final prefix profile for the same letters and an arm mode";
-                for (const auto* key : {"attached", "detached"}) {
-                    if (!recipe.contains(key)) continue;
-                    const auto mode = recipe.value(key).toObject();
-                    const auto arm = resolvedBodyForm(config, findFinal(mode.value("form")));
-                    const auto shape = arm.value("body").toObject().value("shape");
-                    const bool attached = QLatin1String(key) == "attached";
-                    if (shape != (attached ? "tapered-arm" : "component-arm") ||
-                        mode.value("variant").toString().trimmed().isEmpty() ||
-                        (mode.contains("prefixCuts") && !mode.value("prefixCuts").isObject()) ||
-                        (mode.contains("minRise") && (!attached || !positive(mode.value("minRise")))) ||
-                        (mode.contains("maxTipGap") && !positive(mode.value("maxTipGap"))))
-                        return id + ": invalid terminalArmRecovery." + key + " arm profile, variant or cut settings";
-                }
+                    !recipe.value("detached").isObject())
+                    return id + ": terminalArmRecovery needs a final prefix profile for the same letters and a detached arm";
+                const auto mode = recipe.value("detached").toObject();
+                const auto arm = resolvedBodyForm(config, findFinal(mode.value("form")));
+                if (arm.value("body").toObject().value("shape") != "component-arm" ||
+                    mode.value("variant").toString().trimmed().isEmpty() ||
+                    (mode.contains("prefixCuts") && !mode.value("prefixCuts").isObject()) ||
+                    (mode.contains("maxTipGap") && !positive(mode.value("maxTipGap"))) ||
+                    (mode.contains("allowPointContact") && !mode.value("allowPointContact").isBool()))
+                    return id + ": invalid detached terminal arm profile or cut settings";
             }
             const auto rimValue = loopSettings(rule).value("rimAnchors");
             if (!rimValue.isUndefined()) {
@@ -1977,15 +1841,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                     return id + ": minimum body aspect exceeds maximum";
             }
             if (rule.contains("tooth")) return id + ": medial teeth must use body / cuts";
-            if (rule.contains("onPartial") && (QString(phase) != "initial" || method != "walk"))
-                return id + ": onPartial requires an initial contour walk";
-            if (rule.contains("recoveryStage")) {
-                const auto stage = rule.value("recoveryStage");
-                if (QString(phase) != "medial" || !toothDescription(sharedBody) || !stage.isDouble() ||
-                    !std::isfinite(stage.toDouble()) || stage.toDouble() != std::floor(stage.toDouble()) ||
-                    stage.toInt() < 1 || stage.toInt() > 3)
-                    return id + ": recoveryStage must be 1, 2 or 3 on a declared medial tooth";
-            }
             if (rule.contains("body") || rule.contains("cuts"))
                 return id + ": unknown declared body shape";
             if (rule.contains("shaftTurn") && (method != "alef-stem" || !rule.value("shaftTurn").isBool()))

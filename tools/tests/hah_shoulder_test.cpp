@@ -84,8 +84,7 @@ int main(int argc, char** argv) {
     auto smooth = geometry(oval, dummy);
     check(contourBodyBoundaries(smooth, settings).empty(), "Smooth bowl mistaken for a shoulder head");
     // Recreate the earlier template set, before recovery-only allographs.
-    auto previous = config; previous.remove("reconsiderForms"); previous.insert("medial", withoutShoulder);
-    previous.insert("retryUnresolvedForms", false);
+    auto previous = config; previous.insert("medial", withoutShoulder);
     check(!analysis.segmentSubword(599, 6, 6, 1, nullptr, true, &previous), "Missing shoulder fixture is no longer partial");
     const auto lamCut = *sub.joins.begin();
     check(analysis.segmentSubword(599, 6, 6, 1, nullptr, true), "Shoulder did not unblock remaining letters");

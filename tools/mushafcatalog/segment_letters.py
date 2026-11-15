@@ -61,8 +61,7 @@ def native_binary():
     return binary
 
 
-def prepare_page(database, pid, binary, work, selected=None, templates=None, *, profile=False, input_cache=None,
-                 compare_anchors=False, no_legacy=False):
+def prepare_page(database, pid, binary, work, selected=None, templates=None, *, profile=False, input_cache=None):
     started = time.perf_counter()
     with closing(read(database)) as db:
         db.execute('BEGIN')
@@ -116,10 +115,6 @@ def prepare_page(database, pid, binary, work, selected=None, templates=None, *, 
         env['MEDINA_LETTER_FORMS'] = str(templates)
     if profile:
         env['MEDINA_PROFILE'] = '1'
-    if compare_anchors:
-        env['MEDINA_COMPARE_ANCHORS'] = '1'
-    if no_legacy:
-        env['MEDINA_AUDIT_NO_LEGACY'] = '1'
     prepared = time.perf_counter()
     run = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True)
     executed = time.perf_counter()

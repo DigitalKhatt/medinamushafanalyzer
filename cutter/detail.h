@@ -144,7 +144,6 @@ void inspectCandidate(const QString& label, const Stretching& left,
                              const std::optional<Stretching>& right = {});
 
 void recordBoundaryTemplate(WordResultInfo::SubWordInfo& sub, int slot, bool entry, const QString& id);
-void recordAssembledForm(WordResultInfo::SubWordInfo& sub, int slot, const QString& id);
 void collectUsedTemplates(WordResultInfo::SubWordInfo& sub);
 
 struct ByContourTime {
@@ -210,35 +209,14 @@ struct PreparedPassOutline;
 
 struct ToothCandidateMemo;
 
-struct StemCandidateMemo;
-
-struct PreparedPassRules {
-    QJsonObject config;
-    bool recoverTeeth;
-    QJsonArray boundaries, finals, alefTurns;
-    QMap<QString, QJsonObject> constraints;
-};
-
-struct ContourRouteSearch {
-    size_t position = 0;
-    size_t count = 1;
-};
-
 } // namespace MedinaCutter
 
-// Shared by retries on a single, fixed outline in page coordinates.
 struct OutlineSearchCache {
     std::shared_ptr<const MedinaCutter::PreparedPassOutline> outline;
-    std::vector<std::unique_ptr<MedinaCutter::PreparedPassRules>> rules;
     MedinaCutter::StrokeNormalCache normalsByCenter;
-    std::map<std::pair<QString, bool>, std::optional<Stretching>> terminalCuts;
     std::map<QByteArray, std::vector<std::optional<Stretching>>> routeCuts;
-    std::map<std::pair<QString, double>, std::vector<std::pair<Stretching, Stretching>>> contourBodies;
-    // Interior points on the two lips found in an adjoining connector.
-    std::map<int, QLineF> misplacedHeads;
     std::map<std::pair<QByteArray, int>, std::shared_ptr<const MedinaCutter::SharedShapeEvidence>> sharedBodies;
     std::shared_ptr<MedinaCutter::ToothCandidateMemo> toothCandidates;
-    std::shared_ptr<MedinaCutter::StemCandidateMemo> stemCandidates;
 };
 
 namespace MedinaCutter {
@@ -394,6 +372,8 @@ bool sharedShapeDescription(const QJsonObject &body);
 
 QJsonObject mergeShapeSettings(QJsonObject body, const QJsonObject &cuts);
 
+QByteArray bodyDescriptionKey(const QJsonObject& body);
+
 QJsonObject shapeSettings(const QJsonObject &form, const QString &key);
 
 bool hasToothCluster(const QJsonObject &form);
@@ -420,8 +400,6 @@ QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form);
 
 QJsonArray finalRetryCandidates(const QJsonArray& forms, QHash<QString, QString>& parents);
 
-const PreparedPassRules& preparePassRules(const QJsonObject& config, bool recoverTeeth,
-                                                OutlineSearchCache& cache);
 
 QJsonObject bodyCutPolicy(const QJsonObject& description, const QString& letters, int slot);
 
@@ -625,8 +603,6 @@ bool computeInteriorInkSegment(const QPainterPath& ink, const QPointF& top, cons
 bool interiorInkSegment(const QPainterPath& ink, const QPointF& top, const QPointF& bottom,
                                double topTolerance = 0);
 
-bool findJoinEnds(const QPainterPath &ink, const Stretching &join, double minX, double maxX,
-                         const QJsonObject &settings, Stretching &left, Stretching &right);
 
 bool medialChordAt(const SearchContext& context, double x, double y,
                           double tolerance, Stretching& cut, bool useBottom = false,
@@ -690,29 +666,8 @@ std::optional<std::pair<Stretching, Stretching>> medialClusterAnchors(SearchCont
         const ToothClusterBody& cluster, const std::vector<ToothClusterBody>& clusters,
         const QJsonObject& settings, const QJsonObject& cuts, double penWidth);
 
-struct ToothClusterAttachment {
-    std::optional<Stretching> entry, exit, receiving;
-    std::optional<Stretching> followingFold;
-    bool sameContour = false;
-    bool separateConnector = false;
-    bool requiresFold = false;
-    bool canFitHollow = false;
-};
-
-struct ToothClusterExit {
-    Stretching cut;
-    bool atHollow = false;
-};
-
-struct ToothClusterFit {
-    QString error;
-    std::vector<ToothClusterExit> exits;
-    std::optional<Stretching> entry;
-};
-
-ToothClusterFit fitToothCluster(SearchContext& context, const QJsonObject& body, const QJsonObject& cuts,
-                               const QPainterPath& mask, bool terminal, double penWidth,
-                               const ToothClusterAttachment& attachment, bool proposeBoundaries);
+bool retainsToothCluster(SearchContext& context, const QJsonObject& body, const QPainterPath& mask,
+                         bool terminal, const Stretching* seam, bool followsSeam, double penWidth);
 
 bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody> &bodies,
                              const QJsonObject &form, double minX, double maxX, Stretching *right, Stretching *left,
@@ -1101,18 +1056,6 @@ bool medialBodyChord(SearchContext& context, const PathExtrema& start,
 bool connectorContainsLeadingStroke(const QVector<PathExtrema>& extrema,
         const Stretching& right, const Stretching& left, Orientation orientation);
 
-enum class ConnectorAssembly { AsProposed, ShareTightEntry };
-
-bool assembleBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subword,
-        const QJsonObject& config, ConnectorAssembly connectors = ConnectorAssembly::AsProposed);
-bool completeBodyPartition(const Word& word, WordResultInfo::SubWordInfo& subword,
-        const QJsonObject& config, const QJsonObject& checks);
-
-enum class TerminalEntryPolicy { InwardCorners, LowerShoulder };
-void applyTerminalJunction(const Word& word, WordResultInfo::SubWordInfo& sub,
-        const QJsonObject& config, TerminalEntryPolicy policy);
-bool preserveUnchangedOutline(const QPainterPath& original, QPainterPath& rebuilt);
-
 // Start halfway down the visible terminal shaft. Its cap can have the same
 // tangent as the turn at its foot, but only the foot retains this shaft.
 struct ShaftFlank {
@@ -1199,35 +1142,6 @@ std::vector<size_t> stemForks(const SearchContext& context, const PathExtrema& c
                                         const std::vector<StemFork>& forks,
                                         const std::vector<QBezier>& curves);
 
-struct StemAttachmentEvidence {
-    StemForkEvidence forkEvidence;
-    std::vector<std::vector<size_t>> shaftForks;
-};
-
-struct SubwordBodyRecognition {
-    QPainterPath source;
-    std::vector<QPainterPath> contours;
-    QVector<PathExtrema> landmarks;
-    QMap<QByteArray, StemAttachmentEvidence> stemProfiles;
-    QMap<QString, Stretching> terminalJunctions;
-    Orientation orientation = Orientation::ClockWise;
-    bool valid = false;
-};
-
-struct DeclaredBodyForm {
-    QJsonObject body, cuts;
-    QByteArray key;
-    QString nextLetters;
-    QString sharedFoldWithFinal;
-};
-
-struct BodyCutProgram {
-    QMap<QString, DeclaredBodyForm> forms;
-    QMap<QString, DeclaredBodyForm> recoveryBodies;
-    std::array<QHash<QChar, QVector<QString>>, 3> formsByPosition;
-    QString toothClusterLetters;
-};
-
 inline bool hasFollowingLetter(QStringView letters, int slot, QStringView allowed, bool mustBeFinal = false) {
     const int next = slot + 1;
     return next < letters.size() && (!mustBeFinal || next + 1 == letters.size()) && allowed.contains(letters[next]);
@@ -1247,37 +1161,10 @@ inline bool hasTatweelBeforeFinal(QStringView text) {
     return false;
 }
 
-const BodyCutProgram& bodyCutProgram(const QJsonObject& config);
-
-QByteArray bodyDescriptionKey(const QJsonObject& body);
-
-const StemAttachmentEvidence* recognizedStemAttachment(const SubwordBodyRecognition& recognition,
-                                                   const QJsonObject& description);
-
-SubwordBodyRecognition recognizeSubwordBodies(const Word& word,
-        const WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
-
 enum class LigatureMatch { NotApplicable, SharedCut, SeparateConnector, Failed };
 LigatureMatch segmentDeclaredLigature(const Word& word, WordResultInfo::SubWordInfo& sub,
                                       const QJsonObject& config);
 QJsonObject ligatureForm(const QJsonObject& config, const QJsonObject& selection);
-
-// Assemble the boundaries and shared attachments declared by the selected forms.
-enum class BodyAttachmentPolicy { ForkFlanks, ForkEntry, PreserveCounterEntry, SharedReturn, DetachedReturn };
-
-struct BodyCutRequest {
-    int letterIndex;
-    BodyAttachmentPolicy attachment;
-    QString formId;
-    QJsonObject body, cuts;
-};
-
-struct SubwordCutPlan {
-    WordResultInfo::SubWordInfo partition;
-    std::vector<BodyCutRequest> bodies;
-};
-
-SubwordCutPlan makeSubwordCutPlan(WordResultInfo::SubWordInfo proposals, const QJsonObject& config);
 
 // An anchor is a section of the uncut contour. A body's free end has no
 // section. Search can replace the candidate but cannot move its anchors.
@@ -1361,28 +1248,8 @@ struct AnchorPriority {
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
         const WordResultInfo::SubWordInfo& sub, std::span<const AnchorPriority> priorities,
         const AnchorPartitionCheck& accept, const QString& attachedStroke = {});
-bool sameAnchoredPartition(const WordResultInfo::SubWordInfo& a, const WordResultInfo::SubWordInfo& b);
 bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 bool assembleDetachedHeadEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
-
-bool assembleToothClusterCuts(const Word& word, WordResultInfo::SubWordInfo& sub,
-                             const QJsonObject& config, bool penLiftAtEnd = false);
-
-bool finalizeBodyCuts(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
-
-void placeCounterRimEntries(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
-                            SearchContext& source, const std::vector<int>& bodySlots);
-
-std::optional<std::pair<Stretching, Stretching>> fittedJoinCaps(
-        const WordResultInfo::SubWordInfo& sub, int index, const SearchContext& source,
-        std::vector<std::vector<QBezier>>& outer);
-
-bool replaceLocalJoin(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
-        const QPainterPath& ink, int slot, Stretching sending, const std::optional<Stretching>& receiving, const QString& trace,
-        const std::function<bool(const WordResultInfo::SubWordInfo&)>& retainsBodies,
-        const std::optional<Stretching>& previousJoin = {});
-
-void applySharedReturnEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 
 std::optional<ReturnSeamBody> recognizeRisingReturn(const InkOutline &outline, const QJsonObject &spec);
 
@@ -1518,34 +1385,6 @@ struct MedialStemEvidence {
 MedialStemEvidence recognizeMedialStems(const InkOutline &outline, const QJsonObject &body);
 
 void inspectStemEvidence(const MedialStemEvidence& evidence);
-
-std::vector<MedialCandidate> computeStemBoundaries(SearchContext& context,
-        const QJsonObject& config, const QJsonObject& form, const MedialStemEvidence& evidence,
-        const Stretching& incoming,
-        const QPointF& entry, const QPointF& exit, double stroke, bool open, bool recoverTeeth,
-        bool allowFork, const std::optional<Stretching>& sharedExit);
-
-// A cached assembly is specific to its complete geometry, policies and adjacent
-// boundary. It does not promote a template or skip any distinct placement.
-struct StemCandidateMemo {
-    QPainterPath source;
-    Orientation orientation;
-    std::vector<QJsonObject> objects;
-    QCache<QByteArray, std::vector<MedialCandidate>> candidates{4 * 1024 * 1024};
-    int objectId(const QJsonObject& object) {
-        for (size_t i = 0; i < objects.size(); ++i)
-            if (objects[i] == object) return int(i);
-        objects.push_back(object);
-        return int(objects.size() - 1);
-    }
-};
-
-void appendCandidateBoundary(QByteArray& key, const Stretching& cut);
-
-std::vector<MedialCandidate> stemBoundaryCandidates(SearchContext& context,
-        const QJsonObject& config, const QJsonObject& form, const MedialStemEvidence& evidence,
-        const Stretching& incoming, const QPointF& entry, const QPointF& exit, double stroke,
-        bool open, bool recoverTeeth, bool allowFork, const std::optional<Stretching>& sharedExit);
 
 std::vector<MedialCandidate> turningShaftCuts(SearchContext& context,
         const MedialStemEvidence& evidence, const QJsonObject& shape, const QJsonObject& cuts);
@@ -1683,90 +1522,13 @@ std::shared_ptr<const SharedShapeEvidence> recognizedSharedShape(SearchContext &
 
 void inspectSharedShape(const SharedShapeEvidence &evidence);
 
-std::vector<std::pair<Stretching, Stretching>>
-declaredOpenHeadCuts(SearchContext &context, const QJsonObject &form, double minX, double maxX);
-
 std::vector<Stretching> declaredExitAlternatives(SearchContext& context, const QJsonObject& config,
                                                 const QString& id);
 
 std::vector<Stretching> declaredFlankExits(SearchContext& context, const QJsonObject& body,
                                          const QJsonObject& cuts, double stroke);
 
-bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
-                                   const SeenExitRetry *retry = nullptr, bool recovering = false,
-                                   const Stretching *finalFold = nullptr, ContourRouteSearch* routeSearch = nullptr);
-
-} // namespace MedinaCutter
-
-// Enumerate distinct, geometrically valid readings of a prefix when
-// placement fails. Curves meeting at the same seam are one choice.
-struct PlacementSearch {
-    bool enumerate = false;
-    int stage = 1;
-    QMap<QString, std::vector<std::pair<Stretching,Stretching>>> intrinsic;
-    QVector<int> skip, choices;
-    QVector<std::set<std::array<int, 4>>> encountered;
-    QVector<MedinaCutter::ContourRouteSearch> routeSearches;
-    explicit PlacementSearch(int size) : skip(size), choices(size), encountered(size), routeSearches(size) {}
-    bool accepts(int letter, const Stretching& entry, const Stretching& exit) {
-        const auto key = [](double time) { return static_cast<int>(std::lround(time * 100)); };
-        if (!encountered[letter]
-                 .insert({key(entry.topBaseLine.time), key(entry.bottomBaseLine.time), key(exit.topBaseLine.time),
-                          key(exit.bottomBaseLine.time)})
-                 .second)
-            return false;
-        return choices[letter]++ == skip[letter];
-    }
-    bool advance(int failed) {
-        for (int i = std::min(failed, static_cast<int>(skip.size()) - 2); i >= 0; --i) {
-            if (choices[i] <= skip[i]) continue;
-            ++skip[i];
-            std::fill(skip.begin() + i + 1, skip.end(), 0);
-            choices.fill(0);
-            for (auto& seen : encountered)
-                seen.clear();
-            return true;
-        }
-        return false;
-    }
-    bool advanceRoute() {
-        for (auto it = routeSearches.rbegin(); it != routeSearches.rend(); ++it) {
-            if (it->position + 1 >= it->count) continue;
-            ++it->position;
-            for (auto following = routeSearches.rbegin(); following != it; ++following)
-                following->position = 0;
-            return true;
-        }
-        return false;
-    }
-};
-
-namespace MedinaCutter {
-
-bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
-                                    const QJsonObject& rule, bool terminal, bool recoverTeeth,
-                                    const SeenExitRetry* seenRetry, const Stretching* finalFold = nullptr,
-                                    ContourRouteSearch* routeSearch = nullptr);
-
-bool supportsOpenMedialBoundary(const QJsonObject& config, const QJsonObject& form);
-
-bool hasIntrinsicMedialBody(const QJsonObject& config, const QJsonObject& form);
-
-std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
-        SearchContext& context, const QJsonObject& form, PlacementSearch* plan, QChar nextLetter,
-        const Stretching* precedingBody, double bodyMinX, double entryX);
-
-std::vector<MedialCandidate> declaredStemBoundaries(SearchContext& context, const QJsonObject& config,
-        const QJsonObject& form, const Stretching& incoming, const QPointF& entry, const QPointF& exit,
-        double stroke, bool open, bool recoverTeeth, bool allowFork, const std::optional<Stretching>& sharedExit);
-
-std::optional<Stretching> toothShoulderEntry(SearchContext& context, const Stretching& incoming,
-                                          const QJsonObject& settings);
-bool usesToothEntryProbe(const QJsonObject& form);
-
-void appendMedialWalks(SearchContext& context, const QJsonObject& form,
-                              const QPointF& entry, const QPointF& exit, double stroke,
-                              bool open, bool allowWalk, std::vector<MedialCandidate>& candidates);
+bool declaredSharedBoundary(SearchContext& context, const QJsonObject& form, const Stretching* finalFold = nullptr);
 
 bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub);
 
@@ -1778,9 +1540,6 @@ bool followsOneStroke(const QPainterPath& ribbon, const QLineF& right, const QLi
                       ConnectorEndpointMatch match = ConnectorEndpointMatch::FirstWithinTolerance,
                       double nominalWidth = 0);
 
-std::map<int, QLineF> missingHeadInk(const Word& word, const WordResultInfo::SubWordInfo& sub,
-                                            const QString& letters, const QJsonObject& settings);
-
 inline bool hasMinimumBodyArea(const QRectF& bounds) {
     return bounds.width() * bounds.height() >= .12;
 }
@@ -1790,13 +1549,5 @@ bool plausibleRecoveredBodies(const Word& word, const WordResultInfo::SubWordInf
 bool sourceLandmark(PathExtrema& mark, const std::vector<std::vector<QBezier>>& paths);
 
 bool isSeparateFoldedArm(const QPainterPath& body, const QPainterPath& arm, bool allowPointContact);
-
-bool assembleSplitEntry(const Word& word, WordResultInfo::SubWordInfo& sub,
-                               const QJsonObject& config, const QJsonObject& checks);
-
-bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& result, const QJsonObject& config);
-
-bool resolveSubwordCutPlan(const Word& word, const SubwordBodyRecognition& recognition,
-                                  SubwordCutPlan& plan, const QJsonObject& config);
 
 } // namespace MedinaCutter

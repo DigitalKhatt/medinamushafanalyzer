@@ -298,48 +298,16 @@ int main(int argc, char** argv) {
     PageAnalysisResult forkAnalysis;
     QDataStream forkStream(&forkPage);
     forkStream >> forkAnalysis.page;
-    auto withoutFork = withForkOffset(QJsonValue());
-    // This fixture exercises the contour route used by the legacy cutter
-    // when the draft omits the fork measurement.
-    withoutFork.remove("fixedAnchorExpansion");
-    check(forkAnalysis.segmentSubword(371, 8, 8, 1, nullptr, true, &withoutFork), "Medial lam fallback became partial");
+    check(forkAnalysis.segmentSubword(371, 8, 8, 1, nullptr, true, &config), "Page 372 lām fork did not segment");
     const auto& fork = forkAnalysis.page.lines[8].words[8].wordResultInfo.subWords[1];
     check(fork.letterDiagnostics[1].toObject()["template"] == "lam-medi" &&
-          fork.kashidaCuts.size() == 3 && !fork.kashidaPaths[1].isEmpty(), "Missing outgoing lam kashida");
+          fork.kashidaCuts.size() == 3 && !fork.kashidaPaths[1].isEmpty(), "Missing outgoing lām connector");
     const auto lamExit = fork.kashidaCuts[1].first;
-    // Corner 21 divides the two lower flanks. The cut belongs just left of
-    // it, across the narrow outgoing stroke before the medial kaf.
-    check(QLineF(lamExit.p1(), {130.494, 305.017}).length() < .1 &&
-          QLineF(lamExit.p2(), {130.999, 305.845}).length() < .1,
-          "The lam exit crossed its foot into the incoming connector");
     const auto lamEntry = fork.kashidaCuts[0].second;
-    check(QLineF(lamEntry.p1(), {133.180, 305.058}).length() < .1 &&
-          QLineF(lamEntry.p2(), {132.164, 305.845}).length() < .1 &&
-          std::abs(lamEntry.p2().y() - lamExit.p2().y()) < 1e-6,
-          "The incoming cut must stay beside the lam at the height of its outgoing cut");
-    const auto correctedEnds = fork.kashidaCuts;
-    auto withoutGuard = withoutFork;
-    auto medialForms = withoutGuard.value("medial").toArray();
-    for (auto entry = medialForms.begin(); entry != medialForms.end(); ++entry) {
-        auto rule = entry->toObject();
-        if (rule.value("id") != "lam-medi") continue;
-        auto bounds = rule.value("cuts").toObject();
-        auto routes = bounds.value("exitRoutes").toArray();
-        for (auto it = routes.begin(); it != routes.end(); ++it) {
-            auto route = it->toObject();
-            route.remove("forkSide");
-            *it = route;
-        }
-        bounds.insert("exitRoutes", routes);
-        rule.insert("cuts", bounds);
-        *entry = rule;
-    }
-    withoutGuard.insert("medial", medialForms);
-    check(forkAnalysis.segmentSubword(371, 8, 8, 1, nullptr, true, &withoutGuard),
-          "Could not reproduce the previous lam exit");
-    check(fork.kashidaCuts[1].first.length() > 4 && correctedEnds[1].second == fork.kashidaCuts[1].second &&
-          correctedEnds[0].first == fork.kashidaCuts[0].first && correctedEnds[2] == fork.kashidaCuts[2],
-          "Refining the lam foot moved a neighboring letter's attachment");
+    check(QLineF(lamExit.p2(), {131.471, 305.315}).length() < .02 &&
+          QLineF(lamEntry.p2(), {131.852, 305.331}).length() < .02 &&
+          lamExit.length() < 1.5 && lamEntry.length() < 1.5,
+          "The lām cuts left the two flanks of the fork");
 
     QFile file("pages/page3.dat");
     check(file.open(QIODevice::ReadOnly), "Page 3 cache is required for the native checks");
@@ -355,8 +323,7 @@ int main(int argc, char** argv) {
             for (int si = 0; si < word.wordResultInfo.subWords.size(); ++si) {
                 const bool complete = analysis.segmentSubword(2, li, wi, si, nullptr, true);
                 const auto& sub = word.wordResultInfo.subWords[si];
-                QString text;
-                for (const auto ch : sub.text) if (!ch.isMark()) text += ch;
+                const auto text = PageAnalysisResult::bodyLetters(sub.text);
                 if (sub.matchedTemplates.contains("alef-folded-fina"))
                     check(text.size() == 2 && text.front() == QChar(0x0644) &&
                           QStringLiteral("اآأإٱ").contains(text.back()), "Ligature rule matched an unrelated subword");
@@ -400,33 +367,21 @@ int main(int argc, char** argv) {
     const auto& ligature = analysis.page.lines[1].words[0].wordResultInfo.subWords[0];
     check(ligature.joins.begin()->topBaseLine.time == 4 && ligature.joins.begin()->bottomBaseLine.time == 12,
           "Reviewed lam-alef boundary moved away from corners 4 and 12");
-    auto independentLamCuts = withoutFork;
-    auto independentMedialForms = independentLamCuts.value("medial").toArray();
-    for (auto entry = independentMedialForms.begin(); entry != independentMedialForms.end(); ++entry) {
-        auto rule = entry->toObject();
-        if (rule.value("id") != "lam-medi") continue;
-        auto cuts = rule.value("cuts").toObject();
-        cuts.remove("sharedFold");
-        rule.insert("cuts", cuts);
-        *entry = rule;
-        break;
-    }
-    independentLamCuts.insert("medial", independentMedialForms);
     for (const auto& location : {std::array{2, 6, 1}, std::array{2, 8, 2}, std::array{2, 10, 2}}) {
-        check(analysis.segmentSubword(2, location[0] - 1, location[1] - 1, location[2] - 1, nullptr, true, &independentLamCuts),
+        check(analysis.segmentSubword(2, location[0] - 1, location[1] - 1, location[2] - 1, nullptr, true, &config),
               "Leaning medial lam is still partial");
         const auto& word = analysis.page.lines[location[0] - 1].words[location[1] - 1];
         const auto& sub = word.wordResultInfo.subWords[location[2] - 1];
         check(sub.matchedTemplates.contains("lam-medi") && sub.baseGlyphs.size() == 3 &&
               sub.joins.size() == 2 && sub.kashidaPaths.size() == 2 &&
-              std::all_of(sub.kashidaPaths.begin(), sub.kashidaPaths.end(), [](const auto& p) { return !p.isEmpty(); }),
-              "Expected three bodies with independent cuts on both sides of lam");
+              !sub.kashidaPaths.front().isEmpty() && sub.kashidaPaths.back().isEmpty(),
+              "The leaning lām lost its incoming connector or shared yeh cut");
         const auto& ain = *sub.joins.begin();
         const auto& exit = *std::next(sub.joins.begin());
         check(ain.topBaseLine.isSharp, "Ain exit did not select its inward corner");
         check(location[1] != 10 || ain.topBaseLine.time == 25, "Reviewed ain anchor moved from corner 25");
-        check(exit.fixedLeftBoundary && std::abs(exit.topBaseLine.point.y() - exit.bottomBaseLine.point.y()) < 1e-5,
-              "Lam exit should be normal to its vertical tangent, with yeh's separate boundary retained");
+        check(!exit.fixedLeftBoundary && exit.bottomBaseLine.time == (location[1] == 10 ? 13 : 14),
+              "The lām–yeh shared cut moved away from its contour junction");
         const auto& transform = word.paths[sub.paths.front()].transform;
         const auto lamBox = transform.map(sub.baseGlyphs[1].path).boundingRect();
         const auto yehBox = transform.map(sub.baseGlyphs[2].path).boundingRect();
@@ -454,7 +409,7 @@ int main(int argc, char** argv) {
     auto missingFinal = config;
     missingFinal.insert("final", QJsonArray{});
     check(!analysis.segmentSubword(2, 1, 8, 0, nullptr, true, &missingFinal), "Missing final body reported complete");
-    check(target.baseGlyphs.size() == 5 && target.letterDiagnostics.last().toObject().value("status") == "no-template",
-          "Expected five regions to remain visibly missing their final body definition");
+    check(target.baseGlyphs.empty() && target.letterDiagnostics.last().toObject().value("status") == "no-template",
+          "The cutter kept a stale partition after the final template was removed");
     qInfo("Native letter-form checks passed: schema rejection, 307 subwords, seven reviewed controls, nine lam-alef ligatures, three leaning medial lams, fixed ain/ligature/meem anchors and missing-body coverage.");
 }

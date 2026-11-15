@@ -476,7 +476,6 @@ int main(int argc, char** argv) {
         }
         if (e.page == 89) {
             auto config = PageAnalysisResult::letterForms();
-            config.insert("retryUnresolvedForms", false);
             require(!a.segmentSubword(e.page - 1, e.line - 1, e.word - 1, e.subword - 1, &font, true, &config),
                     id + " recovery-only forms ran with recovery disabled");
         }

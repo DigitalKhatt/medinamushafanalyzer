@@ -101,9 +101,10 @@ int main(int argc, char** argv) {
     forms.append(inherited);
     draft.insert("medial", forms);
     check(PageAnalysisResult::prepareLetterForms(draft).isEmpty(), "Inherited tooth declarations were rejected");
-    const auto resolved = bodyCutProgram(draft).forms.value("test-inherited-tooth");
-    check(resolved.body == body && resolved.cuts.value("leftOffset") == .2 &&
-          resolved.cuts.value("rightOffset") == cuts.value("rightOffset"), "Body/cut inheritance was not independent");
+    const auto resolved = resolvedLetterForm(draft, "test-inherited-tooth");
+    const auto inheritedCuts = resolved.value("cuts").toObject();
+    check(resolved.value("body").toObject() == body && inheritedCuts.value("leftOffset") == .2 &&
+          inheritedCuts.value("rightOffset") == cuts.value("rightOffset"), "Body/cut inheritance was not independent");
 
     const auto shoulder = resolvedBodyForm(config, namedLetterForm(config, "beh-shoulder-medi"));
     for (int failure = 0; failure < 10; ++failure) {
@@ -117,8 +118,8 @@ int main(int argc, char** argv) {
         if (failure == 4) policy.insert("maxSectionWidth", 0);
         if (failure == 5) policy.insert("flankOffset", -1);
         if (failure == 6) shape.insert("baselineEntry", QJsonObject{{"minRise", 2}, {"turnAngle", 45}});
-        if (failure == 7) rule.insert("recoveryStage", 4);
-        if (failure == 8) rule.insert("recoveryStage", 1.5);
+        if (failure == 7) rule.insert("fixedAnchors", 4);
+        if (failure == 8) rule.insert("onUnresolved", 1.5);
         if (failure == 9) policy.insert("boundaries", QJsonObject{{"left", "tooth-flank"}});
         rule.insert("body", shape); rule.insert("cuts", policy);
         auto forms = invalid.value("medial").toArray();

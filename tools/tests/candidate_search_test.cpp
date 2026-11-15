@@ -6,22 +6,45 @@ using namespace MedinaCutter;
 
 static void check(bool ok, const char* message) { if (!ok) qFatal("%s", message); }
 
-static QByteArray snapshot(const std::vector<MedialCandidate>& candidates) {
-    QByteArray bytes;
-    for (const auto& c : candidates) {
-        appendCandidateBoundary(bytes, c.right); appendCandidateBoundary(bytes, c.left);
-        appendGeometryKey(bytes, c.sharedJoins);
-        appendGeometryKey(bytes, bool(c.hollowCuts));
-        if (c.hollowCuts) {
-            appendCandidateBoundary(bytes, c.hollowCuts->first);
-            appendCandidateBoundary(bytes, c.hollowCuts->second);
-        }
-        for (const auto& p : {c.stemCrest, c.stemFork}) {
-            appendGeometryKey(bytes, bool(p));
-            if (p) appendGeometryAnchor(bytes, *p);
-        }
+static bool samePartition(const WordResultInfo::SubWordInfo& a, const WordResultInfo::SubWordInfo& b) {
+    const auto count = a.baseGlyphs.size();
+    if (!a.correct || !b.correct || a.paths != b.paths || a.secondaryBodyPath != b.secondaryBodyPath ||
+        count != b.baseGlyphs.size() || a.letterDiagnostics.size() != int(count) ||
+        b.letterDiagnostics.size() != int(count) || a.kashidaPaths.size() != a.joins.size() || a.kashidaPaths != b.kashidaPaths ||
+            a.kashidaCuts != b.kashidaCuts || a.joins.size() != b.joins.size()) return false;
+    for (size_t slot = 0; slot < count; ++slot) {
+        const auto& first = a.baseGlyphs[slot].path;
+        const auto& second = b.baseGlyphs[slot].path;
+        if (first != second || first.fillRule() != second.fillRule()) return false;
+        const auto one = a.letterDiagnostics.at(int(slot)).toObject(), two = b.letterDiagnostics.at(int(slot)).toObject();
+        if (one.value("template") != two.value("template") || one.value("variant") != two.value("variant")) return false;
     }
-    return bytes;
+    auto second = b.joins.begin();
+    size_t join = 0;
+    for (const auto& first : a.joins) {
+        if (a.kashidaPaths[join++].isEmpty() && first.cutSegments() != second->cutSegments()) return false;
+        ++second;
+    }
+    return true;
+}
+
+static void appendCandidateBoundary(QByteArray& key, const Stretching& cut) {
+    for (const auto* p : {&cut.topBaseLine, &cut.bottomBaseLine, &cut.topLeft, &cut.topRight,
+                          &cut.bottomLeft, &cut.bottomRight, &cut.counterEntry, &cut.counterExit}) {
+        appendGeometryAnchor(key, *p);
+        appendGeometryKey(key, p->isX); appendGeometryKey(key, p->isY); appendGeometryKey(key, p->isSharp);
+    }
+    appendGeometryKey(key, cut.length);
+    appendGeometryKey(key, cut.clockWise);
+    appendGeometryKey(key, cut.fixedRightBoundary);
+    appendGeometryKey(key, cut.fixedLeftBoundary);
+    appendGeometryKey(key, cut.topEndpointTolerance);
+    appendGeometryKey(key, cut.referenceWidth);
+    appendGeometryKey(key, cut.readingOrder);
+    appendGeometryPoint(key, cut.counterBendWeights);
+    const auto settings = QJsonDocument(cut.kashidaOverrides).toJson(QJsonDocument::Compact);
+    appendGeometryKey(key, settings.size());
+    key.append(settings);
 }
 
 static QByteArray snapshot(const std::vector<ToothBody>& candidates) {
@@ -37,7 +60,7 @@ static QByteArray snapshot(const std::vector<ToothBody>& candidates) {
     return bytes;
 }
 
-static void checkRecoveryPriority(const QJsonObject& config, AFont& font) {
+static void checkTemplatePriority(const QJsonObject& config, AFont& font) {
     struct Fixture {
         int page, line, word, subword;
         QStringList forms;
@@ -49,17 +72,17 @@ static void checkRecoveryPriority(const QJsonObject& config, AFont& font) {
         {416, 7, 8, 2, {"seen-init", "beh-tooth-medi", "hah-flat-medi", "waw-fina"}},
         {411, 7, 9, 3, {"lam-init", "beh-bent-medi", "kaf-bowl-fina"}},
         {6, 6, 10, 2, {"lam-hah-stacked-init", "hah-returning-lips-medi", "kaf-zigzag-medi", "beh-tooth-medi",
-                       "meem-counter-fina"}, 0, true},
-        {293, 7, 2, 2, {"lam-hah-stacked-init", "hah-compact-medi", "seen-compact-medi", "beh-tooth-medi",
-                        "yeh-first-turn-fina"}, 0},
-        {527, 14, 3, 2, {"lam-hah-stacked-init", "hah-compact-medi", "reh-rising-tail-fina"}, 0},
-        {92, 6, 7, 3, {"heh-init", "meem-tailed-rim-fina"}, 0},
+                       "meem-counter-fina"}, 0},
+        {293, 7, 2, 2, {"lam-hah-stacked-init", "hah-returning-lips-medi", "seen-medi", "beh-tooth-medi",
+                        "yeh-fina"}, 0},
+        {527, 14, 3, 2, {"lam-hah-stacked-init", "hah-returning-lips-medi", "reh-fina"}, 0},
+        {92, 6, 7, 3, {"heh-init", "meem-upper-neck-fina"}, 0},
         {103, 6, 3, 1, {"lam-init", "feh-descending-rim-medi", "yeh-first-turn-fina"}, 1},
-        {161, 4, 7, 2, {"lam-init", "meem-medi", "hah-flat-medi", "reh-rising-tail-fina"}, 2},
+        {161, 4, 7, 2, {"lam-init", "meem-medi", "hah-returning-lips-medi", "reh-fina"}, 2, true},
     };
     for (const auto& f : fixtures) {
         QFile file(QString("pages/page%1.dat").arg(f.page));
-        check(file.open(QIODevice::ReadOnly), "Missing recovery priority fixture");
+        check(file.open(QIODevice::ReadOnly), "Missing template priority fixture");
         PageAnalysisResult analysis;
         QDataStream stream(&file);
         stream >> analysis.page;
@@ -68,38 +91,25 @@ static void checkRecoveryPriority(const QJsonObject& config, AFont& font) {
         if (word.wordResultInfo.subWords.empty())
             analysis.detectSubWords(f.page - 1, f.line - 1, f.word - 1, &font);
         check(analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &config),
-              "Recovery priority lost a complete partition");
+              "Template priority lost a complete partition");
         const auto& sub = word.wordResultInfo.subWords[f.subword - 1];
         QStringList selected;
         for (const auto& letter : sub.letterDiagnostics) selected.append(letter.toObject().value("template").toString());
-        check(selected == f.forms, "Recovery priority changed the selected body forms");
+        check(selected == f.forms, "Template priority changed the selected body forms");
         if (f.join >= 0)
             check(sub.kashidaPaths.size() > size_t(f.join) &&
                   (!sub.kashidaPaths[f.join].isEmpty()) == f.hasConnector,
-                  "Recovery priority changed the connector at the checked join");
+                  "Template priority changed the connector at the checked join");
     }
 }
 
 static void checkFixedAnchors(const QJsonObject& config) {
-    auto legacy = config;
-    legacy.remove("fixedAnchorExpansion");
-    for (const auto* phase : {"initial", "medial", "final"}) {
-        QJsonArray forms;
-        for (const auto& value : config.value(phase).toArray()) {
-            auto form = value.toObject();
-            if (form.value("fixedAnchorsOnly").toBool()) continue;
-            form.remove("fixedAnchors");
-            forms.append(form);
-        }
-        legacy.insert(phase, forms);
-    }
-
     AnchorForms anchors;
     check(compileAnchorForms(config, anchors).isEmpty(), "Valid fixed anchor templates were rejected");
     const auto& finalMeem = anchors[2].value(QChar(0x0645));
     check(!finalMeem.empty() && finalMeem.front().value("id") == "meem-counter-fina",
           "Fixed anchor forms lost final meem or its template order");
-    auto invalid = legacy;
+    auto invalid = config;
     auto forms = invalid.value("initial").toArray();
     auto form = forms.first().toObject();
     form.insert("fixedAnchors", "true");
@@ -132,13 +142,13 @@ static void checkFixedAnchors(const QJsonObject& config) {
         const auto segment = [&](const QJsonObject& declarations) {
             return analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &declarations);
         };
-        check(segment(legacy), "Missing original partition for fixed anchor fixture");
+        check(segment(config), "Missing initial anchor partition for fixture");
         const auto expected = word.wordResultInfo.subWords[f.subword - 1];
         check(segment(config), "Fixed anchors lost a complete partition");
         const auto& actual = word.wordResultInfo.subWords[f.subword - 1];
-        check(sameAnchoredPartition(actual, expected), "Fixed anchors changed the letter or connector geometry");
+        check(samePartition(actual, expected), "Repeating anchor segmentation changed the partition");
         check(!actual.templateTrace.isEmpty() && actual.templateTrace.front().startsWith("Fixed anchors"),
-              "The fixed anchor fixture fell back to the original cutter");
+              "The fixture did not use the anchor search");
         if (f.page == 2 && f.line == 7) {
             const AnchorForms ineligible;
             const std::array priorities{AnchorPriority{config, ineligible}, AnchorPriority{config, anchors}};
@@ -146,16 +156,18 @@ static void checkFixedAnchors(const QJsonObject& config) {
                 CutGeometryMemoScope memo;
                 return segmentWithAnchors(word, actual, priorities, {});
             }();
-            check(later && sameAnchoredPartition(*later, actual),
+            check(later && samePartition(*later, actual),
                   "An ineligible configuration blocked the next fixed-anchor configuration");
             int rejected = 0;
             const AnchorPartitionCheck reject = [&](const auto&) { ++rejected; return false; };
-            check(analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1,
-                                          &font, true, &config, reject),
-                  "Rejecting an anchored partition lost the original cutter result");
+            auto bounded = config;
+            bounded.remove("fixedAnchorExpansion");
+            bounded.insert("fixedAnchorExpansionChecks", 64);
+            check(!analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1,
+                                           &font, true, &bounded, reject),
+                  "Rejecting every anchor partition returned a complete result");
             const auto& restored = word.wordResultInfo.subWords[f.subword - 1];
-            check(rejected > 0 && sameAnchoredPartition(restored, expected) &&
-                  !restored.templateTrace.value(0).startsWith("Fixed anchors"),
+            check(rejected > 0 && restored.baseGlyphs.empty() && !restored.correct,
                   "A rejected fixed-anchor partition survived validation");
         }
     }
@@ -402,7 +414,7 @@ static void checkFixedAnchors(const QJsonObject& config) {
         };
         const auto& word = page.page.lines[f.line - 1].words[f.word - 1];
         const auto& sub = word.wordResultInfo.subWords[f.subword - 1];
-        check(segment(legacy), "Missing established page 53 cut");
+        check(segment(config), "Missing established page 53 cut");
         const auto expected = sub;
         check(segment(config) && sub.templateTrace.value(0).startsWith("Fixed anchors") &&
               sub.kashidaCuts == expected.kashidaCuts && sub.baseGlyphs.size() == expected.baseGlyphs.size(),
@@ -444,16 +456,16 @@ static void checkFixedAnchors(const QJsonObject& config) {
             return page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &forms);
         };
         const auto& sub = page.page.lines[f.line - 1].words[f.word - 1].wordResultInfo.subWords[f.subword - 1];
-        check(segment(legacy), "Missing established lam–yeh partition");
+        check(segment(config), "Missing established lam–yeh partition");
         const auto expected = sub;
         check(expected.kashidaPaths.front().isEmpty() == (f.page == 5),
               "The lam–yeh fixture no longer exercises the expected join");
         auto alternates = config;
         alternates.insert("fixedAnchorAlternatesEnding", QStringLiteral("يئى"));
-        check(segment(alternates) && sameAnchoredPartition(sub, expected),
+        check(segment(alternates) && samePartition(sub, expected),
               "Fixed-anchor alternatives changed lam–yeh stroke ownership");
     }
-    checkRecoveryPriority(legacy, font);
+    checkTemplatePriority(config, font);
 
     // The lām–kāf return separates the two stems and keeps the bowl.
     QFile pageFile("pages/page42.dat");
@@ -509,8 +521,6 @@ static void checkMigratedAnchors(const QJsonObject& config) {
         int page, line, word, subword;
         const char* final;
     };
-    const auto old = qgetenv("MEDINA_AUDIT_NO_LEGACY");
-    qputenv("MEDINA_AUDIT_NO_LEGACY", "1");
     PageAnalysisResult::initQuranText();
     QFile fontFile("input/font.dat");
     check(fontFile.open(QIODevice::ReadOnly), "Missing migration font");
@@ -538,7 +548,7 @@ static void checkMigratedAnchors(const QJsonObject& config) {
         page.resolveWordBoundaries(f.page, &font);
         const int line = f.line - 1, word = f.word - 1, slot = f.subword - 1;
         check(page.segmentSubword(f.page - 1, line, word, slot, &font, true, &config),
-              "Previously unresolved subword still requires legacy cutter");
+              "Anchor search did not complete the subword");
         const auto& item = page.page.lines[line].words[word];
         const auto& result = item.wordResultInfo.subWords[slot];
         check(result.letterDiagnostics.last().toObject().value("template") == f.final &&
@@ -573,8 +583,6 @@ static void checkMigratedAnchors(const QJsonObject& config) {
                   result.kashidaPaths.size() == 3 && result.kashidaPaths[1].isEmpty(),
                   "The lower lip of medial hah became a connector");
     }
-    if (old.isNull()) qunsetenv("MEDINA_AUDIT_NO_LEGACY");
-    else qputenv("MEDINA_AUDIT_NO_LEGACY", old);
 }
 
 int main(int argc, char** argv) {
@@ -585,7 +593,7 @@ int main(int argc, char** argv) {
     checkFixedAnchors(config);
     CutGeometryMemoScope memo;
     cutGeometryMemo->profiling = true;
-    int lamPairs = 0, toothPairs = 0;
+    int toothPairs = 0;
     struct Fixture { int page, line, word, sub; };
     for (const auto f : {Fixture{3,1,5,1}, Fixture{600,2,4,2}, Fixture{286,2,2,1}}) {
         QFile file(QString("pages/page%1.dat").arg(f.page));
@@ -605,56 +613,6 @@ int main(int argc, char** argv) {
         context.bbox = context.transformedPath.boundingRect();
         context.nextIter = context.xSorted.begin();
         context.pairedStrokeWidth = .5;
-        const auto letters = PageAnalysisResult::bodyLetters(sub.text);
-        for (int i=1; i+1<letters.size(); ++i) {
-            if (letters[i] != QChar(0x0644)) continue;
-            auto incoming = *std::next(sub.joins.begin(),i-1), outgoing = *std::next(sub.joins.begin(),i);
-            const auto entry = QLineF(incoming.topBaseLine.point,incoming.bottomBaseLine.point).center();
-            const auto exit = QLineF(outgoing.topBaseLine.point,outgoing.bottomBaseLine.point).center();
-            const double stroke = incoming.referenceWidth > 0 ? incoming.referenceWidth :
-                QLineF(incoming.topBaseLine.point,incoming.bottomBaseLine.point).length();
-            const auto form = resolvedBodyForm(config,namedLetterForm(config,"lam-medi"));
-            const auto verify = [&](const QJsonObject& rules, const QJsonObject& declaration, const Stretching& before,
-                                    QPointF at, double width, bool open, bool recovery,
-                                    const std::optional<Stretching>& shared) {
-                const auto evidence = recognizedSharedShape(context,declaration.value("body").toObject());
-                const auto expected = computeStemBoundaries(context,rules,declaration,*evidence->medialStem,before,at,exit,
-                                                            width,open,recovery,true,shared);
-                for (int repeat=0; repeat<2; ++repeat) {
-                    const auto actual = stemBoundaryCandidates(context,rules,declaration,*evidence->medialStem,before,at,exit,
-                                                               width,open,recovery,true,shared);
-                    check(snapshot(actual)==snapshot(expected), "Cached lam candidates differ from a fresh search");
-                }
-                lamPairs += expected.size();
-            };
-            verify(config,form,incoming,entry,stroke,false,false,{});
-            verify(config,form,incoming,entry,stroke,false,true,{});
-            verify(config,form,incoming,entry,stroke,true,true,{});
-            verify(config,form,incoming,entry+QPointF(.1,0),stroke,false,true,{});
-            verify(config,form,incoming,entry,stroke*1.01,false,true,{});
-            verify(config,form,incoming,entry,stroke,false,true,outgoing);
-            auto shifted = incoming;
-            shifted.topBaseLine.point.rx() += .01;
-            verify(config,form,shifted,entry,stroke,false,true,{});
-            auto edited = form;
-            auto cuts = edited.value("cuts").toObject(); cuts.insert("forkOffset",.35); edited.insert("cuts",cuts);
-            verify(config,edited,incoming,entry,stroke,false,true,{});
-            auto rules = config;
-            auto medial = rules.value("medial").toArray();
-            for (auto entry = medial.begin(); entry != medial.end(); ++entry) {
-                auto rule = entry->toObject();
-                if (rule.value("id") != "lam-medi") continue;
-                auto policy = rule.value("cuts").toObject();
-                policy.insert("shortExit", false);
-                rule.insert("cuts", policy);
-                *entry = rule;
-                break;
-            }
-            rules.insert("medial", medial);
-            verify(rules,resolvedLetterForm(rules,"lam-medi"),incoming,entry,stroke,false,true,{});
-            context.pairedStrokeWidth = .7;
-            verify(config,form,incoming,entry,stroke,false,true,{});
-        }
         for (const auto* id : {"beh-tooth-medi","beh-upright-medi","beh-bent-medi"}) {
             auto form = resolvedBodyForm(config,namedLetterForm(config,id));
             const auto verify = [&](const QJsonObject& declaration) {
@@ -690,9 +648,9 @@ int main(int argc, char** argv) {
         check(snapshot(declaredToothBoundaries(context,form))==snapshot(computeToothBoundaries(context,form)),
               "A source edit reused stale tooth coordinates");
     }
-    check(lamPairs>0 && toothPairs>0, "Candidate tests only exercised empty results");
+    check(toothPairs>0, "Candidate tests only exercised empty results");
     bool reused = false;
     for (const auto& s : cutGeometryMemo->forms) reused |= s.requests>s.builds;
     check(reused, "No candidate inventory was reused");
-    qInfo("Candidate search passed: %d lam pairs, %d tooth pairs; policies, placements, recovery and source edits.",lamPairs,toothPairs);
+    qInfo("Candidate search passed: %d tooth pairs, anchor ownership, and source edits.",toothPairs);
 }

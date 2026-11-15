@@ -14,7 +14,6 @@ BUILD = ROOT / "build/ninja-nmc"
 CUTTER_TESTS = (
     "tail_shoulder_test.cpp",
     "candidate_search_test.cpp",
-    "recovery_cache_test.cpp",
     "medial_heh_test.cpp", "medial_tooth_test.cpp",
     "sad_reh_test.cpp", "beh_hah_ligature_test.cpp", "seen_teeth_test.cpp",
     "lam_alef_test.cpp", "lam_body_independence_test.cpp", "shared_body_independence_test.cpp", "medial_heads_test.cpp", "final_meem_test.cpp",

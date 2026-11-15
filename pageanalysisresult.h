@@ -447,7 +447,6 @@ struct arabic_state_table_entry {
 
 
 
-struct PlacementSearch;
 struct SeenExitRetry;
 struct OutlineSearchCache;
 
@@ -502,24 +501,10 @@ struct PageAnalysisResult {
 
 
 private:
-    void refineLipCuts(int line, int word, int subword, const QJsonObject& config);
-    bool collectLegacyCutProposals(int pageIndex, int line, int word, int subword, AFont* font,
-                                   QJsonObject& config);
-    void refineBodyOwnership(int line, int word, int subword, const QJsonObject& config);
-    bool searchSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                       const QJsonObject& config);
-    static bool recoverFoldedArm(Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config, bool attached);
-    bool segmentWithLetterForms(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                                const QJsonObject& config, OutlineSearchCache& outlineCache, bool expand);
-    bool segmentSubwordPass(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont* font,
-                            bool refresh, const QJsonObject* draft, bool recovering, OutlineSearchCache& outlineCache,
-                            PlacementSearch* plan = nullptr,
-                            const SeenExitRetry* seenRetry = nullptr);
 	void restoreWaqfTypes(int pageIndex, int lineIndex, int wordIndex, AFont* font);
 	void repairSubwordBoundaries(int pageIndex, int lineIndex, int wordIndex, AFont* font);
 
 	void analyzeSubwords(int pageIndex, int lineIndex, int wordIndex, WordResultInfo& wordResultInfo, AFont* font);
-	bool cutSubword(int lineIndex, int wordIndex, int subWordIndex, const QJsonObject& config);
 	QVector<NotMatched> notMatchedItems;
 	void analyzePage(int pageNumber, AFont* font, QGraphicsScene* scene, QVector<QSet<QGraphicsPathItem*>>& lines);
 	void analyzeTextPage(int pageNumber);

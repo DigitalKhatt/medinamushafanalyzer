@@ -91,8 +91,7 @@ int main(int argc, char** argv) {
     check(contourBodyBoundaries(smooth, settings).empty(), "Smooth bowl mistaken for compact hah");
 
     // Recreate the earlier template set, before recovery-only allographs.
-    auto previous = config; previous.remove("reconsiderForms"); previous.insert("medial", otherMedialForms);
-    previous.insert("retryUnresolvedForms", false);
+    auto previous = config; previous.insert("medial", otherMedialForms);
     check(!analysis.segmentSubword(599, 13, 11, 1, nullptr, true, &previous),
           "Missing compact head should leave an explicit partial result");
     const std::vector<Stretching> oldJoins(sub.joins.begin(), sub.joins.end());

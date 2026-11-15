@@ -64,19 +64,6 @@ void recordBoundaryTemplate(WordResultInfo::SubWordInfo& sub, int slot, bool ent
     sub.letterDiagnostics[slot] = letter;
 }
 
-void recordAssembledForm(WordResultInfo::SubWordInfo& sub, int slot, const QString& id) {
-    auto letter = sub.letterDiagnostics.at(slot).toObject();
-    if (letter.value("status") != "matched")
-        sub.templateTrace.removeAll(QString("%1 %2 · %3").arg(letter.value("position").toString(),
-            letter.value("character").toString(), letter.value("status").toString()));
-    auto candidates = letter.value("candidates").toArray();
-    if (!candidates.contains(id)) candidates.append(id);
-    letter.insert("candidates", candidates);
-    letter.insert("template", id);
-    letter.insert("status", "matched");
-    sub.letterDiagnostics[slot] = letter;
-}
-
 void collectUsedTemplates(WordResultInfo::SubWordInfo& sub) {
     sub.matchedTemplates.clear();
     const auto append = [&](const QString& id) {

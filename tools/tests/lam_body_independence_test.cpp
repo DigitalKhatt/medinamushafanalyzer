@@ -160,21 +160,7 @@ int main(int argc, char** argv) {
         for (const auto& shaft : evidence.turningShafts)
             for (const auto& turn : shaft.turns) recognizedTurns += bool(turn);
 
-        if (forked && !evidence.stems.empty()) {
-            // An impossible neighbor placement is rejected by assembly,
-            // without removing any of the intrinsic candidates.
-            const QPointF impossible(context.bbox.left() - 100, context.bbox.top() - 100);
-            LetterFormInspection report; report.formId = f.form; report.ink = context.transformedPath;
-            formInspection = &report;
-            const auto rejected = stemBoundaryCandidates(context, config, form, evidence, {},
-                impossible, impossible, .5, false, false, true, {});
-            formInspection = nullptr;
-            check(rejected.empty(), "Assembly accepted an impossible neighboring slot");
-            check(std::any_of(report.reasons.cbegin(), report.reasons.cend(), [](int n) { return n > 0; }),
-                  "Assembly did not explain a neighbor rejection");
-            check(snapshot(evidence) == original, "Assembly modified reusable body evidence");
-        }
-        qInfo("page%d:l%d-w%d-s%d: independent %s evidence, cached policy edit and assembly rejection passed",
+        qInfo("page%d:l%d-w%d-s%d: independent %s evidence, cached policy edit passed",
               f.page, f.line, f.word, f.sub, f.form);
         if (f.page == 3) {
             auto blocked = config;

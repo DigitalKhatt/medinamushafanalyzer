@@ -300,26 +300,6 @@
     "maxY": 1.5
   },
   "kashidaDefaults": {
-    "enabled": true,
-    "trackingEnabled": false,
-    "minSpan": 0,
-    "minAnchorWidth": 0.05,
-    "samplesPerAnchorWidth": 5,
-    "steepAnchorRatio": 0.85,
-    "trackingDistanceRatio": 1.5,
-    "steepClearanceRatio": 0.35,
-    "obliqueClearanceRatio": 0.8,
-    "seedSteps": 10,
-    "minSeedWidthRatio": 0.6,
-    "maxSeedWidthRatio": 3,
-    "seedDistancePenalty": 0.15,
-    "maxTrackSteps": 80,
-    "minTrackWidthRatio": 0.65,
-    "maxTrackWidthRatio": 1.35,
-    "maxSteepSlope": 0.4,
-    "maxEdgeDriftRatio": 0.32,
-    "minSpanToStrokeRatio": 0.75,
-    "neighborSearchRatio": 0.8,
     "sharedCutTolerance": 0.25
   },
   "ligatures": [
@@ -378,7 +358,6 @@
     {
       "id": "ain-shallow-return-init",
       "current": "عغ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -420,7 +399,6 @@
     {
       "id": "kaf-descending-heel-init",
       "current": "ك",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -479,7 +457,6 @@
     {
       "id": "lam-descending-heel-init",
       "current": "ل",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -507,7 +484,6 @@
       "id": "kaf-upright-bridge-init",
       "current": "ك",
       "ligatureWith": "اآأإٱل",
-      "tryNext": true,
       "onFinalRetry": true,
       "body": {
         "shape": "counter-attachment",
@@ -532,7 +508,6 @@
       "id": "feh-init",
       "fixedAnchors": true,
       "current": "ف",
-      "tryNext": true,
       "body": {
         "shape": "suspended-loop",
         "head": {
@@ -555,7 +530,6 @@
       "id": "qaf-init",
       "fixedAnchors": true,
       "current": "ق",
-      "tryNext": true,
       "body": {
         "inherit": "feh-init"
       },
@@ -567,8 +541,6 @@
       "id": "meem-init",
       "fixedAnchors": true,
       "current": "م",
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "shape": "counter-neck",
         "counter": {
@@ -594,8 +566,6 @@
       "id": "heh-init",
       "fixedAnchors": true,
       "current": "ه",
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "shape": "horizontal-counters"
       },
@@ -613,7 +583,6 @@
     {
       "id": "seen-folded-init",
       "current": "سش",
-      "tryNext": true,
       "sharedFoldWithFinal": "يئى",
       "body": {
         "shape": "tooth-cluster",
@@ -634,8 +603,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "سش",
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "shape": "tooth-cluster",
         "cluster": {
@@ -664,7 +631,6 @@
       "id": "ain-init",
       "fixedAnchors": true,
       "current": "عغ",
-      "retryWithVariants": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -707,7 +673,6 @@
       "id": "ain-round-init",
       "fixedAnchors": true,
       "current": "عغ",
-      "tryNext": true,
       "onIncomplete": true,
       "body": {
         "shape": "contour-route",
@@ -746,7 +711,6 @@
       "current": "ل",
       "ligatureWith": "جحخ",
       "tightJoin": true,
-      "tryNext": true,
       "onUnresolved": true,
       "body": {
         "features": {
@@ -792,8 +756,6 @@
       "id": "lam-init",
       "fixedAnchors": true,
       "current": "ل",
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "features": {
           "minHeight": 4,
@@ -842,8 +804,6 @@
       "id": "lam-normal-init",
       "fixedAnchors": true,
       "current": "ل",
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "features": {
           "minHeight": 4,
@@ -891,8 +851,6 @@
       "id": "lam-stepped-flank-init",
       "fixedAnchors": true,
       "current": "ل",
-      "tryNext": true,
-      "retryOnPartial": true,
       "onIncomplete": true,
       "body": {
         "features": {
@@ -939,7 +897,6 @@
       "id": "lam-wide-step-init",
       "fixedAnchors": true,
       "current": "ل",
-      "tryNext": true,
       "body": {
         "features": {
           "minHeight": 4,
@@ -1007,8 +964,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "بتثنيئى",
-      "tryNext": true,
-      "retryOnPartial": true,
       "tightJoin": true,
       "body": {
         "shape": "contour-route",
@@ -1065,8 +1020,6 @@
       "id": "beh-init",
       "fixedAnchors": true,
       "current": "بتثنيئى",
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -1100,8 +1053,6 @@
       "id": "beh-shallow-step-init",
       "fixedAnchors": true,
       "current": "بتثنيئى",
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -1135,7 +1086,6 @@
       "id": "beh-hook-init",
       "fixedAnchors": true,
       "current": "بتثنيئى",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -1174,7 +1124,6 @@
       "id": "beh-foot-init",
       "fixedAnchors": true,
       "current": "بتثنيئى",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -1207,8 +1156,6 @@
       "id": "beh-shoulder-init",
       "current": "بتثنيئى",
       "onUnresolved": true,
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "inherit": "beh-init",
         "counters": 0,
@@ -1233,7 +1180,6 @@
       "current": "بتثنيئى",
       "onUnresolved": true,
       "onIncomplete": true,
-      "tryNext": true,
       "body": {
         "inherit": "beh-init",
         "counters": 0,
@@ -1261,7 +1207,6 @@
       "id": "kaf-ascender-init",
       "current": "ك",
       "ligatureWith": "اآأإٱل",
-      "tryNext": true,
       "body": {
         "shape": "counter-attachment",
         "attachment": {
@@ -1298,7 +1243,6 @@
       "id": "kaf-fork-ascender-init",
       "current": "ك",
       "ligatureWith": "اآأإٱل",
-      "tryNext": true,
       "body": {
         "shape": "counter-attachment",
         "attachment": {
@@ -1337,8 +1281,6 @@
       "id": "kaf-zigzag-init",
       "fixedAnchors": true,
       "current": "ك",
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "shape": "profile-neck",
         "neck": {
@@ -1377,8 +1319,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "وؤ",
       "current": "ك",
-      "tryNext": true,
-      "retryOnPartial": true,
       "onIncomplete": true,
       "returningStroke": true,
       "body": {
@@ -1413,8 +1353,6 @@
     {
       "id": "kaf-hook-init",
       "current": "ك",
-      "tryNext": true,
-      "retryOnPartial": true,
       "onIncomplete": true,
       "returningStroke": true,
       "body": {
@@ -1449,8 +1387,6 @@
       "id": "kaf-init",
       "fixedAnchors": true,
       "current": "ك",
-      "tryNext": true,
-      "retryOnPartial": true,
       "body": {
         "shape": "profile-neck",
         "neck": {
@@ -1482,7 +1418,6 @@
       "id": "hah-open-init",
       "fixedAnchors": true,
       "current": "جحخ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -1514,7 +1449,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
-      "tryNext": true,
       "body": {
         "shape": "layered-head",
         "neck": {
@@ -1551,7 +1485,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -1584,7 +1517,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
-      "tryNext": true,
       "onIncomplete": true,
       "body": {
         "shape": "enclosed-lips",
@@ -1607,8 +1539,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "ك",
-      "onPartial": true,
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -1642,8 +1572,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "عغ",
-      "onPartial": true,
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -1777,7 +1705,6 @@
       "id": "feh-descending-init",
       "current": "ف",
       "tightJoin": true,
-      "tryNext": true,
       "body": {
         "shape": "suspended-loop",
         "head": {
@@ -1809,7 +1736,6 @@
     {
       "id": "lam-inward-foot-init",
       "current": "ل",
-      "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
       "body": {
@@ -1858,7 +1784,6 @@
       "id": "meem-lower-flank-init",
       "fixedAnchors": true,
       "current": "م",
-      "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
       "body": {
@@ -1891,7 +1816,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "صض",
-      "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
       "body": {
@@ -1938,7 +1862,6 @@
       "id": "tah-loop-corner-init",
       "fixedAnchors": true,
       "current": "طظ",
-      "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
       "body": {
@@ -1970,7 +1893,6 @@
       "id": "tah-low-rim-init",
       "fixedAnchors": true,
       "current": "طظ",
-      "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
       "body": {
@@ -1996,7 +1918,6 @@
       "id": "heh-stacked-bridge-init",
       "fixedAnchors": true,
       "current": "ه",
-      "tryNext": true,
       "onIncomplete": true,
       "tightJoin": true,
       "onUnresolved": true,
@@ -2022,7 +1943,6 @@
       "id": "ain-returning-cup-init",
       "fixedAnchors": true,
       "current": "عغ",
-      "tryNext": true,
       "onUnresolved": true,
       "body": {
         "shape": "contour-route",
@@ -2053,7 +1973,6 @@
     {
       "id": "hah-returning-lip-init",
       "current": "جحخ",
-      "tryNext": true,
       "onUnresolved": true,
       "body": {
         "shape": "contour-route",
@@ -2142,7 +2061,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2180,7 +2098,6 @@
     {
       "id": "hah-extended-lip-init",
       "current": "جحخ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2225,7 +2142,6 @@
     {
       "id": "meem-rising-attachment-init",
       "current": "م",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2275,7 +2191,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "ف",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2325,7 +2240,6 @@
     {
       "id": "beh-high-foot-init",
       "current": "بتثنيئى",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2362,7 +2276,6 @@
     {
       "id": "beh-slender-foot-init",
       "current": "بتثنيئى",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2409,7 +2322,6 @@
       "id": "ain-returning-corner-init",
       "fixedAnchors": true,
       "current": "عغ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2475,7 +2387,6 @@
     {
       "id": "sad-rounded-exit-init",
       "current": "صض",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2531,7 +2442,6 @@
       "id": "tah-compact-exit-init",
       "fixedAnchors": true,
       "current": "طظ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2576,7 +2486,6 @@
     {
       "id": "kaf-countered-crest-init",
       "current": "ك",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -2697,6 +2606,7 @@
     },
     {
       "id": "heh-paired-crown-medi",
+      "reclaimEntry": true,
       "current": "ه",
       "onUnresolved": true,
       "onUnresolvedPartition": true,
@@ -2756,7 +2666,6 @@
           "right": "route-right"
         }
       },
-      "reclaimEntry": true,
       "sharedFoldWithFinal": "م"
     },
     {
@@ -2797,6 +2706,7 @@
     },
     {
       "id": "hah-stacked-throat-medi",
+      "reclaimEntry": true,
       "current": "جحخ",
       "tightJoin": true,
       "body": {
@@ -2864,7 +2774,6 @@
           "right": "route-right"
         }
       },
-      "reclaimEntry": true,
       "onUnresolvedPartition": true,
       "onUnresolved": true
     },
@@ -3189,25 +3098,10 @@
       "current": "ل",
       "terminalArmRecovery": {
         "prefixForm": "lam-return-fina",
-        "attached": {
-          "form": "alef-tapered-arm-fina",
-          "variant": "lam-returning-bowl-medi",
-          "maxTipGap": 0.75,
-          "prefixCuts": {
-            "tail": {
-              "turnAngle": 45
-            }
-          }
-        },
         "detached": {
+          "allowPointContact": true,
           "form": "alef-detached-fina",
           "variant": "lam-detached-arm-medi"
-        },
-        "cuts": {
-          "boundaries": {
-            "right": "preserve",
-            "left": "preserve"
-          }
         }
       },
       "body": {
@@ -3467,7 +3361,6 @@
       "fixedAnchors": true,
       "current": "بتثنيئى",
       "followedByFinal": "نرز",
-      "recoveryStage": 1,
       "body": {
         "inherit": "beh-bent-medi",
         "baselineEntry": {
@@ -3485,7 +3378,6 @@
       "id": "beh-bent-medi",
       "fixedAnchors": true,
       "current": "بتثنيئى",
-      "recoveryStage": 1,
       "body": {
         "shape": "tooth-bend",
         "minBendTurn": 0.12,
@@ -3509,7 +3401,6 @@
       "id": "beh-shoulder-medi",
       "fixedAnchors": true,
       "current": "بتثنيئى",
-      "recoveryStage": 2,
       "body": {
         "inherit": "beh-bent-medi",
         "shape": "tooth-shoulder",
@@ -3525,7 +3416,6 @@
       "id": "beh-hook-medi",
       "fixedAnchors": true,
       "current": "بتثنيئى",
-      "recoveryStage": 3,
       "body": {
         "inherit": "beh-shoulder-medi",
         "shape": "tooth-hook"
@@ -3691,9 +3581,9 @@
     },
     {
       "id": "hah-oblique-folded-yeh-medi",
+      "reclaimEntry": true,
       "current": "جحخ",
       "sharedFoldWithFinal": "يئى",
-      "reclaimEntry": true,
       "tightJoin": true,
       "body": {
         "shape": "paired-route",
@@ -3783,9 +3673,9 @@
     },
     {
       "id": "hah-folded-yeh-medi",
+      "reclaimEntry": true,
       "current": "جحخ",
       "sharedFoldWithFinal": "يئى",
-      "reclaimEntry": true,
       "tightJoin": true,
       "body": {
         "shape": "paired-route",
@@ -4036,7 +3926,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
-      "preferAtHeadOverlap": true,
       "sharedEntry": true,
       "body": {
         "inherit": "hah-stacked-medi",
@@ -4409,12 +4298,12 @@
     },
     {
       "id": "hah-enclosed-lips-medi",
+      "reclaimEntry": true,
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "onIncomplete": true,
       "tightJoin": true,
-      "reclaimEntry": true,
       "body": {
         "shape": "enclosed-lips",
         "head": {
@@ -4436,10 +4325,10 @@
     },
     {
       "id": "hah-shallow-mouth-medi",
+      "reclaimEntry": true,
       "current": "جحخ",
       "tightJoin": true,
       "onIncomplete": true,
-      "reclaimEntry": true,
       "body": {
         "shape": "paired-route",
         "routes": {
@@ -4580,14 +4469,12 @@
     },
     {
       "id": "hah-returning-lips-medi",
+      "reclaimEntry": true,
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
-      "onHeadConflict": true,
-      "preferAtHeadOverlap": true,
       "current": "جحخ",
       "tightJoin": true,
       "onIncomplete": true,
-      "reclaimEntry": true,
       "body": {
         "shape": "returning-lips",
         "mouth": {
@@ -4962,12 +4849,12 @@
     },
     {
       "id": "kaf-descending-blade-medi",
+      "reclaimEntry": true,
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "ك",
       "tightJoin": true,
       "onIncomplete": true,
-      "reclaimEntry": true,
       "body": {
         "shape": "inclined-blade",
         "blade": {
@@ -5038,11 +4925,11 @@
     },
     {
       "id": "kaf-parallel-fold-medi",
+      "reclaimEntry": true,
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "ك",
       "onIncomplete": true,
-      "reclaimEntry": true,
       "tightJoin": true,
       "body": {
         "shape": "parallel-return",
@@ -5087,7 +4974,6 @@
       "id": "meem-corner-rim-medi",
       "fixedAnchors": true,
       "current": "م",
-      "tryNext": true,
       "onIncomplete": true,
       "tightJoin": true,
       "onUnresolved": true,
@@ -5125,7 +5011,6 @@
       "fixedAnchors": true,
       "fixedAnchorsEnding": "دذ",
       "current": "صض",
-      "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
       "body": {
@@ -5172,7 +5057,6 @@
     {
       "id": "sad-corner-tooth-medi",
       "current": "صض",
-      "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
       "body": {
@@ -5206,7 +5090,6 @@
       "id": "tah-loop-corner-medi",
       "fixedAnchors": true,
       "current": "طظ",
-      "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
       "body": {
@@ -5238,7 +5121,6 @@
       "id": "tah-low-rim-medi",
       "fixedAnchors": true,
       "current": "طظ",
-      "tryNext": true,
       "onIncomplete": true,
       "onUnresolved": true,
       "body": {
@@ -5264,7 +5146,6 @@
       "id": "meem-upper-neck-medi",
       "fixedAnchors": true,
       "current": "م",
-      "tryNext": true,
       "onIncomplete": true,
       "sharedEntry": true,
       "tightJoin": true,
@@ -5303,7 +5184,6 @@
       "id": "tah-upper-neck-medi",
       "fixedAnchors": true,
       "current": "طظ",
-      "tryNext": true,
       "onIncomplete": true,
       "sharedEntry": true,
       "tightJoin": true,
@@ -5342,7 +5222,6 @@
       "current": "م",
       "onIncomplete": true,
       "tightJoin": true,
-      "tryNext": true,
       "sharedEntry": true,
       "onUnresolved": true,
       "body": {
@@ -5767,6 +5646,7 @@
     },
     {
       "id": "hah-low-return-medi",
+      "reclaimEntry": true,
       "fixedAnchors": true,
       "current": "جحخ",
       "tightJoin": true,
@@ -5834,7 +5714,6 @@
           "right": "route-right"
         }
       },
-      "reclaimEntry": true,
       "onUnresolvedPartition": true,
       "onUnresolved": true
     },
@@ -5918,6 +5797,7 @@
     },
     {
       "id": "hah-pointed-mouth-medi",
+      "reclaimEntry": true,
       "current": "جحخ",
       "tightJoin": true,
       "body": {
@@ -5993,7 +5873,6 @@
           "right": "route-right"
         }
       },
-      "reclaimEntry": true,
       "onUnresolvedPartition": true,
       "onUnresolved": true
     },
@@ -6178,6 +6057,7 @@
     },
     {
       "id": "tah-rounded-shoulders-medi",
+      "reclaimEntry": true,
       "current": "طظ",
       "tightJoin": true,
       "body": {
@@ -6252,12 +6132,12 @@
           "right": "route-right"
         }
       },
-      "reclaimEntry": true,
       "onUnresolvedPartition": true,
       "onUnresolved": true
     },
     {
       "id": "lam-folded-neck-medi",
+      "reclaimEntry": true,
       "current": "ل",
       "tightJoin": true,
       "body": {
@@ -6339,7 +6219,6 @@
           "right": "route-right"
         }
       },
-      "reclaimEntry": true,
       "sharedFoldWithFinal": "اآأإٱ",
       "onUnresolvedPartition": true,
       "onUnresolved": true
@@ -6352,7 +6231,6 @@
       "sharedBoundary": true,
       "tightJoin": true,
       "onUnresolved": true,
-      "tryNext": true,
       "body": {
         "shape": "rising-return",
         "return": {
@@ -6396,7 +6274,6 @@
     {
       "id": "beh-folded-shoulder-fina",
       "current": "بتث",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -6448,7 +6325,6 @@
       "id": "tah-tapered-entry-fina",
       "fixedAnchors": true,
       "current": "طظ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -6500,7 +6376,6 @@
       "id": "reh-shouldered-fina",
       "current": "رز",
       "ownsLeftTip": true,
-      "tryNext": true,
       "onUnresolved": true,
       "retainBodyFeatures": true,
       "body": {
@@ -6551,7 +6426,6 @@
       "sharedBoundary": true,
       "tightJoin": true,
       "onUnresolved": true,
-      "tryNext": true,
       "body": {
         "shape": "rising-return",
         "return": {
@@ -6604,7 +6478,6 @@
       "current": "رز",
       "ownsLeftTip": true,
       "retainEntryCrest": true,
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -6645,7 +6518,6 @@
       "id": "feh-fina",
       "fixedAnchors": true,
       "current": "ف",
-      "tryNext": true,
       "body": {
         "shape": "counter-neck",
         "counter": {
@@ -6715,8 +6587,7 @@
             "maxWidth": 3
           }
         }
-      },
-      "tryNext": true
+      }
     },
     {
       "id": "yeh-first-turn-fina",
@@ -6725,7 +6596,6 @@
       "retainBodyFeatures": true,
       "sharedBoundary": true,
       "tightJoin": true,
-      "tryNext": true,
       "onUnresolved": true,
       "body": {
         "shape": "folded-return",
@@ -6751,7 +6621,6 @@
       "id": "yeh-fina",
       "fixedAnchors": true,
       "current": "يئى",
-      "tryNext": true,
       "tightJoin": true,
       "body": {
         "shape": "contour-route",
@@ -6792,7 +6661,6 @@
       "fixedAnchorsMaxLetters": 2,
       "current": "ن",
       "ownsLeftTip": true,
-      "tryNext": true,
       "retainBodyFeatures": true,
       "body": {
         "shape": "open-bowl",
@@ -6821,7 +6689,6 @@
       "id": "waw-fina",
       "fixedAnchors": true,
       "current": "وؤ",
-      "tryNext": true,
       "ownsLeftTip": true,
       "start": "left",
       "body": {
@@ -6869,7 +6736,6 @@
     {
       "id": "dal-fina",
       "fixedAnchors": true,
-      "pairedOnly": true,
       "tightJoin": true,
       "current": "دذ",
       "body": {
@@ -6909,7 +6775,6 @@
     },
     {
       "id": "seen-bowl-entry-fina",
-      "tryNext": true,
       "current": "سش",
       "tightJoin": true,
       "returningStroke": true,
@@ -6939,7 +6804,6 @@
     },
     {
       "id": "seen-fina",
-      "tryNext": true,
       "current": "سش",
       "body": {
         "shape": "tooth-cluster",
@@ -6963,7 +6827,6 @@
     {
       "id": "heh-counter-fina",
       "fixedAnchors": true,
-      "tryNext": true,
       "current": "هة",
       "body": {
         "shape": "counter-neck",
@@ -6984,7 +6847,6 @@
     {
       "id": "meem-counter-fina",
       "fixedAnchors": true,
-      "tryNext": true,
       "current": "م",
       "body": {
         "shape": "counter-neck",
@@ -7016,7 +6878,6 @@
     {
       "id": "alef-open-fina",
       "current": "اآأإٱ",
-      "tryNext": true,
       "body": {
         "shape": "profile-neck",
         "features": {
@@ -7065,7 +6926,6 @@
     {
       "id": "alef-folded-fina",
       "current": "اآأإٱ",
-      "tryNext": true,
       "body": {
         "shape": "profile-neck",
         "neck": {
@@ -7112,7 +6972,6 @@
       "id": "alef-fina",
       "fixedAnchors": true,
       "current": "اآأإٱ",
-      "tryNext": true,
       "body": {
         "shape": "upright-stem",
         "stem": {}
@@ -7190,7 +7049,6 @@
       "fixedAnchors": true,
       "current": "بتث",
       "ownsLeftTip": true,
-      "tryNext": true,
       "tightJoin": true,
       "returningStroke": true,
       "body": {
@@ -7218,7 +7076,6 @@
       "id": "lam-stem-fork-fina",
       "current": "ل",
       "ownsLeftTip": true,
-      "tryNext": true,
       "returningStroke": true,
       "tightJoin": true,
       "terminalAttachment": true,
@@ -7282,7 +7139,6 @@
       "id": "kaf-bowl-fina",
       "fixedAnchors": true,
       "current": "ك",
-      "retryWithVariants": true,
       "body": {
         "shape": "stemmed-bowl",
         "stem": {
@@ -7305,7 +7161,6 @@
       "fixedAnchors": true,
       "current": "ك",
       "ownsLeftTip": true,
-      "tryNext": true,
       "onIncomplete": true,
       "body": {
         "shape": "tail-branch",
@@ -7331,7 +7186,6 @@
       "id": "meem-upper-neck-fina",
       "fixedAnchors": true,
       "current": "م",
-      "tryNext": true,
       "body": {
         "shape": "counter-neck",
         "counter": {
@@ -7359,7 +7213,6 @@
       "id": "meem-loop-tail-fina",
       "fixedAnchors": true,
       "current": "م",
-      "tryNext": true,
       "ownsLeftTip": true,
       "body": {
         "shape": "contour-route",
@@ -7393,7 +7246,6 @@
       "id": "meem-shoulder-fina",
       "fixedAnchors": true,
       "current": "م",
-      "tryNext": true,
       "onIncomplete": true,
       "body": {
         "shape": "counter-shoulder",
@@ -7421,7 +7273,6 @@
     {
       "id": "reh-hook-fina",
       "current": "رز",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -7461,7 +7312,6 @@
     {
       "id": "yeh-return-fina",
       "current": "يئى",
-      "tryNext": true,
       "tightJoin": true,
       "body": {
         "shape": "contour-route",
@@ -7491,7 +7341,6 @@
       "id": "hah-fina",
       "fixedAnchors": true,
       "current": "جحخ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -7605,7 +7454,6 @@
       "id": "ain-fina",
       "fixedAnchors": true,
       "current": "عغ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -7638,7 +7486,6 @@
       "id": "alef-return-fina",
       "current": "اآأإٱ",
       "tightJoin": true,
-      "tryNext": true,
       "sharedBoundary": true,
       "sharedBoundaryWith": "لك",
       "body": {
@@ -7708,7 +7555,6 @@
       "current": "ك",
       "ownsLeftTip": true,
       "onIncomplete": true,
-      "tryNext": true,
       "body": {
         "shape": "forked-bowl",
         "fork": {
@@ -7781,7 +7627,6 @@
       "id": "heh-shoulder-fina",
       "fixedAnchors": true,
       "current": "هة",
-      "tryNext": true,
       "onIncomplete": true,
       "body": {
         "shape": "counter-shoulder",
@@ -7809,7 +7654,6 @@
     {
       "id": "sad-lower-rim-fina",
       "current": "صض",
-      "tryNext": true,
       "onUnresolved": true,
       "onIncomplete": true,
       "body": {
@@ -7834,7 +7678,6 @@
     {
       "id": "sad-diagonal-fina",
       "current": "صض",
-      "tryNext": true,
       "onIncomplete": true,
       "tightJoin": true,
       "onUnresolved": true,
@@ -7864,7 +7707,6 @@
     {
       "id": "tah-diagonal-fina",
       "current": "طظ",
-      "tryNext": true,
       "onIncomplete": true,
       "tightJoin": true,
       "onUnresolved": true,
@@ -7896,7 +7738,6 @@
       "id": "meem-diagonal-fina",
       "fixedAnchors": true,
       "current": "م",
-      "tryNext": true,
       "onIncomplete": true,
       "tightJoin": true,
       "onUnresolved": true,
@@ -7930,7 +7771,6 @@
     {
       "id": "meem-upper-bridge-fina",
       "current": "م",
-      "tryNext": true,
       "onIncomplete": true,
       "tightJoin": true,
       "onUnresolved": true,
@@ -7959,10 +7799,8 @@
     },
     {
       "id": "reh-returning-bowl-fina",
-      "onHeadConflict": true,
       "current": "رز",
       "ownsLeftTip": true,
-      "tryNext": true,
       "tightJoin": true,
       "returningStroke": true,
       "onIncomplete": true,
@@ -7990,7 +7828,6 @@
       "id": "reh-swept-arm-fina",
       "current": "رز",
       "onIncomplete": true,
-      "tryNext": true,
       "onUnresolved": true,
       "body": {
         "shape": "contour-route",
@@ -8024,7 +7861,6 @@
     {
       "id": "yeh-folded-lip-fina",
       "current": "يئى",
-      "tryNext": true,
       "onIncomplete": true,
       "ownsLeftTip": true,
       "tightJoin": true,
@@ -8064,7 +7900,6 @@
     {
       "id": "meem-returning-shoulder-fina",
       "current": "م",
-      "tryNext": true,
       "onIncomplete": true,
       "tightJoin": true,
       "returningStroke": true,
@@ -8104,7 +7939,6 @@
     {
       "id": "sad-returning-shoulder-fina",
       "current": "صض",
-      "tryNext": true,
       "onIncomplete": true,
       "tightJoin": true,
       "returningStroke": true,
@@ -8146,7 +7980,6 @@
       "current": "م",
       "onIncomplete": true,
       "tightJoin": true,
-      "tryNext": true,
       "returningStroke": true,
       "onUnresolved": true,
       "body": {
@@ -8287,7 +8120,6 @@
       "id": "waw-returning-shoulder-fina",
       "fixedAnchors": true,
       "current": "وؤ",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -8364,7 +8196,6 @@
           "right": "lower-probe"
         }
       },
-      "tryNext": true,
       "onUnresolvedPartition": true,
       "onUnresolved": true
     },
@@ -8372,7 +8203,6 @@
       "id": "lam-rising-bowl-fina",
       "fixedAnchors": true,
       "current": "ل",
-      "tryNext": true,
       "body": {
         "shape": "contour-route",
         "route": {
@@ -8426,7 +8256,6 @@
       "id": "beh-rising-shoulder-fina",
       "fixedAnchors": true,
       "current": "بتث",
-      "tryNext": true,
       "body": {
         "shape": "open-bowl",
         "bowl": {
@@ -8449,11 +8278,6 @@
       "onUnresolved": true
     }
   ],
-  "reconsiderForms": {
-    "initial": "ك",
-    "medial": "كلجحخ",
-    "final": "ك"
-  },
   "recoveryChecks": {
     "connectorMargin": 0.9,
     "connectorBend": 0.25,
@@ -8524,13 +8348,5 @@
       }
     ],
     "longConnectorWidths": 4
-  },
-  "reconsiderFinalAttachments": "لسشوؤاآأإٱبتث",
-  "retryUnresolvedForms": true,
-  "unresolvedInitialShaft": {
-    "letters": "ل",
-    "minHeight": 4,
-    "maxWidthToHeight": 0.7,
-    "edgeTolerance": 0.035
   }
 }

@@ -70,14 +70,6 @@ bool sourceLandmark(PathExtrema& mark, const std::vector<std::vector<QBezier>>& 
     return true;
 }
 
-static bool restoreSourceCut(Stretching& cut, const std::vector<std::vector<QBezier>>& curves) {
-    for (auto p : {&cut.topBaseLine, &cut.bottomBaseLine, &cut.topRight, &cut.bottomRight, &cut.topLeft, &cut.bottomLeft})
-        if (!p->point.isNull() && !sourceLandmark(*p, curves))
-            return false;
-    return cut.counterEntry.pathIndex <= 0 ||
-           (sourceLandmark(cut.counterEntry, curves) && sourceLandmark(cut.counterExit, curves));
-}
-
 bool isSeparateFoldedArm(const QPainterPath& body, const QPainterPath& arm, bool allowPointContact) {
     const auto box = arm.boundingRect();
     if (!box.intersects(body.boundingRect()))
@@ -94,10 +86,10 @@ bool isSeparateFoldedArm(const QPainterPath& body, const QPainterPath& arm, bool
 
 } // namespace MedinaCutter
 
-// Separate a terminal arm at its root or use its existing detached contour.
+// Match the prefix on its own contour before attaching the detached terminal arm.
 template <typename AssemblePrefix>
 static bool assembleTerminalArm(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
-                                bool attached, AssemblePrefix assemblePrefix) {
+                                AssemblePrefix assemblePrefix) {
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
     if (letters.size() < 3 || sub.paths.empty())
         return false;
@@ -108,7 +100,7 @@ static bool assembleTerminalArm(const Word& word, WordResultInfo::SubWordInfo& s
         const auto form = value.toObject();
         if (!form.value("current").toString().contains(previous)) continue;
         const auto recipe = form.value("terminalArmRecovery").toObject();
-        mode = recipe.value(attached ? "attached" : "detached").toObject();
+        mode = recipe.value("detached").toObject();
         if (mode.isEmpty() || (recipe.contains("letters") &&
             !recipe.value("letters").toString().contains(letters.back()))) continue;
         const auto candidate = namedLetterForm(config, mode.value("form").toString());
@@ -130,65 +122,36 @@ static bool assembleTerminalArm(const Word& word, WordResultInfo::SubWordInfo& s
     };
     QPainterPath connected, separate;
     int separateIndex = -1;
-    std::vector<ComponentArmBody> componentBodies;
-    Stretching seam{};
-    std::vector<std::vector<QBezier>> curves;
-    if (attached) {
-        WordResultInfo::SubWordInfo dummy;
-        SearchContext context{.transformedPath = toPage(shape.path), .subword = dummy};
-        if (!readTerminalOutline(context) || !declaredArmRoot(context, arm, seam))
+    WordResultInfo::SubWordInfo empty;
+    SearchContext source{.transformedPath = toPage(shape.path), .subword = empty};
+    if (!readTerminalOutline(source))
+        return false;
+    const auto componentBodies =
+        recognizeComponentArms(inkOutline(source), arm.value("body").toObject().value("arm").toObject());
+    const auto paths = toSubpaths(shape.path);
+    if (paths.size() < 2)
+        return false;
+    connected = paths[0];
+    for (int i = 1; i < paths.size(); ++i) {
+        if (paths[0].contains(paths[i]))
+            connected.addPath(paths[i]);
+        else if (separate.isEmpty() &&
+                 isSeparateFoldedArm(paths[0], paths[i], mode.value("allowPointContact").toBool())) {
+            separate = paths[i];
+            separateIndex = i;
+        } else
             return false;
-        auto halves = cutRegions(shape.path, {}, {seam}, context.orientation, true);
-        if (halves.size() != 2)
-            return false;
-        connected = halves[0].path;
-        separate = halves[1].path;
-        for (const auto& path : context.subPaths)
-            curves.push_back(baseContourCurves(path));
-    } else {
-        WordResultInfo::SubWordInfo empty;
-        SearchContext source{.transformedPath = toPage(shape.path), .subword = empty};
-        if (!readTerminalOutline(source))
-            return false;
-        componentBodies =
-            recognizeComponentArms(inkOutline(source), arm.value("body").toObject().value("arm").toObject());
-        const auto paths = toSubpaths(shape.path);
-        if (paths.size() < 2)
-            return false;
-        connected = paths[0];
-        for (int i = 1; i < paths.size(); ++i) {
-            if (paths[0].contains(paths[i]))
-                connected.addPath(paths[i]);
-            else if (separate.isEmpty() &&
-                     isSeparateFoldedArm(paths[0], paths[i], config.contains("reconsiderFinalAttachments"))) {
-                separate = paths[i];
-                separateIndex = i;
-            } else
-                return false;
-        }
     }
     if (separate.isEmpty())
         return false;
     connected.setFillRule(shape.path.fillRule());
-    const auto component = toPage(separate);
-    const auto armBodySettings = arm.value("body").toObject().value("arm").toObject();
     const auto armCuts = arm.value("cuts").toObject().value("arm").toObject();
-    const double minRise = mode.value("minRise").toDouble(armBodySettings.value("minRise").toDouble(3));
     const double maxTipGap = mode.value("maxTipGap").toDouble(armCuts.value("maxTipGap").toDouble(.75));
-    std::optional<ComponentArmBody> armBody;
-    if (attached)
-        armBody = recognizeArmEnvelope(component, minRise, false);
-    else {
-        const auto candidate = std::find_if(componentBodies.begin(), componentBodies.end(),
-                                            [&](const auto &body) { return body.index == separateIndex; });
-        if (candidate != componentBodies.end())
-            armBody = *candidate;
-    }
-    if (!armBody)
-        return false;
+    const auto armBody = std::find_if(componentBodies.begin(), componentBodies.end(),
+                                     [&](const auto& body) { return body.index == separateIndex; });
+    if (armBody == componentBodies.end()) return false;
     const auto box = armBody->bounds;
-    const auto tip =
-        attached ? QLineF(seam.topBaseLine.point, seam.bottomBaseLine.point).center() : armBody->bottom.point;
+    const auto tip = armBody->bottom.point;
 
     // Segment the prefix with its own final form and keep the original curves.
     auto prefix = componentPage(shape, connected, letters.chopped(1));
@@ -215,29 +178,6 @@ static bool assembleTerminalArm(const Word& word, WordResultInfo::SubWordInfo& s
     if (!envelope.createStroke(prefixBody).contains(tip) || prefixBody.boundingRect().top() >= box.center().y() ||
         prefixBody.boundingRect().bottom() <= tip.y())
         return false;
-    if (attached) {
-        if (result.joins.empty())
-            return false;
-        const auto& lastJoin = *result.joins.rbegin();
-        const auto entry = !result.kashidaPaths.empty() && !result.kashidaPaths.back().isEmpty()
-                               ? result.kashidaCuts.back().second
-                               : QLineF(lastJoin.topBaseLine.point, lastJoin.bottomBaseLine.point);
-        // A connector entering above the folded arm would take part of the upright stem.
-        if (entry.isNull() || entry.center().y() + entry.length() < tip.y())
-            return false;
-        Joins original;
-        for (auto cut : result.joins) {
-            if (!restoreSourceCut(cut, curves))
-                return false;
-            cut.readingOrder = int(original.size());
-            original.insert(cut);
-        }
-        seam.readingOrder = int(original.size());
-        original.insert(seam);
-        result.joins = std::move(original);
-        result.kashidaPaths.emplace_back();
-        result.kashidaCuts.emplace_back();
-    }
     sub.baseGlyphs = std::move(result.baseGlyphs);
     sub.baseGlyphs.push_back({letters.right(1), separate});
     sub.joins = std::move(result.joins);
@@ -256,36 +196,20 @@ static bool assembleTerminalArm(const Word& word, WordResultInfo::SubWordInfo& s
                                              {"character", letters.right(1)},
                                              {"status", "matched"},
                                              {"template", arm.value("id")},
-                                             {"boundaryKind", attached ? "shared-folded-arm" : "separate-contours"},
+                                             {"boundaryKind", "separate-contours"},
                                              {"candidates", QJsonArray{arm.value("id")}}});
-    if (attached)
-        recordBoundaryTemplate(sub, sub.letterDiagnostics.size() - 2, false, arm.value("id").toString());
     sub.templateTrace = result.templateTrace;
     sub.templateTrace.append(sourceTemplate + " · prefix body recovered with its terminal arm");
     sub.templateTrace.append(arm.value("id").toString() +
-                             (attached ? " · sloping arm cut at its root" : " · separate sloping arm"));
+                             " · separate sloping arm");
     sub.correct = true;
     return true;
-}
-
-bool PageAnalysisResult::recoverFoldedArm(Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config,
-                                         bool attached) {
-    return assembleTerminalArm(word, sub, config, attached, [attached](PageAnalysisResult& prefix, auto& result,
-            QJsonObject& forms, const QJsonValue&) {
-        if (attached) {
-            forms["reconsiderForms"] =
-                QJsonObject{{"initial", result.text}, {"medial", result.text}, {"final", result.text}};
-            return prefix.segmentSubword(-2, 0, 0, 0, nullptr, true, &forms);
-        }
-        OutlineSearchCache cache;
-        return prefix.segmentWithLetterForms(-2, 0, 0, 0, nullptr, forms, cache, true);
-    });
 }
 
 namespace MedinaCutter {
 
 bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
-    return assembleTerminalArm(word, sub, config, false, [](PageAnalysisResult& prefix, auto& result,
+    return assembleTerminalArm(word, sub, config, [](PageAnalysisResult& prefix, auto& result,
             QJsonObject& config, const QJsonValue& prefixId) {
         auto finals = config.value("final").toArray();
         for (qsizetype i = 0; i < finals.size(); ++i) {
@@ -309,127 +233,11 @@ bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& 
     });
 }
 
-// Isolate an established entry seam, then recognize the exposed letter by its
-// own outline. Accept the reconstruction only if every suffix letter fits.
-bool assembleSplitEntry(const Word& word, WordResultInfo::SubWordInfo& sub,
-                               const QJsonObject& config, const QJsonObject& checks) {
-    const auto letters = PageAnalysisResult::bodyLetters(sub.text);
-    if (letters.size() < 3 || sub.paths.empty() || sub.letterDiagnostics.size() != letters.size())
-        return false;
-    const auto initial = sub.letterDiagnostics.first().toObject();
-    const bool knownEntry = initial.value("status") == "matched" && !sub.joins.empty() &&
-                            sub.joins.begin()->cutSegments().size() == 1 &&
-                            (sub.kashidaPaths.empty() || sub.kashidaPaths[0].isEmpty()) &&
-                            sub.letterDiagnostics[1].toObject().value("status") != "matched";
-    QJsonObject head, initialForm;
-    for (const auto& value : config.value("medial").toArray()) {
-        const auto rule = value.toObject();
-        if (!rule.value("current").toString().contains(letters[1]))
-            continue;
-        const auto assembly = rule.value("assembly").toObject();
-        if (assembly.value("operation") != "exposed-head")
-            continue;
-        const auto entry = assembly.value("entry").toObject();
-        if (knownEntry && entry.value("source") == "matched-boundary") {
-            head = rule;
-            break;
-        }
-        if (entry.value("source") != "form")
-            continue;
-        for (const auto& item : config.value("initial").toArray()) {
-            const auto form = item.toObject();
-            if (form.value("id") == entry.value("form") && form.value("current").toString().contains(letters[0]) &&
-                (!form.contains("ligatureWith") || hasFollowingLetter(letters, 0, form.value("ligatureWith").toString()))) {
-                initialForm = bodyConstraintForm(config, form);
-                head = rule;
-                break;
-            }
-        }
-        if (!head.isEmpty()) break;
-    }
-    if (head.isEmpty()) return false;
-    const auto shape = word.bodyShape(sub);
-    WordResultInfo::SubWordInfo dummy{};
-    OutlineSearchCache cache;
-    SearchContext ctx{.transformedPath = shape.transform.map(shape.path).translated(shape.pos),
-                      .subword = dummy, .baseText = letters, .outlineCache = &cache};
-    if (!readTerminalOutline(ctx)) return false;
-    ctx.nextIter = std::next(ctx.xSorted.begin());
-    Stretching cut{};
-    if (initialForm.isEmpty())
-        cut = *sub.joins.begin();
-    else {
-        if (!proposeTemplateBoundary(ctx, config, initialForm, false, false, nullptr) ||
-            !matchesBoundaryBody(ctx, initialForm, ctx.res, true)) return false;
-        cut = ctx.res;
-    }
-    const auto parts = cutRegions(shape.path, {}, {cut}, ctx.orientation, true);
-    if (parts.size() != 2) return false;
-
-    auto suffix = componentPage(shape, parts.back().path, letters.mid(1));
-    auto& result = suffix.page.lines.front().words.front().wordResultInfo.subWords.front();
-    if (!suffix.segmentSubword(-2, 0, 0, 0, nullptr, true, &config) ||
-        result.baseGlyphs.size() + 1 != size_t(letters.size()) ||
-        !head.value("assembly")
-             .toObject()
-             .value("bodyForms")
-             .toArray()
-             .contains(result.letterDiagnostics.first().toObject().value("template")))
-        return false;
-    auto candidate = sub;
-    candidate.baseGlyphs = std::move(result.baseGlyphs);
-    candidate.baseGlyphs.insert(candidate.baseGlyphs.begin(), {letters.left(1), parts.front().path});
-    candidate.kashidaPaths = std::move(result.kashidaPaths);
-    candidate.kashidaPaths.emplace(candidate.kashidaPaths.begin());
-    candidate.kashidaCuts = std::move(result.kashidaCuts);
-    candidate.kashidaCuts.emplace(candidate.kashidaCuts.begin());
-    candidate.joins.clear();
-    cut.readingOrder = 0; cut.fixedLeftBoundary = cut.fixedRightBoundary = true;
-    candidate.joins.insert(cut);
-    std::vector<std::vector<QBezier>> curves;
-    for (const auto& outline : ctx.subPaths) curves.push_back(baseContourCurves(outline));
-    for (auto j : result.joins) {
-        if (!restoreSourceCut(j, curves)) return false;
-        j.readingOrder = int(candidate.joins.size());
-        candidate.joins.insert(j);
-    }
-    const auto initialId = initialForm.isEmpty() ? initial.value("template").toString() : initialForm.value("id").toString();
-    const auto headId = head.value("id").toString();
-    candidate.letterDiagnostics = {};
-    auto first = initial;
-    first.insert("status", "matched");
-    first.insert("template", initialId);
-    auto candidates = first.value("candidates").toArray();
-    if (!candidates.contains(initialId)) candidates.append(initialId);
-    first.insert("candidates", candidates);
-    candidate.letterDiagnostics.append(first);
-    for (int i = 0; i < result.letterDiagnostics.size(); ++i) {
-        auto d = result.letterDiagnostics[i].toObject();
-        d.insert("letterIndex",i+2);
-        if (i == 0) {
-            d.insert("position","medial"); d.insert("exitTemplate",d.value("template"));
-            d.insert("template",headId); d.insert("candidates",QJsonArray{headId});
-        }
-        candidate.letterDiagnostics.append(d);
-    }
-    const auto exitSource = initialForm.isEmpty() ? first.value("exitTemplate").toString(initialId) : initialId;
-    recordBoundaryTemplate(candidate, 0, false, exitSource);
-    recordBoundaryTemplate(candidate, 1, true, exitSource);
-    candidate.templateTrace = result.templateTrace;
-    candidate.templateTrace.prepend(headId + " · exposed head at shared cut");
-    candidate.templateTrace.prepend(initialId + (initialForm.isEmpty() ? " · existing exit retained" :
-                                                                       " · declared exit at shared cut"));
-    if (!plausibleRecoveredBodies(word,candidate,checks) || !coversOriginalInk(word,candidate)) return false;
-    candidate.correct = true;
-    sub = std::move(candidate);
-    return true;
-}
-
 // In some overhanging heads the pen lifts between the incoming attachment
 // and the head, even though the transcript remains joined. Recover the
 // attachment from its own contour and the head from the other contour.
 static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo& result,
-                                   const QJsonObject& config, bool anchored) {
+                                   const QJsonObject& config) {
     const auto letters = PageAnalysisResult::bodyLetters(result.text);
     if (letters.size() < 4 || result.paths.empty())
         return false;
@@ -467,36 +275,28 @@ static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo
     if (!contact.createStroke(world(pieces[0].ink)).intersects(world(pieces[1].ink)))
         return false;
     auto fit = [&](const Component& component, const QString& text, const QJsonObject& forms,
-                   bool penLiftAtEnd = false, const QPainterPath* head = nullptr) {
+                   const QPainterPath* head = nullptr) {
         auto analysis = componentPage(shape, component.ink, text);
         auto& localWord = analysis.page.lines.front().words.front();
         auto& local = localWord.wordResultInfo.subWords.front();
-        if (anchored) {
-            const auto expanded = expandedAnchorConfig(forms, true);
-            AnchorForms primary, continuation;
-            if (!compileAnchorForms(forms, primary).isEmpty() ||
-                !compileAnchorForms(expanded, continuation).isEmpty()) return std::move(local);
-            const std::array priorities{AnchorPriority{forms, primary},
-                AnchorPriority{expanded, continuation},
-                AnchorPriority{expanded, continuation, true}};
-            const auto accepts = [&](const WordResultInfo::SubWordInfo& partition) {
-                if (!head) return true;
-                const auto stub = world(partition.baseGlyphs.back().path);
-                const auto box = stub.boundingRect();
-                return toSubpaths(stub).size() == 1 && box.width() > box.height() &&
-                    box.width() <= settings.value("maxEntryToHead").toDouble() * head->boundingRect().width() &&
-                    contact.createStroke(stub).intersects(*head);
-            };
-            if (auto partition = segmentWithAnchors(localWord, local, priorities, accepts,
-                    head ? form.value("id").toString() : QString{}))
-                return std::move(*partition);
-            return std::move(local);
-        }
-        analysis.segmentSubword(-2, 0, 0, 0, nullptr, true, &forms);
-        if (penLiftAtEnd && local.correct) {
-            auto refined = local;
-            if (assembleToothClusterCuts(localWord, refined, forms, true)) local = std::move(refined);
-        }
+        const auto expanded = expandedAnchorConfig(forms, true);
+        AnchorForms primary, continuation;
+        if (!compileAnchorForms(forms, primary).isEmpty() ||
+            !compileAnchorForms(expanded, continuation).isEmpty()) return std::move(local);
+        const std::array priorities{AnchorPriority{forms, primary},
+            AnchorPriority{expanded, continuation},
+            AnchorPriority{expanded, continuation, true}};
+        const auto accepts = [&](const WordResultInfo::SubWordInfo& partition) {
+            if (!head) return true;
+            const auto stub = world(partition.baseGlyphs.back().path);
+            const auto box = stub.boundingRect();
+            return toSubpaths(stub).size() == 1 && box.width() > box.height() &&
+                box.width() <= settings.value("maxEntryToHead").toDouble() * head->boundingRect().width() &&
+                contact.createStroke(stub).intersects(*head);
+        };
+        if (auto partition = segmentWithAnchors(localWord, local, priorities, accepts,
+                head ? form.value("id").toString() : QString{}))
+            return std::move(*partition);
         return std::move(local);
     };
     std::optional<WordResultInfo::SubWordInfo> accepted;
@@ -526,8 +326,7 @@ static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo
         auto suffix = fit(pieces[1], letters.mid(slot), config);
         if (!suffix.correct || suffix.baseGlyphs.empty()) continue;
         const auto head = world(suffix.baseGlyphs.front().path);
-        auto prefix = fit(pieces[0], letters.left(prefixSize), prefixForms, separate,
-                          anchored && !separate ? &head : nullptr);
+        auto prefix = fit(pieces[0], letters.left(prefixSize), prefixForms, separate ? nullptr : &head);
         if (!suffix.correct ||
             prefix.baseGlyphs.size() != size_t(prefixSize) || suffix.baseGlyphs.size() != size_t(letters.size() - slot) ||
             prefix.joins.size() != size_t(prefixSize - 1) || suffix.joins.size() + 1 != suffix.baseGlyphs.size() ||
@@ -626,12 +425,8 @@ static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo
     return true;
 }
 
-bool detachedHeadEntry(Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
-    return assembleHeadComponents(word, sub, config, false);
-}
-
 bool assembleDetachedHeadEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config) {
-    return assembleHeadComponents(word, sub, config, true);
+    return assembleHeadComponents(word, sub, config);
 }
 
 } // namespace MedinaCutter

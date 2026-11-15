@@ -62,160 +62,22 @@ letters remain unchanged. Native runs cache resolved AI source geometry in
 transcript and upstream source changes invalidate this cache automatically.
 Set `MEDINA_DISABLE_INPUT_CACHE=1` to verify a fresh parse, or delete the cache.
 
-Letter recovery preserves template priority while reusing contour landmarks,
-prepared rules, exact candidate partitions and cut-line checks. Geometry,
-configuration and retry-mode changes invalidate the relevant entries. Geometry
-memoization is bounded and released after each subword, including its recursive
-trials. Check invalidation with
-`python3 tools/tests/check_letter_forms.py recovery_cache_test.cpp`.
-
-Lām assembly reuses candidates only for identical placement inputs; medial teeth
-reuse their intrinsic body/cut inventory across placement retries. Edited rules
-and geometry invalidate it. The corpus check's **Candidate search by template**
-table and `pages/pageNNN.profile.json` show generated/reused lists and local
-partition checks. Run `python3 tools/tests/check_letter_forms.py candidate_search_test.cpp`
-to compare reuse with fresh searches after geometry, policy and placement edits.
+The anchor search reuses recognized shapes and exact geometry checks within a
+subword. The report's **Candidate search by template** table and page profiles
+show generated candidates, reuse and partition checks. `unresolved.csv` lists
+subwords that could not be partitioned and records their blockers.
 
 Run `python3 tools/mushafcatalog/catalog.py validate-medial-lam-height` to check
 every medial lām body against 5 page units. The JSON report lists short bodies
 and unmeasured letters by ID. Either result makes the check fail.
 
-Declared forms use `body` for recognition and `cuts` for cut placement.
-Both support `inherit` plus local overrides. For example, `lam-bowl-fina`
-declares its stem rise in `body.stem` and uses
-`cuts.boundaries: {"right": "fork-normal", "left": "free"}`.
-It shares the stemmed-bowl recognizer with final kāf. The exposed-head
-recipes use `assembly` to combine body templates at a shared seam.
-
-In the native application, enable **Inspect cuts** and click a subword. Select
-a declared template, including an applicable alternative that did not
-match. **Body** shows the landmarks found in uncut ink and edits that form's
-`body` JSON. **Cut policy** edits `cuts` and shows proposed boundaries or the
-final assembled cuts. Hover over landmarks for contour-point numbers; scroll
-to zoom, drag to pan, or use **Fit**. The effective-settings toggle shows inherited
-values without changing the saved overrides. **All templates** retains the full
-JSON editor for other forms and shared settings.
-
-Use **Preview** after editing. The current result stays beside the draft;
-diagnostics separate recognition/cut failures from final assembly and include
-rejected alternatives across retries. A template that was not reached is reported
-as such, rather than as a failed recognition. Some attachment searches still
-report a combined body/cut rejection. **Copy review details** includes this trace.
-Invalid edits disable saving. **Save templates…** saves and activates only the
-previewed draft; closing the dialog leaves active templates unchanged. Tests:
+The [cutter README](../cutter/README.md) describes body templates, anchor
+selection and join policies. Run the native regression runner with a specific
+fixture when checking a template change.
 
 ```sh
-python3 tools/tests/check_letter_forms.py form_inspection_test.cpp segmentation_dialog_test.cpp
+python3 tools/tests/check_letter_forms.py candidate_search_test.cpp form_inspection_test.cpp
 ```
-
-`body.shape` selects the intrinsic shape vocabulary: contour stem,
-descending stem, forked stem, turning shaft, terminal bowl/fork/return, or an
-attached/detached return. `route` and `exitRoutes` describe contour landmarks;
-the corresponding entries in `cuts` specify projections and offsets.
-`minFlankSpan`, `minRise`, and `maxWidthToHeight` describe the shaft/fork.
-
-Medial lām recognition takes only the uncut outline and `body` settings. It
-records crests, forks, flank turns and route anchors before considering any
-neighboring join. The evidence is reused across retries and cut-policy edits.
-Assembly then assigns candidates to letter slots and checks position, rise
-relative to the incoming stroke, contour order, overlap and shared attachments.
-A rejected assembly leaves the recognized evidence intact; the dialog reports
-these rejections as **Assembly**. Check this contract with:
-
-```sh
-python3 tools/tests/check_letter_forms.py lam_body_independence_test.cpp
-```
-
-`fork-normal` walks `forkOffset` page units along a fork flank, then cuts
-normally to that stroke. `tightJoin: "tip-normal"` permits a cut from the tip
-when space is limited. `free` adds no boundary; `preserve` keeps the boundary
-from the declared shape's attachment. `beforeFinal` keeps the lower return
-with lām in lām–alef. Its `junction.template` names the final form that
-supplies the shared cut at the inward corners. `counterJoin` and
-`preserveEntryAfter` preserve the kāf–lām attachments.
-
-The folded-foot option is `cuts.shortExit`: `minHorizontalRun` and
-`maxEntryGap` use local stroke widths; `anchorTolerance` uses page units.
-`cutsAroundHollow` and `entryMaxTilt` control its placement. Set
-`shortExit` to false to disable shortening.
-
-For the ordinary, upright and low senna forms, `body.shape: "tooth-pair"` recognizes the outer tip,
-opposing inner bend, both flanks and local stroke measurements from uncut ink.
-`body` contains pair-distance/width limits, flat-bend acceptance and the baseline
-entry's minimum rise. `cuts` holds the left/right normal offsets, turn angle,
-minimum turn run and tight-join policy. The normal projections and contour
-walks use `local-stroke` units. `shared-boundary` allows a shared seam when
-the bodies retain their landmarks. A cut-policy edit reuses recognition in
-the shared body cache. Check this separation and inheritance with:
-
-```sh
-python3 tools/tests/check_letter_forms.py body_cuts_test.cpp medial_tooth_test.cpp lam_alef_test.cpp
-```
-
-Bent, shoulder and hook forms use `body.shape` values `tooth-bend`,
-`tooth-shoulder` and `tooth-hook`. Their shared recognizer measures the tip/bend,
-local stroke and baseline-entry landmarks; the hook also records a curved ink
-axis. `cuts.flankMode` selects `contour-normal`, `axis-projection` or
-`contour-search`. `flankOffset` and `maxSectionWidth` use local stroke widths.
-Body evidence can be reused with another cut policy, including after a policy
-fails to produce a valid mask. No medial senna uses the old `tooth` field.
-
-The variants inherit shared settings. Set `baselineEntry: false` in `body` and
-`cuts` to disable an inherited baseline entry. The top-level `recoveryStage`
-preserves search priority: bent (1), shoulder (2), hook (3); ordinary, upright
-and low teeth are available in the initial pass.
-
-The shared recognizers receive only `InkOutline` and `body`. They record
-candidate geometry before any neighbor or cut-policy check. Assembly selects
-the occurrence, enforces contour order, checks retained ink and assigns shared
-seams or connectors. Top-level selectors, retry order and shared-attachment
-constraints govern assembly; they are not inputs to intrinsic recognition.
-Assembly cannot change cached evidence. The shared schema registry in
-`../cutter/forms/configuration.cpp` lists the supported shape and boundary names.
-
-For a returning bowl, `body.tail.flankSampleWidths` measures each shoulder
-flank over a local stroke-scaled arc (default `0.25`), accepting sharp or rounded
-shoulders and ignoring tiny intervening extrema. `cuts.tail.walkWidths`
-separately places the cut from that shoulder.
-Assembly preserves the recognized shoulder when reconciling shared boundaries;
-a neighboring tooth cannot take it from the final bowl.
-Check this with `python3 tools/tests/check_letter_forms.py tail_shoulder_test.cpp`.
-
-Final dāl and dhāl use `cuts.route.descendingTurn` to set the tangent
-angle for the preferred normal. `body.route.shoulder` can identify an
-additional fork on the original contour. On a tight join the entry can
-move up the flank as far as the recognized fork.
-
-| Shape family | Recognized evidence | Cut policy |
-| --- | --- | --- |
-| Counter necks, loops, rims and heads | Counters, corners, shoulders, teeth | Normals, offsets and retained loops |
-| Single and paired contour routes | Directional landmarks and retained branches | Probes, walks and shared seams |
-| Stems, forks and returning bowls | Shaft, fork, free tail and turning points | Flank normals and return boundaries |
-| Tooth pairs and seen clusters | Tips, valleys, heights and spacing | Entry/exit projection and tight joins |
-| Hah mouths and layered heads | Lips, nose, throat and the head's own counter | Lip normals and a fixed counter-edge projection |
-| Kaf blades and counter attachments | Elbows, parallel bands and inner/outer arcs | Margins and bridge ownership |
-| Separate ink components | Original components and their holes | Pen-lift, overhanging-head or arm assembly |
-
-`assembly.operation: "exposed-head"` names existing head variants in
-`bodyForms`; `entry` selects an established shared seam or a declared entry
-form. This recovery recipe recognizes the exposed suffix using those body
-forms and accepts it only when the complete reconstruction preserves the ink.
-It does not claim to recognize a new head shape independently in the original
-whole subword.
-
-Check fresh recognition, neighbor independence, cache reuse and policy edits:
-
-```sh
-python3 tools/tests/check_letter_forms.py shared_body_independence_test.cpp body_cuts_test.cpp
-```
-
-Catalog builds use AI/PDF reports. Rerun `build` with the same report to
-upgrade a native catalog created with the previous artwork schema.
-
-Put the pinned mark model bundle in
-`output/mark-classifier-data/model-bundles/dot-grouping-v9-20261104/` before building.
-Run `catalog.py --help` for database selection, queries, and SVG export.
-[Open the catalog](http://127.0.0.1:8770/)
 
 ## Mark classifier
 

@@ -475,13 +475,6 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
         }
 }
 
-std::vector<std::pair<Stretching, Stretching>>
-declaredOpenHeadCuts(SearchContext &context, const QJsonObject &form, double minX, double maxX) {
-    const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
-    return cutOpenHeads(context, selectOpenHeads(evidence->openHeads, minX, maxX),
-                        form.value("cuts").toObject().value("head").toObject());
-}
-
 std::vector<Stretching> declaredExitAlternatives(SearchContext& context, const QJsonObject& config,
                                                 const QString& id) {
     const auto form = resolvedBodyForm(config, namedLetterForm(config, id));
@@ -529,9 +522,7 @@ std::vector<Stretching> declaredFlankExits(SearchContext& context, const QJsonOb
     return exits;
 }
 
-bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
-                                   const SeenExitRetry *retry, bool recovering, const Stretching *finalFold,
-                                   ContourRouteSearch* routeSearch) {
+bool declaredSharedBoundary(SearchContext& context, const QJsonObject& form, const Stretching* finalFold) {
     InspectFormScope inspection(form, context.transformedPath);
     const auto body = form.value("body").toObject(), cuts = form.value("cuts").toObject();
     const auto evidence = recognizedSharedShape(context, body);
@@ -540,12 +531,8 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
     if (shape == "contour-route") {
         const auto route = body.value("route").toObject(), policy = cuts.value("route").toObject();
         const bool descending = policy.value("descendingTurn").isDouble();
-        const bool shoulderRange = routeSearch && policy.contains("range") && evidence->tail;
-        if (descending || shoulderRange) {
+        if (descending) {
             const auto project = [&] {
-                if (shoulderRange)
-                    return contourShoulderCuts(context, *evidence->tail, route.value("shoulder").toObject(),
-                                               policy.value("range").toObject());
                 std::vector<std::optional<Stretching>> result;
                 if (!evidence->route) return result;
                 for (const auto& [cut, fork] : descendingRouteEntries(context, *evidence->route,
@@ -565,16 +552,11 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
                 if (inserted) entry->second = project();
                 entries = &entry->second;
             } else local = project();
-            const auto index = routeSearch ? routeSearch->position : 0;
-            if (routeSearch) routeSearch->count = std::max(routeSearch->count, entries->size());
-            if (index < entries->size() && (*entries)[index]) {
-                context.res = *(*entries)[index];
+            if (!entries->empty() && entries->front()) {
+                context.res = *entries->front();
                 found = true;
             }
-        }
-        if (!found && !descending &&
-            (!routeSearch || !policy.contains("range") || routeSearch->position == 0))
-            found = projectSavedRoute(context, evidence->route, route, policy);
+        } else found = projectSavedRoute(context, evidence->route, route, policy);
     } else if (shape == "tapered-arm")
         found = cutTaperedArms(evidence->taperedArms, cuts.value("arm").toObject(), context.res);
     else if (shape == "open-bowl") {
@@ -639,7 +621,7 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
         found = cutToothClusters(context, evidence->clusters, settings, context.bbox.left(),
                                  settings.value("terminalBowl").toBool() ? context.bbox.right() + 1e-6 : maxX,
                                  final ? &cut : nullptr, final ? nullptr : &cut, finalFold,
-                                 finalFold ? &tips : nullptr, retry);
+                                 finalFold ? &tips : nullptr);
         if (found && finalFold) {
             const auto side = getJoinTime(cut, context.orientation);
             found = std::all_of(tips.begin(), tips.end(), [&](const auto& tip) { return side.isStrictRight(tip.time); });
@@ -731,275 +713,6 @@ bool declaredSharedBoundary(SearchContext &context, const QJsonObject &form,
     else
         inspectReason("Cuts", "Recognized body features did not produce a section retaining this body.");
     return found;
-}
-
-// Turn an initial or final template's evidence into one boundary proposal.
-bool proposeTemplateBoundary(SearchContext& context, const QJsonObject& config,
-                                    const QJsonObject& rule, bool terminal, bool recoverTeeth,
-                                    const SeenExitRetry* seenRetry, const Stretching* finalFold,
-                                    ContourRouteSearch* routeSearch) {
-    // These terminal searches use the fixed outline and their own settings.
-    // Keep the proposal, including a miss. The join and ownership checks
-    // below still run against the current placement.
-    const auto intrinsicTerminal = [&](const auto& search) {
-        const auto key = std::make_pair(rule.value("id").toString(), false);
-        auto [it, inserted] = context.outlineCache->terminalCuts.try_emplace(key);
-        if (inserted && search()) it->second = context.res;
-        if (!it->second) return false;
-        context.res = *it->second;
-        return true;
-    };
-    bool found = false;
-    if (sharedShapeDescription(rule.value("body").toObject())) {
-        const auto shape = rule.value("body").toObject().value("shape").toString();
-        const bool cachedTerminal = terminal && (shape.startsWith("counter-") || shape == "upright-stem");
-        found = cachedTerminal ? intrinsicTerminal(
-                                             [&] {
-                                                 return declaredSharedBoundary(
-                                                     context, rule, seenRetry, recoverTeeth);
-                                             })
-                         : declaredSharedBoundary(context, rule, seenRetry, recoverTeeth, finalFold, routeSearch);
-    } else
-        qWarning() << "Unknown letter body:" << rule.value("id");
-    if (found && recoverTeeth && terminal &&
-        (rule.value("body").toObject().value("shape") == "upright-stem" ||
-         rule.value("bottomProbe") == "walk-stroke-normal")) {
-        const auto terminal = std::prev(context.xSorted.end())->time;
-        if (getJoinTime(context.res,context.orientation).isStrictRight(terminal))
-            std::swap(context.res.topBaseLine, context.res.bottomBaseLine);
-    }
-    // A normal starts at its contour anchor, which can be on either
-    // flank. Orient a terminal slice by its own free end rather than
-    // interpreting geometric upper/lower as letter ownership.
-    if (found && terminal && rule.value("ownsLeftTip").toBool() &&
-        rule.value("bottomProbe") == "normal" &&
-        getJoinTime(context.res, context.orientation).isStrictRight(std::prev(context.xSorted.end())->time))
-        std::swap(context.res.topBaseLine, context.res.bottomBaseLine);
-    return found;
-}
-
-bool supportsOpenMedialBoundary(const QJsonObject& config, const QJsonObject& form) {
-    const auto shape = form.value("body").toObject().value("shape");
-    const auto resolvedShape = formDescription(config, form, "body").value("shape");
-    return shape == "counter-attachment" ||
-           shape == "inclined-blade" ||
-           shape == "parallel-return" ||
-           shape == "returning-lips" ||
-           shape == "enclosed-lips" || form.contains("parallelReturn") ||
-           form.contains("enclosedHead") || form.contains("counterLigature") ||
-           form.contains("mouth") || form.contains("blade") || !pairedRouteSettings(form).isEmpty() ||
-           (resolvedShape == "forked-stem" || resolvedShape == "turning-shaft") ||
-           !pairedCounterSettings(form).isEmpty() || !loopSettings(form).isEmpty() ||
-           !openHeadSettings(form).isEmpty() || hasToothBody(form) || hasToothCluster(form) ||
-           !loopHeadSettings(form).isEmpty() || form.value("pairedCounters").toBool() ||
-           (!form.value("right").toObject().value("walk").toArray().isEmpty() &&
-            !form.value("left").toObject().value("walk").toArray().isEmpty());
-}
-
-bool hasIntrinsicMedialBody(const QJsonObject& config, const QJsonObject& form) {
-    return formDescription(config, form, "body").value("shape") == "turning-shaft" ||
-        form.contains("parallelReturn") || form.contains("enclosedHead") ||
-        form.contains("mouth") || form.contains("blade") || !form.value("counterLigature").toObject().isEmpty() ||
-        !pairedRouteSettings(form).isEmpty() || !loopSettings(form).isEmpty() ||
-        !openHeadSettings(form).isEmpty() || !pairedCounterSettings(form).isEmpty() ||
-        hasToothBody(form) || !loopHeadSettings(form).isEmpty() ||
-        (form.value("sharedEntry").toBool() && hasToothCluster(form));
-}
-
-bool usesToothEntryProbe(const QJsonObject& form) {
-    return form.value("cuts").toObject().value("precedingTooth").toObject()
-        .value("probeEntry").toBool();
-}
-
-std::vector<MedialCandidate> declaredStemBoundaries(SearchContext& context, const QJsonObject& config,
-        const QJsonObject& form, const Stretching& incoming, const QPointF& entry, const QPointF& exit,
-        double stroke, bool open, bool recoverTeeth, bool allowFork, const std::optional<Stretching>& sharedExit) {
-    const auto body = formDescription(config, form, "body");
-    if (!hasStemFlanks(body)) return {};
-    const auto evidence = recognizedSharedShape(context, body);
-    return stemBoundaryCandidates(context, config, form, *evidence->medialStem, incoming, entry, exit,
-                                  stroke, open, recoverTeeth, allowFork, sharedExit);
-}
-
-// Collect template proposals before resolving the following body's boundary.
-std::optional<std::vector<MedialCandidate>> proposeMedialBodies(
-        SearchContext& context, const QJsonObject& form, PlacementSearch* plan, QChar nextLetter,
-        const Stretching* precedingBody, double bodyMinX, double entryX) {
-    std::vector<MedialCandidate> candidates;
-    const auto contour = pairedRouteSettings(form);
-    const auto loop = loopSettings(form);
-    const auto openHead = openHeadSettings(form);
-    const auto pairedCorners = pairedCounterSettings(form);
-    const auto head = loopHeadSettings(form);
-    const auto bridge = form.value("counterLigature").toObject();
-    if (!bridge.isEmpty() && bridge.value("letters").toString().contains(nextLetter)) {
-        const auto previousForm = context.form;
-        const auto previousResult = context.res;
-        context.form = bridge;
-        context.res = {};
-        const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
-        const CounterAttachmentLoop *loop = nullptr;
-        if (evidence->attachment && cutCounterAttachments(context, *evidence->attachment, bridge, &loop)) {
-            const auto left = context.res;
-            // A shoulder that owns the counter on its own may still wrap
-            // around a preceding cut. Let assembly check the ordered options.
-            for (const auto& right : loopShoulderCuts(context, loop->box, loop->shoulders,
-                     bridge.value("shoulder").toObject(), left.topBaseLine.time, false))
-                candidates.emplace_back(right, left);
-        }
-        context.form = previousForm;
-        context.res = previousResult;
-    }
-    if (form.contains("parallelReturn") || form.contains("enclosedHead") ||
-        form.contains("blade") || form.contains("mouth")) {
-        const auto generate = [&]() {
-            if (form.contains("parallelReturn"))
-                return cutParallelReturns(
-                    context, recognizedSharedShape(context, form.value("body").toObject())->parallelReturns,
-                    form.value("cuts").toObject().value("bands").toObject());
-            if (form.contains("enclosedHead"))
-                return cutEnclosedLips(
-                    context, recognizedSharedShape(context, form.value("body").toObject())->enclosedLips,
-                    form.value("cuts").toObject().value("head").toObject(), false);
-            if (form.contains("blade"))
-                return cutBlades(context,
-                                 recognizedSharedShape(context, form.value("body").toObject())->blades,
-                                 form.value("cuts").toObject().value("blade").toObject());
-            return cutOpenMouths(context,
-                                 recognizedSharedShape(context, form.value("body").toObject())->mouths,
-                                 shapeSettings(form, "mouth"));
-        };
-        const auto id = form.value("id").toString();
-        if (plan && !plan->intrinsic.contains(id))
-            plan->intrinsic.insert(id, generate());
-        const auto& proposals = plan ? plan->intrinsic.constFind(id).value() : generate();
-        std::set<std::array<int, 4>> distinct;
-        const auto timeKey = [](double t) { return static_cast<int>(std::lround(t * 10000)); };
-        for (const auto& [right, left] : proposals) {
-            if (distinct
-                    .insert({timeKey(right.topBaseLine.time), timeKey(right.bottomBaseLine.time),
-                             timeKey(left.topBaseLine.time), timeKey(left.bottomBaseLine.time)})
-                    .second)
-                candidates.emplace_back(right, left);
-        }
-    }
-    if (!contour.isEmpty()) {
-        const auto key = std::make_pair(form.value("id").toString(), context.pairedStrokeWidth);
-        auto [it, inserted] = context.outlineCache->contourBodies.try_emplace(key);
-        if (inserted) {
-            if (form.value("body").toObject().value("shape") == "paired-route") {
-                const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
-                it->second = cutPairedRoutes(context, evidence->pairedRoutes,
-                                             form.value("body").toObject().value("routes").toObject(),
-                                             form.value("cuts").toObject().value("routes").toObject());
-            } else
-                it->second = contourBodyBoundaries(context, contour);
-        }
-        for (const auto& [right, left] : it->second) candidates.emplace_back(right, left);
-    }
-    if (!pairedCorners.isEmpty()) {
-        const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
-        const auto policy = form.value("cuts").toObject().value("pair").toObject();
-        for (const auto& pair : evidence->stackedPairs)
-            if (auto cuts = cutStackedPair(context, pair, policy))
-                candidates.emplace_back(cuts->first, cuts->second);
-    }
-    if (!head.isEmpty()) {
-        const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
-        for (const auto &[right, left] : cutCrestedLoops(
-                 context, evidence->crestedHeads, form.value("cuts").toObject().value("head").toObject()))
-            candidates.emplace_back(right, left);
-    }
-    if (!loop.isEmpty()) {
-        // A shared-entry loop can reclaim its own body from an
-        // overextended preceding cut. Limit that search to the
-        // preceding body's contour interval, rather than borrowing
-        // a loop already assigned to an earlier letter.
-        QPainterPath available;
-        const QPainterPath* scope = nullptr;
-        double maxX = entryX;
-        if (loop.contains("exitCorner") && form.value("sharedEntry").toBool()) {
-            if (precedingBody) {
-                const auto pieces = cutRegions(context.transformedPath, {}, {*precedingBody},
-                    context.orientation, true);
-                if (pieces.size() != 2) return std::nullopt;
-                available = pieces[1].path;
-                scope = &available;
-            }
-            maxX = context.bbox.right();
-        }
-        if (loop.contains("rimAnchors")) {
-            const auto settings = loop.value("rimAnchors").toObject();
-            const auto evidence = form.value("body").toObject().value("shape") == "counter-rim"
-                                      ? recognizedSharedShape(context, form.value("body").toObject())
-                                      : nullptr;
-            const auto proposals =
-                evidence ? cutRimBodies(context, evidence->rims, settings) : rimSections(context, settings);
-            for (const auto &[right, left] : proposals)
-                candidates.emplace_back(right, left);
-        } else {
-            std::optional<std::pair<Stretching, Stretching>> body;
-            if (form.value("body").toObject().value("shape") == "counter-loop") {
-                const auto evidence = recognizedSharedShape(context, form.value("body").toObject());
-                const auto selected = selectLoopBody(context, evidence->loops, bodyMinX, maxX, scope);
-                if (selected)
-                    body = cutLoopBody(context, *selected, loop, true);
-                else {
-                    InspectFormScope inspection(form);
-                    inspectReason("Assembly",
-                                  "No recognized loop fits this slot's contour ownership and position.");
-                }
-            } else
-                body = medialLoopBoundaries(context, loop, bodyMinX, maxX, true, scope);
-            if (body) candidates.emplace_back(body->first, body->second);
-        }
-    }
-    if (!openHead.isEmpty()) {
-        for (const auto &[right, left] : declaredOpenHeadCuts(context, form, bodyMinX, entryX))
-            candidates.emplace_back(right, left);
-    }
-    return candidates;
-}
-
-// Project template walks and the paired-counter fallback at this slot.
-void appendMedialWalks(SearchContext& context, const QJsonObject& form,
-                              const QPointF& entry, const QPointF& exit, double stroke,
-                              bool open, bool allowWalk, std::vector<MedialCandidate>& candidates) {
-    if (allowWalk) for (const auto& start : context.xSorted) {
-        // Paired-counter bodies are identified by their enclosed holes
-        // below, so their walks need not start at the preceding letter.
-        if (!form.value("pairedCounters").toBool() &&
-            (std::abs(start.point.x() - entry.x()) > 2 * stroke ||
-             std::abs(start.point.y() - entry.y()) > 2 * stroke)) continue;
-        Stretching right{}, left{};
-        if (medialBodyChord(context, start, form.value("right").toObject(), right) &&
-            medialBodyChord(context, start, form.value("left").toObject(), left))
-            candidates.emplace_back(right, left);
-    }
-    if (form.value("pairedCounters").toBool()) {
-        // The two counters of this form straddle its joining stroke.
-        // Probe just outside their combined width if the walk misses a turn.
-        const double baseline = open ? entry.y() : (entry.y() + exit.y()) / 2;
-        const double margin = stroke * 0.2;
-        for (size_t i = 1; i < context.subPaths.size(); ++i) {
-            const auto upper = context.subPaths[i].boundingRect();
-            if (upper.center().y() >= baseline || context.transformedPath.contains(upper.center())) continue;
-            for (size_t j = 1; j < context.subPaths.size(); ++j) {
-                const auto lower = context.subPaths[j].boundingRect();
-                if (lower.center().y() <= baseline || context.transformedPath.contains(lower.center()) ||
-                    upper.right() < lower.left() || lower.right() < upper.left()) continue;
-                const auto bounds = upper.united(lower);
-                if (bounds.right() >= entry.x() ||
-                    (open ? entry.x() - bounds.right() > 6 * stroke : bounds.left() <= exit.x() - stroke) ||
-                    bounds.height() > 8 * stroke) continue;
-                Stretching right{}, left{};
-                const double probeY = open ? (upper.bottom() + lower.top()) / 2 : baseline;
-                if (medialChordAt(context, bounds.right() + margin, probeY, stroke, right) &&
-                    medialChordAt(context, bounds.left() - margin, probeY, stroke, left))
-                    candidates.emplace_back(right, left);
-            }
-        }
-    }
 }
 
 } // namespace MedinaCutter
