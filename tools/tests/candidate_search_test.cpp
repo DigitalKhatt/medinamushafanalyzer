@@ -69,7 +69,9 @@ static void checkTemplatePriority(const QJsonObject& config, AFont& font) {
     };
     const Fixture fixtures[] = {
         {29, 14, 6, 1, {"seen-init", "beh-upright-medi", "beh-tooth-medi", "lam-bowl-fina"}},
-        {416, 7, 8, 2, {"seen-init", "beh-tooth-medi", "hah-flat-medi", "waw-fina"}},
+        {416, 7, 8, 2, {"seen-init", "beh-tooth-medi", "hah-flat-medi", "waw-fina"}, 2, true},
+        {8, 2, 1, 2, {"beh-init", "hah-flat-medi", "waw-fina"}, 1},
+        {33, 9, 5, 2, {"lam-init", "hah-flat-medi", "qaf-fina"}, 1},
         {411, 7, 9, 3, {"lam-init", "beh-bent-medi", "kaf-bowl-fina"}},
         {6, 6, 10, 2, {"lam-hah-stacked-init", "hah-returning-lips-medi", "kaf-zigzag-medi", "beh-tooth-medi",
                        "meem-counter-fina"}, 0},

@@ -473,6 +473,7 @@ struct JoinSections {
     Stretching exit, entry;
     bool shared, usesReceivingEntry;
     QString terminalJunction;
+    bool compact = false;
 };
 
 std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBody& sending,
@@ -601,7 +602,7 @@ bool validConnector(const QPainterPath& connector, const Apath& shape, const QLi
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
         SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
         const QJsonObject& config, const std::vector<bool>& requiredConnectors, double tightTolerance, double penWidth,
-        bool allowAlternateAnchors, bool allowShortAttachments, const QJsonObject* bodyChecks,
+        bool allowAlternateAnchors, const QJsonObject* bodyChecks,
         std::span<const JoinSections* const> selectedJoins = {}) {
     Subword trial{};
     trial.text = sub.text;
@@ -626,13 +627,15 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         if (!seam) {
             computed = resolveJoin(source, sending, receiving, letters[int(slot) - 1], letters[int(slot)], letters.back(),
                 slot + 1 == bodies.size(), sharesFinalFold, config, requiredConnectors[slot - 1], tightTolerance,
-                penWidth, allowAlternateAnchors, allowShortAttachments);
+                penWidth, allowAlternateAnchors, false);
             if (!computed) return {};
             seam = &*computed;
         }
-        auto [exit, entry, shared, usesReceivingEntry, junction] = *seam;
-        sharedAtEntry[slot - 1] = usesReceivingEntry;
-        if (!junction.isEmpty()) terminalJunction = junction;
+        auto exit = seam->exit;
+        const auto& entry = seam->entry;
+        const bool shared = seam->shared;
+        sharedAtEntry[slot - 1] = seam->usesReceivingEntry;
+        if (!seam->terminalJunction.isEmpty()) terminalJunction = seam->terminalJunction;
         if (!shared && bodies[slot]->retainsCounterRim) {
             // The saved rim geometry uses the sending cap's source curve
             // parameter. Rebind it without moving either endpoint.
@@ -705,7 +708,8 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         if (slot + 1 == bodies.size() || trial.kashidaCuts[slot].first.isNull()) continue;
         const auto& [right, left] = trial.kashidaCuts[slot];
         auto& connector = regions[region++].path;
-        if (!validConnector(connector, shape, right, left, allowShortAttachments,
+        const bool compact = slot < selectedJoins.size() && selectedJoins[slot]->compact;
+        if (!validConnector(connector, shape, right, left, compact,
                             config.value("_anchorContinuation").toBool(), penWidth)) return {};
         trial.kashidaPaths[slot] = std::move(connector);
     }
@@ -803,7 +807,7 @@ struct AnchorTraversal {
     AnchorSearchMemo memo;
     std::vector<const AnchoredBody*> selected;
     size_t partitionAttempts = 0;
-    std::set<std::pair<size_t, const AnchoredBody*>> deadSuffixes;
+    std::set<std::tuple<size_t, const AnchoredBody*, bool>> deadSuffixes;
     std::vector<const JoinSections*> selectedJoins;
     std::map<std::tuple<const QJsonObject*, const AnchoredBody*, const AnchoredBody*, size_t, bool, bool, bool>,
              std::optional<JoinSections>> resolvedJoins;
@@ -898,7 +902,7 @@ struct AnchorTraversal {
 
     struct AttachmentPolicy {
         bool alternateAnchors = false;
-        bool shortConnectors = false;
+        bool allowCompactJoins = false;
     };
 
     JoinCompatibility follows(const AnchorBranch& branch, size_t slot, const AnchoredBody& sending,
@@ -961,7 +965,7 @@ struct AnchorTraversal {
             receiving.sharesFinalEntry || canUseReceivingEntry(sending, receiving, branch.source.orientation,
                 letters.front(), penWidth) || fitsDeclaredSharedEntry(sending, receiving, branch.source, letters.back(), penWidth) ||
             (policy.alternateAnchors && sharesLoopNeck(sending, receiving, branch.source.orientation, branch.tightTolerance)) ||
-            (policy.shortConnectors && !requiredConnectors.front() &&
+            (policy.allowCompactJoins && !requiredConnectors.front() &&
              sharesCloseAttachment(sending, receiving, branch.source.orientation, std::max(branch.tightTolerance, .75 * penWidth))))
             return true;
         return false;
@@ -971,11 +975,10 @@ struct AnchorTraversal {
         auto& source = branch.source;
         const auto& config = branch.config;
         const auto tightTolerance = branch.tightTolerance;
-        const auto [allowAlternates, allowShortAttachments] = policy;
         const auto bodyChecks = config.value("recoveryChecks").toObject();
         auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(branch),
                                   config, requiredConnectors, tightTolerance, penWidth,
-                                  allowAlternates, allowShortAttachments,
+                                  policy.alternateAnchors,
                                   config.value("fixedAnchorBodyChecks").toBool() ? &bodyChecks : nullptr, selectedJoins);
         if (partition && (!accept || accept(*partition))) return partition;
         return {};
@@ -1048,14 +1051,21 @@ struct AnchorTraversal {
         return {};
     }
 
-    std::optional<Subword> match(const AnchorBranch& branch, AttachmentPolicy policy, int& remaining) {
-        if (remaining == 0) return {};
+    std::optional<Subword> match(const AnchorBranch& branch, AttachmentPolicy policy, int& remaining,
+                                 std::optional<Subword>& compactPartition, bool compact = false) {
+        if (remaining == 0 || (compact && compactPartition)) return {};
         if (selected.size() == letters.size()) {
             ++partitionAttempts;
-            return finish(branch, policy);
+            auto partition = finish(branch, policy);
+            // Prefer a complete partition with ordinary joins. A compatible
+            // compact join is available during the same search and is kept
+            // only when no ordinary partition is found.
+            if (!compact) return partition;
+            if (partition) compactPartition = std::move(partition);
+            return {};
         }
         const auto* sending = selected.empty() ? nullptr : selected.back();
-        const auto suffix = std::pair{selected.size(), sending};
+        const auto suffix = std::tuple{selected.size(), sending, compact};
         if (sending && deadSuffixes.contains(suffix)) return {};
         const auto before = partitionAttempts;
         auto result = bodiesAfter(branch, selected.size(), sending, policy, remaining,
@@ -1070,27 +1080,34 @@ struct AnchorTraversal {
                 if (sending) {
                     const size_t slot = selected.size() - 1;
                     const bool terminal = slot + 1 == letters.size();
-                    const auto resolve = [&]() -> std::optional<JoinSections> {
+                    const auto resolve = [&](bool compactJoin) -> std::optional<JoinSections> {
                         auto seam = resolveJoin(branch.source, *sending, body, letters[int(slot) - 1],
                             letters[int(slot)], letters.back(),
                             terminal, terminal && sharesFinalFold(branch), branch.config, requiredConnectors[slot - 1],
-                            branch.tightTolerance, penWidth, policy.alternateAnchors, policy.shortConnectors);
-                        if (!seam || seam->shared || body.retainsCounterRim || branch.limit <= 0 ||
+                            branch.tightTolerance, penWidth, policy.alternateAnchors, compactJoin);
+                        if (!seam) return {};
+                        seam->compact = compactJoin;
+                        if (seam->shared || body.retainsCounterRim || (branch.limit <= 0 && !policy.allowCompactJoins) ||
                             seam->exit.counterEntry.pathIndex > 0 || seam->entry.counterEntry.pathIndex > 0) return seam;
                         const auto parts = cutRegions(shape.path, {}, {seam->exit, seam->entry},
                                                       branch.source.orientation, !branch.continuation);
                         if (parts.size() != 3 || !validConnector(parts[1].path, shape, sectionLine(seam->exit),
-                            sectionLine(seam->entry), policy.shortConnectors, branch.continuation, penWidth)) return {};
+                            sectionLine(seam->entry), compactJoin, branch.continuation, penWidth)) return {};
                         return seam;
+                    };
+                    const auto resolvePreferred = [&] {
+                        auto preferred = resolve(false);
+                        if (preferred || !policy.allowCompactJoins) return preferred;
+                        return resolve(true);
                     };
                     const std::optional<JoinSections>* seam;
                     if (branch.limit > 0) {
                         auto [known, inserted] = resolvedJoins.try_emplace({&branch.config, sending, &body, slot,
-                            branch.verifyContours, policy.alternateAnchors, policy.shortConnectors});
-                        if (inserted) known->second = resolve();
+                            branch.verifyContours, policy.alternateAnchors, policy.allowCompactJoins});
+                        if (inserted) known->second = resolvePreferred();
                         seam = &known->second;
                     } else {
-                        computed = resolve();
+                        computed = resolvePreferred();
                         seam = &computed;
                     }
                     if (!*seam) return {};
@@ -1098,7 +1115,8 @@ struct AnchorTraversal {
                     addedJoin = true;
                 }
                 if (auto complete = sharedCounterPartition(branch, policy)) return complete;
-                if (auto complete = match(branch, policy, remaining)) return complete;
+                const bool usesCompactJoin = compact || (addedJoin && selectedJoins.back()->compact);
+                if (auto complete = match(branch, policy, remaining, compactPartition, usesCompactJoin)) return complete;
                 return {};
             });
         // A failed final partition can depend on any earlier letter.
@@ -1115,7 +1133,7 @@ struct AnchorTraversal {
         const AnchoredBody receiving{.formId = body.formId, .entry = body.exit, .requiresSharedEntry = true};
         selected.push_back(&receiving);
         auto partition = assemble(word, sub, shape, branch.source, letters, selected, false, branch.config,
-                                  requiredConnectors, branch.tightTolerance, penWidth, policy.alternateAnchors, false,
+                                  requiredConnectors, branch.tightTolerance, penWidth, policy.alternateAnchors,
                                   nullptr);
         selected.pop_back();
         if (partition && (!accept || accept(*partition))) return partition;
@@ -1197,16 +1215,16 @@ struct AnchorTraversal {
             }
             int remaining = branch->limit > 0 ? branch->limit : -1;
             const bool alternates = branch->config.value("fixedAnchorAlternatesEnding").toString().contains(letters.back());
-            const bool shortConnectors = branch->config.value("fixedAnchorBodyChecks").toBool() && letters.size() <= 5;
+            const bool allowCompactJoins = branch->config.value("fixedAnchorBodyChecks").toBool() && letters.size() <= 5;
             const auto tryBranch = [&](AttachmentPolicy policy) {
                 deadSuffixes.clear();
-                return match(*branch, policy, remaining);
+                std::optional<Subword> compactPartition;
+                if (auto complete = match(*branch, policy, remaining, compactPartition)) return complete;
+                return compactPartition;
             };
-            if (auto complete = tryBranch({})) return complete;
             if (alternates)
-                if (auto complete = tryBranch({true, false})) return complete;
-            if (shortConnectors)
-                if (auto complete = tryBranch({alternates, true})) return complete;
+                if (auto complete = tryBranch({})) return complete;
+            if (auto complete = tryBranch({alternates, allowCompactJoins})) return complete;
         }
         return {};
     }
