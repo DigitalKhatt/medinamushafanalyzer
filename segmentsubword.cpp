@@ -2,19 +2,19 @@
 
 using namespace MedinaCutter;
 
-static const QJsonObject& primaryLetterForms(const QJsonObject& config) {
-    static thread_local QJsonObject source, primary;
+static const QJsonObject& baseLetterForms(const QJsonObject& config) {
+    static thread_local QJsonObject source, base;
     if (source != config) {
-        source = primary = config;
+        source = base = config;
         for (const auto* position : {"initial", "medial", "final"}) {
             const auto forms = config.value(position).toArray();
             QJsonArray eligible;
             for (const auto& form : forms)
                 if (!form.toObject().value("onUnresolvedPartition").toBool()) eligible.append(form);
-            if (eligible.size() != forms.size()) primary.insert(position, eligible);
+            if (eligible.size() != forms.size()) base.insert(position, eligible);
         }
     }
-    return primary;
+    return base;
 }
 
 bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont*,
@@ -51,51 +51,44 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     }
 
     struct SearchForms {
-        QJsonObject primary, requested, expanded, continuation, preciseExpanded, preciseContinuation;
-        AnchorForms forms, expandedForms, continuationForms, preciseForms, preciseExpandedForms, preciseContinuationForms;
+        QJsonObject base, requested, standard, continuation, verifiedStandard, verifiedContinuation;
+        AnchorForms standardForms, continuationForms, verifiedStandardForms, verifiedContinuationForms;
     };
     const auto& requestedForms = draft ? *draft : letterForms();
     auto& geometry = *cutGeometryMemo;
     const auto assemble = [&]() -> bool {
-        const auto& sourceConfig = geometryMemo.owned ? primaryLetterForms(requestedForms) : requestedForms;
+        const auto& sourceConfig = geometryMemo.owned ? baseLetterForms(requestedForms) : requestedForms;
         const auto ligature = segmentDeclaredLigature(word, sub, sourceConfig);
         if (ligature == LigatureMatch::SharedCut || ligature == LigatureMatch::Failed) {
             if (geometry.profiling) geometry.anchorSearch = "declared-ligature";
             return ligature == LigatureMatch::SharedCut;
         }
         static thread_local SearchForms compiled;
-        if (compiled.primary != sourceConfig || compiled.requested != requestedForms) {
-            compiled.primary = sourceConfig;
+        if (compiled.base != sourceConfig || compiled.requested != requestedForms) {
+            compiled.base = sourceConfig;
             compiled.requested = requestedForms;
-            compileAnchorForms(sourceConfig, compiled.forms);
-            compiled.expanded = {};
+            compiled.standard = sourceConfig.contains("anchorSearch")
+                ? anchorConfigForPass(sourceConfig, AnchorPass::Standard) : sourceConfig;
+            compileAnchorForms(sourceConfig, compiled.standardForms, true);
             compiled.continuation = {};
-            if (sourceConfig.contains("fixedAnchorExpansion")) {
-                compiled.expanded = expandedAnchorConfig(sourceConfig);
-                compileAnchorForms(compiled.expanded, compiled.expandedForms);
-                if (sourceConfig.value("fixedAnchorExpansion").toObject().value("continuation").toBool()) {
-                    compiled.continuation = expandedAnchorConfig(sourceConfig, true);
-                    compileAnchorForms(compiled.continuation, compiled.continuationForms);
-                    compileAnchorForms(requestedForms, compiled.preciseForms);
-                    compiled.preciseExpanded = expandedAnchorConfig(requestedForms);
-                    compileAnchorForms(compiled.preciseExpanded, compiled.preciseExpandedForms);
-                    compiled.preciseContinuation = expandedAnchorConfig(requestedForms, true);
-                    compileAnchorForms(compiled.preciseContinuation, compiled.preciseContinuationForms);
-                }
+            if (sourceConfig.value("anchorSearch").toObject().value("continuation").toBool()) {
+                compiled.continuation = anchorConfigForPass(sourceConfig, AnchorPass::Continuation);
+                compileAnchorForms(compiled.continuation, compiled.continuationForms);
+                compiled.verifiedStandard = anchorConfigForPass(requestedForms, AnchorPass::Standard);
+                compileAnchorForms(requestedForms, compiled.verifiedStandardForms, true);
+                compiled.verifiedContinuation = anchorConfigForPass(requestedForms, AnchorPass::Continuation);
+                compileAnchorForms(compiled.verifiedContinuation, compiled.verifiedContinuationForms);
             }
         }
         if (geometry.profiling && geometry.anchorSearch.isEmpty())
             geometry.anchorSearch = sub.secondaryBodyPath >= 0 ? "compound-body" : "ineligible";
         const bool verify = geometry.verifyContourGeometry;
-        std::vector<AnchorPriority> priorities{{sourceConfig, compiled.forms, verify}};
-        if (!compiled.expanded.isEmpty()) priorities.push_back({compiled.expanded, compiled.expandedForms, verify, AnchorPass::Expanded});
+        std::vector<AnchorPriority> priorities{{compiled.standard, compiled.standardForms, verify}};
         if (!compiled.continuation.isEmpty()) {
-            if (!verify && sourceConfig != requestedForms)
-                priorities.push_back({requestedForms, compiled.preciseForms, true});
             priorities.push_back({compiled.continuation, compiled.continuationForms, verify, AnchorPass::Continuation});
             if (!verify) {
-                priorities.push_back({compiled.preciseExpanded, compiled.preciseExpandedForms, true, AnchorPass::Expanded});
-                priorities.push_back({compiled.preciseContinuation, compiled.preciseContinuationForms, true, AnchorPass::Continuation});
+                priorities.push_back({compiled.verifiedStandard, compiled.verifiedStandardForms, true});
+                priorities.push_back({compiled.verifiedContinuation, compiled.verifiedContinuationForms, true, AnchorPass::Continuation});
             }
         }
         if (auto partition = segmentWithAnchors(word, sub, priorities, acceptAnchors)) {
@@ -119,9 +112,9 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
         return true;
     }
     if (sub.letterDiagnostics.isEmpty()) {
-        const auto expanded = expandedAnchorConfig(requestedForms, true);
+        const auto continuation = anchorConfigForPass(requestedForms, AnchorPass::Continuation);
         AnchorForms forms;
-        compileAnchorForms(expanded, forms);
+        compileAnchorForms(continuation, forms);
         const std::array phases{"initial", "medial", "final"};
         for (int slot = 0; slot < letters.size(); ++slot) {
             const int position = slot == 0 ? 0 : slot + 1 == letters.size() ? 2 : 1;

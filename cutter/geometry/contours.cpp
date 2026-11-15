@@ -596,16 +596,22 @@ std::optional<ContourRouteEvidence> recognizeContourRoute(SearchContext& context
 
 bool projectUpwardCut(const SearchContext& context, PathExtrema bottom, Stretching& cut) {
     const auto& ink = context.transformedPath;
-    const auto hits = FindInterections(ink,
-        QLineF(bottom.point, QPointF(bottom.point.x(), context.bbox.top() - 1)), true);
-    std::optional<PathExtrema> top;
-    double distance = context.bbox.height() + 1;
-    for (const auto& hit : hits) {
-        const double rise = bottom.point.y() - hit.point.y();
-        if (rise <= 1e-5 || rise >= distance || !interiorChord(ink, hit, bottom)) continue;
-        top = hit;
-        distance = rise;
-    }
+    const QLineF probe(bottom.point, QPointF(bottom.point.x(), context.bbox.top() - 1));
+    const auto nearestCrossing = [&](RootSearch search) -> std::optional<PathExtrema> {
+        std::optional<PathExtrema> top;
+        double distance = context.bbox.height() + 1;
+        for (const auto& hit : FindInterections(ink, probe, true, search)) {
+            const double rise = bottom.point.y() - hit.point.y();
+            if (rise <= 1e-5 || rise >= distance || !interiorChord(ink, hit, bottom)) continue;
+            top = hit;
+            distance = rise;
+        }
+        return top;
+    };
+    auto top = nearestCrossing(RootSearch::Standard);
+    // A root at a Bézier endpoint can be rounded outside [0, 1].
+    if (!top && (!cutGeometryMemo || !cutGeometryMemo->verifyContourGeometry))
+        top = nearestCrossing(RootSearch::BracketAllCrossings);
     if (!top) return false;
     cut.topBaseLine = *top;
     cut.bottomBaseLine = bottom;

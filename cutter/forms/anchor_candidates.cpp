@@ -2,29 +2,33 @@
 
 namespace MedinaCutter {
 
-QJsonObject expandedAnchorConfig(QJsonObject config, bool continuation) {
-    const auto expansion = config.take("fixedAnchorExpansion").toObject();
-    for (const auto* phase : {"initial", "medial", "final"}) {
-        auto forms = config.value(phase).toArray();
+static void applyAnchorOverrides(QJsonObject& form, const QJsonObject& settings) {
+    for (auto field = settings.begin(); field != settings.end(); ++field) {
+        if (field.value().isNull()) form.remove(field.key());
+        else form.insert(field.key(), field.value());
+    }
+}
+
+QJsonObject anchorConfigForPass(QJsonObject config, AnchorPass pass) {
+    const bool continuation = pass == AnchorPass::Continuation;
+    for (const auto* position : {"initial", "medial", "final"}) {
+        auto forms = config.value(position).toArray();
         for (qsizetype i = 0; i < forms.size(); ++i) {
             auto form = forms.at(i).toObject();
-            const auto firstPass = form.value("anchorPass");
             const auto overrides = form.take("anchorOverrides").toObject();
-            if (firstPass == "expanded" || (continuation && firstPass == "continuation")) form.remove("anchorPass");
-            const auto apply = [&](const QJsonObject& settings) {
-                for (auto field = settings.begin(); field != settings.end(); ++field) {
-                    if (field.value().isNull()) form.remove(field.key());
-                    else form.insert(field.key(), field.value());
-                }
-            };
-            apply(overrides.value("expanded").toObject());
-            if (continuation) apply(overrides.value("continuation").toObject());
+            const auto priority = form.take("continuationPriority");
+            auto standard = overrides.value("standard").toObject();
+            if (continuation) standard.remove("priorityWithinPass");
+            applyAnchorOverrides(form, standard);
+            if (continuation) {
+                if (form.value("anchorPass") == "continuation") form.remove("anchorPass");
+                if (!priority.isUndefined()) form.insert("priorityWithinPass", priority);
+                applyAnchorOverrides(form, overrides.value("continuation").toObject());
+            }
             forms.replace(i, form);
         }
-        config.insert(phase, forms);
+        config.insert(position, forms);
     }
-    for (const auto* key : {"fixedAnchorStemReturnEnding", "fixedAnchorExpansionChecks"})
-        if (expansion.contains(key)) config.insert(key, expansion.value(key));
     return config;
 }
 
@@ -80,7 +84,7 @@ static std::optional<Stretching> initialFootExit(const SearchContext& source, co
     return {};
 }
 
-QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
+QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms, bool standardAlternatives) {
     forms = {};
     AnchorForms compiled;
     const auto attachmentSettings = [&](const QJsonObject& declaration) -> QJsonValue {
@@ -103,7 +107,22 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
     }
     const std::array positions{"initial", "medial", "final"};
     for (size_t position = 0; position < positions.size(); ++position) {
-        const auto declarations = config.value(positions[position]).toArray();
+        auto declarations = config.value(positions[position]).toArray();
+        if (standardAlternatives && config.contains("anchorSearch")) {
+            QJsonArray candidates;
+            for (const auto& value : std::as_const(declarations)) {
+                candidates.append(value);
+                const auto declared = value.toObject();
+                auto settings = declared.value("anchorOverrides").toObject().value("standard").toObject();
+                const auto priority = settings.take("priorityWithinPass");
+                auto alternative = declared;
+                applyAnchorOverrides(alternative, settings);
+                if (alternative == declared) continue;
+                if (!priority.isUndefined()) alternative.insert("priorityWithinPass", priority);
+                candidates.append(alternative);
+            }
+            declarations = std::move(candidates);
+        }
         for (const auto& value : declarations) {
             const auto declaration = value.toObject();
             const auto id = declaration.value("id").toString();
@@ -123,6 +142,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 return id + ": preferSharedAttachment requires an initial form with ligatureWith";
             auto form = bodyConstraintForm(config, declaration);
             form.remove("anchorOverrides");
+            form.remove("continuationPriority");
             if (form.contains("upperAttachment")) form.insert("upperAttachment", attachmentSettings(form));
             const auto body = form.value("body").toObject();
             const auto cuts = form.value("cuts").toObject();
@@ -939,9 +959,9 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             }
         }
         if (continuation && sharedExit) {
-            const auto expanded = recognizedSharedShape(source, body);
-            if (!expanded->medialStem) return result;
-            for (const auto& stem : expanded->medialStem->stems) {
+            const auto stemEvidence = recognizedSharedShape(source, body);
+            if (!stemEvidence->medialStem) return result;
+            for (const auto& stem : stemEvidence->medialStem->stems) {
                 if (!getJoinTime(*sharedExit, source.orientation).isStrictRight(stem.crest.time)) continue;
                 for (const auto& entryRoute : stem.entryRoutes) {
                     source.res = {};

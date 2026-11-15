@@ -1,9 +1,9 @@
 {
   "version": 2,
   "strokeWidth": 1,
-  "fixedAnchorExpansion": {
-    "fixedAnchorStemReturnEnding": "يىئ",
-    "fixedAnchorExpansionChecks": 4096,
+  "anchorSearch": {
+    "stemReturnEndings": "يىئ",
+    "maxCandidates": 4096,
     "continuation": true
   },
   "joinDefaults": {
@@ -72,8 +72,8 @@
   "initial": [
     {
       "id": "ain-shallow-return-init",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "عغ",
       "body": {
         "shape": "contour-route",
@@ -187,7 +187,8 @@
     },
     {
       "id": "seen-folded-init",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "سش",
       "sharedFoldWithFinal": "يئى",
       "body": {
@@ -207,7 +208,8 @@
     {
       "id": "seen-init",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -335,7 +337,8 @@
       "id": "lam-hah-stacked-init",
       "priorityWithinPass": 2,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 6,
           "fixedAnchorsEnding": null
         }
       },
@@ -593,7 +596,8 @@
     {
       "id": "beh-sloping-init",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -789,8 +793,8 @@
     },
     {
       "id": "beh-shoulder-init",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "بتثنيئى",
       "body": {
         "inherit": "beh-init",
@@ -813,7 +817,8 @@
       "id": "beh-under-blade-init",
       "priorityWithinPass": 2,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 6,
           "fixedAnchorsEnding": null
         }
       },
@@ -844,7 +849,8 @@
     },
     {
       "id": "kaf-ascender-init",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "ك",
       "ligatureWith": "اآأإٱل",
       "body": {
@@ -881,7 +887,8 @@
     },
     {
       "id": "kaf-fork-ascender-init",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "ك",
       "ligatureWith": "اآأإٱل",
       "body": {
@@ -958,7 +965,8 @@
       "id": "kaf-descending-hook-init",
       "priorityWithinPass": 1,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 5,
           "fixedAnchorsEnding": "وؤماآأإٱنعغبتثهة"
         },
         "continuation": {
@@ -1059,7 +1067,8 @@
     {
       "id": "hah-init",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -1099,7 +1108,8 @@
     {
       "id": "hah-counter-init",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -1136,7 +1146,8 @@
       "id": "hah-enclosed-head-init",
       "priorityWithinPass": 1,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 5,
           "fixedAnchorsEnding": null
         }
       },
@@ -1161,7 +1172,8 @@
     {
       "id": "kaf-flat-init",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -1198,7 +1210,8 @@
     {
       "id": "ain-neck-init",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -1443,7 +1456,8 @@
       "id": "sad-wide-tooth-init",
       "priorityWithinPass": 2,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 6,
           "fixedAnchorsEnding": null
         }
       },
@@ -1596,8 +1610,8 @@
     },
     {
       "id": "hah-returning-lip-init",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "جحخ",
       "body": {
         "shape": "contour-route",
@@ -1727,8 +1741,8 @@
     },
     {
       "id": "hah-extended-lip-init",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "جحخ",
       "body": {
         "shape": "contour-route",
@@ -1822,8 +1836,8 @@
     },
     {
       "id": "beh-high-foot-init",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "بتثنيئى",
       "body": {
         "shape": "contour-route",
@@ -1970,8 +1984,8 @@
     },
     {
       "id": "sad-rounded-exit-init",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "صض",
       "body": {
         "shape": "contour-route",
@@ -2069,8 +2083,8 @@
     },
     {
       "id": "kaf-countered-crest-init",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "ك",
       "body": {
         "shape": "contour-route",
@@ -2122,8 +2136,8 @@
   "medial": [
     {
       "id": "heh-paired-crown-medi",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "reclaimEntry": true,
       "current": "ه",
       "onUnresolvedPartition": true,
@@ -2187,8 +2201,8 @@
     },
     {
       "id": "lam-descending-shaft-medi",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "ل",
       "onUnresolvedPartition": true,
       "tightJoin": true,
@@ -2224,8 +2238,8 @@
     },
     {
       "id": "hah-stacked-throat-medi",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "reclaimEntry": true,
       "current": "جحخ",
       "tightJoin": true,
@@ -2443,7 +2457,6 @@
     },
     {
       "id": "seen-folded-medi",
-      "anchorPass": "expanded",
       "current": "سش",
       "sharedFoldWithFinal": "يئى",
       "sharedEntry": true,
@@ -2974,7 +2987,8 @@
     },
     {
       "id": "hah-folded-yeh-medi",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "reclaimEntry": true,
       "current": "جحخ",
       "sharedFoldWithFinal": "يئى",
@@ -3056,7 +3070,8 @@
     {
       "id": "hah-wedge-medi",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -3176,7 +3191,8 @@
     {
       "id": "hah-stacked-medi",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -3259,7 +3275,8 @@
     {
       "id": "hah-rising-entry-medi",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -3380,7 +3397,8 @@
     {
       "id": "hah-shoulder-medi",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -3434,7 +3452,8 @@
     {
       "id": "hah-compact-medi",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -3578,7 +3597,8 @@
     {
       "id": "hah-open-mouth-medi",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null
         }
       },
@@ -3652,7 +3672,8 @@
       "id": "hah-enclosed-lips-medi",
       "priorityWithinPass": 1,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 5,
           "fixedAnchorsEnding": null
         }
       },
@@ -3681,8 +3702,8 @@
     },
     {
       "id": "hah-shallow-mouth-medi",
-      "priorityWithinPass": 1,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 5,
+      "continuationPriority": 1,
       "reclaimEntry": true,
       "current": "جحخ",
       "tightJoin": true,
@@ -3827,7 +3848,8 @@
       "id": "hah-returning-lips-medi",
       "priorityWithinPass": 1,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 5,
           "fixedAnchorsEnding": null
         }
       },
@@ -3965,7 +3987,8 @@
     {
       "id": "kaf-zigzag-medi",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsEnding": null,
           "fixedAnchorsBeforeFinal": null
         }
@@ -4158,8 +4181,8 @@
     },
     {
       "id": "kaf-fork-ascender-medi",
-      "priorityWithinPass": 1,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 5,
+      "continuationPriority": 1,
       "current": "ك",
       "tightJoin": true,
       "body": {
@@ -4189,7 +4212,8 @@
       "id": "kaf-descending-blade-medi",
       "priorityWithinPass": 1,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 5,
           "fixedAnchorsBeforeFinal": "وؤم"
         },
         "continuation": {
@@ -4228,7 +4252,8 @@
       "id": "lam-turning-flanks-medi",
       "priorityWithinPass": 1,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 5,
           "fixedAnchorsEnding": "دذاآأإٱوؤم"
         },
         "continuation": {
@@ -4280,7 +4305,8 @@
       "id": "kaf-parallel-fold-medi",
       "priorityWithinPass": 1,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 5,
           "fixedAnchorsEnding": null
         }
       },
@@ -4366,7 +4392,8 @@
       "id": "sad-wide-tooth-medi",
       "priorityWithinPass": 2,
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 6,
           "fixedAnchorsEnding": null
         }
       },
@@ -4415,8 +4442,8 @@
     },
     {
       "id": "sad-corner-tooth-medi",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "صض",
       "body": {
         "shape": "counter-loop",
@@ -4570,8 +4597,8 @@
     },
     {
       "id": "meem-stacked-rim-medi",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "م",
       "tightJoin": true,
       "sharedEntry": true,
@@ -4602,8 +4629,8 @@
     },
     {
       "id": "tah-rising-rim-medi",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "طظ",
       "body": {
         "shape": "counter-rim",
@@ -4931,78 +4958,6 @@
       }
     },
     {
-      "id": "hah-low-return-medi",
-      "priorityWithinPass": 2,
-      "reclaimEntry": true,
-      "current": "جحخ",
-      "tightJoin": true,
-      "body": {
-        "shape": "paired-route",
-        "routes": {
-          "anchor": {
-            "xExtremum": true,
-            "flanks": [
-              {
-                "minX": 0,
-                "minY": 0,
-                "insideBody": true
-              },
-              {
-                "minX": 0.5,
-                "maxY": -0.5,
-                "accumulate": true
-              }
-            ]
-          },
-          "right": {
-            "topTraversal": "forward",
-            "top": [
-              "up",
-              "down",
-              {
-                "direction": "left",
-                "accumulate": true,
-                "end": {
-                  "xMinimum": true
-                }
-              }
-            ],
-            "topUseStepEnd": true
-          },
-          "left": {
-            "anchor": {
-              "sharp": true,
-              "offset": {
-                "minX": 0,
-                "maxX": 1.4,
-                "minY": 2.15,
-                "maxY": 3.2
-              }
-            },
-            "topAtAnchor": true
-          }
-        },
-        "counters": 0
-      },
-      "cuts": {
-        "sharedExit": "receiving-corners",
-        "routes": {
-          "right": {
-            "bottomProbe": "left"
-          },
-          "left": {
-            "bottomProbe": "up"
-          },
-          "orientToBody": true
-        },
-        "boundaries": {
-          "left": "route-left",
-          "right": "route-right"
-        }
-      },
-      "onUnresolvedPartition": true
-    },
-    {
       "id": "kaf-lower-flank-medi",
       "priorityWithinPass": 2,
       "current": "ك",
@@ -5176,8 +5131,8 @@
     },
     {
       "id": "lam-folded-neck-medi",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "reclaimEntry": true,
       "current": "ل",
       "tightJoin": true,
@@ -5267,8 +5222,8 @@
   "final": [
     {
       "id": "beh-folded-shoulder-fina",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "بتث",
       "body": {
         "shape": "contour-route",
@@ -5404,7 +5359,8 @@
     {
       "id": "reh-fina",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsMaxLetters": null
         }
       },
@@ -5505,8 +5461,8 @@
     },
     {
       "id": "yeh-first-turn-fina",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "يئى",
       "ownsLeftTip": true,
       "retainBodyFeatures": true,
@@ -5534,12 +5490,8 @@
     },
     {
       "id": "yeh-fina",
-      "anchorOverrides": {
-        "expanded": {
-          "sharedBoundary": true,
-          "sharedBoundaryWith": "ل"
-        }
-      },
+      "sharedBoundary": true,
+      "sharedBoundaryWith": "ل",
       "current": "يئى",
       "tightJoin": true,
       "body": {
@@ -5578,7 +5530,8 @@
     {
       "id": "noon-fina",
       "anchorOverrides": {
-        "expanded": {
+        "standard": {
+          "priorityWithinPass": 4,
           "fixedAnchorsMaxLetters": null
         }
       },
@@ -5682,8 +5635,8 @@
     },
     {
       "id": "seen-bowl-entry-fina",
-      "priorityWithinPass": 3,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 7,
+      "continuationPriority": 3,
       "current": "سش",
       "tightJoin": true,
       "returningStroke": true,
@@ -5711,7 +5664,8 @@
     },
     {
       "id": "seen-fina",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "سش",
       "body": {
         "shape": "tooth-cluster",
@@ -5783,7 +5737,8 @@
     },
     {
       "id": "alef-open-fina",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "اآأإٱ",
       "body": {
         "shape": "profile-neck",
@@ -5832,7 +5787,8 @@
     },
     {
       "id": "alef-folded-fina",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "اآأإٱ",
       "body": {
         "shape": "profile-neck",
@@ -5911,7 +5867,8 @@
     },
     {
       "id": "sad-tah-fina",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "صضطظ",
       "body": {
         "shape": "profile-neck",
@@ -6215,7 +6172,8 @@
     },
     {
       "id": "yeh-return-fina",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "يئى",
       "tightJoin": true,
       "body": {
@@ -6299,7 +6257,8 @@
     },
     {
       "id": "hah-stacked-fina",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "جحخ",
       "sharedBoundary": true,
       "body": {
@@ -6388,7 +6347,8 @@
     },
     {
       "id": "alef-return-fina",
-      "anchorPass": "expanded",
+      "priorityWithinPass": 4,
+      "continuationPriority": 0,
       "current": "اآأإٱ",
       "tightJoin": true,
       "sharedBoundary": true,
@@ -6458,8 +6418,8 @@
     },
     {
       "id": "kaf-fork-fina",
-      "priorityWithinPass": 1,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 5,
+      "continuationPriority": 1,
       "current": "ك",
       "ownsLeftTip": true,
       "body": {
@@ -6481,8 +6441,8 @@
     },
     {
       "id": "alef-tapered-arm-fina",
-      "priorityWithinPass": 1,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 5,
+      "continuationPriority": 1,
       "current": "اأإآٱ",
       "sharedBoundary": true,
       "body": {
@@ -6561,8 +6521,8 @@
     },
     {
       "id": "sad-lower-rim-fina",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "صض",
       "body": {
         "shape": "counter-shoulder",
@@ -6585,8 +6545,8 @@
     },
     {
       "id": "sad-diagonal-fina",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "صض",
       "tightJoin": true,
       "body": {
@@ -6614,8 +6574,8 @@
     },
     {
       "id": "tah-diagonal-fina",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "طظ",
       "tightJoin": true,
       "body": {
@@ -6676,8 +6636,8 @@
     },
     {
       "id": "meem-short-neck-fina",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "م",
       "tightJoin": true,
       "returningStroke": true,
@@ -6703,8 +6663,8 @@
     },
     {
       "id": "meem-tailed-rim-fina",
-      "priorityWithinPass": 2,
-      "anchorPass": "expanded",
+      "priorityWithinPass": 6,
+      "continuationPriority": 2,
       "current": "م",
       "body": {
         "shape": "counter-outline",

@@ -176,8 +176,7 @@ static void checkFixedAnchors(const QJsonObject& config) {
             int rejected = 0;
             const AnchorPartitionCheck reject = [&](const auto&) { ++rejected; return false; };
             auto bounded = config;
-            bounded.remove("fixedAnchorExpansion");
-            bounded.insert("fixedAnchorExpansionChecks", 64);
+            bounded.insert("anchorSearch", QJsonObject{{"maxCandidates", 64}});
             check(!analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1,
                                            &font, true, &bounded, reject),
                   "Rejecting every anchor partition returned a complete result");

@@ -1638,19 +1638,6 @@ void MainWindow::inspectSubword(const QPoint& pos) {
                     if (!exists) break;
                 }
                 rule.insert("id", id);
-                const auto copyEligibility = [&](QJsonObject& plan) {
-                    auto forms = plan.value("forms").toObject();
-                    if (!forms.contains(sourceId)) return false;
-                    forms.insert(id, forms.value(sourceId));
-                    plan.insert("forms", forms);
-                    return true;
-                };
-                auto expansion = config.value("fixedAnchorExpansion").toObject();
-                auto continuation = expansion.value("continuation").toObject();
-                const bool expanded = copyEligibility(expansion);
-                const bool continued = copyEligibility(continuation);
-                if (continued) expansion.insert("continuation", continuation);
-                if (expanded || continued) config.insert("fixedAnchorExpansion", expansion);
                 entries.insert(index, rule);
                 config.insert(phase, entries);
                 editor->setPlainText(QString::fromUtf8(QJsonDocument(config).toJson()));

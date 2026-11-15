@@ -1532,7 +1532,19 @@ QJsonObject bodyConstraintForm(const QJsonObject& config, QJsonObject form) {
 } // namespace MedinaCutter
 
 static QString normalizePassPriorities(QJsonObject& config) {
-    // Saved drafts may still use the original ordering flags.
+    // Migrate saved drafts at the configuration boundary.
+    const auto legacySearch = config.take("fixedAnchorExpansion");
+    auto search = config.value("anchorSearch").toObject();
+    if (legacySearch.isObject() && !config.contains("anchorSearch")) search = legacySearch.toObject();
+    for (const auto& [oldKey, key] : {std::pair{"fixedAnchorExpansionChecks", "maxCandidates"},
+                                      std::pair{"fixedAnchorStemReturnEnding", "stemReturnEndings"}}) {
+        const auto top = config.take(oldKey);
+        const auto nested = search.take(oldKey);
+        if (!search.contains(key) && !nested.isUndefined()) search.insert(key, nested);
+        if (!search.contains(key) && !top.isUndefined()) search.insert(key, top);
+    }
+    if (!search.isEmpty() || legacySearch.isObject()) config.insert("anchorSearch", search);
+
     constexpr std::array flags{"onIncomplete", "onUnresolved", "onFinalRetry"};
     for (const auto* position : {"initial", "medial", "final"}) {
         auto forms = config.value(position).toArray();
@@ -1552,6 +1564,38 @@ static QString normalizePassPriorities(QJsonObject& config) {
                 form.remove(flags[index]);
             }
             if (priority.isUndefined() && legacyPriority) form.insert("priorityWithinPass", legacyPriority);
+            auto overrides = form.value("anchorOverrides").toObject();
+            const auto legacy = overrides.take("expanded");
+            if (!legacy.isUndefined()) {
+                if (!legacy.isObject() || legacy.toObject().isEmpty() || overrides.contains("standard"))
+                    return id + ": invalid legacy anchor override";
+                overrides.insert("standard", legacy);
+            }
+            if (form.value("anchorPass") == "expanded") {
+                form.remove("anchorPass");
+                auto standard = overrides.take("standard").toObject();
+                const auto standardPriority = standard.take("priorityWithinPass");
+                if (!standardPriority.isUndefined()) {
+                    if (!form.contains("continuationPriority"))
+                        form.insert("continuationPriority", form.value("priorityWithinPass").toInt());
+                    form.insert("priorityWithinPass", standardPriority);
+                }
+                for (auto setting = standard.begin(); setting != standard.end(); ++setting) {
+                    if (setting.value().isNull()) form.remove(setting.key());
+                    else form.insert(setting.key(), setting.value());
+                }
+            }
+            auto continuation = overrides.value("continuation").toObject();
+            const auto continuationPriority = continuation.take("priorityWithinPass");
+            if (!continuationPriority.isUndefined()) {
+                form.insert("continuationPriority", continuationPriority);
+                if (continuation.isEmpty()) overrides.remove("continuation");
+                else overrides.insert("continuation", continuation);
+            }
+            if (!legacy.isUndefined() || !continuationPriority.isUndefined()) {
+                if (overrides.isEmpty()) form.remove("anchorOverrides");
+                else form.insert("anchorOverrides", overrides);
+            }
             forms.replace(i, form);
         }
         config.insert(position, forms);
@@ -1606,15 +1650,20 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
             for (const auto* obsolete : {"next", "first", "last", "bodyBoundary", "deferAfterMedial"})
                 if (rule.contains(obsolete)) return id + ": position is determined by its section; remove " + obsolete;
             const auto pass = rule.value("anchorPass");
-            if (!pass.isUndefined() && pass != "expanded" && pass != "continuation" && pass != "assembly")
-                return id + ": anchorPass must be expanded, continuation or assembly";
+            if (!pass.isUndefined() && pass != "continuation" && pass != "assembly")
+                return id + ": anchorPass must be continuation or assembly";
+            for (const auto* key : {"priorityWithinPass", "continuationPriority"}) {
+                const auto priority = rule.value(key);
+                if (!priority.isUndefined() && priority.toInt(-1) < 0)
+                    return id + ": " + key + " must be a nonnegative integer";
+            }
             const auto anchorOverrides = rule.value("anchorOverrides");
             if (!anchorOverrides.isUndefined() && anchorOverrides.toObject().isEmpty())
-                return id + ": anchorOverrides requires expanded or continuation settings";
+                return id + ": anchorOverrides requires standard or continuation settings";
             const auto stages = anchorOverrides.toObject();
             for (auto stage = stages.begin(); stage != stages.end(); ++stage) {
                 const auto settings = stage.value().toObject();
-                if ((stage.key() != "expanded" && stage.key() != "continuation") || settings.isEmpty())
+                if ((stage.key() != "standard" && stage.key() != "continuation") || settings.isEmpty())
                     return id + ": invalid anchor override stage " + stage.key();
                 for (auto field = settings.begin(); field != settings.end(); ++field) {
                     const auto key = field.key();
@@ -1622,7 +1671,8 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                           (field.value().isNull() || field.value().isString())) &&
                         !(key == "fixedAnchorsMaxLetters" && field.value().isNull()) &&
                         !(key == "sharedBoundary" && field.value().isBool()) &&
-                        !(key == "sharedBoundaryWith" && field.value().isString()))
+                        !(key == "sharedBoundaryWith" && field.value().isString()) &&
+                        !(key == "priorityWithinPass" && stage.key() == "standard" && field.value().toInt(-1) >= 0))
                         return id + ": invalid anchor override " + key;
                 }
             }
@@ -2121,24 +2171,23 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
             if (!problem.isEmpty()) return id + ": " + problem;
         }
     }
-    AnchorForms anchorForms;
-    const auto anchorProblem = compileAnchorForms(config, anchorForms);
-    if (!anchorProblem.isEmpty()) return anchorProblem;
-    if (config.contains("fixedAnchorExpansion")) {
-        const auto expansion = config.value("fixedAnchorExpansion").toObject();
-        const auto visits = expansion.value("fixedAnchorExpansionChecks");
+    if (config.contains("anchorSearch")) {
+        if (!config.value("anchorSearch").isObject()) return "anchorSearch must be an object";
+        const auto search = config.value("anchorSearch").toObject();
+        const auto visits = search.value("maxCandidates");
         if (!visits.isUndefined() && visits.toInt() < 1)
-            return "fixedAnchorExpansionChecks must be a positive integer";
-        const auto continuation = expansion.value("continuation");
+            return "anchorSearch.maxCandidates must be a positive integer";
+        const auto continuation = search.value("continuation");
         if (!continuation.isUndefined() && !continuation.isBool())
-            return "fixedAnchorExpansion.continuation must be true or false";
-        const auto error = compileAnchorForms(expandedAnchorConfig(config), anchorForms);
-        if (!error.isEmpty()) return error;
+            return "anchorSearch.continuation must be true or false";
         if (continuation.toBool()) {
-            const auto problem = compileAnchorForms(expandedAnchorConfig(config, true), anchorForms);
+            AnchorForms continuationForms;
+            const auto problem = compileAnchorForms(anchorConfigForPass(config, AnchorPass::Continuation), continuationForms);
             if (!problem.isEmpty()) return problem;
         }
     }
+    AnchorForms anchorForms;
+    if (const auto error = compileAnchorForms(config, anchorForms, true); !error.isEmpty()) return error;
     config.insert("kashidaDefaults", effective);
     draft = std::move(config);
     return {};

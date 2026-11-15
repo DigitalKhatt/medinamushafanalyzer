@@ -220,11 +220,11 @@ bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& 
             break;
         }
         config.insert("final", finals);
-        const auto expanded = expandedAnchorConfig(config, true);
+        const auto continuation = anchorConfigForPass(config, AnchorPass::Continuation);
         AnchorForms forms;
-        if (!compileAnchorForms(expanded, forms).isEmpty()) return false;
+        if (!compileAnchorForms(continuation, forms).isEmpty()) return false;
         const auto& prefixWord = prefix.page.lines.front().words.front();
-        const std::array priorities{AnchorPriority{expanded, forms,
+        const std::array priorities{AnchorPriority{continuation, forms,
             cutGeometryMemo && cutGeometryMemo->verifyContourGeometry, AnchorPass::Continuation}};
         auto partition = segmentWithAnchors(prefixWord, result, priorities, {});
         if (!partition) return false;
@@ -279,13 +279,13 @@ static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo
         auto analysis = componentPage(shape, component.ink, text);
         auto& localWord = analysis.page.lines.front().words.front();
         auto& local = localWord.wordResultInfo.subWords.front();
-        const auto expanded = expandedAnchorConfig(forms, true);
-        AnchorForms primary, continuation;
-        if (!compileAnchorForms(forms, primary).isEmpty() ||
-            !compileAnchorForms(expanded, continuation).isEmpty()) return std::move(local);
-        const std::array priorities{AnchorPriority{forms, primary},
-            AnchorPriority{expanded, continuation, false, AnchorPass::Continuation},
-            AnchorPriority{expanded, continuation, true, AnchorPass::Continuation}};
+        const auto continuation = anchorConfigForPass(forms, AnchorPass::Continuation);
+        AnchorForms standardForms, continuationForms;
+        if (!compileAnchorForms(forms, standardForms).isEmpty() ||
+            !compileAnchorForms(continuation, continuationForms).isEmpty()) return std::move(local);
+        const std::array priorities{AnchorPriority{forms, standardForms},
+            AnchorPriority{continuation, continuationForms, false, AnchorPass::Continuation},
+            AnchorPriority{continuation, continuationForms, true, AnchorPass::Continuation}};
         const auto accepts = [&](const WordResultInfo::SubWordInfo& partition) {
             if (!head) return true;
             const auto stub = world(partition.baseGlyphs.back().path);

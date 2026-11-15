@@ -39,7 +39,7 @@ QVector<QPainterPath> toSubpaths(const QPainterPath& path) {
 
 std::vector<GlyphInfo> computeCutRegions(const QPainterPath& path, const QString& text,
                                          const std::vector<Stretching>& cuts, Orientation orientation,
-                                         bool expanded) {
+                                         bool checkSegmentOrder) {
     std::vector<GlyphInfo> regions;
     if (cuts.empty()) return {{text, path}};
     // Both contour sides must agree on reading order. Testing only whether
@@ -194,7 +194,7 @@ std::vector<GlyphInfo> computeCutRegions(const QPainterPath& path, const QString
 		for (int i = 1; i < nextPoints.size(); i++) {
 			//assert(nextPoints[i - 1] < nextPoints[i]);
 			if (!(nextPoints[i - 1] < nextPoints[i]) ||
-                (expanded && i >= 2 && std::floor(nextPoints[i - 2]) == std::floor(nextPoints[i]))) {
+                (checkSegmentOrder && i >= 2 && std::floor(nextPoints[i - 2]) == std::floor(nextPoints[i]))) {
 				correct = false;
 				break;
 			}
@@ -395,16 +395,16 @@ std::vector<GlyphInfo> computeCutRegions(const QPainterPath& path, const QString
 
 std::vector<GlyphInfo> cutRegions(const QPainterPath& path, const QString& text,
                                        const std::vector<Stretching>& cuts, Orientation orientation,
-                                       bool expanded) {
+                                       bool checkSegmentOrder) {
     if (cutGeometryMemo && cutGeometryMemo->activeForm) ++cutGeometryMemo->activeForm->partitions;
-    if (!cutGeometryMemo || cuts.empty()) return computeCutRegions(path, text, cuts, orientation, expanded);
+    if (!cutGeometryMemo || cuts.empty()) return computeCutRegions(path, text, cuts, orientation, checkSegmentOrder);
     const int source = cutGeometryMemo->outlineId(path);
-    if (source < 0) return computeCutRegions(path, text, cuts, orientation, expanded);
+    if (source < 0) return computeCutRegions(path, text, cuts, orientation, checkSegmentOrder);
     QByteArray key;
     key.reserve(int(16 + cuts.size() * 80));
     appendGeometryKey(key, source);
     appendGeometryKey(key, orientation);
-    appendGeometryKey(key, expanded);
+    appendGeometryKey(key, checkSegmentOrder);
     for (const auto& cut : cuts) {
         // These are all the fields consumed by computeCutRegions and its
         // reading-order/shared-fork checks. Pen width and template identity
@@ -425,7 +425,7 @@ std::vector<GlyphInfo> cutRegions(const QPainterPath& path, const QString& text,
         return result;
     }
     ++cutGeometryMemo->partitionMisses;
-    auto result = computeCutRegions(path, text, cuts, orientation, expanded);
+    auto result = computeCutRegions(path, text, cuts, orientation, checkSegmentOrder);
     size_t cost = 128 + key.size() + result.size() * sizeof(GlyphInfo);
     for (const auto& glyph : result) cost += size_t(glyph.path.elementCount()) * sizeof(QPainterPath::Element);
     if (cost <= size_t(cutGeometryMemo->partitions.maxCost()))

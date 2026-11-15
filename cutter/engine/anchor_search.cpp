@@ -766,6 +766,7 @@ struct AnchorBranch {
     FormChoices forms;
     SearchContext& source;
     int limit;
+    QString stemReturnEndings;
     bool verifyContours;
     AnchorPass pass;
     double tightTolerance;
@@ -940,7 +941,6 @@ struct AnchorTraversal {
             const AnchoredBody stroke{.formId = attachedStroke, .entry = sending->exit, .requiresSharedEntry = true};
             return tryBody(stroke);
         }
-        const auto stemReturnEndings = branch.config.value("fixedAnchorStemReturnEnding").toString();
         const QChar last = letters.back();
         std::vector<const AnchoredBody*> rimAttachments;
         for (const auto* declaration : branch.forms[slot]) {
@@ -961,7 +961,7 @@ struct AnchorTraversal {
                 if (remaining > 0) --remaining;
                 if (sending && body->stemFootSkipAfter.contains(letters[int(slot) - 1])) continue;
                 if (requiresSharedExit && !body->requiresSharedExit) continue;
-                if (body->hasStemReturn && !stemReturnEndings.contains(last) &&
+                if (body->hasStemReturn && !branch.stemReturnEndings.contains(last) &&
                     !(branch.continuation() && body->sharedReturnWith.contains(last))) continue;
                 if (body->alternateAnchor && !body->hasStemReturn &&
                     !ownedCrestEndings.isEmpty() && !ownedCrestEndings.contains(last)) continue;
@@ -1146,8 +1146,10 @@ struct AnchorTraversal {
                     hasFollowingLetter(letters, 0, form->value("ligatureWith").toString());
             });
         }
-        return AnchorBranch{config, std::move(forms), source, config.value("fixedAnchorExpansionChecks").toInt(),
-                            verify, pass, penWidth * settings.value("sharedCutTolerance").toDouble(.25)};
+        const auto search = config.value("anchorSearch").toObject();
+        return AnchorBranch{config, std::move(forms), source, search.value("maxCandidates").toInt(),
+                            search.value("stemReturnEndings").toString(), verify, pass,
+                            penWidth * settings.value("sharedCutTolerance").toDouble(.25)};
     }
 
     std::optional<Subword> search(const QPainterPath& ink, std::span<const AnchorPriority> priorities) {
