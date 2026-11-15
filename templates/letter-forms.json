@@ -436,7 +436,6 @@
     {
       "id": "lam-normal-init",
       "current": "ل",
-      "preferredCutTemplate": "lam-init",
       "body": {
         "features": {
           "minHeight": 4,

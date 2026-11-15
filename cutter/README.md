@@ -26,8 +26,6 @@ Both passes recognize candidates from the same contour readings. The more precis
 
 Within each pass, lower `priorityWithinPass` values are tried first. The default is `0`. A standard alternate can declare its own priority. Continuation uses the top-level priority unless the form declares `continuationPriority`. Ties follow template declaration order. Continuation can move a declared initial attachment to the front when its ligature context matches.
 
-An alternative cut can name its preferred form with `preferredCutTemplate`. When both passes find a valid partition using refined contour evidence, this preference can decide the first position where the two partitions use different forms.
-
 `anchorSearch.maxCandidates` limits candidate visits separately for ordinary and refined contour evidence. `strokeWidth` is the global width in page units for policies measured in pen widths. `kashidaDefaults.sharedCutTolerance` controls how close two sections can be when sharing a cut.
 
 ## Shape and join policies

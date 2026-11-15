@@ -19,18 +19,6 @@ struct CandidateBudget {
 
 bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot, size_t count);
 
-bool prefersDeclaredCut(const Subword& candidate, const Subword& current, const QJsonObject& config) {
-    const auto& proposed = candidate.letterDiagnostics;
-    const auto& accepted = current.letterDiagnostics;
-    for (qsizetype slot = 0; slot < std::min(proposed.size(), accepted.size()); ++slot) {
-        const auto prior = accepted.at(slot).toObject().value("template").toString();
-        const auto next = proposed.at(slot).toObject().value("template").toString();
-        if (prior != next)
-            return !next.isEmpty() && namedLetterForm(config, prior).value("preferredCutTemplate") == next;
-    }
-    return false;
-}
-
 struct AnchorCandidateKey {
     QByteArray form;
     size_t slot;
@@ -1221,7 +1209,6 @@ struct AnchorTraversal {
         if (cutGeometryMemo) cutGeometryMemo->preciseGeometry = false;
         selected.reserve(letters.size());
         std::optional<Subword> refinedPartition;
-        bool hasPreferredCut = false;
         for (const auto& priority : priorities) {
             const auto branch = prepareBranch(priority, source);
             if (!branch) continue;
@@ -1237,18 +1224,11 @@ struct AnchorTraversal {
             CandidateBudget budget{limit, limit};
             deadSuffixes.clear();
             BestPartition best;
-            if (refinedPartition && !hasPreferredCut) best.rank = PartitionRank::RefinedBody;
+            if (refinedPartition) best.rank = PartitionRank::RefinedBody;
             if (auto complete = match(*branch, budget, best)) return complete;
             if (!best.result) continue;
             if (best.rank != PartitionRank::RefinedBody) return std::move(best.result);
-            if (!refinedPartition || prefersDeclaredCut(*best.result, *refinedPartition, branch->config)) {
-                refinedPartition = std::move(best.result);
-                const auto& diagnostics = refinedPartition->letterDiagnostics;
-                hasPreferredCut = std::any_of(diagnostics.begin(), diagnostics.end(), [&](const auto& letter) {
-                    const auto id = letter.toObject().value("template").toString();
-                    return namedLetterForm(branch->config, id).contains("preferredCutTemplate");
-                });
-            }
+            if (!refinedPartition) refinedPartition = std::move(best.result);
         }
         // Prefer ordinary contour evidence across all configured passes.
         return refinedPartition;

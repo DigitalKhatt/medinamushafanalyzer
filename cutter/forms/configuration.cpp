@@ -1668,20 +1668,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                 if (!priority.isUndefined() && priority.toInt(-1) < 0)
                     return id + ": " + key + " must be a nonnegative integer";
             }
-            const auto preferred = rule.value("preferredCutTemplate");
-            if (!preferred.isUndefined()) {
-                const auto current = rule.value("current").toString();
-                const auto valid = [&](const QJsonValue& entry) {
-                    const auto form = entry.toObject();
-                    const auto letters = form.value("current").toString();
-                    return form.value("id") == preferred && !form.contains("preferredCutTemplate") &&
-                        form.contains("body") && form.value("anchorPass") != "assembly" &&
-                        std::all_of(current.begin(), current.end(), [&](QChar letter) { return letters.contains(letter); });
-                };
-                if (!preferred.isString() || preferred.toString().isEmpty() || preferred == id ||
-                    !std::any_of(forms.begin(), forms.end(), valid))
-                    return id + ": preferredCutTemplate must name a preferred body form for the same letters and position";
-            }
             const auto validPrecedingForms = [&](const QJsonValue& value) {
                 const auto senders = value.toArray();
                 return !senders.isEmpty() &&
