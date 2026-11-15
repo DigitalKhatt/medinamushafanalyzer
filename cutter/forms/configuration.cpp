@@ -1601,8 +1601,30 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 return id + ": current must name the letters represented by this form";
             for (const auto* obsolete : {"next", "first", "last", "bodyBoundary", "deferAfterMedial"})
                 if (rule.contains(obsolete)) return id + ": position is determined by its section; remove " + obsolete;
+            const auto pass = rule.value("anchorPass");
+            if (!pass.isUndefined() && pass != "expanded" && pass != "continuation" && pass != "assembly")
+                return id + ": anchorPass must be expanded, continuation or assembly";
+            const auto anchorOverrides = rule.value("anchorOverrides");
+            if (!anchorOverrides.isUndefined() && anchorOverrides.toObject().isEmpty())
+                return id + ": anchorOverrides requires expanded or continuation settings";
+            const auto stages = anchorOverrides.toObject();
+            for (auto stage = stages.begin(); stage != stages.end(); ++stage) {
+                const auto settings = stage.value().toObject();
+                if ((stage.key() != "expanded" && stage.key() != "continuation") || settings.isEmpty())
+                    return id + ": invalid anchor override stage " + stage.key();
+                for (auto field = settings.begin(); field != settings.end(); ++field) {
+                    const auto key = field.key();
+                    if (!((key == "fixedAnchorsEnding" || key == "fixedAnchorsBeforeFinal") &&
+                          (field.value().isNull() || field.value().isString())) &&
+                        !(key == "fixedAnchorsMaxLetters" && field.value().isNull()) &&
+                        !(key == "sharedBoundary" && field.value().isBool()) &&
+                        !(key == "sharedBoundaryWith" && field.value().isString()))
+                        return id + ": invalid anchor override " + key;
+                }
+            }
             for (const auto* key : {"tightJoin", "sharedEntry", "sharedBoundary",
-                                    "onIncomplete", "onUnresolved", "onUnresolvedPartition", "reclaimEntry", "returningStroke"})
+                                    "onIncomplete", "onUnresolved", "onUnresolvedPartition", "reclaimEntry",
+                                    "returningStroke", "alternateAnchor"})
                 if (rule.contains(key) && !rule.value(key).isBool()) return id + ": " + key + " must be true or false";
             if (rule.contains("sharedEntry") && QString(phase) != "medial")
                 return id + ": sharedEntry belongs to a medial ligature form";
@@ -2090,36 +2112,15 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
     if (!anchorProblem.isEmpty()) return anchorProblem;
     if (config.contains("fixedAnchorExpansion")) {
         const auto expansion = config.value("fixedAnchorExpansion").toObject();
-        const auto overrides = expansion.value("forms").toObject();
-        if (overrides.isEmpty()) return "fixedAnchorExpansion requires template overrides";
         const auto visits = expansion.value("fixedAnchorExpansionChecks");
         if (!visits.isUndefined() && visits.toInt() < 1)
             return "fixedAnchorExpansionChecks must be a positive integer";
-        for (auto form = overrides.begin(); form != overrides.end(); ++form) {
-            if (!form.value().isObject() || namedLetterForm(config, form.key()).isEmpty())
-                return "Invalid fixed-anchor expansion template " + form.key();
-            const auto settings = form.value().toObject();
-            for (auto field = settings.begin(); field != settings.end(); ++field)
-                if (!QStringList{"fixedAnchors", "fixedAnchorsEnding",
-                                 "fixedAnchorsBeforeFinal", "fixedAnchorsMaxLetters", "sharedBoundary", "sharedBoundaryWith"}
-                         .contains(field.key()))
-                    return "Unsupported fixed-anchor expansion setting " + field.key();
-        }
+        const auto continuation = expansion.value("continuation");
+        if (!continuation.isUndefined() && !continuation.isBool())
+            return "fixedAnchorExpansion.continuation must be true or false";
         const auto error = compileAnchorForms(expandedAnchorConfig(config), anchorForms);
         if (!error.isEmpty()) return error;
-        if (expansion.contains("continuation")) {
-            const auto additional = expansion.value("continuation").toObject().value("forms").toObject();
-            for (auto form = additional.begin(); form != additional.end(); ++form) {
-                if (!form.value().isObject() || namedLetterForm(config, form.key()).isEmpty())
-                    return "Invalid fixed-anchor continuation template " + form.key();
-                const auto settings = form.value().toObject();
-                for (auto field = settings.begin(); field != settings.end(); ++field)
-                    if (!((field.key() == "fixedAnchors" && field.value().isBool()) ||
-                          ((field.key() == "fixedAnchorsEnding" || field.key() == "fixedAnchorsBeforeFinal") &&
-                           (field.value().isNull() || field.value().isString())) ||
-                          (field.key() == "fixedAnchorsMaxLetters" && field.value().isNull())))
-                        return "Unsupported fixed-anchor continuation setting " + field.key();
-            }
+        if (continuation.toBool()) {
             const auto problem = compileAnchorForms(expandedAnchorConfig(config, true), anchorForms);
             if (!problem.isEmpty()) return problem;
         }

@@ -41,7 +41,6 @@ struct AnchorSearchMemo {
             auto geometry = form;
             // Eligibility is checked before recognition. Only the presence
             // of an ending constraint affects the descending blade policy.
-            geometry.remove("fixedAnchors");
             geometry.remove("preferSharedAttachment");
             if (geometry.contains("fixedAnchorsEnding"))
                 geometry.insert("fixedAnchorsEnding", "eligible");

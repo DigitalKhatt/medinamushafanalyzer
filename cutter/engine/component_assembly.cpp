@@ -215,7 +215,7 @@ bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& 
         for (qsizetype i = 0; i < finals.size(); ++i) {
             auto form = finals.at(i).toObject();
             if (form.value("id") != prefixId) continue;
-            form.insert("fixedAnchors", true);
+            form.remove("anchorPass");
             finals.replace(i, form);
             break;
         }

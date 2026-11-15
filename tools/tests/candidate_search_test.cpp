@@ -127,10 +127,10 @@ static void checkFixedAnchors(const QJsonObject& config) {
     auto invalid = config;
     auto forms = invalid.value("initial").toArray();
     auto form = forms.first().toObject();
-    form.insert("fixedAnchors", "true");
+    form.insert("anchorPass", true);
     forms[0] = form;
     invalid.insert("initial", forms);
-    check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Fixed anchors accepted a nonboolean selector");
+    check(!PageAnalysisResult::prepareLetterForms(invalid).isEmpty(), "Fixed anchors accepted an invalid pass selector");
 
     QFile fontFile("input/font.dat");
     check(fontFile.open(QIODevice::ReadOnly), "Missing fixed anchor fixture font");

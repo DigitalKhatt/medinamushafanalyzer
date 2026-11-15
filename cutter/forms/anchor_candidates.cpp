@@ -4,28 +4,22 @@ namespace MedinaCutter {
 
 QJsonObject expandedAnchorConfig(QJsonObject config, bool continuation) {
     const auto expansion = config.take("fixedAnchorExpansion").toObject();
-    const auto extra = expansion.value("continuation").toObject();
-    auto overrides = expansion.value("forms").toObject();
-    if (continuation) {
-        const auto additional = extra.value("forms").toObject();
-        for (auto it = additional.begin(); it != additional.end(); ++it) {
-            auto settings = overrides.value(it.key()).toObject();
-            const auto fields = it.value().toObject();
-            for (auto field = fields.begin(); field != fields.end(); ++field) settings.insert(field.key(), field.value());
-            overrides.insert(it.key(), settings);
-        }
-        config.insert("_anchorContinuation", true);
-    }
+    if (continuation) config.insert("_anchorContinuation", true);
     for (const auto* phase : {"initial", "medial", "final"}) {
         auto forms = config.value(phase).toArray();
         for (qsizetype i = 0; i < forms.size(); ++i) {
             auto form = forms.at(i).toObject();
-            const auto settings = overrides.value(form.value("id").toString()).toObject();
-            if (settings.isEmpty()) continue;
-            for (auto field = settings.begin(); field != settings.end(); ++field) {
-                if (field.value().isNull()) form.remove(field.key());
-                else form.insert(field.key(), field.value());
-            }
+            const auto firstPass = form.value("anchorPass");
+            const auto overrides = form.take("anchorOverrides").toObject();
+            if (firstPass == "expanded" || (continuation && firstPass == "continuation")) form.remove("anchorPass");
+            const auto apply = [&](const QJsonObject& settings) {
+                for (auto field = settings.begin(); field != settings.end(); ++field) {
+                    if (field.value().isNull()) form.remove(field.key());
+                    else form.insert(field.key(), field.value());
+                }
+            };
+            apply(overrides.value("expanded").toObject());
+            if (continuation) apply(overrides.value("continuation").toObject());
             forms.replace(i, form);
         }
         config.insert(phase, forms);
@@ -111,13 +105,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
         for (const auto& value : declarations) {
             const auto declaration = value.toObject();
             const auto id = declaration.value("id").toString();
-            const auto enabled = declaration.value("fixedAnchors");
-            const auto anchorOnly = declaration.value("fixedAnchorsOnly");
-            if (!anchorOnly.isUndefined() && (!anchorOnly.isBool() || (anchorOnly.toBool() && !enabled.toBool())))
-                return id + ": fixedAnchorsOnly requires an enabled fixed-anchor form";
-            if (enabled.isUndefined()) continue;
-            if (!enabled.isBool()) return id + ": fixedAnchors must be a boolean";
-            if (!enabled.toBool()) continue;
+            if (declaration.contains("anchorPass")) continue;
             const auto maxLetters = declaration.value("fixedAnchorsMaxLetters");
             if (!maxLetters.isUndefined() && maxLetters.toInt() < 2)
                 return id + ": fixedAnchorsMaxLetters must be an integer of at least two";
@@ -132,6 +120,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 declaration.value("ligatureWith").toString().isEmpty()))
                 return id + ": preferSharedAttachment requires an initial form with ligatureWith";
             auto form = bodyConstraintForm(config, declaration);
+            form.remove("anchorOverrides");
             const auto body = form.value("body").toObject();
             const auto cuts = form.value("cuts").toObject();
             const auto shape = body.value("shape");
@@ -1321,7 +1310,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             if (crest != source.ySorted.rend()) candidate.landmarks = {*crest};
         }
     }
-    if (form.value("fixedAnchorsOnly").toBool() && form.value("onUnresolved").toBool())
+    if (form.value("alternateAnchor").toBool())
         for (auto& candidate : result) candidate.alternateAnchor = true;
     if (form.value("_anchorContinuation").toBool() && position == 0 &&
         (shape == "horizontal-counters" || shape == "descending-stem" || shape == "layered-head" ||

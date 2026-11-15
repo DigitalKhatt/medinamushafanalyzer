@@ -73,7 +73,7 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
             if (sourceConfig.contains("fixedAnchorExpansion")) {
                 compiled.expanded = expandedAnchorConfig(sourceConfig);
                 compileAnchorForms(compiled.expanded, compiled.expandedForms);
-                if (sourceConfig.value("fixedAnchorExpansion").toObject().contains("continuation")) {
+                if (sourceConfig.value("fixedAnchorExpansion").toObject().value("continuation").toBool()) {
                     compiled.continuation = expandedAnchorConfig(sourceConfig, true);
                     compileAnchorForms(compiled.continuation, compiled.continuationForms);
                     compileAnchorForms(requestedForms, compiled.preciseForms);

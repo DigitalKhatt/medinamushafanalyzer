@@ -20,7 +20,7 @@ The application, catalog exporter and review tools use `PageAnalysisResult::segm
 3. Use separate sections when the gap contains a complete connecting stroke. A shared junction uses one seam. If a template declares an inward limit, assembly may resolve overlapping preferred sections within that limit while retaining both bodies' landmarks.
 4. Partition the source ink and check the complete result. The catalog exporter also checks that every letter owns source pixels. A rejected result returns control to the same anchor search.
 
-The configuration preserves the search order through the form lists and `fixedAnchorExpansion`. The expanded configurations enable additional shape variants. The bracketed intersection solver can verify tight sections against the original curves. `fixedAnchorExpansionChecks` limits the number of candidates visited by the expanded search. `strokeWidth` is the global width in page units for policies measured in pen widths. `kashidaDefaults.sharedCutTolerance` controls how close two sections can be when sharing a cut.
+Forms enter the primary anchor search by default. A form's `anchorPass` can delay its eligibility to `expanded` or `continuation`, or reserve it for a ligature or component recipe with `assembly`. Per-form `anchorOverrides` hold changes for later passes. The bracketed intersection solver can verify tight sections against the original curves. `fixedAnchorExpansionChecks` limits the number of candidates visited by the expanded search. `strokeWidth` is the global width in page units for policies measured in pen widths. `kashidaDefaults.sharedCutTolerance` controls how close two sections can be when sharing a cut.
 
 ## Shape and join policies
 
