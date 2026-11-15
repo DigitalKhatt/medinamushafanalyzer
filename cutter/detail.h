@@ -620,29 +620,6 @@ std::optional<Stretching> seenEntryCornerPair(SearchContext& context, const Path
 bool seenTipMeetsFold(SearchContext& context, const PathExtrema& tip, bool increasingTime,
                              const Stretching& cut);
 
-enum class SeenExitMode { Configured, ShiftedBend, AlongContour };
-
-} // namespace MedinaCutter
-
-struct SeenExitRetry {
-    int slot;
-    MedinaCutter::SeenExitMode mode;
-    bool wideLastPitch = false;
-
-    static QJsonValue offset(const QJsonObject& settings, MedinaCutter::SeenExitMode mode) {
-        if (mode == MedinaCutter::SeenExitMode::AlongContour && settings.value("exitBendFirst").toBool())
-            return settings.value("exitOffset");
-        return settings.value("retryBendOffset");
-    }
-
-    bool supports(const QJsonObject& settings) const {
-        return (!wideLastPitch || settings.value("retryMaxLastPitch").isDouble()) &&
-               (mode == MedinaCutter::SeenExitMode::Configured || offset(settings, mode).isDouble());
-    }
-};
-
-namespace MedinaCutter {
-
 // Find the three prominent tips and their intervening valleys on the
 // same contour, with an open (counter-free) body between the cuts.
 struct ToothClusterBody {
@@ -671,13 +648,12 @@ bool retainsToothCluster(SearchContext& context, const QJsonObject& body, const 
 bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody> &bodies,
                              const QJsonObject &form, double minX, double maxX, Stretching *right, Stretching *left,
                              const Stretching *finalFold = nullptr, std::array<PathExtrema, 3> *matchedTips = nullptr,
-                             const SeenExitRetry *retry = nullptr,
-                             std::optional<std::array<PathExtrema, 2>> *matchedBowl = nullptr, double penWidth = 1);
+                             std::optional<std::array<PathExtrema, 2>> *matchedBowl = nullptr, double penWidth = 1,
+                             std::optional<double> bendWalk = {});
 
 bool seenTeethBoundaries(SearchContext &context, const QJsonObject &form, double minX, double maxX,
                                 Stretching *right, Stretching *left, const Stretching *finalFold = nullptr,
-                                std::array<PathExtrema, 3> *matchedTips = nullptr,
-                                const SeenExitRetry *retry = nullptr);
+                                std::array<PathExtrema, 3> *matchedTips = nullptr);
 
 struct CounterHole {
     size_t index;
@@ -759,6 +735,11 @@ struct LoopHeadBody {
         double distance;
         std::optional<SavedContourRoute> route;
     };
+    struct Turn {
+        PathExtrema point;
+        bool forward;
+    };
+    std::optional<Turn> descendingTurn;
     std::vector<Neck> necks;
 };
 
@@ -1214,6 +1195,7 @@ struct AnchoredBody {
     bool footExitCandidate = false;
     bool acceptsCounterRim = false;
     bool minimumExitAtFlank = false;
+    bool minimumExitAtTurn = false;
     QString minimumEntryAfterForm;
     QString minimumExitBefore;
     std::optional<PathExtrema> entryLimit, exitLimit;

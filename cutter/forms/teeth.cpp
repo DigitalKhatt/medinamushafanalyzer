@@ -208,7 +208,7 @@ std::vector<ToothClusterBody> recognizeToothClusters(const InkOutline &outline, 
             const double pitch1 = turns[0].point.x() - turns[2].point.x();
             const double pitch2 = turns[2].point.x() - turns[4].point.x();
             const bool ordinary = pitch2 <= maxLastPitch;
-            const bool wide = convex && pitch2 > maxLastPitch && pitch2 <= form.value("retryMaxLastPitch").toDouble();
+            const bool wide = convex && pitch2 > maxLastPitch && pitch2 <= form.value("maxWideLastPitch").toDouble();
             if (pitch1 < minPitch || pitch1 > maxPitch || pitch2 < minLastPitch || (!ordinary && !wide) ||
                 turns[1].point.y() - turns[0].point.y() < rise || turns[3].point.y() - turns[2].point.y() < rise)
                 continue;
@@ -252,7 +252,7 @@ std::optional<Stretching> wideClusterExit(SearchContext& context, const ToothClu
         return cut;
     };
     minimum = section(0);
-    const auto preferred = section(settings.value("retryBendOffset").toDouble(.5));
+    const auto preferred = section(settings.value("bendWalk").toDouble(.5));
     if (!preferred) return std::exchange(minimum, std::nullopt);
     if (minimum && !orderedSections(*minimum, *preferred, context.orientation)) minimum.reset();
     return preferred;
@@ -382,11 +382,12 @@ std::optional<Stretching> clusterEntryAtJunction(SearchContext& context, const T
 
 std::optional<Stretching> clusterExitAtBend(SearchContext& context, const ToothClusterBody& cluster,
                                                 const QJsonObject& settings) {
-    const SeenExitRetry retry{0, SeenExitMode::AlongContour};
+    const auto walk = settings.value("exitBendFirst").toBool()
+        ? settings.value("exitOffset") : settings.value("bendWalk");
     Stretching boundary{};
-    if (retry.supports(settings) &&
+    if (walk.isDouble() &&
         cutToothClusters(context, {cluster}, settings, context.bbox.left(), context.bbox.right() + 1e-6,
-                         nullptr, &boundary, nullptr, nullptr, &retry) &&
+                        nullptr, &boundary, nullptr, nullptr, nullptr, 1, walk.toDouble()) &&
         keepsClusterAtExit(cluster, boundary, context.orientation)) return boundary;
     return {};
 }
@@ -483,11 +484,8 @@ bool retainsToothCluster(SearchContext& context, const QJsonObject& body, const 
 bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody> &bodies,
                              const QJsonObject &form, double minX, double maxX, Stretching *right, Stretching *left,
                              const Stretching *finalFold, std::array<PathExtrema, 3> *matchedTips,
-                             const SeenExitRetry *retry, std::optional<std::array<PathExtrema, 2>> *matchedBowl,
-                             double penWidth) {
-    const auto mode = retry ? retry->mode : SeenExitMode::Configured;
-    const bool wideLastPitch = retry && retry->wideLastPitch;
-    const bool retryBend = mode != SeenExitMode::Configured;
+                             std::optional<std::array<PathExtrema, 2>> *matchedBowl,
+                             double penWidth, std::optional<double> bendWalk) {
     const double rise = form.value("minToothRise").toDouble(0.55);
     const double maxPitch = form.value("maxPitch").toDouble(5);
     const auto &ink = context.transformedPath;
@@ -501,7 +499,7 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
         const auto &turns = body.turns;
         if (final && !form.value("terminalBowl").toBool() && !followsUpperFlank(context, body)) continue;
         if (turns[0].point.x() >= maxX || turns[0].point.x() <= minX || body.minimumX < minX ||
-            (wideLastPitch ? !body.wide : !body.ordinary))
+            !body.ordinary)
             continue;
         const auto advance = body.advancePrevious ? &SearchContext::prev : &SearchContext::next;
         const auto reverse = body.advancePrevious ? &SearchContext::next : &SearchContext::prev;
@@ -601,15 +599,14 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
         bool intrinsicExit = finalFold != nullptr;
         if (finalFold)
             l = *finalFold;
-        else if (left && (retryBend || form.value("exitBendFirst").toBool())) {
+        else if (left && (bendWalk || form.value("exitBendFirst").toBool())) {
             const double radius = form.value("maxExitBendDistance").toDouble(2) * (pitch1 + pitch2) / 2;
-            const auto offset = retryBend ? SeenExitRetry::offset(form, mode) : form.value("exitOffset");
-            const bool followContour = mode == SeenExitMode::AlongContour;
+            const auto offset = form.value("exitOffset");
             intrinsicExit = seenExitBendCut(context, turns[4], advance == &SearchContext::prev, radius, l,
-                                            followContour ? offset.toDouble() : 0);
-            if (intrinsicExit && !followContour && offset.isDouble())
+                                            bendWalk.value_or(0));
+            if (intrinsicExit && !bendWalk && offset.isDouble())
                 intrinsicExit = strokeNormalCut(context, l, -offset.toDouble());
-            if (retryBend && !intrinsicExit)
+            if (bendWalk && !intrinsicExit)
                 continue;
         }
         if (left && !intrinsicExit &&
@@ -666,7 +663,7 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
         auto unshifted = form;
         unshifted.insert("rightOffset", 0);
         return cutToothClusters(context, bodies, unshifted, minX, maxX, right, left,
-                               finalFold, matchedTips, retry, matchedBowl, penWidth);
+                               finalFold, matchedTips, matchedBowl, penWidth, bendWalk);
     }
     if (right) *right = match->first;
     if (left) *left = match->second;
@@ -676,10 +673,9 @@ bool cutToothClusters(SearchContext &context, const std::vector<ToothClusterBody
 // Geometry-only callers and tests use the same recognizer and projection.
 bool seenTeethBoundaries(SearchContext &context, const QJsonObject &form, double minX, double maxX,
                                 Stretching *right, Stretching *left, const Stretching *finalFold,
-                                std::array<PathExtrema, 3> *matchedTips,
-                                const SeenExitRetry *retry) {
+                                std::array<PathExtrema, 3> *matchedTips) {
     return cutToothClusters(context, recognizeToothClusters(inkOutline(context), form), form, minX, maxX, right, left,
-                            finalFold, matchedTips, retry);
+                            finalFold, matchedTips);
 }
 
 // A loop's tooth can have a descending spur on the underside. A normal

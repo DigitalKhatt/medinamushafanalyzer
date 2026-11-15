@@ -492,8 +492,8 @@ int main(int argc, char** argv) {
             auto form = medial[i].toObject();
             auto body = form.value("body").toObject();
             auto teeth = body.value("cluster").toObject();
-            if (!teeth.contains("retryMaxLastPitch")) continue;
-            teeth.remove("retryMaxLastPitch");
+            if (!teeth.contains("maxWideLastPitch")) continue;
+            teeth.remove("maxWideLastPitch");
             body.insert("cluster", teeth); form.insert("body", body);
             medial[i] = form;
         }
@@ -570,7 +570,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < initial.size(); ++i) {
             auto rule = initial[i].toObject();
             auto cuts = rule.value("cuts").toObject(), cluster = cuts.value("cluster").toObject();
-            cluster.remove("retryBendOffset"); cuts.insert("cluster", cluster); rule.insert("cuts", cuts);
+            cluster.remove("bendWalk"); cuts.insert("cluster", cluster); rule.insert("cuts", cuts);
             initial[i] = rule;
         }
         noBend.insert("initial", initial);

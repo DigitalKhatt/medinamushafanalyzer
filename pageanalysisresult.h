@@ -447,7 +447,6 @@ struct arabic_state_table_entry {
 
 
 
-struct SeenExitRetry;
 struct OutlineSearchCache;
 
 struct PageAnalysisResult {

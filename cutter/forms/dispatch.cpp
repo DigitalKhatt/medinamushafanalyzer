@@ -298,6 +298,8 @@ void inspectSharedShape(const SharedShapeEvidence &evidence) {
     if (evidence.head) {
         if (evidence.head->edge)
             inspectLandmark("Head edge", *evidence.head->edge);
+        if (evidence.head->descendingTurn)
+            inspectLandmark("Descending loop turn", evidence.head->descendingTurn->point);
         for (const auto &neck : evidence.head->necks)
             inspectLandmark("Head crest", neck.crest);
     }

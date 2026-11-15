@@ -825,8 +825,6 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         cutKeys << "preferFootExit";
     }
     if (shape == "rising-return") {
-        bodyKeys << "entryRecoveryRoute";
-        cutKeys << "entryRecoveryRoute";
     }
     if (cuts.contains("shoulderEntry")) {
         const auto shoulder = cuts.value("shoulderEntry").toObject();
@@ -1027,6 +1025,11 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": minimumExitBefore needs an exit limit and following letters";
         cutKeys << "minimumExitBefore";
     }
+    if (cuts.contains("minimumExitAtTurn")) {
+        if (phase != "initial" || shape != "suspended-loop" || !cuts.value("minimumExitAtTurn").isBool())
+            return id + ": minimumExitAtTurn needs an initial suspended loop";
+        cutKeys << "minimumExitAtTurn";
+    }
     if (cuts.contains("minimumExitAtBend")) {
         if (phase != "initial" || shape != "tooth-cluster" || !cuts.value("minimumExitAtBend").isBool())
             return id + ": minimumExitAtBend needs an initial tooth cluster";
@@ -1179,14 +1182,6 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         const auto walk = cuts.value("return").toObject().value("upperWalkWidths");
         if (!walk.isUndefined() && (!walk.isDouble() || !std::isfinite(walk.toDouble()) || walk.toDouble() <= 0))
             return id + ": upperWalkWidths must be a positive number";
-    }
-    if (body.contains("entryRecoveryRoute") || cuts.contains("entryRecoveryRoute")) {
-        const auto route = body.value("entryRecoveryRoute").toObject();
-        const auto policy = cuts.value("entryRecoveryRoute").toObject();
-        if (route.value("top").toArray().isEmpty() || policy.isEmpty())
-            return id + ": entryRecoveryRoute needs a top walk and a cut policy";
-        const auto problem = invalidWalkSettings(withOverrides(route, policy), id + ".entryRecoveryRoute");
-        if (!problem.isEmpty()) return problem;
     }
     if (shape == "tail-branch") {
         const auto tail = cuts.value("tail").toObject();
@@ -1374,24 +1369,24 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         const double maxLastPitch = cluster.value("maxLastPitch").toDouble(cluster.value("maxPitch").toDouble(5));
         for (auto it = cluster.begin(); it != cluster.end(); ++it)
             if (!(it.key() == "convexTips" ? it.value().isBool() :
-                QStringList{"minToothRise", "minPitch", "maxPitch", "minLastPitch", "maxLastPitch", "retryMaxLastPitch",
+                QStringList{"minToothRise", "minPitch", "maxPitch", "minLastPitch", "maxLastPitch", "maxWideLastPitch",
                             "maxTipHeightSpreadRatio"}.contains(it.key()) && positive(it.value())))
                 return id + ": invalid tooth-cluster body setting " + it.key();
         const double minLastPitch = cluster.value("minLastPitch").toDouble(minPitch);
         if (minLastPitch < minPitch || minLastPitch > maxLastPitch ||
-            cluster.value("retryMaxLastPitch").toDouble(INFINITY) <= maxLastPitch)
+            cluster.value("maxWideLastPitch").toDouble(INFINITY) <= maxLastPitch)
             return id + ": invalid spacing limits for the last tooth";
         for (auto it = policy.begin(); it != policy.end(); ++it) {
             const bool flag = QStringList{"entryAtJunction", "entryCornerOptional", "allowUnshiftedEntry",
                 "exitBendFirst", "terminalBowl", "exitAtHollow", "exitAtFlank",
                 "shareLoopNeck"}.contains(it.key());
-            const bool distance = QStringList{"rightOffset", "exitOffset", "retryBendOffset", "exitDrop"}.contains(it.key());
+            const bool distance = QStringList{"rightOffset", "exitOffset", "bendWalk", "exitDrop"}.contains(it.key());
             if (!(flag ? it.value().isBool() : distance ? it.value().isDouble() &&
                   std::isfinite(it.value().toDouble()) && it.value().toDouble() >= 0 :
                   it.key() == "maxExitBendDistance" && positive(it.value())))
                 return id + ": invalid tooth-cluster cut setting " + it.key();
         }
-        if (phase == "final" && (policy.contains("exitAtHollow") || policy.contains("retryBendOffset")))
+        if (phase == "final" && (policy.contains("exitAtHollow") || policy.contains("bendWalk")))
             return id + ": this cut setting requires a tooth cluster with an exit";
         if (phase == "initial" && policy.contains("entryAtJunction"))
             return id + ": entryAtJunction requires a tooth cluster with an entry";

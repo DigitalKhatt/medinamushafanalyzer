@@ -205,7 +205,7 @@ bool canUseReceivingEntry(const AnchoredBody& sending, const AnchoredBody& recei
 
 bool sharesLoopNeck(const AnchoredBody& sending, const AnchoredBody& receiving,
                     Orientation orientation, double tightTolerance) {
-    if (sending.counters.size() != 1 || sending.entry ||
+    if (sending.minimumExitAtTurn || sending.counters.size() != 1 || sending.entry ||
         (!receiving.sharesLoopNeck && receiving.sharedEntryFrom != sending.formId) ||
         leavesEntryClearance(*sending.exit, *receiving.entry, orientation, tightTolerance)) return false;
     const auto exit = sectionLine(*sending.exit), entry = sectionLine(*receiving.entry);
@@ -378,7 +378,8 @@ const std::optional<Stretching>& exitLimitAtJoin(const AnchoredBody& sending, co
                                                  QChar following) {
     static const std::optional<Stretching> noLimit;
     if (receiving.acceptsCounterRim && receiving.entryLimit && sending.rimExitLimit) return sending.rimExitLimit;
-    if (sending.minimumExitBefore.isEmpty() || sending.minimumExitBefore.contains(following)) return sending.minimumExit;
+    if (!sending.minimumExitAtTurn &&
+        (sending.minimumExitBefore.isEmpty() || sending.minimumExitBefore.contains(following))) return sending.minimumExit;
     return noLimit;
 }
 
@@ -423,6 +424,15 @@ bool hasOverlapLimits(const AnchoredBody& sending, const AnchoredBody& receiving
         QPointF::dotProduct(a.p2() - a.p1(), b.p2() - b.p1()) > 0;
 }
 
+bool hasLoopTurnOverlap(const AnchoredBody& sending, const AnchoredBody& receiving, Orientation orientation) {
+    if (!sending.minimumExitAtTurn || !sending.minimumExit || sending.requiresSharedExit ||
+        receiving.requiresSharedEntry) return false;
+    const auto& exit = *sending.exit;
+    const auto& entry = *receiving.entry;
+    return exit.counterEntry.pathIndex <= 0 && entry.counterEntry.pathIndex <= 0 &&
+        !sameSection(exit, entry) && !orderedSections(exit, entry, orientation);
+}
+
 bool withinBodyLimit(const Stretching& cut, const std::optional<Stretching>& minimum,
                      Orientation orientation, bool entry) {
     if (!minimum) return true;
@@ -434,10 +444,11 @@ bool withinBodyLimit(const Stretching& cut, const std::optional<Stretching>& min
 }
 
 std::optional<Stretching> resolveOverlap(const SearchContext& source, const AnchoredBody& sending,
-                                         const AnchoredBody& receiving, QChar following) {
+                                         const AnchoredBody& receiving, QChar following, bool atLoopTurn = false) {
     const auto& exit = *sending.exit;
     const auto& entry = *receiving.entry;
-    const auto& minimumExit = exitLimitAtJoin(sending, receiving, following);
+    const auto& minimumExit = atLoopTurn ? sending.minimumExit :
+        exitLimitAtJoin(sending, receiving, following);
     const bool fixedExit = !minimumExit;
     const auto& minimumEntry = entryLimitAtJoin(sending, receiving);
     const bool fixedEntry = !minimumEntry || receiving.fixedEntryJunction || receiving.keepsEntryJunction;
@@ -500,11 +511,24 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
     if (!sameSection(exit, entry) && !orderedSections(exit, entry, source.orientation) &&
         hasOverlapLimits(sending, receiving, following, tightTolerance, penWidth)) {
         if (requiredConnector) return {};
+        // Retreat along the overlapping fork flank and keep its connector if the limits leave room.
+        if (receiving.forkEntry)
+            if (const auto& limit = entryLimitAtJoin(sending, receiving);
+                limit && (!receiving.exit || orderedSections(*limit, *receiving.exit, source.orientation)) &&
+                retainsLandmarks(receiving, &*limit, receiving.exit ? &*receiving.exit : nullptr, source.orientation) &&
+                hasShortConnector(source, exit, *limit))
+                return JoinSections{exit, *limit, false, false, {}};
+        if (sending.forkEntry)
+            if (const auto& limit = exitLimitAtJoin(sending, receiving, following);
+                limit && (!sending.entry || orderedSections(*sending.entry, *limit, source.orientation)) &&
+                retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &*limit, source.orientation) &&
+                hasShortConnector(source, *limit, entry))
+                return JoinSections{*limit, entry, false, false, {}};
         const auto seam = resolveOverlap(source, sending, receiving, following);
         if (seam && !sending.footExitCandidate && !keepsStrokeAtEntry(sending, receiving, source, penWidth))
             return JoinSections{*seam, *seam, true, sameSection(*seam, entry), {}};
-        if (entryLimitAtJoin(sending, receiving) || (sending.minimumExit && (sending.minimumExitBefore.isEmpty() ||
-                sending.minimumExitBefore.contains(following)))) return {};
+        if (entryLimitAtJoin(sending, receiving) || (!sending.minimumExitAtTurn && sending.minimumExit &&
+            (sending.minimumExitBefore.isEmpty() || sending.minimumExitBefore.contains(following)))) return {};
     }
     const bool preserveHollow = continuation && sending.keepsExitHollow &&
         !leavesEntryClearance(exit, entry, source.orientation, tightTolerance) &&
@@ -928,6 +952,7 @@ struct AnchorTraversal {
                 exitBeforeFollowingTooth(sending, body, source.orientation, letters[int(slot)]) ||
                 (!requiredConnectors[slot - 1] &&
                     (hasOverlapLimits(sending, body, letters[int(slot)], tightTolerance, penWidth) ||
+                     hasLoopTurnOverlap(sending, body, source.orientation) ||
                      (continuation && sharesFixedJunction(source, sending, body, penWidth)))) ||
                 canUseReceivingEntry(sending, body, source.orientation, letters[int(slot) - 1], penWidth) ||
                 fitsDeclaredSharedEntry(sending, body, source, letters.back(), penWidth) ||
@@ -1095,10 +1120,13 @@ struct AnchorTraversal {
                             sectionLine(seam->entry), compactJoin, branch.continuation, penWidth)) return {};
                         return seam;
                     };
-                    const auto resolvePreferred = [&] {
-                        auto preferred = resolve(false);
-                        if (preferred || !policy.allowCompactJoins) return preferred;
-                        return resolve(true);
+                    const auto resolvePreferred = [&]() -> std::optional<JoinSections> {
+                        if (auto preferred = resolve(false)) return preferred;
+                        if (!requiredConnectors[slot - 1] && hasLoopTurnOverlap(*sending, body, branch.source.orientation)) {
+                            if (const auto seam = resolveOverlap(branch.source, *sending, body, letters[int(slot)], true))
+                                return JoinSections{*seam, *seam, true, sameSection(*seam, *body.entry), {}, true};
+                        }
+                        return policy.allowCompactJoins ? resolve(true) : std::nullopt;
                     };
                     const std::optional<JoinSections>* seam;
                     if (branch.limit > 0) {
@@ -1216,15 +1244,15 @@ struct AnchorTraversal {
             int remaining = branch->limit > 0 ? branch->limit : -1;
             const bool alternates = branch->config.value("fixedAnchorAlternatesEnding").toString().contains(letters.back());
             const bool allowCompactJoins = branch->config.value("fixedAnchorBodyChecks").toBool() && letters.size() <= 5;
+            std::optional<Subword> compactPartition;
             const auto tryBranch = [&](AttachmentPolicy policy) {
                 deadSuffixes.clear();
-                std::optional<Subword> compactPartition;
-                if (auto complete = match(*branch, policy, remaining, compactPartition)) return complete;
-                return compactPartition;
+                return match(*branch, policy, remaining, compactPartition);
             };
             if (alternates)
                 if (auto complete = tryBranch({})) return complete;
             if (auto complete = tryBranch({alternates, allowCompactJoins})) return complete;
+            if (compactPartition) return compactPartition;
         }
         return {};
     }

@@ -81,6 +81,11 @@ static void checkTemplatePriority(const QJsonObject& config, AFont& font) {
         {92, 6, 7, 3, {"heh-init", "meem-upper-neck-fina"}, 0},
         {103, 6, 3, 1, {"lam-init", "feh-descending-rim-medi", "yeh-first-turn-fina"}, 1},
         {161, 4, 7, 2, {"lam-init", "meem-medi", "hah-returning-lips-medi", "reh-fina"}, 2, true},
+        {4, 6, 7, 1, {"feh-init", "beh-tooth-medi", "heh-counter-fina"}, 0},
+        {8, 3, 6, 2, {"qaf-init", "beh-tooth-medi", "alef-fina"}, 0},
+        {2, 6, 8, 2, {"qaf-init", "beh-tooth-medi", "waw-fina"}, 0, true},
+        {37, 4, 1, 4, {"kaf-flat-init", "reh-rising-tail-fina"}, 0},
+        {453, 10, 4, 2, {"lam-init", "ain-medi", "reh-rising-tail-fina"}, 1},
         {71, 2, 10, 1, {"hah-returning-lip-init", "waw-fina"}, 0, true},
         {406, 14, 1, 1, {"hah-open-init", "waw-fina"}, 0},
     };

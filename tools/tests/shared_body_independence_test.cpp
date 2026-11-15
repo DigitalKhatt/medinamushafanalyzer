@@ -118,6 +118,11 @@ static QByteArray snapshot(const SharedShapeEvidence &e) {
         out << bool(e.head->edge);
         if (e.head->edge)
             point(*e.head->edge);
+        out << bool(e.head->descendingTurn);
+        if (e.head->descendingTurn) {
+            point(e.head->descendingTurn->point);
+            out << e.head->descendingTurn->forward;
+        }
         out << quint64(e.head->necks.size());
         for (const auto &neck : e.head->necks) {
             point(neck.crest);

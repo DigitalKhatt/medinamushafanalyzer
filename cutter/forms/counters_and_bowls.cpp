@@ -1266,6 +1266,27 @@ std::optional<LoopHeadBody> recognizeLoopHead(const InkOutline &outline, const Q
         result.edge = *point;
         nearest = distance;
     }
+    if (!result.edge) return result;
+    const auto edge = geometry.timeSorted.find(*result.edge);
+    for (const auto advance : {&SearchContext::prev, &SearchContext::next}) {
+        auto current = (geometry.*advance)(edge);
+        if (current->point.y() <= edge->point.y()) continue;
+        auto previous = edge;
+        for (size_t visited = 0; current != edge && visited < geometry.timeSorted.size(); ++visited) {
+            const auto point = current->point;
+            if (point.x() < result.edge->point.x() || point.x() > counter->right() + scale ||
+                point.y() > counter->bottom() + 3 * scale)
+                break;
+            const auto next = (geometry.*advance)(current);
+            if (current->isX && point.x() > previous->point.x() && point.x() > next->point.x() &&
+                point.y() >= counter->bottom() && point.y() > previous->point.y() && point.y() <= next->point.y()) {
+                result.descendingTurn = LoopHeadBody::Turn{*current, advance == &SearchContext::prev};
+                return result;
+            }
+            previous = current;
+            current = next;
+        }
+    }
     return result;
 }
 

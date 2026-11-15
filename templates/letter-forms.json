@@ -509,6 +509,7 @@
         }
       },
       "cuts": {
+        "minimumExitAtTurn": true,
         "head": {
           "maxNeckDistance": 3,
           "maxProjectionInset": 2,
@@ -600,7 +601,7 @@
       "body": {
         "shape": "tooth-cluster",
         "cluster": {
-          "retryMaxLastPitch": 6,
+          "maxWideLastPitch": 6,
           "minToothRise": 0.55,
           "minPitch": 1,
           "maxPitch": 5,
@@ -612,7 +613,7 @@
         "minimumExitBefore": "رز",
         "minConnectorWidths": 2,
         "cluster": {
-          "retryBendOffset": 0.5,
+          "bendWalk": 0.5,
           "exitAtHollow": true
         },
         "boundaries": {
@@ -3061,7 +3062,7 @@
       "body": {
         "shape": "tooth-cluster",
         "cluster": {
-          "retryMaxLastPitch": 6,
+          "maxWideLastPitch": 6,
           "minToothRise": 0.55,
           "minPitch": 1,
           "maxPitch": 5,
@@ -3075,7 +3076,7 @@
           "entryAtJunction": true,
           "exitAtFlank": true,
           "shareLoopNeck": true,
-          "retryBendOffset": 0.5,
+          "bendWalk": 0.5,
           "rightOffset": 0.5,
           "maxExitBendDistance": 2,
           "exitAtHollow": true
@@ -4683,7 +4684,7 @@
           "minToothRise": 0.55,
           "minPitch": 1,
           "maxPitch": 5,
-          "retryMaxLastPitch": 6,
+          "maxWideLastPitch": 6,
           "maxTipHeightSpreadRatio": 1,
           "convexTips": true
         }
@@ -6230,23 +6231,9 @@
         "return": {
           "minRun": 4,
           "minRise": 2
-        },
-        "entryRecoveryRoute": {
-          "start": "left",
-          "traversal": "down",
-          "topTraversal": "forward",
-          "top": [
-            "down",
-            {
-              "direction": "up",
-              "minX": 1
-            },
-            "right"
-          ]
         }
       },
       "cuts": {
-        "shareEntryWhenUnresolved": true,
         "return": {
           "maxChord": 1.5,
           "upperWalkWidths": 1.35
@@ -6258,9 +6245,6 @@
         "boundaries": {
           "left": "free",
           "right": "return-seam"
-        },
-        "entryRecoveryRoute": {
-          "bottomProbe": "up"
         }
       },
       "onUnresolvedPartition": true
@@ -6425,26 +6409,12 @@
         "return": {
           "minRun": 4,
           "minRise": 2
-        },
-        "entryRecoveryRoute": {
-          "start": "left",
-          "traversal": "down",
-          "topTraversal": "forward",
-          "top": [
-            "down",
-            {
-              "direction": "up",
-              "minX": 1
-            },
-            "right"
-          ]
         }
       },
       "cuts": {
         "precedingTooth": {
           "refitTemplate": "beh-shoulder-medi"
         },
-        "shareEntryWhenUnresolved": true,
         "return": {
           "maxChord": 1.5
         },
@@ -6459,9 +6429,6 @@
         "boundaries": {
           "left": "free",
           "right": "return-seam"
-        },
-        "entryRecoveryRoute": {
-          "bottomProbe": "up"
         }
       }
     },
