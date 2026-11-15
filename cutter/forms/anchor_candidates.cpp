@@ -30,7 +30,7 @@ QJsonObject expandedAnchorConfig(QJsonObject config, bool continuation) {
         }
         config.insert(phase, forms);
     }
-    for (const auto* key : {"fixedAnchorAlternatesEnding", "fixedAnchorStemReturnEnding", "fixedAnchorBodyChecks",
+    for (const auto* key : {"fixedAnchorStemReturnEnding", "fixedAnchorBodyChecks",
                             "fixedAnchorExpansionChecks"})
         if (expansion.contains(key)) config.insert(key, expansion.value(key));
     return config;

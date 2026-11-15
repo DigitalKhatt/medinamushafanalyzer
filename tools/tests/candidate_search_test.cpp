@@ -453,9 +453,7 @@ static void checkFixedAnchors(const QJsonObject& config) {
     PageAnalysisResult folded;
     QDataStream foldedStream(&foldedPage); foldedStream >> folded.page;
     folded.resolveWordBoundaries(21, &font);
-    auto foldedAlternates = config;
-    foldedAlternates.insert("fixedAnchorAlternatesEnding", QStringLiteral("ي"));
-    check(folded.segmentSubword(20, 3, 4, 1, &font, true, &foldedAlternates),
+    check(folded.segmentSubword(20, 3, 4, 1, &font, true, &config),
           "The folded seen–yeh fixture lost its partition");
     const auto& foldedWord = folded.page.lines[3].words[4].wordResultInfo.subWords[1];
     check(foldedWord.kashidaPaths.back().isEmpty() &&
@@ -467,18 +465,12 @@ static void checkFixedAnchors(const QJsonObject& config) {
         PageAnalysisResult page;
         QDataStream stream(&file); stream >> page.page;
         page.resolveWordBoundaries(f.page, &font);
-        const auto segment = [&](const QJsonObject& forms) {
-            return page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &forms);
-        };
-        const auto& sub = page.page.lines[f.line - 1].words[f.word - 1].wordResultInfo.subWords[f.subword - 1];
-        check(segment(config), "Missing established lam–yeh partition");
-        const auto expected = sub;
-        check(expected.kashidaPaths.front().isEmpty() == (f.page == 5),
-              "The lam–yeh fixture no longer exercises the expected join");
-        auto alternates = config;
-        alternates.insert("fixedAnchorAlternatesEnding", QStringLiteral("يئى"));
-        check(segment(alternates) && samePartition(sub, expected),
-              "Fixed-anchor alternatives changed lam–yeh stroke ownership");
+        const auto& word = page.page.lines[f.line - 1].words[f.word - 1];
+        const auto& sub = word.wordResultInfo.subWords[f.subword - 1];
+        check(page.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &config),
+              "Missing established lam–yeh partition");
+        check(!sub.kashidaPaths.empty() && sub.kashidaPaths.front().isEmpty() == (f.page == 5) &&
+              coversOriginalInk(word, sub), "Lam–yeh lost its expected join or source ink");
     }
     checkTemplatePriority(config, font);
 

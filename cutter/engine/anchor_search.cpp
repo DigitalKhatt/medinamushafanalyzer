@@ -8,6 +8,8 @@ using Subword = WordResultInfo::SubWordInfo;
 using BodySequence = std::span<const AnchoredBody* const>;
 using FormChoices = std::vector<std::vector<const QJsonObject*>>;
 
+enum class PartitionRank { Preferred, SecondaryBody, AdjustedJoin, None };
+
 bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot, size_t count);
 
 struct AnchorCandidateKey {
@@ -31,7 +33,7 @@ struct AnchorSearchMemo {
     std::map<AnchorCandidateKey, std::vector<AnchoredBody>> bodies;
     std::map<std::tuple<const AnchoredBody*, QByteArray, size_t, bool>, std::vector<AnchoredBody>> sharedEntries;
     std::map<std::tuple<const QJsonObject*, QString, bool>, std::optional<Stretching>> folds;
-    std::map<std::tuple<const AnchoredBody*, const AnchoredBody*, size_t, bool, bool, bool, bool, double>, JoinCompatibility> joins;
+    std::map<std::tuple<const AnchoredBody*, const AnchoredBody*, size_t, bool, bool, bool, double>, JoinCompatibility> joins;
 
     const QByteArray& key(const QJsonObject& form) {
         auto [entry, inserted] = formKeys.try_emplace(&form);
@@ -484,13 +486,13 @@ struct JoinSections {
     Stretching exit, entry;
     bool shared, usesReceivingEntry;
     QString terminalJunction;
-    bool compact = false;
+    PartitionRank rank = PartitionRank::Preferred;
 };
 
 std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBody& sending,
         const AnchoredBody& receiving, QChar preceding, QChar following, QChar last, bool terminal, bool sharesFinalFold,
         const QJsonObject& config, bool requiredConnector, double tightTolerance, double penWidth,
-        bool allowAlternateAnchors, bool allowShortAttachments) {
+        bool allowNeckJoin, bool allowShortAttachments) {
     auto exit = *sending.exit;
     auto entry = *receiving.entry;
     if (!fitsAnchorGap(sending, receiving, source.orientation, penWidth,
@@ -538,7 +540,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
         (useFixedJunction || sharesRim ||
         sharesCornerExit(sending, entry, source.orientation, tightTolerance) ||
         canUseReceivingEntry(sending, receiving, source.orientation, preceding, penWidth) ||
-        (allowAlternateAnchors && sharesLoopNeck(sending, receiving, source.orientation, tightTolerance)) ||
+        (allowNeckJoin && sharesLoopNeck(sending, receiving, source.orientation, tightTolerance)) ||
         (allowShortAttachments && !requiredConnector &&
          (sharesCloseAttachment(sending, receiving, source.orientation, std::max(tightTolerance, .75 * penWidth)) ||
           sharesIntrinsicJunction(sending, receiving, source.orientation, penWidth) ||
@@ -626,7 +628,7 @@ bool validConnector(const QPainterPath& connector, const Apath& shape, const QLi
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
         SearchContext& source, const QString& letters, BodySequence bodies, bool sharesFinalFold,
         const QJsonObject& config, const std::vector<bool>& requiredConnectors, double tightTolerance, double penWidth,
-        bool allowAlternateAnchors, const QJsonObject* bodyChecks,
+        const QJsonObject* bodyChecks,
         std::span<const JoinSections* const> selectedJoins = {}) {
     Subword trial{};
     trial.text = sub.text;
@@ -651,7 +653,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         if (!seam) {
             computed = resolveJoin(source, sending, receiving, letters[int(slot) - 1], letters[int(slot)], letters.back(),
                 slot + 1 == bodies.size(), sharesFinalFold, config, requiredConnectors[slot - 1], tightTolerance,
-                penWidth, allowAlternateAnchors, false);
+                penWidth, false, false);
             if (!computed) return {};
             seam = &*computed;
         }
@@ -732,7 +734,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         if (slot + 1 == bodies.size() || trial.kashidaCuts[slot].first.isNull()) continue;
         const auto& [right, left] = trial.kashidaCuts[slot];
         auto& connector = regions[region++].path;
-        const bool compact = slot < selectedJoins.size() && selectedJoins[slot]->compact;
+        const bool compact = slot < selectedJoins.size() && selectedJoins[slot]->rank == PartitionRank::AdjustedJoin;
         if (!validConnector(connector, shape, right, left, compact,
                             config.value("_anchorContinuation").toBool(), penWidth)) return {};
         trial.kashidaPaths[slot] = std::move(connector);
@@ -831,9 +833,9 @@ struct AnchorTraversal {
     AnchorSearchMemo memo;
     std::vector<const AnchoredBody*> selected;
     size_t partitionAttempts = 0;
-    std::set<std::tuple<size_t, const AnchoredBody*, bool>> deadSuffixes;
+    std::set<std::tuple<size_t, const AnchoredBody*, PartitionRank>> deadSuffixes;
     std::vector<const JoinSections*> selectedJoins;
-    std::map<std::tuple<const QJsonObject*, const AnchoredBody*, const AnchoredBody*, size_t, bool, bool, bool>,
+    std::map<std::tuple<const QJsonObject*, const AnchoredBody*, const AnchoredBody*, size_t, bool>,
              std::optional<JoinSections>> resolvedJoins;
     std::map<std::tuple<const QJsonObject*, const QJsonObject*, size_t, bool>,
              std::vector<const AnchoredBody*>> choices;
@@ -924,18 +926,12 @@ struct AnchorTraversal {
         return saved->second && sameSection(*saved->second, *receiving.entry);
     }
 
-    struct AttachmentPolicy {
-        bool alternateAnchors = false;
-        bool allowCompactJoins = false;
-    };
-
     JoinCompatibility follows(const AnchorBranch& branch, size_t slot, const AnchoredBody& sending,
-            const AnchoredBody& body, bool checkFoldedTooth, AttachmentPolicy policy) {
+            const AnchoredBody& body, bool checkFoldedTooth, bool allowCompactJoins) {
         auto& source = branch.source;
         const auto tightTolerance = branch.tightTolerance;
         const auto continuation = branch.continuation;
         const bool terminal = slot + 1 == letters.size();
-        const auto [allowAlternates, allowShortAttachments] = policy;
         const auto compatible = [&]() -> JoinCompatibility {
             const auto& exit = *sending.exit;
             if (body.requiresDeclaredReturn && sending.sharedReturnWith.contains(letters.back()) &&
@@ -956,8 +952,8 @@ struct AnchorTraversal {
                      (continuation && sharesFixedJunction(source, sending, body, penWidth)))) ||
                 canUseReceivingEntry(sending, body, source.orientation, letters[int(slot) - 1], penWidth) ||
                 fitsDeclaredSharedEntry(sending, body, source, letters.back(), penWidth) ||
-                (allowAlternates && sharesLoopNeck(sending, body, source.orientation, tightTolerance)) ||
-                (allowShortAttachments && !requiredConnectors[slot - 1] &&
+                sharesLoopNeck(sending, body, source.orientation, tightTolerance) ||
+                (allowCompactJoins && !requiredConnectors[slot - 1] &&
                  (sharesCloseAttachment(sending, body, source.orientation, std::max(tightTolerance, .75 * penWidth)) ||
                   sharesIntrinsicJunction(sending, body, source.orientation, penWidth) ||
                   (continuation && (sharesTightJunction(sending, body, source.orientation, penWidth) ||
@@ -969,7 +965,7 @@ struct AnchorTraversal {
         };
         if (cutGeometryMemo && cutGeometryMemo->memoizeIntersections) {
             auto [entry, inserted] = memo.joins.try_emplace(
-                {&sending, &body, slot, continuation, checkFoldedTooth, allowAlternates, allowShortAttachments, tightTolerance},
+                {&sending, &body, slot, continuation, checkFoldedTooth, allowCompactJoins, tightTolerance},
                 JoinCompatibility{false});
             if (inserted) entry->second = compatible();
             return entry->second;
@@ -978,7 +974,7 @@ struct AnchorTraversal {
     }
 
     bool canKeepInitialBody(const AnchorBranch& branch, const AnchoredBody& sending,
-                            const AnchoredBody& receiving, AttachmentPolicy policy) {
+                            const AnchoredBody& receiving, bool allowCompactJoins) {
         if (!branch.continuation || !branch.config.value("fixedAnchorBodyChecks").toBool() ||
             sending.entry || !sending.counters.isEmpty() || sending.exit->counterEntry.pathIndex > 0 ||
             !orderedSections(*sending.exit, *receiving.entry, branch.source.orientation)) return true;
@@ -989,21 +985,20 @@ struct AnchorTraversal {
         if (receiving.requiresSharedEntry || receiving.sharesRimEntry || receiving.sharesJunctionEntry ||
             receiving.sharesFinalEntry || canUseReceivingEntry(sending, receiving, branch.source.orientation,
                 letters.front(), penWidth) || fitsDeclaredSharedEntry(sending, receiving, branch.source, letters.back(), penWidth) ||
-            (policy.alternateAnchors && sharesLoopNeck(sending, receiving, branch.source.orientation, branch.tightTolerance)) ||
-            (policy.allowCompactJoins && !requiredConnectors.front() &&
+            sharesLoopNeck(sending, receiving, branch.source.orientation, branch.tightTolerance) ||
+            (allowCompactJoins && !requiredConnectors.front() &&
              sharesCloseAttachment(sending, receiving, branch.source.orientation, std::max(branch.tightTolerance, .75 * penWidth))))
             return true;
         return false;
     }
 
-    std::optional<Subword> finish(const AnchorBranch& branch, AttachmentPolicy policy) {
+    std::optional<Subword> finish(const AnchorBranch& branch) {
         auto& source = branch.source;
         const auto& config = branch.config;
         const auto tightTolerance = branch.tightTolerance;
         const auto bodyChecks = config.value("recoveryChecks").toObject();
         auto partition = assemble(word, sub, shape, source, letters, selected, sharesFinalFold(branch),
                                   config, requiredConnectors, tightTolerance, penWidth,
-                                  policy.alternateAnchors,
                                   config.value("fixedAnchorBodyChecks").toBool() ? &bodyChecks : nullptr, selectedJoins);
         if (partition && (!accept || accept(*partition))) return partition;
         return {};
@@ -1011,7 +1006,7 @@ struct AnchorTraversal {
 
     template<typename TryBody>
     std::optional<Subword> bodiesAfter(const AnchorBranch& branch, size_t slot, const AnchoredBody* sending,
-                                      AttachmentPolicy policy, int& remaining, TryBody tryBody) {
+                                      bool allowCompactJoins, int& remaining, TryBody tryBody) {
         const bool terminal = slot + 1 == letters.size();
         if (terminal && !attachedStroke.isEmpty()) {
             if (!sending || !sending->exit || requiredConnectors[slot - 1]) return {};
@@ -1041,17 +1036,17 @@ struct AnchorTraversal {
                 if (requiresSharedExit && !body->requiresSharedExit) continue;
                 if (body->hasStemReturn && !stemReturnEndings.contains(last) &&
                     !(branch.continuation && body->sharedReturnWith.contains(last))) continue;
-                if (body->alternateAnchor && !body->hasStemReturn && (!policy.alternateAnchors ||
-                    (!ownedCrestEndings.isEmpty() && !ownedCrestEndings.contains(last)))) continue;
+                if (body->alternateAnchor && !body->hasStemReturn &&
+                    !ownedCrestEndings.isEmpty() && !ownedCrestEndings.contains(last)) continue;
                 if (sending) {
-                    const auto join = follows(branch, slot, *sending, *body, checkFoldedTooth, policy);
+                    const auto join = follows(branch, slot, *sending, *body, checkFoldedTooth, allowCompactJoins);
                     if (join.stopAtBowl) {
                         if (!branch.continuation) return {};
                         continue;
                     }
                     if (!join.allowed || !fitsAnchorGap(*sending, *body, branch.source.orientation, penWidth,
                                                        branch.continuation || branch.verifyContours) ||
-                        (slot == 1 && !terminal && !canKeepInitialBody(branch, *sending, *body, policy))) continue;
+                        (slot == 1 && !terminal && !canKeepInitialBody(branch, *sending, *body, allowCompactJoins))) continue;
                     // Prefer bodies whose own entry leaves room for a connector.
                     // A rim attachment is useful only where the preferred caps overlap.
                     if (sending->rimExitLimit && body->acceptsCounterRim && body->entryLimit &&
@@ -1076,25 +1071,35 @@ struct AnchorTraversal {
         return {};
     }
 
-    std::optional<Subword> match(const AnchorBranch& branch, AttachmentPolicy policy, int& remaining,
-                                 std::optional<Subword>& compactPartition, bool compact = false) {
-        if (remaining == 0 || (compact && compactPartition)) return {};
+    struct BestPartition {
+        PartitionRank rank = PartitionRank::None;
+        std::optional<Subword> result;
+    };
+
+    std::optional<Subword> match(const AnchorBranch& branch, bool allowCompactJoins, int& remaining,
+                                 BestPartition& best, PartitionRank rank = PartitionRank::Preferred) {
+        if (remaining == 0 || rank >= best.rank) return {};
         if (selected.size() == letters.size()) {
             ++partitionAttempts;
-            auto partition = finish(branch, policy);
-            // Prefer a complete partition with ordinary joins. A compatible
-            // compact join is available during the same search and is kept
-            // only when no ordinary partition is found.
-            if (!compact) return partition;
-            if (partition) compactPartition = std::move(partition);
+            auto partition = finish(branch);
+            if (rank == PartitionRank::Preferred) return partition;
+            // Keep the first complete partition at each rank while looking for a better one.
+            if (partition) {
+                best.rank = rank;
+                best.result = std::move(partition);
+            }
             return {};
         }
         const auto* sending = selected.empty() ? nullptr : selected.back();
-        const auto suffix = std::tuple{selected.size(), sending, compact};
+        const auto suffix = std::tuple{selected.size(), sending, rank};
         if (sending && deadSuffixes.contains(suffix)) return {};
         const auto before = partitionAttempts;
-        auto result = bodiesAfter(branch, selected.size(), sending, policy, remaining,
+        auto result = bodiesAfter(branch, selected.size(), sending, allowCompactJoins, remaining,
             [&](const AnchoredBody& body) -> std::optional<Subword> {
+                const auto bodyRank = body.alternateAnchor && !body.hasStemReturn
+                    ? PartitionRank::SecondaryBody : PartitionRank::Preferred;
+                auto candidateRank = std::max(rank, bodyRank);
+                if (candidateRank >= best.rank) return {};
                 selected.push_back(&body);
                 bool addedJoin = false;
                 const auto pop = qScopeGuard([&] {
@@ -1105,14 +1110,16 @@ struct AnchorTraversal {
                 if (sending) {
                     const size_t slot = selected.size() - 1;
                     const bool terminal = slot + 1 == letters.size();
-                    const auto resolve = [&](bool compactJoin) -> std::optional<JoinSections> {
+                    const auto resolve = [&](PartitionRank joinRank) -> std::optional<JoinSections> {
+                        const bool neckJoin = joinRank == PartitionRank::SecondaryBody;
+                        const bool compactJoin = joinRank == PartitionRank::AdjustedJoin;
                         auto seam = resolveJoin(branch.source, *sending, body, letters[int(slot) - 1],
                             letters[int(slot)], letters.back(),
                             terminal, terminal && sharesFinalFold(branch), branch.config, requiredConnectors[slot - 1],
-                            branch.tightTolerance, penWidth, policy.alternateAnchors, compactJoin);
+                            branch.tightTolerance, penWidth, neckJoin, compactJoin);
                         if (!seam) return {};
-                        seam->compact = compactJoin;
-                        if (seam->shared || body.retainsCounterRim || (branch.limit <= 0 && !policy.allowCompactJoins) ||
+                        seam->rank = joinRank;
+                        if (seam->shared || body.retainsCounterRim || (branch.limit <= 0 && !allowCompactJoins) ||
                             seam->exit.counterEntry.pathIndex > 0 || seam->entry.counterEntry.pathIndex > 0) return seam;
                         const auto parts = cutRegions(shape.path, {}, {seam->exit, seam->entry},
                                                       branch.source.orientation, !branch.continuation);
@@ -1120,31 +1127,41 @@ struct AnchorTraversal {
                             sectionLine(seam->entry), compactJoin, branch.continuation, penWidth)) return {};
                         return seam;
                     };
-                    const auto resolvePreferred = [&]() -> std::optional<JoinSections> {
-                        if (auto preferred = resolve(false)) return preferred;
+                    const auto chooseJoin = [&]() -> std::optional<JoinSections> {
+                        if (auto preferred = resolve(PartitionRank::Preferred)) return preferred;
+                        if (!requiredConnectors[slot - 1] &&
+                            sharesLoopNeck(*sending, body, branch.source.orientation, branch.tightTolerance)) {
+                            if (auto neck = resolve(PartitionRank::SecondaryBody)) return neck;
+                        }
                         if (!requiredConnectors[slot - 1] && hasLoopTurnOverlap(*sending, body, branch.source.orientation)) {
                             if (const auto seam = resolveOverlap(branch.source, *sending, body, letters[int(slot)], true))
-                                return JoinSections{*seam, *seam, true, sameSection(*seam, *body.entry), {}, true};
+                                return JoinSections{*seam, *seam, true, sameSection(*seam, *body.entry), {},
+                                                    PartitionRank::AdjustedJoin};
                         }
-                        return policy.allowCompactJoins ? resolve(true) : std::nullopt;
+                        return allowCompactJoins ? resolve(PartitionRank::AdjustedJoin) : std::nullopt;
                     };
                     const std::optional<JoinSections>* seam;
                     if (branch.limit > 0) {
                         auto [known, inserted] = resolvedJoins.try_emplace({&branch.config, sending, &body, slot,
-                            branch.verifyContours, policy.alternateAnchors, policy.allowCompactJoins});
-                        if (inserted) known->second = resolvePreferred();
+                            branch.verifyContours});
+                        if (inserted) known->second = chooseJoin();
                         seam = &known->second;
                     } else {
-                        computed = resolvePreferred();
+                        computed = chooseJoin();
                         seam = &computed;
                     }
                     if (!*seam) return {};
+                    candidateRank = std::max(candidateRank, (**seam).rank);
+                    if (candidateRank >= best.rank) return {};
                     selectedJoins.push_back(&**seam);
                     addedJoin = true;
                 }
-                if (auto complete = sharedCounterPartition(branch, policy)) return complete;
-                const bool usesCompactJoin = compact || (addedJoin && selectedJoins.back()->compact);
-                if (auto complete = match(branch, policy, remaining, compactPartition, usesCompactJoin)) return complete;
+                if (auto complete = sharedCounterPartition(branch)) {
+                    if (candidateRank == PartitionRank::Preferred) return complete;
+                    best.rank = candidateRank;
+                    best.result = std::move(complete);
+                }
+                if (auto complete = match(branch, allowCompactJoins, remaining, best, candidateRank)) return complete;
                 return {};
             });
         // A failed final partition can depend on any earlier letter.
@@ -1153,7 +1170,7 @@ struct AnchorTraversal {
         return result;
     }
 
-    std::optional<Subword> sharedCounterPartition(const AnchorBranch& branch, AttachmentPolicy policy) {
+    std::optional<Subword> sharedCounterPartition(const AnchorBranch& branch) {
         if (selected.size() + 1 != letters.size() || requiredConnectors.back()) return {};
         const auto& body = *selected.back();
         if (!body.sharedCounterReceiver.contains(letters.back())) return {};
@@ -1161,8 +1178,7 @@ struct AnchorTraversal {
         const AnchoredBody receiving{.formId = body.formId, .entry = body.exit, .requiresSharedEntry = true};
         selected.push_back(&receiving);
         auto partition = assemble(word, sub, shape, branch.source, letters, selected, false, branch.config,
-                                  requiredConnectors, branch.tightTolerance, penWidth, policy.alternateAnchors,
-                                  nullptr);
+                                  requiredConnectors, branch.tightTolerance, penWidth, nullptr, selectedJoins);
         selected.pop_back();
         if (partition && (!accept || accept(*partition))) return partition;
         return {};
@@ -1242,17 +1258,11 @@ struct AnchorTraversal {
                 continue;
             }
             int remaining = branch->limit > 0 ? branch->limit : -1;
-            const bool alternates = branch->config.value("fixedAnchorAlternatesEnding").toString().contains(letters.back());
             const bool allowCompactJoins = branch->config.value("fixedAnchorBodyChecks").toBool() && letters.size() <= 5;
-            std::optional<Subword> compactPartition;
-            const auto tryBranch = [&](AttachmentPolicy policy) {
-                deadSuffixes.clear();
-                return match(*branch, policy, remaining, compactPartition);
-            };
-            if (alternates)
-                if (auto complete = tryBranch({})) return complete;
-            if (auto complete = tryBranch({alternates, allowCompactJoins})) return complete;
-            if (compactPartition) return compactPartition;
+            deadSuffixes.clear();
+            BestPartition best;
+            if (auto complete = match(*branch, allowCompactJoins, remaining, best)) return complete;
+            if (best.result) return std::move(best.result);
         }
         return {};
     }

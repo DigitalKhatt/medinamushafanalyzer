@@ -220,7 +220,6 @@
         "fixedAnchors": true
       }
     },
-    "fixedAnchorAlternatesEnding": "دذبتثنهوؤيىئكلاآأإٱقمفحجخرزسشصضغعطة",
     "fixedAnchorStemReturnEnding": "يىئ",
     "fixedAnchorBodyChecks": true,
     "fixedAnchorExpansionChecks": 4096,
@@ -284,7 +283,6 @@
       }
     }
   },
-  "fixedAnchorAlternatesEnding": "دذ",
   "joinDefaults": {
     "lookback": 4,
     "previousOffset": 1,

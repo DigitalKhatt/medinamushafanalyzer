@@ -1568,9 +1568,6 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& config) {
                 return "Invalid finished letter-body dimensions";
         }
     }
-    if (config.contains("fixedAnchorAlternatesEnding") &&
-        config.value("fixedAnchorAlternatesEnding").toString().isEmpty())
-        return "fixedAnchorAlternatesEnding must list final letters";
     static const auto bundled = readFormConfig(":/templates/letter-forms.json");
     const auto defaults = bundled.value("kashidaDefaults").toObject();
     auto problem = invalidKashidaSettings(config.value("kashidaDefaults"), defaults, "kashidaDefaults");
