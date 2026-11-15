@@ -437,5 +437,32 @@ int main(int argc, char** argv) {
           !raised.kashidaPaths.back().isEmpty() && raised.joins.rbegin()->bottomLeft.time == 7,
           "The raised reh lost its crest or the genuine incoming connector");
 
+    struct ReviewedJoin {
+        int page, line, word, subword, join;
+        double upper, lower;
+    };
+    for (const auto& at : {ReviewedJoin{225, 9, 8, 1, 3, 24, 34},
+                           ReviewedJoin{274, 6, 2, 2, 0, 30, 19},
+                           ReviewedJoin{274, 6, 7, 2, 2, 33.9905, 45},
+                           ReviewedJoin{357, 12, 6, 2, 2, 28.3481, 35},
+                           ReviewedJoin{456, 1, 8, 3, 0, 8.0687, 17},
+                           ReviewedJoin{521, 1, 8, 1, 0, 40, 30},
+                           ReviewedJoin{539, 13, 7, 1, 1, 5.731, 15}}) {
+        QFile fixture(QString("pages/page%1.dat").arg(at.page));
+        check(fixture.open(QIODevice::ReadOnly), "Missing reviewed join fixture");
+        PageAnalysisResult reviewed;
+        QDataStream input(&fixture);
+        input >> reviewed.page;
+        check(reviewed.segmentSubword(at.page - 1, at.line - 1, at.word - 1, at.subword - 1, nullptr, true),
+              "Reviewed stacked or final join did not match");
+        const auto& sub = reviewed.page.lines[at.line - 1].words[at.word - 1].wordResultInfo.subWords[at.subword - 1];
+        check(sub.joins.size() > size_t(at.join) && sub.kashidaPaths.size() > size_t(at.join),
+              "Reviewed join is missing");
+        const auto& cut = *std::next(sub.joins.begin(), at.join);
+        check(std::abs(cut.topBaseLine.time - at.upper) < .001 &&
+              std::abs(cut.bottomBaseLine.time - at.lower) < .001 && sub.kashidaPaths[at.join].isEmpty(),
+              "The shared cut moved off the reviewed attachment");
+    }
+
     qInfo("Native letter-form checks passed: schema rejection, 307 subwords, seven reviewed controls, nine lam-alef ligatures, three leaning medial lams, fixed ain/ligature/meem anchors and missing-body coverage.");
 }

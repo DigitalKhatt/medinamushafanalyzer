@@ -2230,34 +2230,47 @@ std::vector<Stretching> loopShoulderCuts(SearchContext& ctx, const QRectF& hole,
     const double minX = settings.value("placement") == "lower-rim" ? hole.center().x() : hole.right() - .45 * h;
     const double minWidth = settings.value("minWidth").toDouble() * h;
     const double maxWidth = settings.value("maxWidth").toDouble(2.4) * h;
-    std::vector<std::pair<double, Stretching>> ranked;
+    const auto entry = settings.value("entryCorner").toObject();
+    const double sample = settings.value("entrySample").toDouble() * h;
+    const QPointF rim(hole.right(), hole.top());
+    using RankedSection = std::pair<double, Stretching>;
+    std::vector<RankedSection> preferred, ranked;
     for (const auto &anchor : anchors) {
-        for (auto cut : cornerSections(ctx, anchor)) {
+        const auto add = [&](Stretching cut, std::vector<RankedSection>& options) {
             const QLineF line(cut.topBaseLine.point, cut.bottomBaseLine.point);
             const double width = line.length();
             if (width < minWidth || width > maxWidth || std::min(line.x1(), line.x2()) < minX)
-                continue;
+                return;
             orientSection(ctx, cut, witness, true);
             const auto parts = cutRegions(ctx.transformedPath, {}, {cut}, ctx.orientation, true);
             if (parts.size() != 2)
-                continue;
+                return;
             const auto paths = toSubpaths(parts[1].path);
             bool owns = false;
             for (int i = 1; i < paths.size(); ++i)
                 if (paths[i].boundingRect() == hole)
                     owns = true;
             if (!owns)
-                continue;
+                return;
             if (final && (paths.size() != 2 || parts[1].path.boundingRect().top() <
                                                    hole.top() - settings.value("maxCapRise").toDouble(2) * h))
-                continue;
-            ranked.emplace_back(QLineF(ideal, anchor.point).length() + .35 * width, cut);
+                return;
+            options.emplace_back(QLineF(ideal, anchor.point).length() + .35 * width, cut);
+        };
+        if (sample > 0 && matchesOffset(entry, (anchor.point - rim) / h)) {
+            const bool towardJoin = ctx.orientation == Orientation::CounterClockwise;
+            Stretching cut{};
+            if (contourNormalCut(ctx, anchor, towardJoin, false, cut, true, sample))
+                add(cut, preferred);
         }
+        for (auto cut : cornerSections(ctx, anchor)) add(cut, ranked);
     }
-    std::stable_sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     std::vector<Stretching> result;
-    result.reserve(ranked.size());
-    for (auto& [_, cut] : ranked) result.push_back(std::move(cut));
+    result.reserve(preferred.size() + ranked.size());
+    for (auto* options : {&preferred, &ranked}) {
+        std::stable_sort(options->begin(), options->end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (auto& [_, cut] : *options) result.push_back(std::move(cut));
+    }
     return result;
 }
 

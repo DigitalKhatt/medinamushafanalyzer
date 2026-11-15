@@ -640,6 +640,11 @@
       },
       "cuts": {
         "useOwnedCrest": true,
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 2,
+          "oppositeCorners": true
+        },
         "route": {
           "bottomProbe": "corner",
           "oppositeCorner": {
@@ -2158,9 +2163,7 @@
   "medial": [
     {
       "id": "heh-paired-crown-medi",
-      "anchorPass": "continuation",
       "continuationPriority": 22,
-      "priorityWithinPass": 6,
       "reclaimEntry": true,
       "current": "ه",
       "tightJoin": true,
@@ -2219,7 +2222,8 @@
           "right": "route-right"
         }
       },
-      "sharedFoldWithFinal": "م"
+      "sharedFoldWithFinal": "م",
+      "sharedFoldForm": "meem-shoulder-fina"
     },
     {
       "id": "lam-descending-shaft-medi",
@@ -3016,6 +3020,7 @@
       "reclaimEntry": true,
       "current": "جحخ",
       "sharedFoldWithFinal": "يئى",
+      "sharedFoldForm": "yeh-first-turn-fina",
       "tightJoin": true,
       "body": {
         "shape": "paired-route",
@@ -3241,7 +3246,13 @@
             "maxY": -0.65
           },
           "tangentSample": 0.3,
-          "maxWidth": 2.2
+          "maxWidth": 2.2,
+          "oppositeCorner": {
+            "minX": -2.6,
+            "maxX": -1.6,
+            "minY": -0.1,
+            "maxY": 0.1
+          }
         }
       },
       "sharedEntry": true,
@@ -5388,7 +5399,7 @@
         },
         "shoulderEntry": {
           "maxWidthToDepth": 0.34,
-          "maxShiftWidths": 1.5,
+          "maxShiftWidths": 2,
           "sharedCorners": {
             "after": "جحخ",
             "maxShiftWidths": 2
@@ -6175,7 +6186,9 @@
       },
       "cuts": {
         "route": {
-          "visibleFrom": "bottom"
+          "visibleFrom": "bottom",
+          "normalFrom": "sending",
+          "normalCut": true
         },
         "boundaries": {
           "right": "contour-route",
@@ -6196,13 +6209,20 @@
         },
         "shoulder": {
           "radius": 2.5,
-          "maxCapRise": 2
+          "maxCapRise": 2,
+          "entryCorner": {
+            "minX": 0.12,
+            "maxX": 0.5,
+            "minY": -0.16,
+            "maxY": 0.1
+          }
         }
       },
       "cuts": {
         "counter": {},
         "shoulder": {
-          "maxWidth": 2.4
+          "maxWidth": 2.4,
+          "entrySample": 0.32
         },
         "boundaries": {
           "right": "counter-shoulder",

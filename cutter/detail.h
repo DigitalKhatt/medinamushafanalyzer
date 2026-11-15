@@ -1084,7 +1084,7 @@ std::optional<Stretching> stackedAttachment(SearchContext& context, const QJsonO
                                                    const QRectF& cap, const QPainterPath& head,
                                                    const Stretching& incoming, const Stretching& outgoing,
                                                    bool clippedCap = false);
-enum class UpperAttachmentMode { All, Original, ArmNormal };
+enum class UpperAttachmentMode { All, Original, ArmNormal, Probes, Corners };
 std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJsonObject& settings,
     UpperAttachmentMode mode = UpperAttachmentMode::All);
 

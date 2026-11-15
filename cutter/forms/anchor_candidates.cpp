@@ -50,6 +50,56 @@ static QVector<PathExtrema> terminalCrest(const SearchContext& source, const Str
     return landmarks;
 }
 
+static std::optional<PathExtrema> shallowCrestTurn(const SearchContext& source, const Stretching& seam) {
+    const auto& lower = seam.bottomBaseLine;
+    const auto& upper = seam.topBaseLine;
+    const auto original = getJoinTime(seam, source.orientation);
+    const bool forward = (upper.time < lower.time) == original.startAtLeft;
+    const auto advance = [&](auto point) { return forward ? source.prev(point) : source.next(point); };
+    const auto start = source.timeSorted.find(upper);
+    if (start == source.timeSorted.end()) return {};
+    const auto crest = advance(start);
+    const auto turn = advance(crest);
+    if (crest->isSharp || !crest->isY || !turn->isSharp ||
+        crest->point.y() >= upper.point.y() || crest->point.y() >= turn->point.y() ||
+        turn->point.y() >= lower.point.y() || crest->point.x() >= lower.point.x() ||
+        turn->point.x() <= crest->point.x() ||
+        !original.isStrictRight(crest->time) || !original.isStrictRight(turn->time) ||
+        QLineF(turn->point, lower.point).length() > sectionLine(seam).length() ||
+        !interiorChord(source.transformedPath, *turn, lower)) return {};
+    return *turn;
+}
+
+static std::optional<Stretching> risingReturnShoulder(SearchContext& source, const Stretching& seam,
+                                                     const QJsonObject& settings) {
+    const auto restored = cutAfterEntryCrest(source, seam, nullptr, true);
+    auto entry = restored.value_or(seam);
+    const auto lower = entry.bottomBaseLine;
+    const auto upper = entry.topBaseLine;
+    if (settings.isEmpty() || !lower.isSharp || !upper.isSharp)
+        return restored;
+    if (const auto turn = shallowCrestTurn(source, entry)) {
+        // Keep the shallow crest and cut at the turn on its upper flank.
+        entry.topBaseLine = *turn;
+    } else {
+        // Cross from the outside shoulder when the first tail corners
+        // meet below the head on opposite sides of the returning stroke.
+        if (restored || upper.point.y() <= lower.point.y() || !projectUpwardCut(source, lower, entry))
+            return restored;
+    }
+    const QLineF shoulder = sectionLine(entry);
+    const auto side = getJoinTime(entry, source.orientation);
+    double floor = lower.point.y();
+    for (const auto& point : source.timeSorted)
+        if (side.isLeft(point.time)) floor = std::max(floor, point.point.y());
+    if (!side.isStrictLeft(upper.time) ||
+        shoulder.length() > settings.value("maxWidthToDepth").toDouble() * (floor - shoulder.y1()) ||
+        QLineF(upper.point, shoulder.p1()).length() > settings.value("maxShiftWidths").toDouble() * shoulder.length())
+        return restored;
+    entry.referenceWidth = shoulder.length();
+    return entry;
+}
+
 static std::optional<Stretching> initialFootExit(const SearchContext& source, const Stretching& section,
                                                 double penWidth) {
     const auto axis = section.bottomBaseLine.point - section.topBaseLine.point;
@@ -401,23 +451,35 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                     }
                 }
                 const auto ownedCrest = cuts.value("useOwnedCrest");
+                auto attachmentOrigin = origin;
                 if (!region.isStrictRight(origin.time) && (ownedCrest.toBool() || ownedCrest.isString())) {
                     const auto crest = std::find_if(source.ySorted.rbegin(), source.ySorted.rend(),
                         [&](const auto& landmark) { return region.isStrictRight(landmark.time); });
-                    if (crest != source.ySorted.rend())
+                    if (crest != source.ySorted.rend()) {
+                        attachmentOrigin = *crest;
                         result.push_back({.formId = id, .exit = projected, .landmarks = {*crest},
                                           .counters = counters, .alternateAnchor = true});
+                    }
                 }
                 const auto attachment = cuts.value("sharedExitAtAttachment").toObject();
                 if (!attachment.isEmpty()) {
-                    for (auto seam : upperAttachmentSections(source, form.value("_upperAttachment").toObject())) {
-                        orientSection(source, seam, origin.time, false);
-                        if (!orderedSections(projected, seam, source.orientation) ||
-                            !getJoinTime(seam, source.orientation).isStrictRight(origin.time) ||
+                    const bool corners = attachment.value("oppositeCorners").toBool();
+                    const auto mode = corners ? UpperAttachmentMode::Corners : UpperAttachmentMode::All;
+                    const auto witness = corners ? attachmentOrigin : origin;
+                    for (auto seam : upperAttachmentSections(source, form.value("_upperAttachment").toObject(), mode)) {
+                        orientSection(source, seam, witness.time, false);
+                        const bool sameCorner = corners && seam.bottomBaseLine.time == projected.bottomBaseLine.time;
+                        if ((!sameCorner && !orderedSections(projected, seam, source.orientation)) ||
+                            !getJoinTime(seam, source.orientation).isStrictRight(witness.time) ||
                             QLineF(original.center(), sectionLine(seam).center()).length() >
-                                attachment.value("maxDistanceWidths").toDouble() * penWidth ||
-                            !matchesBoundaryBody(source, form, seam, true)) continue;
-                        result.push_back({.formId = id, .exit = seam, .landmarks = {origin},
+                                attachment.value("maxDistanceWidths").toDouble() * penWidth) continue;
+                        auto measured = form;
+                        // The angled pen stroke can widen at a two-corner
+                        // seam. Measure the body against the arm's thickness.
+                        if (corners && seam.referenceWidth > 0 && measured.value("_bodyPenWidth").toDouble() <= 0)
+                            measured.insert("_bodyPenWidth", seam.referenceWidth);
+                        if (!matchesBoundaryBody(source, measured, seam, true)) continue;
+                        result.push_back({.formId = id, .exit = seam, .landmarks = {witness},
                                           .counters = counters, .requiresSharedExit = true});
                     }
                 }
@@ -747,11 +809,10 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             auto entry = source.res;
             std::optional<Stretching> minimum;
             if (shape == "rising-return") {
-                if (const auto shoulder = cutAfterEntryCrest(source, entry, nullptr, true)) {
+                if (const auto shoulder = risingReturnShoulder(source, entry, cuts.value("shoulderEntry").toObject())) {
                     const bool movedLower = shoulder->bottomBaseLine.point != entry.bottomBaseLine.point;
-                    const bool keepsLowerCorner = entry.topBaseLine.point.y() > entry.bottomBaseLine.point.y() &&
-                        shoulder->topBaseLine.point.y() < entry.bottomBaseLine.point.y();
-                    if ((movedLower || keepsLowerCorner) && matchesBoundaryBody(source, form, *shoulder, false)) {
+                    const bool extendsAcrossCrest = getJoinTime(*shoulder, source.orientation).isStrictLeft(entry.topBaseLine.time);
+                    if ((movedLower || extendsAcrossCrest) && matchesBoundaryBody(source, form, *shoulder, false)) {
                         entry = *shoulder;
                         if (movedLower) minimum = shoulder;
                     }
@@ -1026,7 +1087,9 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         const bool atUpperAttachment = form.contains("upperAttachment");
         const auto attachmentShape = (atUpperAttachment ? form.value("upperAttachment")
                                                        : form.value("_sharedAttachment")).toObject();
-        const auto sharedSections = upperAttachmentSections(source, attachmentShape);
+        // The two-corner seam belongs to the returning-lips body, which
+        // verifies both lips before accepting it.
+        const auto sharedSections = upperAttachmentSections(source, attachmentShape, UpperAttachmentMode::Probes);
         const double lipDistance = cuts.value("minimumExitWidths").toDouble() * penWidth;
         const auto lips = continuation && lipDistance > 0 ? mouthLips(source, body.value("mouth").toObject())
                                                          : std::vector<MouthLips>{};

@@ -168,7 +168,7 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
                                                 UpperAttachmentMode mode) {
     const auto foot = settings.value("stemFoot").toObject();
     if (!foot.isEmpty()) {
-        if (mode == UpperAttachmentMode::ArmNormal) return {};
+        if (mode == UpperAttachmentMode::ArmNormal || mode == UpperAttachmentMode::Corners) return {};
         const auto stem = recognizedSharedShape(context, foot.value("body").toObject())->descendingStemSection;
         if (!stem) return {};
 
@@ -201,8 +201,9 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
     const auto rise = settings.value("risingFlank").toObject();
     const auto arm = mode != UpperAttachmentMode::Original ? settings.value("armNormal").toObject() : QJsonObject{};
     const auto flank = arm.value("flank").toObject();
+    const auto facing = mode == UpperAttachmentMode::Probes ? QJsonObject{} : arm.value("oppositeCorner").toObject();
     if (head.isEmpty() || rise.isEmpty() || (mode == UpperAttachmentMode::ArmNormal && arm.isEmpty())) return {};
-    std::vector<Stretching> sections, normals;
+    std::vector<Stretching> joints, sections, normals;
     for (auto corner = context.timeSorted.begin(); corner != context.timeSorted.end(); ++corner) {
         const auto sample = [&](bool previous, const QJsonObject& bounds) {
             return contourFlank(context, corner, previous, bounds, .05);
@@ -215,14 +216,29 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
                     !contourNormalCut(context, *corner, previous, false, seam, true,
                                       arm.value("tangentSample").toDouble()) ||
                     seam.referenceWidth > arm.value("maxWidth").toDouble()) continue;
+                if (!facing.isEmpty()) {
+                    const PathExtrema* opposite = nullptr;
+                    for (const auto& edge : context.timeSorted)
+                        if (edge.isSharp && matchesOffset(facing, edge.point - corner->point) &&
+                            (!opposite || edge.point.x() > opposite->point.x()) &&
+                            interiorChord(context.transformedPath, edge, *corner))
+                            opposite = &edge;
+                    if (opposite) {
+                        Stretching joint{};
+                        joint.topBaseLine = joint.topLeft = joint.topRight = *opposite;
+                        joint.bottomBaseLine = joint.bottomLeft = joint.bottomRight = *corner;
+                        joint.referenceWidth = seam.referenceWidth;
+                        joints.push_back(joint);
+                    }
+                }
                 std::swap(seam.topBaseLine, seam.bottomBaseLine);
                 seam.topLeft = seam.topRight = seam.topBaseLine;
                 seam.bottomLeft = seam.bottomRight = seam.bottomBaseLine;
-                normals.push_back(seam);
+                if (mode != UpperAttachmentMode::Corners) normals.push_back(seam);
                 break;
             }
         }
-        if (mode == UpperAttachmentMode::ArmNormal ||
+        if (mode == UpperAttachmentMode::ArmNormal || mode == UpperAttachmentMode::Corners ||
             (!(sample(true, head) && sample(false, rise)) &&
              !(sample(false, head) && sample(true, rise)))) continue;
         if (const auto opposite = horizontalOpposite(context, *corner, true)) {
@@ -232,8 +248,9 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
             sections.push_back(seam);
         }
     }
-    sections.insert(sections.end(), normals.begin(), normals.end());
-    return sections;
+    joints.insert(joints.end(), sections.begin(), sections.end());
+    joints.insert(joints.end(), normals.begin(), normals.end());
+    return joints;
 }
 
 // A stacked tooth can have a valid cut across its cap while the descending
@@ -366,6 +383,24 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
     const auto advance = [&](auto point, bool increases) {
         return increases ? ctx.prev(point) : ctx.next(point);
     };
+    // A reversed corner chord can cut below a smooth shoulder. Probe
+    // across the bowl flank while keeping the outside corner fixed.
+    const auto first = firstAfter(upper, upperIncreases);
+    const double span = QLineF(upper.point, lower.point).length();
+    if (allowOblique && upper.isSharp && lower.isSharp && upper.point.y() > lower.point.y() &&
+        !first->isSharp && first->isX && first->point.x() < upper.point.x() &&
+        first->point.y() < upper.point.y() && QLineF(upper.point, first->point).length() < span &&
+        side.isStrictRight(first->time)) {
+        Stretching shoulder{};
+        if (contourNormalCut(ctx, lower, upperIncreases, false, shoulder) &&
+            shoulder.referenceWidth <= span && shoulder.bottomBaseLine.point.y() < lower.point.y()) {
+            orientSection(ctx, shoulder, tip.time, true);
+            const auto expanded = getJoinTime(shoulder, ctx.orientation);
+            if (expanded.isLeft(upper.time) && expanded.isStrictLeft(first->time) &&
+                (!preceding || getJoinTime(*preceding, ctx.orientation).isStrictLeft(shoulder.topBaseLine.time)))
+                return shoulder;
+        }
+    }
     auto crest = upper;
     std::optional<PathExtrema> shoulderCorner;
     auto point = firstAfter(upper, upperIncreases);

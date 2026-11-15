@@ -65,7 +65,8 @@ QString invalidWalkSettings(const QJsonObject& route, const QString& location) {
         return location + ": normalWalkBack needs an upward probe from a walk endpoint and a positive distance in page units";
     if (const auto flank = route.value("normalFrom"); !flank.isUndefined()) {
         const auto probe = route.value("bottomProbe");
-        const bool lowerAnchor = probe == "up" || (probe == "normal" && route.value("anchorSide") == "bottom");
+        const bool lowerAnchor = probe == "up" || (probe == "normal" && route.value("anchorSide") == "bottom") ||
+            (probe.isUndefined() && route.value("visibleFrom") == "bottom");
         if (!lowerAnchor || !route.value("normalCut").toBool() || (flank != "sending" && flank != "receiving"))
             return location + ": normalFrom requires a normal cut from the lower outline and a sending or receiving flank";
     }
@@ -908,8 +909,11 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         const auto partner = namedLetterForm(config, attachment.value("template").toString());
         const bool supported = phase == "initial" ? shape == "contour-route" || shape == "counter-loop" ||
             shape == "suspended-loop" || shape == "descending-stem" : phase == "medial" && shape == "open-head";
-        if (!supported || attachment.size() != 2 ||
-            !partner.value("upperAttachment").isObject() ||
+        const auto upper = partner.value("upperAttachment").toObject();
+        const auto corners = attachment.value("oppositeCorners");
+        if (!supported || attachment.size() != 2 + int(!corners.isUndefined()) || upper.isEmpty() ||
+            (!corners.isUndefined() && (!corners.isBool() || shape != "contour-route" ||
+                !upper.value("armNormal").toObject().value("oppositeCorner").isObject())) ||
             !positive(attachment.value("maxDistanceWidths")))
             return id + ": sharedExitAtAttachment needs a compatible body, upper attachment and positive distance";
         cutKeys << "sharedExitAtAttachment";
@@ -1305,6 +1309,19 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         if (!placement.isUndefined() && (placement != "lower-rim" || phase != "final"))
             return id + ": lower-rim shoulder placement requires a final body";
         const auto policy = cuts.value("shoulder").toObject();
+        const auto entry = shoulder.value("entryCorner");
+        const auto sample = policy.value("entrySample");
+        if (!entry.isUndefined() || !sample.isUndefined()) {
+            const auto corner = entry.toObject();
+            const auto bounds = [&](const char* low, const char* high) {
+                const auto a = corner.value(low), b = corner.value(high);
+                return a.isDouble() && b.isDouble() && std::isfinite(a.toDouble()) &&
+                    std::isfinite(b.toDouble()) && a.toDouble() <= b.toDouble();
+            };
+            if (phase != "final" || !placement.isUndefined() || !positive(sample) ||
+                corner.size() != 4 || !bounds("minX", "maxX") || !bounds("minY", "maxY"))
+                return id + ": an entry-corner normal needs counter-relative bounds and a positive sample";
+        }
         const auto minimum = policy.value("minWidth");
         if (!minimum.isUndefined() && (!minimum.isDouble() || !std::isfinite(minimum.toDouble()) ||
             minimum.toDouble() <= 0 || minimum.toDouble() >= policy.value("maxWidth").toDouble(2.4)))
@@ -2004,7 +2021,7 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                 const auto partner = std::find_if(finals.begin(), finals.end(), [&](const auto& value) {
                     return value.toObject().value("id") == name;
                 });
-                if (QString(phase) != "initial" || name.isEmpty() || letters.isEmpty() || partner == finals.end())
+                if (name.isEmpty() || letters.isEmpty() || partner == finals.end())
                     return id + ": sharedFoldForm needs a shared fold and a declared final template";
                 const auto selected = partner->toObject().value("current").toString();
                 if (!std::all_of(letters.begin(), letters.end(), [&](QChar ch) { return selected.contains(ch); }))
@@ -2107,10 +2124,12 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                     measurements.append({attachment.value("risingFlank").toObject(), attachment.value("headFlank").toObject()});
                     if (const auto value = attachment.value("armNormal"); !value.isUndefined()) {
                         const auto normal = value.toObject();
-                        if (normal.size() != 3 || !positive(normal.value("maxWidth")) ||
+                        const bool facing = normal.contains("oppositeCorner");
+                        if (normal.size() != 3 + int(facing) || !positive(normal.value("maxWidth")) ||
                             !positive(normal.value("tangentSample")))
                             return id + ": armNormal needs a flank, maximum width and tangent sample";
                         measurements.append(normal.value("flank").toObject());
+                        if (facing) measurements.append(normal.value("oppositeCorner").toObject());
                     }
                 }
                 for (const auto& bounds : measurements) {

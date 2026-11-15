@@ -887,7 +887,24 @@ bool projectContourRoute(SearchContext& context, const QJsonObject& form,
         }
         join.fixedRightBoundary = true;
     }
-    if (form.value("normalCut").toBool() && probeMode != "up" &&
+    const bool normalFromWalk = probeMode.isEmpty() && form.value("visibleFrom") == "bottom" &&
+        form.contains("normalFrom");
+    if (normalFromWalk && join.topBaseLine.point.y() > join.bottomBaseLine.point.y()) {
+        // When the facing walk lands below the shoulder, it can cut the
+        // loop instead of the joining stroke. Keep the shoulder fixed and
+        // take the normal of the incoming flank.
+        Stretching section{};
+        const double width = QLineF(join.topBaseLine.point, join.bottomBaseLine.point).length();
+        if (contourNormalCut(context, join.bottomBaseLine, lowerFlank, false, section, true)) {
+            std::swap(section.topBaseLine, section.bottomBaseLine);
+            if (anchoredStrokeNormalCut(context, section, lowerFlank) && section.referenceWidth <= width) {
+                join.topBaseLine = section.topBaseLine;
+                join.referenceWidth = section.referenceWidth;
+                join.fixedRightBoundary = true;
+            }
+        }
+    }
+    if (form.value("normalCut").toBool() && !normalFromWalk && probeMode != "up" &&
         !(probeMode == "normal" && form.value("anchorSide") == "bottom") &&
         !strokeNormalCut(context, join, form.value("strokeOffsetX").toDouble())) return false;
     if (const auto snap = form.value("snapOppositeToOrigin"); snap.isDouble() &&

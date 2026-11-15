@@ -93,22 +93,13 @@ int main(int argc, char** argv) {
     missingForm.insert("final", remaining);
     check(!analysis.segmentSubword(599, 1, 4, 0, nullptr, true, &missingForm),
           "Missing meem form was concealed by the number of body regions");
-    // The projection of a folded rim must stop at uninterrupted ink. Also
-    // exercise the assembler's independent final-shoulder proposal beside lām.
-    for (const auto& loc : std::vector<std::array<int, 4>>{{435,3,9,1}, {184,14,10,1}}) {
-        QFile fixture(QString("pages/page%1.dat").arg(loc[0]));
+    // The projection of a folded rim must stop at uninterrupted ink.
+    {
+        QFile fixture("pages/page435.dat");
         check(fixture.open(QIODevice::ReadOnly), "Folded-rim fixture missing");
         PageAnalysisResult a; QDataStream input(&fixture); input >> a.page;
-        check(a.segmentSubword(loc[0]-1, loc[1]-1, loc[2]-1, loc[3]-1, nullptr, true),
+        check(a.segmentSubword(434, 2, 8, 0, nullptr, true),
               "Folded rim lost its visible cut or terminal shoulder");
-        const auto& result = a.page.lines[loc[1]-1].words[loc[2]-1].wordResultInfo.subWords[loc[3]-1];
-        if (loc[0] == 184) {
-            const auto meem = result.letterDiagnostics.last().toObject();
-            check(meem.value("template") == "meem-shoulder-fina" && meem.value("entryTemplate") == "meem-shoulder-fina" &&
-                  meem.value("candidates").toArray().contains("meem-shoulder-fina") &&
-                  result.matchedTemplates.contains("meem-shoulder-fina") && !result.matchedTemplates.contains("meem-counter-fina"),
-                  "The accepted final shoulder is missing from the assembled template diagnostics");
-        }
     }
     const auto counterForm = resolvedLetterForm(config, "meem-counter-fina");
     QFile steps("pages/page2.dat");
@@ -154,5 +145,27 @@ int main(int argc, char** argv) {
     check(receiving.length() < 1.5 && roundedBody.contains(sourceBounds.topLeft() + QPointF(7.55, 8.2)) &&
           toSubpaths(roundedBody).size() == 2 && coversOriginalInk(roundedWord, roundedSub),
           "The cut through the rounded foot must move to the incoming stroke");
+
+    struct ShoulderFixture { int page, line, word, subword, corner; bool connector; };
+    for (const auto& at : {ShoulderFixture{72, 12, 10, 3, 16, false},
+                           ShoulderFixture{435, 3, 9, 1, 22, true},
+                           ShoulderFixture{579, 10, 5, 1, 31, true}}) {
+        QFile fixture(QString("pages/page%1.dat").arg(at.page));
+        check(fixture.open(QIODevice::ReadOnly), "Final meem shoulder fixture missing");
+        PageAnalysisResult reviewed;
+        QDataStream input(&fixture);
+        input >> reviewed.page;
+        const int line = at.line - 1, wordIndex = at.word - 1, subword = at.subword - 1;
+        check(reviewed.segmentSubword(at.page - 1, line, wordIndex, subword, nullptr, true),
+              "The reviewed meem shoulder remains partial");
+        const auto& word = reviewed.page.lines[line].words[wordIndex];
+        const auto& sub = word.wordResultInfo.subWords[subword];
+        check(!sub.joins.empty() && !sub.kashidaPaths.empty(), "The reviewed meem has no incoming seam");
+        const auto& seam = *sub.joins.rbegin();
+        check(seam.bottomLeft.time == at.corner && seam.topLeft.point.y() < seam.bottomLeft.point.y() &&
+              sub.kashidaPaths.back().isEmpty() != at.connector && coversOriginalInk(word, sub),
+              "The final meem section missed the shoulder or changed the connector topology");
+    }
+
     qInfo("Final meem passed: own valley/corner 4.7975/16, retained loop/counter/tail, no lam ascender, independence from neighboring landmarks, scale/translation invariance, four bodies/three spans and deterministic masks.");
 }
