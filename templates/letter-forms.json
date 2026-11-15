@@ -342,7 +342,7 @@
       "priorityWithinPass": 2,
       "anchorOverrides": {
         "standard": {
-          "priorityWithinPass": 6,
+          "priorityWithinPass": 0,
           "fixedAnchorsEnding": null
         }
       },
@@ -367,6 +367,10 @@
         }
       },
       "cuts": {
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 2
+        },
         "restoreStackedExit": {
           "fromTemplate": "lam-normal-init",
           "nextTemplate": "hah-stacked-medi",
@@ -1611,6 +1615,10 @@
         }
       },
       "cuts": {
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 4
+        },
         "route": {
           "bottomProbe": "below"
         },
@@ -1836,6 +1844,10 @@
         }
       },
       "cuts": {
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 4
+        },
         "route": {
           "bottomProbe": "right"
         },
@@ -3064,6 +3076,7 @@
         "counters": 0
       },
       "cuts": {
+        "sharedEntryAtAttachment": "hah-stacked-medi",
         "routes": {
           "right": {
             "bottomProbe": "normal"
@@ -3211,7 +3224,7 @@
       "fixedAnchorsEnding": "دذ",
       "current": "جحخ",
       "upperAttachment": {
-        "letters": "بتثنيىئمعغ",
+        "letters": "بتثنيىئمعغفل",
         "headFlank": {
           "minX": 3,
           "minY": 0,
@@ -3221,6 +3234,14 @@
           "accumulate": true,
           "minX": 1,
           "maxY": -1.2
+        },
+        "armNormal": {
+          "flank": {
+            "accumulate": true,
+            "maxY": -0.65
+          },
+          "tangentSample": 0.3,
+          "maxWidth": 2.2
         }
       },
       "sharedEntry": true,
@@ -3669,6 +3690,7 @@
         "counters": 0
       },
       "cuts": {
+        "sharedEntryAtAttachment": "hah-stacked-medi",
         "minimumExitWalk": 1.5,
         "minimumExitBefore": "قوؤ",
         "routes": {
@@ -4368,7 +4390,8 @@
         "parts": {
           "mode": "overhanging-head",
           "maxGap": 0.8,
-          "maxEntryToHead": 1.1
+          "maxEntryToHead": 1.1,
+          "entryBendReach": 0.8
         },
         "boundaries": {
           "left": "component-form",

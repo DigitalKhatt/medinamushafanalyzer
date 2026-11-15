@@ -1084,7 +1084,9 @@ std::optional<Stretching> stackedAttachment(SearchContext& context, const QJsonO
                                                    const QRectF& cap, const QPainterPath& head,
                                                    const Stretching& incoming, const Stretching& outgoing,
                                                    bool clippedCap = false);
-std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJsonObject& settings);
+enum class UpperAttachmentMode { All, Original, ArmNormal };
+std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJsonObject& settings,
+    UpperAttachmentMode mode = UpperAttachmentMode::All);
 
 std::vector<Stretching> cornerSections(const SearchContext& context, const PathExtrema& corner);
 
@@ -1231,7 +1233,8 @@ struct AnchorPriority {
 
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word,
         const WordResultInfo::SubWordInfo& sub, std::span<const AnchorPriority> priorities,
-        const AnchorPartitionCheck& accept, const QString& attachedStroke = {});
+        const AnchorPartitionCheck& accept, const QString& attachedStroke = {},
+        const std::optional<Stretching>& attachmentEntry = {});
 bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 bool assembleDetachedHeadEntry(const Word& word, WordResultInfo::SubWordInfo& sub, const QJsonObject& config);
 

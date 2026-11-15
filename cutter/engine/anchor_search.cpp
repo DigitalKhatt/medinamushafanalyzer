@@ -787,6 +787,7 @@ struct AnchorTraversal {
     const std::vector<bool>& requiredConnectors;
     const AnchorPartitionCheck& accept;
     const QString& attachedStroke;
+    const std::optional<Stretching>& attachmentEntry;
     AnchorSearchMemo memo;
     std::vector<const AnchoredBody*> selected;
     size_t partitionAttempts = 0;
@@ -978,7 +979,11 @@ struct AnchorTraversal {
         const bool terminal = slot + 1 == letters.size();
         if (terminal && !attachedStroke.isEmpty()) {
             if (!sending || !sending->exit || requiredConnectors[slot - 1]) return {};
-            const AnchoredBody stroke{.formId = attachedStroke, .entry = sending->exit, .requiresSharedEntry = true};
+            if (attachmentEntry && !orderedSections(*sending->exit, *attachmentEntry, branch.source.orientation))
+                return {};
+            const AnchoredBody stroke{.formId = attachedStroke,
+                .entry = attachmentEntry ? attachmentEntry : sending->exit,
+                .fixedEntryJunction = attachmentEntry.has_value(), .requiresSharedEntry = !attachmentEntry};
             return tryBody(stroke);
         }
         const QChar last = letters.back();
@@ -1238,7 +1243,8 @@ struct AnchorTraversal {
 } // namespace
 
 std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, const Subword& sub,
-        std::span<const AnchorPriority> priorities, const AnchorPartitionCheck& accept, const QString& attachedStroke) {
+        std::span<const AnchorPriority> priorities, const AnchorPartitionCheck& accept, const QString& attachedStroke,
+        const std::optional<Stretching>& attachmentEntry) {
     if (priorities.empty() || sub.paths.empty() || sub.paths.front() < 0 ||
         sub.paths.front() >= int(word.paths.size()) || (sub.secondaryBodyPath >= 0 && !sub.bodyCounter)) return {};
     const auto letters = PageAnalysisResult::bodyLetters(sub.text);
@@ -1257,7 +1263,7 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
     });
 
     AnchorTraversal traversal{word, sub, shape, letters, priorities.front().config.value("strokeWidth").toDouble(1),
-                              *connectors, accept, attachedStroke};
+                              *connectors, accept, attachedStroke, attachmentEntry};
     auto result = traversal.search(ink, priorities);
     if (result && cutGeometryMemo && cutGeometryMemo->profiling) cutGeometryMemo->anchorSearch = "matched";
     return result;

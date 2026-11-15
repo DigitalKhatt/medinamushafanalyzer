@@ -232,6 +232,36 @@ bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& 
     });
 }
 
+static std::optional<Stretching> attachmentEntryAtBend(const QPainterPath& ink,
+        const QRectF& head, double reach) {
+    if (reach <= 0) return {};
+    WordResultInfo::SubWordInfo geometry;
+    OutlineSearchCache outline;
+    SearchContext source{.transformedPath = ink, .bbox = ink.boundingRect(), .subword = geometry,
+                         .outlineCache = &outline};
+    if (!preparePassOutline(source, outline)) return {};
+
+    // On the terminal arm, follow the upper flank from the tip back to
+    // its first hollow. Only use the hollow that lies next to the head.
+    const auto tip = source.timeSorted.find(*source.xSorted.rbegin());
+    if (tip == source.timeSorted.end()) return {};
+    for (const auto advance : {&SearchContext::prev, &SearchContext::next}) {
+        const auto crest = (source.*advance)(tip);
+        if (crest->point.y() >= tip->point.y()) continue;
+        const auto bend = (source.*advance)(crest);
+        const auto beyond = (source.*advance)(bend);
+        if (!bend->isY || bend->point.x() <= crest->point.x() || bend->point.y() <= crest->point.y() ||
+            beyond->point.x() <= bend->point.x() || beyond->point.y() >= bend->point.y() ||
+            std::abs(bend->point.x() - head.right()) > reach) continue;
+        Stretching entry{};
+        if (!contourNormalCut(source, *bend, advance == &SearchContext::prev, false, entry) ||
+            entry.bottomBaseLine.point.y() <= bend->point.y()) continue;
+        orientSection(source, entry, tip->time, true);
+        return entry;
+    }
+    return {};
+}
+
 // In some overhanging heads the pen lifts between the incoming attachment
 // and the head, even though the transcript remains joined. Recover the
 // attachment from its own contour and the head from the other contour.
@@ -284,16 +314,18 @@ static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo
             !compileAnchorForms(continuation, continuationForms).isEmpty()) return std::move(local);
         const std::array priorities{AnchorPriority{forms, standardForms},
             AnchorPriority{continuation, continuationForms, AnchorPass::Continuation}};
+        const auto attachment = head ? attachmentEntryAtBend(world(component.ink), head->boundingRect(),
+            settings.value("entryBendReach").toDouble() * config.value("strokeWidth").toDouble(1)) : std::nullopt;
         const auto accepts = [&](const WordResultInfo::SubWordInfo& partition) {
             if (!head) return true;
             const auto stub = world(partition.baseGlyphs.back().path);
             const auto box = stub.boundingRect();
-            return toSubpaths(stub).size() == 1 && box.width() > box.height() &&
+            return toSubpaths(stub).size() == 1 && (attachment || box.width() > box.height()) &&
                 box.width() <= settings.value("maxEntryToHead").toDouble() * head->boundingRect().width() &&
                 contact.createStroke(stub).intersects(*head);
         };
         if (auto partition = segmentWithAnchors(localWord, local, priorities, accepts,
-                head ? form.value("id").toString() : QString{}))
+                head ? form.value("id").toString() : QString{}, attachment))
             return std::move(*partition);
         return std::move(local);
     };
@@ -342,7 +374,8 @@ static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo
                 !accepts(entry, suffix.letterDiagnostics.first())) continue;
         } else {
             const auto box = attachment.boundingRect();
-            if (toSubpaths(attachment).size() != 1 || box.width() <= box.height() ||
+            if (toSubpaths(attachment).size() != 1 ||
+                (prefix.kashidaPaths.back().isEmpty() && box.width() <= box.height()) ||
                 box.width() > settings.value("maxEntryToHead").toDouble() * head.boundingRect().width()) continue;
         }
         auto assembled = result;

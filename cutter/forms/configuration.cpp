@@ -907,7 +907,7 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         const auto attachment = value.toObject();
         const auto partner = namedLetterForm(config, attachment.value("template").toString());
         const bool supported = phase == "initial" ? shape == "contour-route" || shape == "counter-loop" ||
-            shape == "suspended-loop" : phase == "medial" && shape == "open-head";
+            shape == "suspended-loop" || shape == "descending-stem" : phase == "medial" && shape == "open-head";
         if (!supported || attachment.size() != 2 ||
             !partner.value("upperAttachment").isObject() ||
             !positive(attachment.value("maxDistanceWidths")))
@@ -1231,7 +1231,9 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
                 parts.value("forms").toArray().isEmpty())
                 return id + ": pen lift needs a side and component forms";
         } else if (mode == "overhanging-head") {
-            if (policy.size() != 3 || !(policy.value("maxGap").toDouble() > 0) ||
+            const auto bend = policy.value("entryBendReach");
+            if ((!bend.isUndefined() && !positive(bend)) || policy.size() != 3 + int(!bend.isUndefined()) ||
+                !(policy.value("maxGap").toDouble() > 0) ||
                 !(policy.value("maxEntryToHead").toDouble() > 0) || parts.contains("forms"))
                 return id + ": invalid overhanging head policy";
         } else
@@ -2103,6 +2105,13 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                     if (right.value("bottomProbe") != "left" || right.value("anchorSide") != "bottom")
                         return id + ": upperAttachment needs a leftward probe";
                     measurements.append({attachment.value("risingFlank").toObject(), attachment.value("headFlank").toObject()});
+                    if (const auto value = attachment.value("armNormal"); !value.isUndefined()) {
+                        const auto normal = value.toObject();
+                        if (normal.size() != 3 || !positive(normal.value("maxWidth")) ||
+                            !positive(normal.value("tangentSample")))
+                            return id + ": armNormal needs a flank, maximum width and tangent sample";
+                        measurements.append(normal.value("flank").toObject());
+                    }
                 }
                 for (const auto& bounds : measurements) {
                     if (bounds.isEmpty()) return id + ": upperAttachment needs bounds for each landmark";

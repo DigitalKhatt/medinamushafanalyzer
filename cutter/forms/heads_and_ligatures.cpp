@@ -164,9 +164,11 @@ std::optional<PathExtrema> contourFlank(SearchContext& context, timesortedtype::
     return {};
 }
 
-std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJsonObject& settings) {
+std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJsonObject& settings,
+                                                UpperAttachmentMode mode) {
     const auto foot = settings.value("stemFoot").toObject();
     if (!foot.isEmpty()) {
+        if (mode == UpperAttachmentMode::ArmNormal) return {};
         const auto stem = recognizedSharedShape(context, foot.value("body").toObject())->descendingStemSection;
         if (!stem) return {};
 
@@ -197,13 +199,30 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
 
     const auto head = settings.value("headFlank").toObject();
     const auto rise = settings.value("risingFlank").toObject();
-    if (head.isEmpty() || rise.isEmpty()) return {};
-    std::vector<Stretching> sections;
+    const auto arm = mode != UpperAttachmentMode::Original ? settings.value("armNormal").toObject() : QJsonObject{};
+    const auto flank = arm.value("flank").toObject();
+    if (head.isEmpty() || rise.isEmpty() || (mode == UpperAttachmentMode::ArmNormal && arm.isEmpty())) return {};
+    std::vector<Stretching> sections, normals;
     for (auto corner = context.timeSorted.begin(); corner != context.timeSorted.end(); ++corner) {
         const auto sample = [&](bool previous, const QJsonObject& bounds) {
             return contourFlank(context, corner, previous, bounds, .05);
         };
-        if (!corner->isSharp || !corner->isX ||
+        if (!corner->isSharp || !corner->isX) continue;
+        if (!arm.isEmpty()) {
+            for (const bool previous : {true, false}) {
+                Stretching seam{};
+                if (!sample(!previous, head) || !sample(previous, flank) ||
+                    !contourNormalCut(context, *corner, previous, false, seam, true,
+                                      arm.value("tangentSample").toDouble()) ||
+                    seam.referenceWidth > arm.value("maxWidth").toDouble()) continue;
+                std::swap(seam.topBaseLine, seam.bottomBaseLine);
+                seam.topLeft = seam.topRight = seam.topBaseLine;
+                seam.bottomLeft = seam.bottomRight = seam.bottomBaseLine;
+                normals.push_back(seam);
+                break;
+            }
+        }
+        if (mode == UpperAttachmentMode::ArmNormal ||
             (!(sample(true, head) && sample(false, rise)) &&
              !(sample(false, head) && sample(true, rise)))) continue;
         if (const auto opposite = horizontalOpposite(context, *corner, true)) {
@@ -213,6 +232,7 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
             sections.push_back(seam);
         }
     }
+    sections.insert(sections.end(), normals.begin(), normals.end());
     return sections;
 }
 

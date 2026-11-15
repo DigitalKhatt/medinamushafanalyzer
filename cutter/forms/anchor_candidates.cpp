@@ -291,7 +291,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     } else if (shape == "stacked-tooth") {
         const auto attachment = body.value("attachment").toObject();
         const auto settings = form.value("_upperAttachment").toObject();
-        for (auto seam : upperAttachmentSections(source, settings)) {
+        for (auto seam : upperAttachmentSections(source, settings, UpperAttachmentMode::Original)) {
             const QLineF section(seam.topBaseLine.point, seam.bottomBaseLine.point);
             // Find the crest of the upper piece. Another letter's
             // ascender can be taller than the stacked tooth.
@@ -648,8 +648,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                         const auto pieces = cutRegions(source.transformedPath, {}, {seam}, source.orientation, true);
                         if (pieces.size() == 2 && toSubpaths(pieces.front().path).contains(counter))
                             result.push_back({.formId = id, .exit = seam, .landmarks = {*crest}, .counters = counters,
-                                .requiresSharedExit = true, .requiredExitTemplate = attachment.value("template").toString(),
-                                .minimumExit = minimum});
+                                .requiresSharedExit = true, .minimumExit = minimum});
                     }
                 }
             }
@@ -825,7 +824,9 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         if (shape == "returning-lips") {
             const auto ownAttachment = form.value("upperAttachment").toObject();
             const auto ownSections = upperAttachmentSections(source, ownAttachment);
-            const auto attachments = upperAttachmentSections(source, form.value("_sharedAttachment").toObject());
+            const auto shared = form.value("_sharedAttachment").toObject();
+            const auto attachments = upperAttachmentSections(source, shared, UpperAttachmentMode::Original);
+            const auto normalAttachments = upperAttachmentSections(source, shared, UpperAttachmentMode::ArmNormal);
             for (const auto& head : evidence->mouths) {
                 const auto& lips = head.lips;
                 const double distance = cuts.value("minimumExitWidths").toDouble() * penWidth;
@@ -851,6 +852,16 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                     }
                     if (continuation && !retainsLandmarks(candidate, &entry, &*candidate.exit, source.orientation))
                         continue;
+                    for (auto seam : normalAttachments) {
+                        orientSection(source, seam, lips.upper.time, true);
+                        if (!orderedSections(seam, *candidate.exit, source.orientation) ||
+                            !retainsLandmarks(candidate, &seam, &*candidate.exit, source.orientation)) continue;
+                        auto joined = candidate;
+                        joined.entry = seam;
+                        joined.requiresSharedEntry = true;
+                        joined.requiresSharedSource = true;
+                        result.push_back(std::move(joined));
+                    }
                     for (auto seam : attachments) {
                         orientSection(source, seam, lips.upper.time, true);
                         if (seam.bottomBaseLine.time != entry.bottomBaseLine.time ||
@@ -1374,7 +1385,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         }
     }
     const auto attachment = cuts.value("sharedExitAtAttachment").toObject();
-    if (!attachment.isEmpty() && (shape == "open-head" || shape == "suspended-loop")) {
+    if (!attachment.isEmpty() && (shape == "open-head" || shape == "suspended-loop" || shape == "descending-stem")) {
         const auto seams = upperAttachmentSections(source, form.value("_upperAttachment").toObject());
         const double reach = attachment.value("maxDistanceWidths").toDouble() * penWidth;
         std::vector<AnchoredBody> joined;
@@ -1382,8 +1393,11 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             if (!candidate.exit || candidate.landmarks.isEmpty()) continue;
             for (auto seam : seams) {
                 orientSection(source, seam, candidate.landmarks.front().time, false);
+                const bool keepsFoot = shape == "descending-stem" &&
+                    matchesBoundaryBody(source, form, seam, true) &&
+                    (!candidate.exitLimit || getJoinTime(seam, source.orientation).isRight(candidate.exitLimit->time));
                 if (QLineF(sectionLine(*candidate.exit).center(), sectionLine(seam).center()).length() > reach ||
-                    !orderedSections(*candidate.exit, seam, source.orientation) ||
+                    (!keepsFoot && !orderedSections(*candidate.exit, seam, source.orientation)) ||
                     !retainsLandmarks(candidate, candidate.entry ? &*candidate.entry : nullptr, &seam, source.orientation))
                     continue;
                 auto body = candidate;

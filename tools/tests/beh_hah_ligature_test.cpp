@@ -65,6 +65,34 @@ int main(int argc, char** argv) {
         check(std::abs(yeh.boundingRect().bottom() - entry.bottomBaseLine.point.y()) < 1e-6 &&
               yeh.contains(example.risingStroke), "The rising stroke above the attachment must stay in the yeh body");
     }
+    for (const auto& example : {std::array{35, 5, 5, 2, 45}, std::array{134, 10, 4, 2, 48},
+                                std::array{233, 15, 9, 1, 23}}) {
+        QFile source(QString("pages/page%1.dat").arg(example[0]));
+        check(source.open(QIODevice::ReadOnly), "Missing stacked arm fixture");
+        PageAnalysisResult sample;
+        QDataStream input(&source);
+        input >> sample.page;
+        const int line = example[1] - 1, word = example[2] - 1, subword = example[3] - 1;
+        const auto& sub = sample.page.lines[line].words[word].wordResultInfo.subWords[subword];
+        check(sample.segmentSubword(example[0] - 1, line, word, subword, nullptr, true) && !sub.joins.empty(),
+              "Stacked arm fixture became partial");
+        check(sub.kashidaPaths.front().isEmpty() && sub.joins.begin()->bottomBaseLine.time == example[4],
+              "The entry missed the junction at the foot of the stacked arm");
+    }
+
+    QFile liftedSource("pages/page219.dat");
+    check(liftedSource.open(QIODevice::ReadOnly), "Missing lifted head fixture");
+    PageAnalysisResult lifted;
+    QDataStream liftedInput(&liftedSource);
+    liftedInput >> lifted.page;
+    const auto& liftedSub = lifted.page.lines[5].words[4].wordResultInfo.subWords[0];
+    check(lifted.segmentSubword(218, 5, 4, 0, nullptr, true) &&
+          liftedSub.baseGlyphs.size() == 5 && liftedSub.kashidaPaths.size() == 4,
+          "The lifted ha head no longer joins its arm");
+    check(!liftedSub.kashidaPaths[1].isEmpty() &&
+          std::abs(liftedSub.kashidaCuts[1].second.p1().x() - 172.596) < .01,
+          "The lifted head absorbed the connector past its entry bend");
+
     QFile file("pages/page3.dat");
     check(file.open(QIODevice::ReadOnly), "Page 3 cache is required");
     PageAnalysisResult analysis;
