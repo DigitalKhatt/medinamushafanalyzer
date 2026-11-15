@@ -83,6 +83,16 @@ static std::optional<Stretching> initialFootExit(const SearchContext& source, co
 QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
     forms = {};
     AnchorForms compiled;
+    const auto attachmentSettings = [&](const QJsonObject& declaration) -> QJsonValue {
+        const auto raw = declaration.value("upperAttachment");
+        auto attachment = raw.toObject();
+        auto foot = attachment.value("stemFoot").toObject();
+        if (foot.isEmpty()) return raw;
+        const auto stem = namedLetterForm(config, foot.value("template").toString());
+        foot.insert("body", formDescription(config, stem, "body"));
+        attachment.insert("stemFoot", foot);
+        return attachment;
+    };
     QHash<QChar, QString> foldedToothPreceders;
     for (const auto& value : config.value("medial").toArray()) {
         const auto form = value.toObject();
@@ -113,6 +123,7 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 return id + ": preferSharedAttachment requires an initial form with ligatureWith";
             auto form = bodyConstraintForm(config, declaration);
             form.remove("anchorOverrides");
+            if (form.contains("upperAttachment")) form.insert("upperAttachment", attachmentSettings(form));
             const auto body = form.value("body").toObject();
             const auto cuts = form.value("cuts").toObject();
             const auto shape = body.value("shape");
@@ -147,21 +158,20 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms) {
                 return id + ": this body does not supply fixed anchors for its position";
             if (shape == "stacked-tooth") {
                 const auto partner = body.value("attachment").toObject().value("template").toString();
-                form.insert("_upperAttachment", namedLetterForm(config, partner).value("upperAttachment"));
+                form.insert("_upperAttachment", attachmentSettings(namedLetterForm(config, partner)));
             } else if (shape == "paired-route" && !form.contains("upperAttachment")) {
                 const auto inherit = declaration.value("body").toObject().value("inherit").toString();
                 if (!inherit.isEmpty()) {
                     const auto parent = namedLetterForm(config, inherit);
-                    form.insert("_sharedAttachment", parent.value("upperAttachment"));
+                    form.insert("_sharedAttachment", attachmentSettings(parent));
                 }
             }
             const auto incoming = form.value("cuts").toObject().value("sharedEntryAtAttachment").toString();
             if (!incoming.isEmpty())
-                form.insert("_sharedAttachment", namedLetterForm(config, incoming).value("upperAttachment"));
+                form.insert("_sharedAttachment", attachmentSettings(namedLetterForm(config, incoming)));
             const auto outgoing = form.value("cuts").toObject().value("sharedExitAtAttachment").toObject();
             if (!outgoing.isEmpty())
-                form.insert("_upperAttachment", namedLetterForm(config, outgoing.value("template").toString())
-                    .value("upperAttachment"));
+                form.insert("_upperAttachment", attachmentSettings(namedLetterForm(config, outgoing.value("template").toString())));
             for (const auto letter : form.value("current").toString()) {
                 auto& entry = compiled[position][letter].emplace_back(form);
                 if (position == 2 && foldedToothPreceders.contains(letter))
@@ -275,7 +285,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 const auto& stroke = pieces.front().path;
                 const auto bounds = stroke.boundingRect();
                 if (toSubpaths(stroke).size() != 1 || crest.point.y() - bounds.top() > 1.5 * penWidth ||
-                    std::abs(bounds.bottom() - section.center().y()) > 1e-5 ||
+                    std::abs(bounds.bottom() - std::max(section.y1(), section.y2())) > 1e-5 ||
                     bounds.width() > attachment.value("maxWidthToHeight").toDouble() * bounds.height()) continue;
                 // The upper pen shape can double back. Check the descending
                 // arm near the attachment, below that turn.
@@ -768,6 +778,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                shape == "inclined-blade" || shape == "parallel-return") {
         const auto evidence = recognizedSharedShape(source, body);
         if (shape == "returning-lips") {
+            const auto ownAttachment = form.value("upperAttachment").toObject();
+            const auto ownSections = upperAttachmentSections(source, ownAttachment);
             const auto attachments = upperAttachmentSections(source, form.value("_sharedAttachment").toObject());
             for (const auto& head : evidence->mouths) {
                 const auto& lips = head.lips;
@@ -776,9 +788,22 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                     AnchoredBody candidate{.formId = id, .entry = entry, .exit = exit,
                         .landmarks = {lips.notch, lips.upper},
                         .usesSharedEntry = form.value("sharedEntry").toBool() || form.value("reclaimEntry").toBool()};
-                    if (continuation) keepLowerLip(source, candidate, lips, distance);
+                    if (continuation || !ownAttachment.isEmpty()) keepLowerLip(source, candidate, lips, distance);
                     if (candidate.minimumExit && !retainsLandmarks(candidate, &entry, &exit, source.orientation))
                         candidate.exit = candidate.minimumExit;
+                    if (!ownAttachment.isEmpty()) {
+                        for (auto seam : ownSections) {
+                            orientSection(source, seam, lips.upper.time, true);
+                            if (!orderedSections(seam, *candidate.exit, source.orientation) ||
+                                !retainsLandmarks(candidate, &seam, &*candidate.exit, source.orientation)) continue;
+                            auto joined = candidate;
+                            joined.entry = seam;
+                            joined.requiresSharedEntry = true;
+                            joined.requiresSharedSource = true;
+                            result.push_back(std::move(joined));
+                        }
+                        continue;
+                    }
                     if (continuation && !retainsLandmarks(candidate, &entry, &*candidate.exit, source.orientation))
                         continue;
                     for (auto seam : attachments) {

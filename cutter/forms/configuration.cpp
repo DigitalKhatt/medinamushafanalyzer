@@ -1999,12 +1999,23 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                 const auto attachment = rule.value("upperAttachment").toObject();
                 const auto right = rule.value("contourBody").toObject().value("right").toObject();
                 if (QString(phase) != "medial" || !rule.value("sharedEntry").toBool() ||
-                    right.value("bottomProbe") != "left" || right.value("anchorSide") != "bottom" ||
                     attachment.value("letters").toString().isEmpty())
-                    return id + ": upperAttachment needs a shared leftward probe and upper letters";
-                for (const auto key : {"headFlank", "risingFlank"}) {
-                    const auto bounds = attachment.value(key).toObject();
-                    if (bounds.isEmpty()) return id + ": upperAttachment needs both flank bounds";
+                    return id + ": upperAttachment needs a shared medial entry and upper letters";
+                QList<QJsonObject> measurements;
+                if (attachment.contains("stemFoot")) {
+                    const auto foot = attachment.value("stemFoot").toObject();
+                    const auto stem = namedLetterForm(config, foot.value("template").toString());
+                    if (sharedBody.value("shape") != "returning-lips" || foot.size() != 2 ||
+                        formDescription(config, stem, "body").value("shape") != "descending-stem")
+                        return id + ": stemFoot needs a returning lip and a descending stem template";
+                    measurements.append(foot.value("crest").toObject());
+                } else {
+                    if (right.value("bottomProbe") != "left" || right.value("anchorSide") != "bottom")
+                        return id + ": upperAttachment needs a leftward probe";
+                    measurements.append({attachment.value("risingFlank").toObject(), attachment.value("headFlank").toObject()});
+                }
+                for (const auto& bounds : measurements) {
+                    if (bounds.isEmpty()) return id + ": upperAttachment needs bounds for each landmark";
                     for (auto it = bounds.begin(); it != bounds.end(); ++it) {
                         if (it.key() == "accumulate" && it.value().isBool()) continue;
                         if (!QStringList{"minX","maxX","minY","maxY"}.contains(it.key()) ||

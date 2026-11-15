@@ -313,6 +313,25 @@
       }
     },
     {
+      "id": "lam-sloped-attachment-init",
+      "current": "ل",
+      "ligatureWith": "جحخ",
+      "body": {
+        "shape": "stacked-tooth",
+        "attachment": {
+          "template": "hah-sloped-attachment-medi",
+          "minRise": 4,
+          "maxWidthToHeight": 0.48
+        }
+      },
+      "cuts": {
+        "boundaries": {
+          "right": "free",
+          "left": "shared-section"
+        }
+      }
+    },
+    {
       "id": "lam-hah-stacked-init",
       "priorityWithinPass": 2,
       "anchorOverrides": {
@@ -3128,6 +3147,30 @@
           "left": "loop-exit",
           "right": "loop-entry"
         }
+      }
+    },
+    {
+      "id": "hah-sloped-attachment-medi",
+      "current": "جحخ",
+      "ligatureAfter": "ل",
+      "sharedEntry": true,
+      "upperAttachment": {
+        "letters": "ل",
+        "stemFoot": {
+          "template": "lam-hah-stacked-init",
+          "crest": {
+            "minX": -2.5,
+            "maxX": -0.25,
+            "minY": -0.35,
+            "maxY": 0.55
+          }
+        }
+      },
+      "body": {
+        "inherit": "hah-returning-lips-medi"
+      },
+      "cuts": {
+        "inherit": "hah-returning-lips-medi"
       }
     },
     {

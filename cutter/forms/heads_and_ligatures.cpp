@@ -165,6 +165,36 @@ std::optional<PathExtrema> contourFlank(SearchContext& context, timesortedtype::
 }
 
 std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJsonObject& settings) {
+    const auto foot = settings.value("stemFoot").toObject();
+    if (!foot.isEmpty()) {
+        const auto stem = recognizedSharedShape(context, foot.value("body").toObject())->descendingStemSection;
+        if (!stem) return {};
+
+        const bool leftIsTop = stem->topBaseLine.point.x() < stem->bottomBaseLine.point.x();
+        const auto& left = leftIsTop ? stem->topBaseLine : stem->bottomBaseLine;
+        const auto& right = leftIsTop ? stem->bottomBaseLine : stem->topBaseLine;
+        const auto stemSide = getJoinTime(*stem, context.orientation);
+        const auto bounds = foot.value("crest").toObject();
+        const PathExtrema* crest = nullptr;
+        double closest = std::numeric_limits<double>::infinity();
+        for (auto at = context.timeSorted.begin(); at != context.timeSorted.end(); ++at) {
+            if (!at->isY || at->isSharp || !stemSide.isStrictLeft(at->time) ||
+                at->point.y() >= context.prev(at)->point.y() || at->point.y() >= context.next(at)->point.y() ||
+                !matchesOffset(bounds, at->point - left.point)) continue;
+            const double distance = QLineF(left.point, at->point).length();
+            if (distance < closest && interiorChord(context.transformedPath, *at, right)) {
+                crest = &*at;
+                closest = distance;
+            }
+        }
+        if (!crest) return {};
+
+        Stretching seam{};
+        seam.topBaseLine = seam.topLeft = seam.topRight = *crest;
+        seam.bottomBaseLine = seam.bottomLeft = seam.bottomRight = right;
+        return {seam};
+    }
+
     const auto head = settings.value("headFlank").toObject();
     const auto rise = settings.value("risingFlank").toObject();
     if (head.isEmpty() || rise.isEmpty()) return {};
