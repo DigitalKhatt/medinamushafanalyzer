@@ -1543,7 +1543,9 @@ static QString normalizePassPriorities(QJsonObject& config) {
         if (!search.contains(key) && !nested.isUndefined()) search.insert(key, nested);
         if (!search.contains(key) && !top.isUndefined()) search.insert(key, top);
     }
-    if (!search.isEmpty() || legacySearch.isObject()) config.insert("anchorSearch", search);
+    search.remove("contourVerification");
+    if (!search.isEmpty() || legacySearch.isObject() || config.value("anchorSearch").isObject())
+        config.insert("anchorSearch", search);
 
     constexpr std::array flags{"onIncomplete", "onUnresolved", "onFinalRetry"};
     for (const auto* position : {"initial", "medial", "final"}) {
@@ -1595,6 +1597,15 @@ static QString normalizePassPriorities(QJsonObject& config) {
             if (!legacy.isUndefined() || !continuationPriority.isUndefined()) {
                 if (overrides.isEmpty()) form.remove("anchorOverrides");
                 else form.insert("anchorOverrides", overrides);
+            }
+            const auto deferred = form.take("onUnresolvedPartition");
+            if (!deferred.isUndefined() && !deferred.isBool())
+                return id + ": onUnresolvedPartition must be true or false";
+            if (deferred.toBool() && form.value("anchorPass") != "assembly") {
+                // Previously deferred forms follow ordinary continuation forms.
+                form.insert("anchorPass", "continuation");
+                form.insert("continuationPriority",
+                    20. + form.value("continuationPriority").toInt(form.value("priorityWithinPass").toInt()));
             }
             forms.replace(i, form);
         }
@@ -1657,6 +1668,38 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                 if (!priority.isUndefined() && priority.toInt(-1) < 0)
                     return id + ": " + key + " must be a nonnegative integer";
             }
+            const auto preferred = rule.value("preferredCutTemplate");
+            if (!preferred.isUndefined()) {
+                const auto current = rule.value("current").toString();
+                const auto valid = [&](const QJsonValue& entry) {
+                    const auto form = entry.toObject();
+                    const auto letters = form.value("current").toString();
+                    return form.value("id") == preferred && !form.contains("preferredCutTemplate") &&
+                        form.contains("body") && form.value("anchorPass") != "assembly" &&
+                        std::all_of(current.begin(), current.end(), [&](QChar letter) { return letters.contains(letter); });
+                };
+                if (!preferred.isString() || preferred.toString().isEmpty() || preferred == id ||
+                    !std::any_of(forms.begin(), forms.end(), valid))
+                    return id + ": preferredCutTemplate must name a preferred body form for the same letters and position";
+            }
+            const auto validPrecedingForms = [&](const QJsonValue& value) {
+                const auto senders = value.toArray();
+                return !senders.isEmpty() &&
+                    std::all_of(senders.begin(), senders.end(), [&](const auto& sender) {
+                        const auto matches = [&](const QJsonValue& form) { return form.toObject().value("id") == sender; };
+                        const auto initial = config.value("initial").toArray();
+                        const auto medial = config.value("medial").toArray();
+                        return sender.isString() && !sender.toString().isEmpty() &&
+                            (std::any_of(initial.begin(), initial.end(), matches) ||
+                             std::any_of(medial.begin(), medial.end(), matches));
+                    });
+            };
+            const auto sharedSources = rule.value("sharedFixedEntryAfter");
+            if (!sharedSources.isUndefined() && (QString(phase) != "final" || !validPrecedingForms(sharedSources)))
+                return id + ": sharedFixedEntryAfter requires a final form and named preceding templates";
+            const auto widthSources = rule.value("connectorStrokeWidthAfter");
+            if (!widthSources.isUndefined() && (QString(phase) == "initial" || !validPrecedingForms(widthSources)))
+                return id + ": connectorStrokeWidthAfter requires a medial or final form and named preceding templates";
             const auto anchorOverrides = rule.value("anchorOverrides");
             if (!anchorOverrides.isUndefined() && anchorOverrides.toObject().isEmpty())
                 return id + ": anchorOverrides requires standard or continuation settings";
@@ -1672,12 +1715,16 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                         !(key == "fixedAnchorsMaxLetters" && field.value().isNull()) &&
                         !(key == "sharedBoundary" && field.value().isBool()) &&
                         !(key == "sharedBoundaryWith" && field.value().isString()) &&
+                        !(key == "sharedFixedEntryAfter" && (field.value().isNull() ||
+                            (QString(phase) == "final" && validPrecedingForms(field.value())))) &&
+                        !(key == "connectorStrokeWidthAfter" && (field.value().isNull() ||
+                            (QString(phase) != "initial" && validPrecedingForms(field.value())))) &&
                         !(key == "priorityWithinPass" && stage.key() == "standard" && field.value().toInt(-1) >= 0))
                         return id + ": invalid anchor override " + key;
                 }
             }
             for (const auto* key : {"tightJoin", "sharedEntry", "sharedBoundary",
-                                    "onUnresolvedPartition", "reclaimEntry",
+                                    "reclaimEntry",
                                     "returningStroke", "alternateAnchor"})
                 if (rule.contains(key) && !rule.value(key).isBool()) return id + ": " + key + " must be true or false";
             if (rule.contains("sharedEntry") && QString(phase) != "medial")

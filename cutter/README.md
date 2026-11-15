@@ -20,11 +20,15 @@ The application, catalog exporter and review tools use `PageAnalysisResult::segm
 3. Use separate sections when the gap contains a complete connecting stroke. A shared junction uses one seam. If a template declares an inward limit, assembly may resolve overlapping preferred sections within that limit while retaining both bodies' landmarks.
 4. Partition the source ink. The chosen cuts must retain the bodies’ landmarks and counters, join through a valid connector or shared seam, and cover the source ink. The catalog exporter also checks that every letter owns source pixels. A rejected result returns control to the same anchor search.
 
-The cutter searches standard candidates first and tries continuation when it cannot assemble a partition. Each declaration supplies a standard candidate. `anchorOverrides.standard` can add a second candidate for a different anchor or join policy. `anchorPass: "continuation"` introduces a form in the second pass, and `anchorPass: "assembly"` reserves a form for a ligature or component recipe. Continuation inherits the standard alternate's geometry and applies any settings declared in `anchorOverrides.continuation`. If both searches fail, the bracketed intersection solver verifies sections against the original curves using the same two passes.
+The cutter searches standard candidates first and tries continuation when it cannot assemble a partition. `anchorOverrides.standard` can add a second candidate for a different anchor or join policy. `anchorPass: "continuation"` introduces a form in the second pass, and `anchorPass: "assembly"` reserves a form for a ligature or component recipe. Continuation inherits the standard alternate's geometry and applies any settings declared in `anchorOverrides.continuation`.
+
+Both passes recognize candidates from the same contour readings. The more precise reading estimates endpoint tangents from the Bézier control points, includes turns across the contour seam and brackets curve intersections. The search caches those candidates and tries their fixed anchors in the same backtracking loop. A valid partition using ordinary candidates takes precedence across both passes.
 
 Within each pass, lower `priorityWithinPass` values are tried first. The default is `0`. A standard alternate can declare its own priority. Continuation uses the top-level priority unless the form declares `continuationPriority`. Ties follow template declaration order. Continuation can move a declared initial attachment to the front when its ligature context matches.
 
-`anchorSearch.maxCandidates` limits candidate visits. `strokeWidth` is the global width in page units for policies measured in pen widths. `kashidaDefaults.sharedCutTolerance` controls how close two sections can be when sharing a cut.
+An alternative cut can name its preferred form with `preferredCutTemplate`. When both passes find a valid partition using refined contour evidence, this preference can decide the first position where the two partitions use different forms.
+
+`anchorSearch.maxCandidates` limits candidate visits separately for ordinary and refined contour evidence. `strokeWidth` is the global width in page units for policies measured in pen widths. `kashidaDefaults.sharedCutTolerance` controls how close two sections can be when sharing a cut.
 
 ## Shape and join policies
 
@@ -33,6 +37,8 @@ Within each pass, lower `priorityWithinPass` values are tried first. The default
 - Sīn and shīn retain three tips and two valleys. Medial forms use the first tooth junction and the last hollow. Final forms use the first tooth junction as their fixed entry and keep the terminal bowl on a continuous contour.
 - Medial lām follows the shaft edges to its fork and places the cuts along its flanks. The two normals can start at a shared tip for a tight join. Lām–alef retains the lower return with lām and can use the inward corners of the alef entry for a shared seam.
 - A suspended counter or stacked body can declare an attachment section in `cuts.sharedExitAtAttachment` or `cuts.sharedEntryAtAttachment`. Both shapes retain their landmarks at the shared section.
+- A final form can declare `sharedFixedEntryAfter` to name the preceding templates that may share its fixed entry when their cuts overlap on the same stroke. It can place this declaration in `anchorOverrides.continuation` when the join belongs to a continuation form.
+- A medial or final form can declare `connectorStrokeWidthAfter` to name the preceding forms whose connector validation may use interior width samples capped at the global `strokeWidth`. Other joins use the larger of the two cut lengths.
 - The `ligatures` array declares two-letter matches and names the two body templates. The receiving form supplies the seam. A ligature can declare a minimum connector span, in global stroke widths, for using two independent sections.
 - A medial form can declare `terminalArmRecovery` with a final `prefixForm` and a `detached` profile for the arm. `prefixCuts` can override the prefix template's boundary policy for that component. A pen lift can supply an attachment between separately matched contours.
 - An explicit tatweel must retain a separate stroke for the catalog to assign to that character.

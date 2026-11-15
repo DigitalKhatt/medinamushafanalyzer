@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
     QVector<PathExtrema> landmarks;
     {
         CutGeometryMemoScope memo;
-        memo.owned->verifyContourGeometry = true;
+        memo.owned->preciseGeometry = true;
         readContourLandmarks(shoulder, contours, landmarks);
     }
     check(std::any_of(landmarks.begin(), landmarks.end(), [](const auto& point) {

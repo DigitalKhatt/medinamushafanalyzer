@@ -458,7 +458,7 @@ bool interiorInkSegment(const QPainterPath& ink, const QPointF& top, const QPoin
     appendGeometryKey(key, source);
     appendGeometryPoint(key, top);
     appendGeometryPoint(key, bottom);
-    appendGeometryKey(key, cutGeometryMemo->verifyContourGeometry);
+    appendGeometryKey(key, cutGeometryMemo->preciseGeometry);
     appendGeometryKey(key, topTolerance);
     if (const auto* saved = cutGeometryMemo->inkSegments.object(key)) {
         ++cutGeometryMemo->segmentHits;

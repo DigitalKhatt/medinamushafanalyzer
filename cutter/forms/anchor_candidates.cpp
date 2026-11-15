@@ -1390,6 +1390,17 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             candidate.minimumExitBefore = following;
         }
     }
+    if (const auto sources = form.value("sharedFixedEntryAfter").toArray(); !sources.isEmpty()) {
+        QStringList allowed;
+        for (const auto& sender : sources) allowed.append(sender.toString());
+        for (auto& candidate : result)
+            if (candidate.fixedEntryJunction) candidate.sharedFixedEntryAfter = allowed;
+    }
+    if (const auto sources = form.value("connectorStrokeWidthAfter").toArray(); !sources.isEmpty()) {
+        QStringList allowed;
+        for (const auto& sender : sources) allowed.append(sender.toString());
+        for (auto& candidate : result) candidate.connectorStrokeWidthAfter = allowed;
+    }
     if (inspectingForm) for (const auto& candidate : result) {
         for (const auto& mark : candidate.landmarks) inspectLandmark("Body landmark", mark);
         if (candidate.entry) inspectCandidate("Entry anchor", *candidate.entry);

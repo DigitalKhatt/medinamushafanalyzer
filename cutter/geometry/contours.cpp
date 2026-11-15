@@ -88,7 +88,7 @@ std::vector<QBezier> baseContourCurves(const QPainterPath &path) {
 void readContourLandmarks(const QPainterPath& ink, std::vector<QPainterPath>& contours,
                           QVector<PathExtrema>& landmarks, bool completeClosedOutline) {
     ShapeItem::getExtrema(ink, contours, landmarks);
-    if (!cutGeometryMemo || !cutGeometryMemo->verifyContourGeometry) return;
+    if (!cutGeometryMemo || !cutGeometryMemo->preciseGeometry) return;
 
     // Substituting the endpoint into the derivative can cancel out its
     // direction. If a control point coincides with the endpoint, the first
@@ -610,7 +610,7 @@ bool projectUpwardCut(const SearchContext& context, PathExtrema bottom, Stretchi
     };
     auto top = nearestCrossing(RootSearch::Standard);
     // A root at a Bézier endpoint can be rounded outside [0, 1].
-    if (!top && (!cutGeometryMemo || !cutGeometryMemo->verifyContourGeometry))
+    if (!top && (!cutGeometryMemo || !cutGeometryMemo->preciseGeometry))
         top = nearestCrossing(RootSearch::BracketAllCrossings);
     if (!top) return false;
     cut.topBaseLine = *top;

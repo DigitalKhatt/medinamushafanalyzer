@@ -37,7 +37,7 @@ struct CutGeometryMemo {
     QCache<QByteArray, bool> inkSegments{65536};
     size_t partitionHits = 0, partitionMisses = 0, segmentHits = 0, segmentMisses = 0;
     bool profiling = qEnvironmentVariableIsSet("MEDINA_PROFILE");
-    bool verifyContourGeometry = false;
+    bool preciseGeometry = false;
     bool memoizeIntersections = false;
     QCache<QByteArray, std::vector<PathExtrema>> intersections{4 * 1024 * 1024};
     QMap<QString, CandidateSearchStats> forms;
@@ -1160,6 +1160,8 @@ struct AnchoredBody {
     bool sharesLoopNeck = false;
     // The minimum body boundary and preferred cut coincide at this junction.
     bool fixedEntryJunction = false;
+    QStringList sharedFixedEntryAfter;
+    QStringList connectorStrokeWidthAfter;
     bool keepsEntryJunction = false;
     bool keepsExitHollow = false;
     bool sharesExitAtCorners = false;
@@ -1224,7 +1226,6 @@ std::vector<AnchoredBody> anchoredBodiesAtSharedEntry(SearchContext& source, con
 struct AnchorPriority {
     const QJsonObject& config;
     const AnchorForms& forms;
-    bool verifyContours = false;
     AnchorPass pass = AnchorPass::Standard;
 };
 

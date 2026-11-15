@@ -210,7 +210,7 @@ bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub)
             for (const auto& path : shapes)
                 actual += path.contains(probe);
             if (actual == int(ink.contains(probe))) continue;
-            if (cutGeometryMemo && cutGeometryMemo->verifyContourGeometry) {
+            if (cutGeometryMemo && cutGeometryMemo->preciseGeometry) {
                 // A subdivided cubic and its original can flatten differently.
                 // Retest at finer precision before treating it as extra or missing ink.
                 const auto detail = QTransform::fromScale(64, 64);

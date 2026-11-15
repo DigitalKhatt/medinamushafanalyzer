@@ -8,19 +8,38 @@ using Subword = WordResultInfo::SubWordInfo;
 using BodySequence = std::span<const AnchoredBody* const>;
 using FormChoices = std::vector<std::vector<const QJsonObject*>>;
 
-enum class PartitionRank { Preferred, SecondaryBody, AdjustedJoin, None };
+enum class PartitionRank { Preferred, SecondaryBody, AdjustedJoin, RefinedBody, None };
+
+struct CandidateBudget {
+    int ordinary;
+    int refined;
+
+    int& forEvidence(bool usesRefinement) { return usesRefinement ? refined : ordinary; }
+};
 
 bool fitsBody(const AnchoredBody& body, const SearchContext& source, size_t slot, size_t count);
+
+bool prefersDeclaredCut(const Subword& candidate, const Subword& current, const QJsonObject& config) {
+    const auto& proposed = candidate.letterDiagnostics;
+    const auto& accepted = current.letterDiagnostics;
+    for (qsizetype slot = 0; slot < std::min(proposed.size(), accepted.size()); ++slot) {
+        const auto prior = accepted.at(slot).toObject().value("template").toString();
+        const auto next = proposed.at(slot).toObject().value("template").toString();
+        if (prior != next)
+            return !next.isEmpty() && namedLetterForm(config, prior).value("preferredCutTemplate") == next;
+    }
+    return false;
+}
 
 struct AnchorCandidateKey {
     QByteArray form;
     size_t slot;
-    bool verifyContours;
+    bool precise;
     bool entryTurn;
     bool continuation;
     const Stretching* sharedExit = nullptr;
 
-    auto tie() const { return std::tie(form, slot, verifyContours, entryTurn, continuation, sharedExit); }
+    auto tie() const { return std::tie(form, slot, precise, entryTurn, continuation, sharedExit); }
     bool operator<(const AnchorCandidateKey& other) const { return tie() < other.tie(); }
 };
 
@@ -34,7 +53,8 @@ struct AnchorSearchMemo {
     std::map<AnchorCandidateKey, std::vector<AnchoredBody>> bodies;
     std::map<std::tuple<const AnchoredBody*, QByteArray, size_t, bool>, std::vector<AnchoredBody>> sharedEntries;
     std::map<std::tuple<const QJsonObject*, QString, bool>, std::optional<Stretching>> folds;
-    std::map<std::tuple<const AnchoredBody*, const AnchoredBody*, size_t, bool, bool, double>, JoinCompatibility> joins;
+    std::map<std::tuple<const AnchoredBody*, const AnchoredBody*, size_t, bool, bool, bool, double>,
+             JoinCompatibility> joins;
 
     const QByteArray& key(const QJsonObject& form) {
         auto [entry, inserted] = formKeys.try_emplace(&form);
@@ -51,9 +71,9 @@ struct AnchorSearchMemo {
     }
 
     const std::vector<AnchoredBody>& candidates(SearchContext& source, const QJsonObject& form,
-            size_t position, size_t slot, size_t count, double penWidth, bool verifyContours, bool entryTurn,
+            size_t position, size_t slot, size_t count, double penWidth, bool precise, bool entryTurn,
             AnchorPass pass, const Stretching* sharedExit = nullptr) {
-        auto [saved, inserted] = bodies.try_emplace(AnchorCandidateKey{key(form), slot, verifyContours,
+        auto [saved, inserted] = bodies.try_emplace(AnchorCandidateKey{key(form), slot, precise,
             entryTurn, pass == AnchorPass::Continuation, sharedExit});
         if (inserted) {
             saved->second = anchoredBodies(source, form, position, penWidth, entryTurn, sharedExit, pass);
@@ -309,9 +329,9 @@ bool fitsAnchorGap(const AnchoredBody& sending, const AnchoredBody& receiving,
            !orderedSections(exit, entry, orientation);
 }
 
-bool sharesFixedJunction(SearchContext& source, const AnchoredBody& sending, const AnchoredBody& receiving,
-                         double penWidth) {
-    if (!receiving.fixedEntryJunction || sending.requiresSharedExit ||
+bool sharesDeclaredFixedEntry(SearchContext& source, const AnchoredBody& sending, const AnchoredBody& receiving,
+                              double penWidth) {
+    if (!receiving.sharedFixedEntryAfter.contains(sending.formId) || !receiving.fixedEntryJunction || sending.requiresSharedExit ||
         receiving.requiresSharedEntry) return false;
     const auto& exit = *sending.exit;
     const auto& entry = *receiving.entry;
@@ -459,9 +479,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
         bool allowNeckJoin) {
     auto exit = *sending.exit;
     auto entry = *receiving.entry;
-    if (!fitsAnchorGap(sending, receiving, source.orientation, penWidth,
-            continuation ||
-            (cutGeometryMemo && cutGeometryMemo->verifyContourGeometry))) return {};
+    if (!fitsAnchorGap(sending, receiving, source.orientation, penWidth, continuation)) return {};
     if (const auto* flank = exitBeforeFollowingTooth(sending, receiving, source.orientation, following))
         return JoinSections{*flank, entry, false, false, {}};
     const bool sharedCounter = !terminal &&
@@ -472,7 +490,6 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
          QLineF(sectionLine(exit).center(), sectionLine(entry).center()).length() <= tightTolerance);
     bool sharedAtEntry = false;
     QString terminalJunction;
-    const bool canShareFixedCut = continuation && !requiredConnector;
     if (!sameSection(exit, entry) && !orderedSections(exit, entry, source.orientation) &&
         hasOverlapLimits(sending, receiving, following, tightTolerance, penWidth)) {
         if (requiredConnector) return {};
@@ -498,7 +515,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
     const bool preserveHollow = continuation && sending.keepsExitHollow &&
         !leavesEntryClearance(exit, entry, source.orientation, tightTolerance) &&
         hasShortConnector(source, exit, entry);
-    const bool useFixedJunction = canShareFixedCut && sharesFixedJunction(source, sending, receiving, penWidth);
+    const bool useFixedJunction = !requiredConnector && sharesDeclaredFixedEntry(source, sending, receiving, penWidth);
     if (!preserveHollow &&
         (useFixedJunction || sharesRim ||
         sharesCornerExit(sending, entry, source.orientation, tightTolerance) ||
@@ -541,7 +558,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
     }
     const bool shared = sameSection(exit, entry) || sharesIncomingSection(exit, receiving, source.orientation);
     const auto& actualEntry = shared ? exit : entry;
-    if ((continuation && receiving.fixedEntryJunction && !sameSection(actualEntry, *receiving.entry)) ||
+    if ((receiving.fixedEntryJunction && !sameSection(actualEntry, *receiving.entry)) ||
         !withinBodyLimit(exit, exitLimitAtJoin(sending, receiving, following), source.orientation, false) ||
         !withinBodyLimit(actualEntry, entryLimitAtJoin(sending, receiving), source.orientation, true)) return {};
     if ((sending.exitLimit && !retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &exit,
@@ -556,7 +573,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
             QLineF(chord.center(), original.center()).length() > .65 * penWidth) return {};
     }
     if (shared && keepsStrokeAtEntry(sending, receiving, source, penWidth)) return {};
-    if (continuation && !shared && !sending.entry &&
+    if (!shared && !sending.entry &&
         connectorContainsLeadingStroke(source.subword.extrema, exit, entry, source.orientation)) return {};
     if (receiving.requiresSharedEntry && !sameSection(exit, entry)) return {};
     if (shared && requiredConnector) return {};
@@ -573,10 +590,11 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
 }
 
 bool validConnector(const QPainterPath& connector, const Apath& shape, const QLineF& right, const QLineF& left,
-                    bool continuation, double penWidth) {
+                    const AnchoredBody& sending, const AnchoredBody& receiving, double penWidth) {
+    const double nominalWidth = receiving.connectorStrokeWidthAfter.contains(sending.formId) ? penWidth : 0;
     return !connector.boundingRect().isEmpty() && toSubpaths(connector).size() == 1 &&
         followsOneStroke(shape.transform.map(connector).translated(shape.pos), right, left,
-                         ConnectorEndpointMatch::NearestVertex, continuation ? penWidth : 0);
+                         ConnectorEndpointMatch::NearestVertex, nominalWidth);
 }
 
 std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apath& shape,
@@ -642,8 +660,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
 
     // Partition only after choosing a compatible sequence. Each section
     // comes directly from the chosen body, including the two ends of a connector.
-    const bool rejectSameCurve = !continuation;
-    auto regions = cutRegions(shape.path, sub.text, sections, source.orientation, rejectSameCurve);
+    auto regions = cutRegions(shape.path, sub.text, sections, source.orientation);
     if (regions.size() != sections.size() + 1) return {};
     const auto inPage = [&](const QPainterPath& path) { return shape.transform.map(path).translated(shape.pos); };
     size_t region = 0;
@@ -659,7 +676,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
             if (validated.size() != 2 || mask.boundingRect().height() + .5 * penWidth <
                 validated.front().path.boundingRect().height()) return {};
         }
-        if (continuation && slot == 0 && body.sharedEntryBody &&
+        if (slot == 0 && body.sharedEntryBody &&
             body.sharedEntryBody->value("body").toObject().value("shape") == "contour-route" &&
             bodies.size() > 2 && sharedAtEntry.front()) {
             const auto proposal = sectionLine(*body.exit);
@@ -688,7 +705,7 @@ std::optional<Subword> assemble(const Word& word, const Subword& sub, const Apat
         if (slot + 1 == bodies.size() || trial.kashidaCuts[slot].first.isNull()) continue;
         const auto& [right, left] = trial.kashidaCuts[slot];
         auto& connector = regions[region++].path;
-        if (!validConnector(connector, shape, right, left, continuation, penWidth)) return {};
+        if (!validConnector(connector, shape, right, left, body, *bodies[slot + 1], penWidth)) return {};
         trial.kashidaPaths[slot] = std::move(connector);
     }
     for (size_t slot = 0; slot < sharedAtEntry.size(); ++slot)
@@ -767,7 +784,6 @@ struct AnchorBranch {
     SearchContext& source;
     int limit;
     QString stemReturnEndings;
-    bool verifyContours;
     AnchorPass pass;
     double tightTolerance;
 
@@ -793,12 +809,16 @@ struct AnchorTraversal {
     std::map<std::tuple<const QJsonObject*, const QJsonObject*, size_t, bool>,
              std::vector<const AnchoredBody*>> choices;
 
-    const std::vector<const AnchoredBody*>& bodiesFor(const AnchorBranch& branch, const QJsonObject& form, size_t slot) {
-        auto& source = branch.source;
+    Subword refinedGeometry;
+    OutlineSearchCache refinedOutline;
+    std::optional<SearchContext> refinedSource;
+    std::set<const AnchoredBody*> refinedCandidates;
+
+    const std::vector<const AnchoredBody*>& readBodies(const AnchorBranch& branch, SearchContext& source,
+            const QJsonObject& form, size_t slot, bool precise) {
         const auto& forms = branch.forms;
-        const bool verifyContours = branch.verifyContours;
         const bool continuation = branch.continuation();
-        auto [saved, inserted] = choices.try_emplace({&branch.config, &form, slot, verifyContours});
+        auto [saved, inserted] = choices.try_emplace({&branch.config, &form, slot, precise});
         auto& result = saved->second;
         if (!inserted) return result;
         const bool entryTurn = appliesBeforeFinal(form, letters, int(slot));
@@ -811,7 +831,7 @@ struct AnchorTraversal {
              terminal.value("boundaries").toObject().value("left") == "shared-return"));
         const auto add = [&](const Stretching* seam) {
             for (const auto& body : memo.candidates(source, form, letterPosition(slot, forms.size()), slot,
-                                                   forms.size(), penWidth, verifyContours, entryTurn, branch.pass, seam))
+                                                   forms.size(), penWidth, precise, entryTurn, branch.pass, seam))
                 result.push_back(&body);
         };
         if (!folded) add(nullptr);
@@ -822,19 +842,42 @@ struct AnchorTraversal {
                 if (!folded && finalId.isEmpty() && !final->value("sharedBoundary").toBool()) continue;
                 const size_t last = forms.size() - 1;
                 for (const auto& receiving : memo.candidates(source, *final, 2, last, forms.size(), penWidth,
-                                                             verifyContours, appliesBeforeFinal(*final, letters, int(last)), branch.pass))
+                                                             precise, appliesBeforeFinal(*final, letters, int(last)), branch.pass))
                     add(&*receiving.entry);
             }
         }
         return result;
     }
 
+    const std::vector<const AnchoredBody*>& bodiesFor(const AnchorBranch& branch, const QJsonObject& form,
+            size_t slot, bool precise) {
+        if (!cutGeometryMemo) return readBodies(branch, branch.source, form, slot, false);
+        const bool previous = cutGeometryMemo->preciseGeometry;
+        const auto restore = qScopeGuard([&] {
+            cutGeometryMemo->preciseGeometry = previous;
+        });
+        cutGeometryMemo->preciseGeometry = precise;
+        if (!precise) return readBodies(branch, branch.source, form, slot, false);
+        if (!refinedSource) {
+            refinedSource.emplace(SearchContext{.transformedPath = branch.source.transformedPath,
+                .bbox = branch.source.bbox, .subword = refinedGeometry, .outlineCache = &refinedOutline});
+            if (!preparePassOutline(*refinedSource, refinedOutline, true)) {
+                refinedSource.reset();
+                static const std::vector<const AnchoredBody*> empty;
+                return empty;
+            }
+        }
+        // Use tighter tangent and intersection calculations for additional body
+        // candidates. The original anchors and candidate order stay available.
+        const auto& candidates = readBodies(branch, *refinedSource, form, slot, true);
+        refinedCandidates.insert(candidates.begin(), candidates.end());
+        return candidates;
+    }
+
     bool sharedLigatureCandidates(const AnchorBranch& branch, const AnchoredBody& sender, const QJsonObject& form,
-                                    const std::vector<const AnchoredBody*>& intrinsic, size_t slot,
-                                    std::vector<const AnchoredBody*>& attachments) {
+                                    size_t slot, std::vector<const AnchoredBody*>& attachments) {
         auto& source = branch.source;
         const auto& forms = branch.forms;
-        const bool verifyContours = branch.verifyContours;
         const auto policy = form.value("cuts").toObject();
         const bool counter = sender.exit->counterEntry.pathIndex > 0 && policy.value("counterJoin") == "preserve-entry";
         const bool stacked = !sender.entry && sender.sharedEntryBody && sender.requiresSharedExit &&
@@ -846,7 +889,15 @@ struct AnchorTraversal {
             (slot != 1 || form.value("assembly").toObject().value("entry").toObject().value("form") != sender.formId))
             return false;
         if (!counter && !stacked && !rim) return false;
-        auto [saved, inserted] = memo.sharedEntries.try_emplace({&sender, memo.key(form), slot, verifyContours});
+        const bool precise = cutGeometryMemo && cutGeometryMemo->preciseGeometry;
+        auto [saved, inserted] = memo.sharedEntries.try_emplace({&sender, memo.key(form), slot, precise});
+        std::vector<const AnchoredBody*> intrinsic;
+        if (inserted || rim) {
+            const auto& ordinary = bodiesFor(branch, form, slot, false);
+            const auto& refined = bodiesFor(branch, form, slot, true);
+            intrinsic.assign(ordinary.begin(), ordinary.end());
+            intrinsic.insert(intrinsic.end(), refined.begin(), refined.end());
+        }
         if (inserted) {
             saved->second = anchoredBodiesAtSharedEntry(source, form, intrinsic, *sender.exit, penWidth, counter);
             std::erase_if(saved->second, [&](const auto& body) { return !fitsBody(body, source, slot, forms.size()); });
@@ -859,7 +910,6 @@ struct AnchorTraversal {
     bool sharesFinalFold(const AnchorBranch& branch) {
         auto& source = branch.source;
         const auto& config = branch.config;
-        const bool verifyContours = branch.verifyContours;
         const auto& sending = *selected[selected.size() - 2];
         const auto& receiving = *selected.back();
         const auto& policy = sending.sharedFold;
@@ -868,7 +918,8 @@ struct AnchorTraversal {
         if (descent.y() < penWidth || std::abs(descent.x()) > policy.value("maxSlope").toDouble() * descent.y())
             return false;
         const auto id = policy.value("template").toString();
-        auto [saved, inserted] = memo.folds.try_emplace({&config, id, verifyContours});
+        const bool precise = cutGeometryMemo && cutGeometryMemo->preciseGeometry;
+        auto [saved, inserted] = memo.folds.try_emplace({&config, id, precise});
         if (inserted) {
             const auto receiver = namedLetterForm(config, id);
             source.res = {};
@@ -902,7 +953,7 @@ struct AnchorTraversal {
                 (!requiredConnectors[slot - 1] &&
                     (hasOverlapLimits(sending, body, letters[int(slot)], tightTolerance, penWidth) ||
                      canResolveOverlappingAnchors(sending, body, source.orientation, letters[int(slot)]) ||
-                     (continuation && sharesFixedJunction(source, sending, body, penWidth)))) ||
+                     sharesDeclaredFixedEntry(source, sending, body, penWidth))) ||
                 canUseReceivingEntry(sending, body, source.orientation, letters[int(slot) - 1], penWidth) ||
                 fitsDeclaredSharedEntry(sending, body, source, letters.back(), penWidth) ||
                 sharesLoopNeck(sending, body, source.orientation, tightTolerance) ||
@@ -913,7 +964,7 @@ struct AnchorTraversal {
         };
         if (cutGeometryMemo && cutGeometryMemo->memoizeIntersections) {
             auto [entry, inserted] = memo.joins.try_emplace(
-                {&sending, &body, slot, continuation, checkFoldedTooth, tightTolerance},
+                {&sending, &body, slot, continuation, checkFoldedTooth, cutGeometryMemo->preciseGeometry, tightTolerance},
                 JoinCompatibility{false});
             if (inserted) entry->second = compatible();
             return entry->second;
@@ -934,7 +985,8 @@ struct AnchorTraversal {
 
     template<typename TryBody>
     std::optional<Subword> bodiesAfter(const AnchorBranch& branch, size_t slot, const AnchoredBody* sending,
-                                      int& remaining, TryBody tryBody) {
+                                      CandidateBudget& budget, bool refinedPrefix, const PartitionRank& bestRank,
+                                      TryBody tryBody) {
         const bool terminal = slot + 1 == letters.size();
         if (terminal && !attachedStroke.isEmpty()) {
             if (!sending || !sending->exit || requiredConnectors[slot - 1]) return {};
@@ -948,50 +1000,51 @@ struct AnchorTraversal {
             if (restrictedEnding(form, letters, int(slot)) && !allowsInitialAttachment(form, letters, int(slot), branch.continuation()) &&
                 (!sending || !sending->requiresSharedExit || sending->requiredExitTemplate != form.value("id").toString()))
                 continue;
-            const auto& intrinsic = bodiesFor(branch, form, slot);
             std::vector<const AnchoredBody*> paired;
-            const auto& options = sending && !terminal && branch.continuation() &&
-                sharedLigatureCandidates(branch, *sending, form, intrinsic, slot, paired) ? paired : intrinsic;
+            const bool hasAttachment = sending && !terminal && branch.continuation() &&
+                sharedLigatureCandidates(branch, *sending, form, slot, paired);
             const auto ownedCrestEndings = form.value("cuts").toObject().value("useOwnedCrest").toString();
             const bool checkFoldedTooth = sending && terminal &&
                 form.value("_foldedToothPreceders").toString().contains(letters.at(int(slot) - 1));
             const bool requiresSharedExit = branch.continuation() && form.contains("requiresExitTemplate");
-            for (const auto* body : options) {
-                if (remaining == 0) return {};
-                if (remaining > 0) --remaining;
-                if (sending && body->stemFootSkipAfter.contains(letters[int(slot) - 1])) continue;
-                if (requiresSharedExit && !body->requiresSharedExit) continue;
-                if (body->hasStemReturn && !branch.stemReturnEndings.contains(last) &&
-                    !(branch.continuation() && body->sharedReturnWith.contains(last))) continue;
-                if (body->alternateAnchor && !body->hasStemReturn &&
-                    !ownedCrestEndings.isEmpty() && !ownedCrestEndings.contains(last)) continue;
-                if (sending) {
-                    const auto join = follows(branch, slot, *sending, *body, checkFoldedTooth);
-                    if (join.stopAtBowl) {
-                        if (!branch.continuation()) return {};
-                        continue;
+            for (const bool precise : {false, true}) {
+                if (precise && (hasAttachment || budget.refined == 0 || bestRank <= PartitionRank::RefinedBody)) break;
+                const auto& options = hasAttachment ? paired : bodiesFor(branch, form, slot, precise);
+                for (const auto* body : options) {
+                    const bool usesRefinement = refinedPrefix || refinedCandidates.contains(body);
+                    if (usesRefinement && bestRank <= PartitionRank::RefinedBody) continue;
+                    auto& remaining = budget.forEvidence(usesRefinement);
+                    if (remaining == 0) continue;
+                    if (remaining > 0) --remaining;
+                    if (sending && body->stemFootSkipAfter.contains(letters[int(slot) - 1])) continue;
+                    if (requiresSharedExit && !body->requiresSharedExit) continue;
+                    if (body->hasStemReturn && !branch.stemReturnEndings.contains(last) &&
+                        !(branch.continuation() && body->sharedReturnWith.contains(last))) continue;
+                    if (body->alternateAnchor && !body->hasStemReturn &&
+                        !ownedCrestEndings.isEmpty() && !ownedCrestEndings.contains(last)) continue;
+                    if (sending) {
+                        const auto join = follows(branch, slot, *sending, *body, checkFoldedTooth);
+                        if (join.stopAtBowl) {
+                            if (!branch.continuation()) return {};
+                            continue;
+                        }
+                        if (!join.allowed || !fitsAnchorGap(*sending, *body, branch.source.orientation, penWidth,
+                                                           branch.continuation())) continue;
+                        // Prefer bodies whose own entry leaves room for a connector.
+                        // A rim attachment is useful only where the preferred caps overlap.
+                        if (sending->rimExitLimit && body->acceptsCounterRim && body->entryLimit &&
+                            !sameSection(*sending->exit, *body->entry) &&
+                            !orderedSections(*sending->exit, *body->entry, branch.source.orientation)) {
+                            rimAttachments.push_back(body);
+                            continue;
+                        }
                     }
-                    if (!join.allowed || !fitsAnchorGap(*sending, *body, branch.source.orientation, penWidth,
-                                                       branch.continuation() || branch.verifyContours)) continue;
-                    // Prefer bodies whose own entry leaves room for a connector.
-                    // A rim attachment is useful only where the preferred caps overlap.
-                    if (sending->rimExitLimit && body->acceptsCounterRim && body->entryLimit &&
-                        !sameSection(*sending->exit, *body->entry) &&
-                        !orderedSections(*sending->exit, *body->entry, branch.source.orientation)) {
-                        rimAttachments.push_back(body);
-                        continue;
-                    }
+                    if (auto complete = tryBody(*body)) return complete;
                 }
-                if (auto complete = tryBody(*body)) return complete;
             }
-            // The established search stops at this form. The continuation
-            // can use the receiving shape's own return when its stem proposal
-            // would take the preceding body.
-            if (!branch.continuation() && branch.verifyContours && terminal && sending->preservesTerminalBody &&
-                form.value("body").toObject().value("shape") == "stemmed-bowl") return {};
         }
         for (const auto* body : rimAttachments) {
-            if (!remaining) break;
+            if (!budget.forEvidence(refinedPrefix || refinedCandidates.contains(body))) continue;
             if (auto complete = tryBody(*body)) return complete;
         }
         return {};
@@ -1002,9 +1055,10 @@ struct AnchorTraversal {
         std::optional<Subword> result;
     };
 
-    std::optional<Subword> match(const AnchorBranch& branch, int& remaining,
+    std::optional<Subword> match(const AnchorBranch& branch, CandidateBudget& budget,
                                  BestPartition& best, PartitionRank rank = PartitionRank::Preferred) {
-        if (remaining == 0 || rank >= best.rank) return {};
+        const bool refinedPrefix = rank == PartitionRank::RefinedBody;
+        if (budget.forEvidence(refinedPrefix) == 0 || rank >= best.rank) return {};
         if (selected.size() == letters.size()) {
             ++partitionAttempts;
             auto partition = finish(branch);
@@ -1020,12 +1074,18 @@ struct AnchorTraversal {
         const auto suffix = std::tuple{selected.size(), sending, rank};
         if (sending && deadSuffixes.contains(suffix)) return {};
         const auto before = partitionAttempts;
-        auto result = bodiesAfter(branch, selected.size(), sending, remaining,
+        auto result = bodiesAfter(branch, selected.size(), sending, budget, refinedPrefix, best.rank,
             [&](const AnchoredBody& body) -> std::optional<Subword> {
-                const auto bodyRank = body.alternateAnchor && !body.hasStemReturn
+                const bool refined = refinedCandidates.contains(&body);
+                const auto bodyRank = refined ? PartitionRank::RefinedBody : body.alternateAnchor && !body.hasStemReturn
                     ? PartitionRank::SecondaryBody : PartitionRank::Preferred;
                 auto candidateRank = std::max(rank, bodyRank);
                 if (candidateRank >= best.rank) return {};
+                const bool previous = cutGeometryMemo && cutGeometryMemo->preciseGeometry;
+                if (cutGeometryMemo) cutGeometryMemo->preciseGeometry = previous || refined;
+                const auto restore = qScopeGuard([&] {
+                    if (cutGeometryMemo) cutGeometryMemo->preciseGeometry = previous;
+                });
                 selected.push_back(&body);
                 bool addedJoin = false;
                 const auto pop = qScopeGuard([&] {
@@ -1048,9 +1108,9 @@ struct AnchorTraversal {
                         if (seam->shared || body.retainsCounterRim || branch.limit <= 0 ||
                             seam->exit.counterEntry.pathIndex > 0 || seam->entry.counterEntry.pathIndex > 0) return seam;
                         const auto parts = cutRegions(shape.path, {}, {seam->exit, seam->entry},
-                                                      branch.source.orientation, !branch.continuation());
+                                                      branch.source.orientation);
                         if (parts.size() != 3 || !validConnector(parts[1].path, shape, sectionLine(seam->exit),
-                            sectionLine(seam->entry), branch.continuation(), penWidth)) return {};
+                            sectionLine(seam->entry), *sending, body, penWidth)) return {};
                         return seam;
                     };
                     const auto chooseJoin = [&]() -> std::optional<JoinSections> {
@@ -1071,7 +1131,7 @@ struct AnchorTraversal {
                     const std::optional<JoinSections>* seam;
                     if (branch.limit > 0) {
                         auto [known, inserted] = resolvedJoins.try_emplace({&branch.config, sending, &body, slot,
-                            branch.verifyContours});
+                            previous || refined});
                         if (inserted) known->second = chooseJoin();
                         seam = &known->second;
                     } else {
@@ -1089,12 +1149,13 @@ struct AnchorTraversal {
                     best.rank = candidateRank;
                     best.result = std::move(complete);
                 }
-                if (auto complete = match(branch, remaining, best, candidateRank)) return complete;
+                if (auto complete = match(branch, budget, best, candidateRank)) return complete;
                 return {};
             });
         // A failed final partition can depend on any earlier letter.
         // Reuse only dead ends that reached no partition at all.
-        if (!result && sending && remaining != 0 && before == partitionAttempts) deadSuffixes.insert(suffix);
+        if (!result && sending && budget.ordinary != 0 && budget.refined != 0 && before == partitionAttempts)
+            deadSuffixes.insert(suffix);
         return result;
     }
 
@@ -1113,7 +1174,7 @@ struct AnchorTraversal {
     }
 
     std::optional<AnchorBranch> prepareBranch(const AnchorPriority& priority, SearchContext& source) const {
-        const auto& [config, templates, verify, pass] = priority;
+        const auto& [config, templates, pass] = priority;
         const bool continuation = pass == AnchorPass::Continuation;
         const auto settings = config.value("kashidaDefaults").toObject();
         FormChoices forms(letters.size());
@@ -1148,52 +1209,49 @@ struct AnchorTraversal {
         }
         const auto search = config.value("anchorSearch").toObject();
         return AnchorBranch{config, std::move(forms), source, search.value("maxCandidates").toInt(),
-                            search.value("stemReturnEndings").toString(), verify, pass,
+                            search.value("stemReturnEndings").toString(), pass,
                             penWidth * settings.value("sharedCutTolerance").toDouble(.25)};
     }
 
     std::optional<Subword> search(const QPainterPath& ink, std::span<const AnchorPriority> priorities) {
-        const auto bounds = ink.boundingRect();
-        std::array<Subword, 3> geometryOnly{};
-        std::array<OutlineSearchCache, 3> outlines;
-        std::array<std::optional<SearchContext>, 3> sources;
+        Subword geometry;
+        OutlineSearchCache outline;
+        SearchContext source{.transformedPath = ink, .bbox = ink.boundingRect(), .subword = geometry,
+                             .outlineCache = &outline};
+        if (cutGeometryMemo) cutGeometryMemo->preciseGeometry = false;
         selected.reserve(letters.size());
+        std::optional<Subword> refinedPartition;
+        bool hasPreferredCut = false;
         for (const auto& priority : priorities) {
-            const bool verify = priority.verifyContours;
-            // The continuation branch also reads the tangent across the closed outline's seam.
-            const bool closed = verify && priority.pass == AnchorPass::Continuation;
-            const size_t outline = closed ? 2 : verify ? 1 : 0;
-            auto& source = sources[outline];
-            const bool first = &priority == &priorities.front();
-            const bool prepare = !source;
-            if (prepare)
-                source.emplace(SearchContext{.transformedPath = ink, .bbox = bounds,
-                    .subword = geometryOnly[outline], .outlineCache = &outlines[outline]});
-            const auto branch = prepareBranch(priority, *source);
-            if (!branch) {
-                if (prepare) source.reset();
-                continue;
-            }
+            const auto branch = prepareBranch(priority, source);
+            if (!branch) continue;
             if (cutGeometryMemo) {
                 if (cutGeometryMemo->profiling) {
                     cutGeometryMemo->anchorSearch = "search-exhausted";
                     cutGeometryMemo->anchorBlocker.clear();
                 }
-                cutGeometryMemo->verifyContourGeometry = verify;
-                cutGeometryMemo->memoizeIntersections = !first || verify;
+                cutGeometryMemo->memoizeIntersections = &priority != &priorities.front();
             }
-            if (prepare && !preparePassOutline(*source, outlines[outline], closed)) {
-                source.reset();
-                if (first) break;
-                continue;
-            }
-            int remaining = branch->limit > 0 ? branch->limit : -1;
+            if (!outline.outline && !preparePassOutline(source, outline)) return {};
+            const int limit = branch->limit > 0 ? branch->limit : -1;
+            CandidateBudget budget{limit, limit};
             deadSuffixes.clear();
             BestPartition best;
-            if (auto complete = match(*branch, remaining, best)) return complete;
-            if (best.result) return std::move(best.result);
+            if (refinedPartition && !hasPreferredCut) best.rank = PartitionRank::RefinedBody;
+            if (auto complete = match(*branch, budget, best)) return complete;
+            if (!best.result) continue;
+            if (best.rank != PartitionRank::RefinedBody) return std::move(best.result);
+            if (!refinedPartition || prefersDeclaredCut(*best.result, *refinedPartition, branch->config)) {
+                refinedPartition = std::move(best.result);
+                const auto& diagnostics = refinedPartition->letterDiagnostics;
+                hasPreferredCut = std::any_of(diagnostics.begin(), diagnostics.end(), [&](const auto& letter) {
+                    const auto id = letter.toObject().value("template").toString();
+                    return namedLetterForm(branch->config, id).contains("preferredCutTemplate");
+                });
+            }
         }
-        return {};
+        // Prefer ordinary contour evidence across all configured passes.
+        return refinedPartition;
     }
 };
 
@@ -1210,11 +1268,11 @@ std::optional<WordResultInfo::SubWordInfo> segmentWithAnchors(const Word& word, 
     const auto shape = word.bodyShape(sub);
     auto ink = shape.transform.map(shape.path).translated(shape.pos);
     ink.setFillRule(Qt::WindingFill);
-    const bool savedVerification = cutGeometryMemo && cutGeometryMemo->verifyContourGeometry;
+    const bool savedPrecision = cutGeometryMemo && cutGeometryMemo->preciseGeometry;
     const bool savedMemoize = cutGeometryMemo && cutGeometryMemo->memoizeIntersections;
     const auto restoreGeometry = qScopeGuard([&] {
         if (!cutGeometryMemo) return;
-        cutGeometryMemo->verifyContourGeometry = savedVerification;
+        cutGeometryMemo->preciseGeometry = savedPrecision;
         cutGeometryMemo->memoizeIntersections = savedMemoize;
     });
 

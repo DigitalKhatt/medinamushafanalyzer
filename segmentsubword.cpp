@@ -2,21 +2,6 @@
 
 using namespace MedinaCutter;
 
-static const QJsonObject& baseLetterForms(const QJsonObject& config) {
-    static thread_local QJsonObject source, base;
-    if (source != config) {
-        source = base = config;
-        for (const auto* position : {"initial", "medial", "final"}) {
-            const auto forms = config.value(position).toArray();
-            QJsonArray eligible;
-            for (const auto& form : forms)
-                if (!form.toObject().value("onUnresolvedPartition").toBool()) eligible.append(form);
-            if (eligible.size() != forms.size()) base.insert(position, eligible);
-        }
-    }
-    return base;
-}
-
 bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIndex, int subWordIndex, AFont*,
                                         bool refresh, const QJsonObject* draft, const AnchorPartitionCheck& acceptAnchors) {
     CutGeometryMemoScope geometryMemo;
@@ -51,54 +36,42 @@ bool PageAnalysisResult::segmentSubword(int pageIndex, int lineIndex, int wordIn
     }
 
     struct SearchForms {
-        QJsonObject base, requested, standard, continuation, verifiedStandard, verifiedContinuation;
-        AnchorForms standardForms, continuationForms, verifiedStandardForms, verifiedContinuationForms;
+        QJsonObject requested, standard, continuation;
+        AnchorForms standardForms, continuationForms;
     };
     const auto& requestedForms = draft ? *draft : letterForms();
     auto& geometry = *cutGeometryMemo;
     const auto assemble = [&]() -> bool {
-        const auto& sourceConfig = geometryMemo.owned ? baseLetterForms(requestedForms) : requestedForms;
-        const auto ligature = segmentDeclaredLigature(word, sub, sourceConfig);
+        const auto ligature = segmentDeclaredLigature(word, sub, requestedForms);
         if (ligature == LigatureMatch::SharedCut || ligature == LigatureMatch::Failed) {
             if (geometry.profiling) geometry.anchorSearch = "declared-ligature";
             return ligature == LigatureMatch::SharedCut;
         }
         static thread_local SearchForms compiled;
-        if (compiled.base != sourceConfig || compiled.requested != requestedForms) {
-            compiled.base = sourceConfig;
+        if (compiled.requested != requestedForms) {
             compiled.requested = requestedForms;
-            compiled.standard = sourceConfig.contains("anchorSearch")
-                ? anchorConfigForPass(sourceConfig, AnchorPass::Standard) : sourceConfig;
-            compileAnchorForms(sourceConfig, compiled.standardForms, true);
+            compiled.standard = requestedForms.contains("anchorSearch")
+                ? anchorConfigForPass(requestedForms, AnchorPass::Standard) : requestedForms;
+            compileAnchorForms(requestedForms, compiled.standardForms, true);
             compiled.continuation = {};
-            if (sourceConfig.value("anchorSearch").toObject().value("continuation").toBool()) {
-                compiled.continuation = anchorConfigForPass(sourceConfig, AnchorPass::Continuation);
+            if (requestedForms.value("anchorSearch").toObject().value("continuation").toBool()) {
+                compiled.continuation = anchorConfigForPass(requestedForms, AnchorPass::Continuation);
                 compileAnchorForms(compiled.continuation, compiled.continuationForms);
-                compiled.verifiedStandard = anchorConfigForPass(requestedForms, AnchorPass::Standard);
-                compileAnchorForms(requestedForms, compiled.verifiedStandardForms, true);
-                compiled.verifiedContinuation = anchorConfigForPass(requestedForms, AnchorPass::Continuation);
-                compileAnchorForms(compiled.verifiedContinuation, compiled.verifiedContinuationForms);
             }
         }
         if (geometry.profiling && geometry.anchorSearch.isEmpty())
             geometry.anchorSearch = sub.secondaryBodyPath >= 0 ? "compound-body" : "ineligible";
-        const bool verify = geometry.verifyContourGeometry;
-        std::vector<AnchorPriority> priorities{{compiled.standard, compiled.standardForms, verify}};
-        if (!compiled.continuation.isEmpty()) {
-            priorities.push_back({compiled.continuation, compiled.continuationForms, verify, AnchorPass::Continuation});
-            if (!verify) {
-                priorities.push_back({compiled.verifiedStandard, compiled.verifiedStandardForms, true});
-                priorities.push_back({compiled.verifiedContinuation, compiled.verifiedContinuationForms, true, AnchorPass::Continuation});
-            }
-        }
+        std::vector<AnchorPriority> priorities{{compiled.standard, compiled.standardForms}};
+        if (!compiled.continuation.isEmpty())
+            priorities.push_back({compiled.continuation, compiled.continuationForms, AnchorPass::Continuation});
         if (auto partition = segmentWithAnchors(word, sub, priorities, acceptAnchors)) {
             sub = std::move(*partition);
             return true;
         }
         if (sub.secondaryBodyPath >= 0 && !sub.bodyCounter) {
             auto component = sub;
-            if ((assembleDetachedTerminalArm(word, component, sourceConfig) ||
-                 assembleDetachedHeadEntry(word, component, sourceConfig)) &&
+            if ((assembleDetachedTerminalArm(word, component, requestedForms) ||
+                 assembleDetachedHeadEntry(word, component, requestedForms)) &&
                 coversOriginalInk(word, component) && (!acceptAnchors || acceptAnchors(component))) {
                 sub = std::move(component);
                 if (geometry.profiling) geometry.anchorSearch = "matched-component";

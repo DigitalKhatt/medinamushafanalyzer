@@ -223,7 +223,7 @@ void FindInterections(const QBezier& b, const QLineF& line, int pathIndex, int c
 
 std::vector<PathExtrema> FindInterections(const QPainterPath& path, const QLineF& line, bool segment, RootSearch search) {
 
-    if (cutGeometryMemo && cutGeometryMemo->verifyContourGeometry) search = RootSearch::BracketAllCrossings;
+    if (cutGeometryMemo && cutGeometryMemo->preciseGeometry) search = RootSearch::BracketAllCrossings;
     QByteArray key;
     if (cutGeometryMemo && cutGeometryMemo->memoizeIntersections) {
         const int outline = cutGeometryMemo->outlineId(path);
