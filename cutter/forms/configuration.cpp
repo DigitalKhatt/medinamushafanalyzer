@@ -906,10 +906,12 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     if (const auto value = cuts.value("sharedExitAtAttachment"); !value.isUndefined()) {
         const auto attachment = value.toObject();
         const auto partner = namedLetterForm(config, attachment.value("template").toString());
-        if (phase != "initial" || (shape != "contour-route" && shape != "counter-loop") || attachment.size() != 2 ||
+        const bool supported = phase == "initial" ? shape == "contour-route" || shape == "counter-loop" ||
+            shape == "suspended-loop" : phase == "medial" && shape == "open-head";
+        if (!supported || attachment.size() != 2 ||
             !partner.value("upperAttachment").isObject() ||
             !positive(attachment.value("maxDistanceWidths")))
-            return id + ": sharedExitAtAttachment needs an initial route or loop, upper attachment and positive distance";
+            return id + ": sharedExitAtAttachment needs a compatible body, upper attachment and positive distance";
         cutKeys << "sharedExitAtAttachment";
     }
     for (const auto& [field, expectedShape] : {std::pair{"minimumEntryWidths", "inclined-blade"},

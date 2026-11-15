@@ -347,9 +347,11 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
         return increases ? ctx.prev(point) : ctx.next(point);
     };
     auto crest = upper;
+    std::optional<PathExtrema> shoulderCorner;
     auto point = firstAfter(upper, upperIncreases);
     for (; side.isStrictRight(point->time); point = advance(point, upperIncreases)) {
         if (point->point.y() > crest.point.y() + 1e-5) break;
+        if (point->isSharp && point->point.y() < lower.point.y()) shoulderCorner = *point;
         if (point->point.y() < crest.point.y()) crest = *point;
     }
     if (!side.isStrictRight(point->time) || point->point.x() <= crest.point.x()) return {};
@@ -361,8 +363,11 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
     // A short cut across two inner corners can sit below a broad hook.
     // The first turn beyond the crest then lines up with the lower corner
     // even though the crest itself is farther to the left.
+    const bool reversedCorners = allowOblique && upper.isSharp && lower.isSharp &&
+        upper.point.y() > lower.point.y() && shoulderCorner &&
+        QLineF(upper.point, lower.point).length() < .24 * depth;
     const bool shortCornerSeam = allowOblique && upper.isSharp && lower.isSharp &&
-        QLineF(upper.point, lower.point).length() < .1 * depth;
+        (QLineF(upper.point, lower.point).length() < .1 * depth || reversedCorners);
     const bool alignedShoulder = shortCornerSeam &&
         std::abs(point->point.x() - lower.point.x()) < .08 * depth;
     // The contour endpoints at a thin, oblique corner seam can be slightly
@@ -373,7 +378,7 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
 
     std::optional<Stretching> best;
     double bestScore = std::numeric_limits<double>::infinity();
-    const auto consider = [&](const PathExtrema& top, const PathExtrema& bottom) {
+    const auto consider = [&](const PathExtrema& top, const PathExtrema& bottom, bool keepCrest = true) {
         const double width = QLineF(top.point, bottom.point).length();
         if (top.point.y() >= bottom.point.y() || width < .07 * depth || width > .34 * depth ||
             !side.isStrictRight(top.time) || !interiorChord(ctx.transformedPath, top, bottom)) return;
@@ -386,7 +391,7 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
         candidate.bottomBaseLine = bottom;
         orientSection(ctx, candidate, tip.time, true);
         const auto expanded = getJoinTime(candidate, ctx.orientation);
-        if (!expanded.isStrictLeft(crest.time) || !expanded.isLeft(upper.time) ||
+        if ((keepCrest && !expanded.isStrictLeft(crest.time)) || !expanded.isLeft(upper.time) ||
             !expanded.isLeft(lower.time)) return;
         const double score = width + .4 * (bottom.point.x() - crest.point.x());
         if (score >= bestScore) return;
@@ -396,6 +401,10 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
         best = candidate;
         bestScore = score;
     };
+    if (reversedCorners) {
+        consider(*shoulderCorner, lower, false);
+        if (best) return best;
+    }
     const auto probe = [&](const PathExtrema& bottom) {
         const double dx = bottom.point.x() - crest.point.x();
         if (dx < .04 * depth || dx > .35 * depth) return;

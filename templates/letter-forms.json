@@ -123,6 +123,10 @@
       },
       "cuts": {
         "minimumExitAtTurn": true,
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 3
+        },
         "head": {
           "maxNeckDistance": 3,
           "maxProjectionInset": 2,
@@ -1055,6 +1059,10 @@
         "counters": 0
       },
       "cuts": {
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 4
+        },
         "route": {
           "bottomProbe": "below"
         },
@@ -1307,6 +1315,10 @@
         }
       },
       "cuts": {
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 4
+        },
         "loop": {
           "entryWalk": {
             "bottomProbe": "down"
@@ -2441,6 +2453,10 @@
         }
       },
       "cuts": {
+        "sharedExitAtAttachment": {
+          "template": "hah-stacked-medi",
+          "maxDistanceWidths": 3
+        },
         "head": {
           "depth": 1,
           "reach": 2
@@ -3204,7 +3220,7 @@
         "risingFlank": {
           "accumulate": true,
           "minX": 1,
-          "maxY": -1.5
+          "maxY": -1.2
         }
       },
       "sharedEntry": true,

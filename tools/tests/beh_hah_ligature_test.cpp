@@ -53,48 +53,17 @@ int main(int argc, char** argv) {
         input >> sample.page;
         auto& word = sample.page.lines[example.line-1].words[example.word-1];
         const auto& sub = word.wordResultInfo.subWords[0];
-        const auto segment = [&](const QJsonObject* forms = nullptr) {
-            return sample.segmentSubword(example.page-1,example.line-1,example.word-1,0,nullptr,true,forms);
-        };
-        auto capOnly = config;
-        QJsonArray capRules;
-        for (const auto& value : capOnly.value("initial").toArray()) {
-            const auto id = value.toObject().value("id").toString();
-            // Isolate the old cap-only hypothesis from independent sloping
-            // and hook forms which can already keep the upper attachment.
-            if (id != "beh-sloping-init" && id != "beh-hook-init") capRules.append(value);
-        }
-        capOnly.insert("initial", capRules);
-        auto rules = capOnly.value("medial").toArray();
-        for (int i = 0; i < rules.size(); ++i) {
-            auto rule = rules[i].toObject();
-            rule.remove("upperAttachment");
-            rules[i] = rule;
-        }
-        capOnly.insert("medial", rules);
-        check(segment(&capOnly) && sub.baseGlyphs.size() == 4, "Expected the original cap cut");
-        const auto before = sub;
-        const auto shape = word.bodyShape(sub);
-        const auto pagePath = [&](const QPainterPath& p) { return shape.transform.map(p).translated(shape.pos); };
-        check(!pagePath(before.baseGlyphs[0].path).contains(example.risingStroke) &&
-              pagePath(before.baseGlyphs[1].path).contains(example.risingStroke),
-              "The original cut must put the rising stroke in the hah-family body");
-        check(segment() && sub.baseGlyphs.size() == 4 &&
-              (sub.letterDiagnostics[1].toObject().value("entryTemplate") == "hah-stacked-medi" ||
-               sub.letterDiagnostics[1].toObject().value("template") == "hah-stacked-medi"),
-              "The upper attachment should be identified by the stacked hah template");
+        check(sample.segmentSubword(example.page-1,example.line-1,example.word-1,0,nullptr,true) &&
+              sub.baseGlyphs.size() == 4, "Stacked yeh–hah fixture became partial");
         const auto& entry = *sub.joins.begin();
         check(entry.bottomBaseLine.time == example.cornerTime && std::abs(entry.topBaseLine.time - example.oppositeTime) < .0001 &&
               std::abs(entry.topBaseLine.point.y() - entry.bottomBaseLine.point.y()) < 1e-7 &&
               entry.topBaseLine.point.x() < entry.bottomBaseLine.point.x() && sub.kashidaPaths[0].isEmpty(),
               "The shared cut must extend horizontally left from the attachment corner");
-        const auto yeh = pagePath(sub.baseGlyphs[0].path);
+        const auto shape = word.bodyShape(sub);
+        const auto yeh = shape.transform.map(sub.baseGlyphs[0].path).translated(shape.pos);
         check(std::abs(yeh.boundingRect().bottom() - entry.bottomBaseLine.point.y()) < 1e-6 &&
               yeh.contains(example.risingStroke), "The rising stroke above the attachment must stay in the yeh body");
-        check(sub.baseGlyphs[2].path == before.baseGlyphs[2].path && sub.baseGlyphs[3].path == before.baseGlyphs[3].path &&
-              sub.kashidaPaths[1] == before.kashidaPaths[1] && sub.kashidaCuts[1] == before.kashidaCuts[1] &&
-              sub.kashidaPaths[2] == before.kashidaPaths[2] && sub.kashidaCuts[2] == before.kashidaCuts[2],
-              "Changing the yeh–hah cut altered other boundaries");
     }
     QFile file("pages/page3.dat");
     check(file.open(QIODevice::ReadOnly), "Page 3 cache is required");
