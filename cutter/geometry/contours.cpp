@@ -320,11 +320,10 @@ std::optional<Stretching> strokeFlankTurn(const SearchContext& context, const Pa
     return {};
 }
 
-// Find where the descending outer edge turns toward the right, then cut
-// along the inward normal at that point.
+// Find where a descending flank reaches the requested angle, then cut inwards.
 bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
                         double angle, double stroke, Stretching& cut,
-                        const PathExtrema* crest, int traversal, bool oppositeFlank, int horizontal) {
+                        const PathExtrema* crest, int traversal, int horizontal) {
     const auto start = crest ? crest->time : std::prev(context.xSorted.end())->time;
     const auto curves = baseContourCurves(context.transformedPath);
     if (curves.empty()) return false;
@@ -342,6 +341,29 @@ bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
 
     const double radians = angle * M_PI / 180;
     const QPointF target(std::cos(radians), std::sin(radians));
+    const auto offset = [&](QPointF tangent) {
+        return target.x() * tangent.y() - target.y() * horizontal * tangent.x();
+    };
+    const auto probe = [&](const PathExtrema& flank, QPointF tangent) {
+        const double length = std::hypot(tangent.x(), tangent.y());
+        if (length < 1e-8) return false;
+        const int winding = context.orientation == Orientation::ClockWise ? 1 : -1;
+        const QPointF normal = (winding * direction / length) * QPointF(-tangent.y(), tangent.x());
+        for (int side : {1, -1}) {
+            const auto hits = FindInterections(context.transformedPath,
+                QLineF(flank.point, flank.point + side * normal * (3 * stroke)), true);
+            for (auto hit = hits.rbegin(); hit != hits.rend(); ++hit) {
+                const auto& top = crest ? flank : *hit;
+                const auto& bottom = crest ? *hit : flank;
+                if (!interiorChord(context.transformedPath, top, bottom)) continue;
+                cut.topBaseLine = top;
+                cut.bottomBaseLine = bottom;
+                return true;
+            }
+        }
+        return false;
+    };
+    QPointF previousEnd;
     for (int i = direction > 0 ? first : last; i >= first && i <= last; i += direction) {
         const int curveIndex = (i % curveCount + curveCount) % curveCount;
         const auto& curve = curves[curveIndex];
@@ -351,46 +373,46 @@ bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
                    + 2 * u * t * (curve.pt3() - curve.pt2())
                    + t * t * (curve.pt4() - curve.pt3()));
         };
-        const auto offset = [&](double t) {
+        const auto oneSidedTangent = [&](double t, double inside) {
             const auto v = tangent(t);
-            return target.x() * v.y() - target.y() * horizontal * v.x();
+            if (std::hypot(v.x(), v.y()) >= 1e-8) return v;
+            return tangent(t + (inside - t) * 1e-4);
         };
         const double a = std::max(0.0, low - i);
         const double b = std::min(1.0, high - i);
         const double begin = direction > 0 ? a : b;
         const double end = direction > 0 ? b : a;
+        const auto nextStart = oneSidedTangent(begin, end);
+        // Two descending Béziers can straddle the target at their common
+        // endpoint. A horizontal stitch between shaft segments is not a turn.
+        if (offset(previousEnd) > 0 && offset(nextStart) <= 0 &&
+            horizontal * previousEnd.x() >= 0 && previousEnd.y() > 0 &&
+            horizontal * nextStart.x() > 0 && nextStart.y() > 0) {
+            const double time = curveIndex + begin;
+            const PathExtrema joint{0, time == curveCount ? 0 : time, curve.pointAt(begin), false, false};
+            if (probe(joint, {horizontal * target.x(), target.y()})) return true;
+        }
         double previous = begin;
+        double previousOffset = offset(nextStart);
         for (int sample = 1; sample <= 24; ++sample) {
             const double current = begin + (end - begin) * sample / 24;
-            if (offset(previous) > 0 && offset(current) <= 0) {
+            const double currentOffset = offset(sample == 24 ? oneSidedTangent(end, begin) : tangent(current));
+            if (previousOffset > 0 && currentOffset <= 0) {
                 double steep = previous, shallow = current;
                 for (int iteration = 0; iteration < 24; ++iteration) {
                     const double middle = (steep + shallow) / 2;
-                    if (offset(middle) > 0) steep = middle;
+                    if (offset(tangent(middle)) > 0) steep = middle;
                     else shallow = middle;
                 }
                 const double t = (steep + shallow) / 2;
                 const auto v = tangent(t);
-                const double length = std::hypot(v.x(), v.y());
-                if (horizontal * v.x() > 0 && v.y() > 0 && length > 1e-8) {
-                    const PathExtrema outer{0, curveIndex + t, curve.pointAt(t), false, false};
-                    const bool invertNormal = (crest != nullptr) != oppositeFlank;
-                    const QPointF normal = (invertNormal ? -1 : 1) * QPointF(horizontal * v.y() / length,
-                                                                           -horizontal * v.x() / length);
-                    const auto hits = FindInterections(context.transformedPath,
-                        QLineF(outer.point, outer.point + normal * (3 * stroke)), true);
-                    for (auto hit = hits.rbegin(); hit != hits.rend(); ++hit) {
-                        const auto& top = crest ? outer : *hit;
-                        const auto& bottom = crest ? *hit : outer;
-                        if (!interiorChord(context.transformedPath, top, bottom)) continue;
-                        cut.topBaseLine = top;
-                        cut.bottomBaseLine = bottom;
-                        return true;
-                    }
-                }
+                if (horizontal * v.x() > 0 && v.y() > 0 &&
+                    probe({0, curveIndex + t, curve.pointAt(t), false, false}, v)) return true;
             }
             previous = current;
+            previousOffset = currentOffset;
         }
+        previousEnd = oneSidedTangent(end, begin);
     }
     return false;
 }
@@ -420,8 +442,7 @@ static std::optional<Stretching> turnFromRouteFork(const SearchContext& context,
     // Crossing the absolute angle can happen before the foot begins turning.
     const double turnAngle = std::min(angle, approachAngle / 2);
     Stretching turn{};
-    if (!alefTurnCut(context, end, turnAngle, width, turn, &start, forward ? 1 : -1,
-                     end.point.y() > cap.bottomBaseLine.point.y(), horizontal))
+    if (!alefTurnCut(context, end, turnAngle, width, turn, &start, forward ? 1 : -1, horizontal))
         return {};
     if (QLineF(sectionLine(turn).center(), sectionLine(cap).center()).length() > 4 * width)
         return {};
@@ -459,7 +480,6 @@ std::optional<Stretching> preferredFlankTurn(const SearchContext& context, const
     std::optional<Stretching> preferred;
     double nearest = std::numeric_limits<double>::infinity();
     for (const auto* flank : {&bottom, &top}) {
-        const auto& other = flank == &top ? bottom : top;
         const bool forward = (flank == &top) == topOutward;
         auto bound = *flank;
         bound.time += forward ? curves : -curves;
@@ -487,8 +507,7 @@ std::optional<Stretching> preferredFlankTurn(const SearchContext& context, const
             end = point;
         }
         Stretching turn{};
-        if (!alefTurnCut(context, end, angle, width, turn, flank, forward ? 1 : -1,
-                         flank->point.y() >= other.point.y(), horizontal)) continue;
+        if (!alefTurnCut(context, end, angle, width, turn, flank, forward ? 1 : -1, horizontal)) continue;
         orientSection(context, turn, bodyAnchor.time, entry);
         const bool outward = entry ? orderedSections(turn, limit, context.orientation)
                                    : orderedSections(limit, turn, context.orientation);
@@ -536,7 +555,7 @@ std::vector<ContourEntry> descendingRouteEntries(SearchContext& context, const S
         auto preferred = end;
         const double reach = std::hypot(context.bbox.width(), context.bbox.height());
         if (alefTurnCut(context, end, policy.value("descendingTurn").toDouble(), reach,
-                        turn, &fork, forward ? 1 : -1, true)) {
+                        turn, &fork, forward ? 1 : -1)) {
             preferred = turn.topBaseLine;
             add(turn);
         } else {

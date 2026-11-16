@@ -48,6 +48,49 @@ int main(int argc, char** argv) {
         missingConnector.kashidaPaths.front() = {};
         check(!coversOriginalInk(word, missingConnector), "Coverage accepted genuinely missing connector ink");
     }
+    {
+        QFile fixture("pages/page518.dat");
+        check(fixture.open(QIODevice::ReadOnly), "Missing Bézier turn fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&fixture);
+        stream >> page.page;
+        check(page.segmentSubword(517, 11, 0, 0, nullptr, true), "Page 518 alef remains partial");
+        const auto& word = page.page.lines[11].words[0];
+        const auto& sub = word.wordResultInfo.subWords[0];
+        check(sub.matchedTemplates.last() == "alef-fina" && sub.baseGlyphs.size() == 5 &&
+              sub.kashidaCuts.size() == 4 && !sub.kashidaPaths.back().isEmpty() && coversOriginalInk(word, sub),
+              "The alef turn must retain the neighboring bodies and connector");
+        const auto shape = word.bodyShape(sub);
+        WordResultInfo::SubWordInfo dummy;
+        const auto context = geometry(shape.transform.map(shape.path).translated(shape.pos), dummy);
+        const auto curves = baseContourCurves(context.transformedPath);
+        const auto pointAt = [&](int index, double t) {
+            return PathExtrema{0, index + t, curves.at(index).pointAt(t), false, false};
+        };
+        const auto inner = pointAt(34, .02);
+        const auto& join = *sub.joins.rbegin();
+        Stretching seamCut{};
+        check(alefTurnCut(context, pointAt(32, .60), 45, .65, seamCut, &inner, -1) &&
+              seamCut.topBaseLine.time == 33 &&
+              same(seamCut, {.topBaseLine = join.topLeft, .bottomBaseLine = join.bottomLeft}),
+              "The selected alef cut must start at the common Bézier endpoint");
+        const auto outer = pointAt(0, .65);
+        Stretching outerCut{};
+        check(alefTurnCut(context, pointAt(2, .11), 45, .65, outerCut, &outer, 1) &&
+              std::abs(outerCut.topBaseLine.time - 1.67454) < 1e-4 &&
+              std::abs(sectionLine(outerCut).dx() + sectionLine(outerCut).dy()) < 1e-5 &&
+              interiorChord(context.transformedPath, outerCut.topBaseLine, outerCut.bottomBaseLine),
+              "The outer flank normal must cut across the ink at the turn");
+    }
+    {
+        QFile fixture("pages/page197.dat");
+        check(fixture.open(QIODevice::ReadOnly), "Missing horizontal stitch fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&fixture);
+        stream >> page.page;
+        check(page.segmentSubword(196, 2, 0, 0, nullptr, true),
+              "A horizontal stitch on the alef shaft must not replace the foot turn");
+    }
     const auto rootsAre = [](double a, double b, double c, double d, std::vector<double> expected,
                              RootSearch search = RootSearch::Standard) {
         std::array<double, 3> storage;

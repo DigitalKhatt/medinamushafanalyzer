@@ -496,8 +496,7 @@ bool advanceOnContour(const QPainterPath& path, const PathExtrema& start,
 
 bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
                         double angle, double stroke, Stretching& cut,
-                        const PathExtrema* crest = nullptr, int traversal = 0, bool oppositeFlank = false,
-                        int horizontal = 1);
+                        const PathExtrema* crest = nullptr, int traversal = 0, int horizontal = 1);
 
 std::optional<Stretching> strokeFlankTurn(const SearchContext& context, const PathExtrema& start,
         double stroke, int horizontal, bool descending, double angle, double minTravel);

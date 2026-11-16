@@ -577,7 +577,7 @@ bool cutTailBranches(SearchContext &context, const TailBody &body, const QJsonOb
         if (settings.contains("turnAngle")) {
             // From the bowl fork, follow the inner edge down to the foot of the shaft.
             found = alefTurnCut(context, limit, settings.value("turnAngle").toDouble(), width, cut, &*corner,
-                                forward ? 1 : -1, true);
+                                forward ? 1 : -1);
             if (found && !getJoinTime(cut, context.orientation).isStrictLeft(body.tip.time))
                 std::swap(cut.topBaseLine, cut.bottomBaseLine);
             found = found && cut.topBaseLine.point.y() > corner->point.y() &&
