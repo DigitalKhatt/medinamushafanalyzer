@@ -1,16 +1,43 @@
 #include "proposalexport.h"
+#include "cutter/detail.h"
 #include "pathmask.h"
 #include "afont.h"
 #include "lettersegmentationcache.h"
 #include "markassignment.h"
 #include "quran.h"
 #include "PDFDoc.h"
-#include "CustomOutputDev.h"
 #include "nativeinputversion.h"
 #include <QRegularExpression>
 #include <stdexcept>
 
 namespace {
+void splitJoinedAlefHamzas(PageAnalysisResult& analysis, int pageNumber) {
+    const auto exceptions = PageAnalysisResult::nbShapeExceptions.constFind(pageNumber);
+    if (exceptions == PageAnalysisResult::nbShapeExceptions.constEnd()) return;
+    for (auto row = exceptions->constBegin(); row != exceptions->constEnd(); ++row) {
+        if (row.key() < 1 || row.key() > analysis.page.lines.size()) continue;
+        auto& line = analysis.page.lines[row.key() - 1];
+        for (auto item = row->constBegin(); item != row->constEnd(); ++item) {
+            if (item->shapeException != ShapeException::AlefHamzaJoined ||
+                item.key() < 1 || item.key() > line.words.size()) continue;
+            auto& word = line.words[item.key() - 1];
+            const int slot = item->subWordPosition - 1;
+            if (slot < 0 || slot >= int(word.wordResultInfo.subWords.size())) continue;
+            auto& sub = word.wordResultInfo.subWords[slot];
+            if (!sub.text.startsWith(QChar(0x0623)) || sub.paths.empty()) continue;
+            auto& shape = word.paths[sub.paths.front()];
+            if (shape.nbpath != 0) continue;
+            auto pieces = MedinaCutter::splitJoinedAlefHamza(shape);
+            if (!pieces) continue;
+            auto hamza = shape;
+            shape.path = std::move(pieces->first);
+            hamza.path = std::move(pieces->second);
+            sub.paths.push_back(word.paths.size());
+            word.paths.push_back(std::move(hamza));
+        }
+    }
+}
+
 QByteArray readFile(const QString& name) {
     QFile file(name);
     if (!file.open(QIODevice::ReadOnly)) throw std::runtime_error(("Cannot read " + name).toStdString());
@@ -205,6 +232,7 @@ int exportReviewProposals(const QString& output, const QString& svgDirectory, co
                     if (cache.status()!=QDataStream::Ok || result.page.lines.isEmpty()) throw std::runtime_error("Invalid page cache");
                 }
                 const auto boundaryRepairs=result.resolveWordBoundaries(number, &font);
+                splitJoinedAlefHamzas(result, number);
                 QJsonArray words, paths;
                 for (int li=0;li<result.page.lines.size();++li) {
                     auto& line=result.page.lines[li];
@@ -770,6 +798,7 @@ int segmentCatalogPage(const QString& request, const QString& output) {
             page.resolveWordBoundaries(number, &font);
             if (cacheEnabled) saveNativeInput(cacheFile, inputKey, page);
         }
+        splitJoinedAlefHamzas(page, number);
         elapsed("loadPage");
         if (input.value("artOnly").toBool()) {
             writeJson(output, {{"pageArt",catalogPageArt(pdfName,page,number,size,toRaster)}});

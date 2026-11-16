@@ -600,6 +600,8 @@ std::vector<GlyphInfo> cutRegions(const QPainterPath& path, const QString& text,
                                        const std::vector<Stretching>& cuts, Orientation orientation,
                                        bool checkSegmentOrder = false);
 
+std::optional<std::pair<QPainterPath, QPainterPath>> splitJoinedAlefHamza(const Apath& shape);
+
 bool computeInteriorInkSegment(const QPainterPath& ink, const QPointF& top, const QPointF& bottom,
                                      double topTolerance);
 

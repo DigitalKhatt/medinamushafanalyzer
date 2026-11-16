@@ -4,6 +4,35 @@ using namespace MedinaCutter;
 
 namespace MedinaCutter {
 
+std::optional<std::pair<QPainterPath, QPainterPath>> splitJoinedAlefHamza(const Apath& shape) {
+    const auto& ink = shape.path;
+    if (toSubpaths(ink).size() != 1) return {};
+    const auto curves = baseContourCurves(ink);
+    // The two flagged occurrences use the same outline. These knots
+    // are the ends of its narrow bridge at the top of the stem.
+    constexpr int leftNeck = 7, rightNeck = 19;
+    if (curves.size() != 30 || curves.front().pt1() != curves.back().pt4()) return {};
+    Stretching cut{};
+    cut.topBaseLine = {0, leftNeck, curves[leftNeck].pt1(), false, false};
+    cut.bottomBaseLine = {0, rightNeck, curves[rightNeck].pt1(), false, false};
+    if (sectionLine(cut).length() > .15 * ink.boundingRect().width() ||
+        !interiorChord(ink, cut.topBaseLine, cut.bottomBaseLine)) return {};
+
+    WordResultInfo::SubWordInfo empty;
+    SearchContext context{.transformedPath = ink, .subword = empty};
+    context.setOrientation();
+    auto pieces = cutRegions(ink, {}, {cut}, context.orientation);
+    if (pieces.size() != 2) return {};
+    auto first = shape.transform.map(pieces[0].path).boundingRect();
+    auto second = shape.transform.map(pieces[1].path).boundingRect();
+    if (first.center().y() < second.center().y()) {
+        std::swap(first, second);
+        std::swap(pieces[0], pieces[1]);
+    }
+    if (first.height() < 3 * first.width() || second.bottom() >= first.center().y()) return {};
+    return std::pair{std::move(pieces[0].path), std::move(pieces[1].path)};
+}
+
 std::optional<UprightStemBody> recognizeUprightStem(const InkOutline &outline) {
     WordResultInfo::SubWordInfo empty;
     auto context = outline.geometry(empty);

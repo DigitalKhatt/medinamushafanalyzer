@@ -1,4 +1,5 @@
 #include "../../cutter/detail.h"
+#include "../../pathmask.h"
 #include <QApplication>
 
 using namespace MedinaCutter;
@@ -90,6 +91,32 @@ int main(int argc, char** argv) {
         stream >> page.page;
         check(page.segmentSubword(196, 2, 0, 0, nullptr, true),
               "A horizontal stitch on the alef shaft must not replace the foot turn");
+    }
+    struct JoinedHamzaCase { int page, line, word; };
+    for (const auto& sample : {JoinedHamzaCase{324, 4, 7}, JoinedHamzaCase{341, 7, 3}}) {
+        QFile fixture(QString("pages/page%1.dat").arg(sample.page));
+        check(fixture.open(QIODevice::ReadOnly), "Missing joined hamza fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&fixture);
+        stream >> page.page;
+        const auto& word = page.page.lines[sample.line - 1].words[sample.word - 1];
+        const auto source = word.bodyShape(word.wordResultInfo.subWords.front());
+        const auto pieces = splitJoinedAlefHamza(source);
+        check(pieces.has_value(), "The cutter must split the flagged joined hamza");
+        const auto mask = [&](const QPainterPath& path) {
+            const auto scaled = QTransform::fromScale(16. / 3., 16. / 3.)
+                                    .map(source.transform.map(path).translated(source.pos));
+            QRegion result;
+            visitSourceInk(scaled, scaled.boundingRect().toAlignedRect(),
+                           [&](int x, int y, int width) { result += QRect(x, y, width, 1); });
+            return result;
+        };
+        const auto stem = mask(pieces->first), hamza = mask(pieces->second);
+        check(!stem.isEmpty() && !hamza.isEmpty() && !stem.intersects(hamza) &&
+              (stem | hamza) == mask(source.path), "The split must preserve and partition source ink");
+        auto plainStem = source;
+        plainStem.path = pieces->first;
+        check(!splitJoinedAlefHamza(plainStem), "No split should be returned for an outline without the bridge");
     }
     const auto rootsAre = [](double a, double b, double c, double d, std::vector<double> expected,
                              RootSearch search = RootSearch::Standard) {
