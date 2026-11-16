@@ -94,6 +94,7 @@
     },
     {
       "label": "Mushaf Catalog: Set up validation",
+      "detail": "Install catalog validation dependencies with uv in build/mushafcatalog-venv",
       "type": "process",
       "command": "python3",
       "args": [
@@ -343,8 +344,9 @@
     },
     {
       "label": "Mask2Former: Set up Python environment",
+      "detail": "Install Mask2Former dependencies with uv in output/mask2former-env",
       "type": "process",
-      "command": "python3.14",
+      "command": "python3",
       "args": ["tools/mask2former/run.py", "setup"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []

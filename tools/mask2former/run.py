@@ -9,12 +9,12 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import venv
 
 from workspace import ENV, HERE, NATIVE, latest_report, read, run_path
 
 sys.path.insert(0, str(NATIVE / 'tools'))
 from cutter_source import cutter_source_digest
+from python_environment import install_requirements
 
 
 PRETRAINED_REPO = 'facebook/mask2former-swin-tiny-coco-instance'
@@ -28,11 +28,7 @@ def digest(path):
 
 
 def setup():
-    python = ENV / 'bin' / 'python'
-    if not python.is_file():
-        venv.EnvBuilder(with_pip=True).create(ENV)
-    subprocess.run([str(python), '-m', 'pip', 'install', '--only-binary=:all:',
-                    '-r', str(HERE / 'requirements.txt')], check=True)
+    python = install_requirements(ENV, HERE / 'requirements.txt', only_binary=True)
     print(f'Mask2Former Python ready at {python}', flush=True)
 
 
@@ -177,7 +173,7 @@ def prepare_run(args, folder):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='action', required=True)
-    commands.add_parser('setup', help='Install the pinned Python dependencies into the project environment')
+    commands.add_parser('setup', help='Install the pinned Mask2Former dependencies with uv')
     native = commands.add_parser('snapshot', help='Prepare a frozen export of the current native cuts')
     native.add_argument('--rebuild', action='store_true')
     native.add_argument('--jobs', type=int, default=8)

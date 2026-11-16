@@ -11,6 +11,12 @@ The build uses the 1441 Hafs source artwork, the embedded native templates,
 and the classifier and workbench code in `tools/mark-classifier/`. The
 default database is `output/catalog.sqlite`.
 
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make
+it available on `PATH`. Catalog setup uses uv to create a Python 3.14
+environment at `build/mushafcatalog-venv` and install
+`tools/mushafcatalog/requirements-validation.txt`. Set
+`MUSHAF_CATALOG_PYTHON` to use an existing interpreter with the same pins.
+
 Use **Mushaf Catalog: Full pipeline and serve** in VS Code, or run:
 
 ```sh
@@ -99,9 +105,11 @@ python3 tools/mushafcatalog/catalog.py replay-marks \
 ## Mask2Former
 
 `mask2former/` trains on eligible native letter cuts and compares predictions
-with the cutter on connected subwords. The VS Code tasks prepare cuts,
-repeat training, predict, and serve the comparison. The repeat task sets up
-its Python environment. `prepare` and `repeat` generate missing raster metadata
+with the cutter on connected subwords. **Mask2Former: Set up Python environment**
+uses uv to install `tools/mask2former/requirements.txt` in
+`output/mask2former-env`. Run it before prediction or serving a comparison.
+**Mask2Former: Repeat training** already runs setup as a dependency.
+`prepare` and `repeat` generate missing raster metadata
 from the AI/PDF artwork and freeze it with the page inventory in the run.
 They keep any existing page splits and use the default deterministic split
 for a first run. For starting weights, they use `--pretrained`, reuse the
@@ -113,7 +121,7 @@ The default classes are `body` and `kashida`. Add `--previous none --seen-body`
 to the `repeat` command to train a shared sīn/shīn class from the first run.
 
 ```sh
-python3.14 tools/mask2former/run.py setup
+python3 tools/mask2former/run.py setup
 python3 tools/mask2former/run.py snapshot
 output/mask2former-env/bin/python tools/mask2former/run.py repeat --run cutter-review --device auto
 output/mask2former-env/bin/python tools/mask2former/run.py predict --run cutter-review --device auto

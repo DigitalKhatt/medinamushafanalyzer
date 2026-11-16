@@ -77,7 +77,7 @@ def main():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument('--db',type=Path,default=DB,help=f'Catalog database (default: {DB.relative_to(ROOT)})')
     commands = cli.add_subparsers(dest='command',required=True)
-    commands.add_parser('setup',help='Locate or install the pinned Python mark-validation dependencies')
+    commands.add_parser('setup',help='Install the pinned Python mark-validation dependencies with uv')
     lock = commands.add_parser('check-inputs',help='Verify source artwork, native templates and validation checkpoints')
     src = commands.add_parser('fresh',help='Regenerate from AI/PDF and QuranTextByWord; compare if report already exists')
     src.add_argument('--report',type=Path,default=REPORT)

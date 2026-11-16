@@ -9,7 +9,8 @@ This project is sponsored by [@tarteelAI](https://github.com/TarteelAI) [<img sr
 ## Build and serve
 
 1. Install a C++20 compiler, CMake, Ninja, Qt 5 and Poppler with private
-   headers, nlohmann/json, JPEG, PNG, OpenJPEG, pkg-config, and Python 3.11+.
+   headers, nlohmann/json, JPEG, PNG, OpenJPEG, pkg-config, Python 3.11+, and
+   [uv](https://docs.astral.sh/uv/getting-started/installation/).
 2. Extract [the 1441 Madinah Hafs Mushaf](https://archive.org/download/1441-ai-hafs/1441-AI-hafs.zip) pages into `input/1441-AI-hafs/`.
 3. In VS Code, run **Mushaf Catalog: Full pipeline and serve**. Once the
    database exists, **Mushaf Catalog: Serve catalog** opens it for browsing.

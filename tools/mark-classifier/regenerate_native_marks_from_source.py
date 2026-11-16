@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -192,11 +193,18 @@ if __name__ == '__main__':
     reference.add_argument('--model-root', type=Path, help='Portable validation bundle for a build from zero')
     parser.add_argument('--svg-dir', type=Path, help='Optional artwork binding for catalog exports')
     parser.add_argument('--workers', type=int, default=8)
-    parser.add_argument('--python', type=Path, default=ROOT.parent/'mushafanalyzer/.venv/bin/python')
+    parser.add_argument('--python', type=Path, help='Validator interpreter, defaults to the catalog validation environment')
     parser.add_argument('--resume-interrupted', action='store_true',
                         help='Keep only completed fresh outputs after verifying their exact source and binary hashes; never read them as native segmentation inputs')
     args = parser.parse_args()
     if not 1 <= args.workers <= 16:
         parser.error('--workers must be between 1 and 16')
+    if args.python is None:
+        sys.path.insert(0, str(ROOT/'tools'/'mushafcatalog'))
+        from environment import validator
+        try:
+            args.python = validator()
+        except ValueError as error:
+            parser.error(str(error))
     regenerate(args.output, args.baseline, args.svg_dir, args.workers, args.python, args.resume_interrupted,
                model_root=args.model_root)
