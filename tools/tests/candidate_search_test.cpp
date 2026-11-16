@@ -185,8 +185,9 @@ static void checkFixedAnchors(const QJsonObject& config) {
                   "A rejected fixed-anchor partition survived validation");
         }
     }
-    for (const auto& f : {Fixture{3, 1, 2, 2}, Fixture{3, 1, 9, 1},
-                          Fixture{48, 6, 6, 2}, Fixture{61, 10, 2, 2}, Fixture{221, 13, 10, 1}}) {
+    for (const auto& f : {Fixture{3, 1, 2, 2}, Fixture{3, 1, 9, 1}, Fixture{38, 8, 8, 2},
+                          Fixture{48, 6, 6, 2}, Fixture{61, 10, 2, 2}, Fixture{91, 5, 7, 1},
+                          Fixture{96, 6, 1, 1}, Fixture{221, 13, 10, 1}}) {
         QFile file(QString("pages/page%1.dat").arg(f.page));
         check(file.open(QIODevice::ReadOnly), "Missing final dal fixture");
         PageAnalysisResult page;
@@ -215,7 +216,8 @@ static void checkFixedAnchors(const QJsonObject& config) {
         check(chosen != candidates.end() && chosen->entryLimit &&
               getJoinTime(*chosen->entry, geometry.orientation).isLeft(chosen->entryLimit->time),
               "Assembly moved final dal's cut past the recognized fork");
-        const std::map<int, double> expectedFork{{3, f.word == 2 ? 14. : 8.}, {48, 29.}, {61, 28.}, {221, 9.}};
+        const std::map<int, double> expectedFork{{3, f.word == 2 ? 14. : 8.}, {38, 12.}, {48, 29.},
+                                                 {61, 28.}, {91, 8.}, {96, 12.}, {221, 9.}};
         check(chosen->entryLimit->time == expectedFork.at(f.page), "Final dal borrowed a neighboring fork");
         if (f.page == 221) {
             const auto preferred = std::find_if(candidates.begin(), chosen, [&](const auto& body) {

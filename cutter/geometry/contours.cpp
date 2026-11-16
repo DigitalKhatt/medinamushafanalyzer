@@ -400,13 +400,12 @@ std::vector<ContourEntry> descendingRouteEntries(SearchContext& context, const S
     const int count = static_cast<int>(curves.size());
     if (!count) return {};
 
-    const bool forward = route.topPrevious;
-    const auto distance = [&](double from, double to) {
+    const auto distance = [&](double from, double to, bool forward) {
         double delta = forward ? to - from : from - to;
         return delta < 0 ? delta + count : delta;
     };
     std::vector<ContourEntry> entries;
-    const auto addFlank = [&](const PathExtrema& fork, const PathExtrema& end) {
+    const auto addFlank = [&](const PathExtrema& fork, const PathExtrema& end, bool forward) {
         const auto add = [&](Stretching cut) {
             orientSection(context, cut, route.origin.time, true);
             const auto side = getJoinTime(cut, context.orientation);
@@ -436,7 +435,7 @@ std::vector<ContourEntry> descendingRouteEntries(SearchContext& context, const S
             addNormal(preferred, true);
         }
 
-        preferred.time = fork.time + (forward ? 1 : -1) * distance(fork.time, preferred.time);
+        preferred.time = fork.time + (forward ? 1 : -1) * distance(fork.time, preferred.time, forward);
         const double low = std::min(fork.time, preferred.time), high = std::max(fork.time, preferred.time);
         double length = 0;
         for (int i = int(std::floor(low)); i < int(std::ceil(high)); ++i)
@@ -451,25 +450,34 @@ std::vector<ContourEntry> descendingRouteEntries(SearchContext& context, const S
         addNormal(fork);
     };
 
-    addFlank(route.anchor, route.topEnd);
-    if (!shoulders) return entries;
-    // The directional route can follow a later fork on stacked ink. A
-    // concave shoulder closer to the terminal tip is a separate body
-    // candidate, with its own limit and descending flank.
-    const auto step = forward ? &SearchContext::prev : &SearchContext::next;
-    for (const auto& branch : shoulders->branches) {
-        if (branch.forward != forward ||
-            distance(route.origin.time, branch.corner.time) >= distance(route.origin.time, route.anchor.time))
-            continue;
+    const auto descendFrom = [&](const TailBranch& branch) {
+        const auto step = branch.forward ? &SearchContext::prev : &SearchContext::next;
         const auto start = context.timeSorted.find(branch.corner);
-        if (start == context.timeSorted.end()) continue;
+        if (start == context.timeSorted.end()) return;
         auto end = start;
         for (auto next = (context.*step)(end); next != start; next = (context.*step)(end)) {
             if (next->point.x() <= end->point.x() || next->point.y() <= end->point.y()) break;
             end = next;
         }
-        if (end != start) addFlank(branch.corner, *end);
+        if (end != start) addFlank(branch.corner, *end, branch.forward);
+    };
+
+    const bool forward = route.topPrevious;
+    if (shoulders && route.anchor.isY && !route.anchor.isSharp) {
+        // A route over the rounded crest can end in the incoming stroke.
+        // Prefer the fork below that crest, using its own flank direction.
+        for (const auto& branch : shoulders->branches)
+            if (branch.forward != forward && branch.corner.point.y() > route.anchor.point.y() &&
+                branch.corner.point.x() < route.topEnd.point.x())
+                descendFrom(branch);
     }
+    addFlank(route.anchor, route.topEnd, forward);
+    if (!shoulders) return entries;
+    // An earlier fork on the same flank supplies a separate body candidate.
+    for (const auto& branch : shoulders->branches)
+        if (branch.forward == forward &&
+            distance(route.origin.time, branch.corner.time, forward) < distance(route.origin.time, route.anchor.time, forward))
+            descendFrom(branch);
     return entries;
 }
 
