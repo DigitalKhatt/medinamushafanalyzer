@@ -1,0 +1,14 @@
+{
+  "version": "mask-only-damma-high-yeh-v1",
+  "weights": "models/damma-yeh.npz",
+  "weightsSha256": "b872e2ce611e0d1ddd55b0fb5e9a4cca3bc7bd33dcada75d8ddbc31aa160cddb",
+  "baselineSha256": "0128cef17748fec8475da413262d7b45c0383ecb85a5cadb3cbb50d8deee6308",
+  "trainingLabelsSha256": "337ad1a476852ce0d29895a955355a7e8450c5234ef8bff53c6978281ec2e0e7",
+  "threshold": 0.99,
+  "classes": [
+    "small-high-yeh",
+    "damma"
+  ],
+  "input": "Region mask and intrinsic geometry; no neighboring ink, baseline placement, transcript or owner.",
+  "policy": "Only confident pair disagreements are reconsidered; conserve total pair probability, all other type scores and role scores."
+}

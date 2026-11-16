@@ -3,6 +3,7 @@
 Run the commands below from the `medinamushafanalyzer` root. The native
 CMake preset uses Apple Silicon Homebrew paths. For other installations,
 configure the same Ninja Multi-Config build with your dependency paths.
+The clean catalog build was verified with Qt 5.15.18 and Poppler 26.02.0.
 
 ## Catalog
 
@@ -17,12 +18,16 @@ environment at `build/mushafcatalog-venv` and install
 `tools/mushafcatalog/requirements-validation.txt`. Set
 `MUSHAF_CATALOG_PYTHON` to use an existing interpreter with the same pins.
 
-Use **Mushaf Catalog: Full pipeline and serve** in VS Code, or run:
+Prepare the [artwork and build prerequisites](../README.md#build-and-serve)
+first. The checked-in source tree supplies the transcript, geometric font,
+templates and mark validation weights. Use **Mushaf Catalog: Full pipeline
+and serve** in VS Code, or run the full pipeline from the command line.
 
 ```sh
 cmake --preset ninja-nmc
 cmake --build --preset release --target medinamushafanalyzer
 python3 tools/mushafcatalog/catalog.py setup
+python3 tools/mushafcatalog/catalog.py check-inputs
 python3 tools/mushafcatalog/catalog.py fresh --pages all
 python3 tools/mushafcatalog/catalog.py build
 python3 tools/mushafcatalog/catalog.py segment-letters --pages all
@@ -31,10 +36,15 @@ python3 tools/mushafcatalog/catalog.py verify
 python3 tools/mushafcatalog/catalog.py serve --port 8770
 ```
 
-`fresh` reads the AI/PDF pages in `input/1441-AI-hafs/` and writes its report
-to `output/mark-assignment-character-links-vector/`. Letter segmentation
-stores the native page contours, grouped surah titles, basmalas and ayah
-markers, and frame openings in the catalog. The viewer draws them directly.
+`check-inputs` verifies the edition and bundled validation inputs before
+starting the full run. `fresh` reads the AI/PDF pages in
+`input/1441-AI-hafs/` and writes its report to
+`output/mark-assignment-character-links-vector/`. If a report already exists
+at that location, `fresh` compares the regenerated results with it.
+For an intentional change, give `fresh` a new `--report` path and pass the
+same path to `build`. Letter segmentation stores the native page contours,
+grouped surah titles, basmalas and ayah markers, and frame openings in the
+catalog. The viewer draws them directly.
 Each letter-segmentation run writes `output/mushafcatalog/letter-segmentation.log`
 with page totals and the subword IDs, letter diagnostics, and cutter traces
 for unresolved cases. The viewer displays unresolved subwords as uncut
@@ -92,6 +102,15 @@ Use **Mark Classifier: Compare native assignments** to create a page report.
 The audit derives its mask grid from the AI/PDF page dimensions and runs
 without SVG artwork or Inkscape. Use `fresh` for a catalog build that includes
 viewer artwork.
+The [bundled checkpoints](../input/mark-validation) provide the trained mark
+classifier and its hamza and damma/yeh refinements for validation. The catalog
+checks their hashes against [the input lock](mushafcatalog/inputs.lock.json).
+Training a replacement requires labeled ink masks and a training and
+validation split. Reproducing this particular bundle also requires its
+original frozen targets and the checkpoint used to select difficult training
+examples. Use a separate report directory and an updated input lock to trial
+replacement validation weights.
+
 Keep that report's `inputs/` directory. **Mark Classifier: Replay saved
 assignments** runs the classifier again from those inputs. Open `index.html`
 in the resulting report.
@@ -181,6 +200,9 @@ node --test tools/mushafcatalog/test_result_grid.mjs
 ```
 
 The native checks use the Release binary and edition data. Pass a C++ test
-filename to `check_letter_forms.py` to run one case.
+filename to `check_letter_forms.py` to run one case. For tests that read
+`pages/pageN.dat`, create the `pages/` directory at the repository root and
+use **File → Save this page** in the native app to save the required page.
+The catalog build reads AI/PDF artwork directly.
 The input-cache check uses the catalog to verify identical cold/warm masks,
 fresh cuts after a template edit, and recovery from a truncated cache file.

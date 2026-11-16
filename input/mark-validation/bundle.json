@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "baseModelSha256": "0128cef17748fec8475da413262d7b45c0383ecb85a5cadb3cbb50d8deee6308",
+  "files": {
+    "models/damma-yeh.json": "df4d8b306747ed7447599dfe23d876fbc0e66e1388ba352722430cddd1f1e765",
+    "models/damma-yeh.npz": "b872e2ce611e0d1ddd55b0fb5e9a4cca3bc7bd33dcada75d8ddbc31aa160cddb",
+    "models/hamza.json": "98c82ea02b152682a0ab5bbc01d9c7b86bb569a5d11d3f37c95fd6f88c763b6b",
+    "models/hamza.npz": "896a64c7f905e31a75601b99cb265536854ac681e3a8ae41fda0bcda4b654b47",
+    "models/model.json": "84e5c8deacf00ee40967c366b1fe0a5aa22df1a64e5d61b89371faf108762d5e",
+    "models/selected.npz": "0128cef17748fec8475da413262d7b45c0383ecb85a5cadb3cbb50d8deee6308"
+  },
+  "policy": "Trained checkpoints and vocabularies are immutable inference inputs. Expert paths are relative; no experiment directory is needed."
+}

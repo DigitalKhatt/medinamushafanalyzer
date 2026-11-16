@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from store import ALL, HERE, ROOT, VECTOR, require
-from workbench_paths import DATA
 
 MARK_CLASSIFIER = VECTOR
 from classify_assigned_marks import model_files
@@ -27,7 +26,7 @@ def ai_page(pid):
 
 
 def validation_models(model_root=None):
-    return Path(model_root or DATA/'model-bundles/dot-grouping-v9-20261104').resolve()
+    return Path(model_root or ROOT/'input/mark-validation').resolve()
 
 
 def check(models, lock=None, full=True):

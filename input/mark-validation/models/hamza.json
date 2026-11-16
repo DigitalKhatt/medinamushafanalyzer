@@ -1,0 +1,5 @@
+{
+  "weights": "models/hamza.npz",
+  "weightsSha256": "896a64c7f905e31a75601b99cb265536854ac681e3a8ae41fda0bcda4b654b47",
+  "baselineSha256": "0128cef17748fec8475da413262d7b45c0383ecb85a5cadb3cbb50d8deee6308"
+}

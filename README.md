@@ -8,15 +8,21 @@ This project is sponsored by [@tarteelAI](https://github.com/TarteelAI) [<img sr
 
 ## Build and serve
 
-1. Install a C++20 compiler, CMake, Ninja, Qt 5 and Poppler with private
-   headers, nlohmann/json, JPEG, PNG, OpenJPEG, pkg-config, Python 3.11+, and
+1. Install a C++20 compiler, CMake 3.20+, Ninja, Qt 5 and Poppler with private
+   headers, nlohmann/json 3.11+, JPEG, PNG, OpenJPEG, pkg-config, Python 3.11+, and
    [uv](https://docs.astral.sh/uv/getting-started/installation/).
-2. Extract [the 1441 Madinah Hafs Mushaf](https://archive.org/download/1441-ai-hafs/1441-AI-hafs.zip) pages into `input/1441-AI-hafs/`.
-3. In VS Code, run **Mushaf Catalog: Full pipeline and serve**. Once the
-   database exists, **Mushaf Catalog: Serve catalog** opens it for browsing.
+   The default CMake preset uses Apple Silicon Homebrew paths.
+2. Download [the 1441 Madinah Hafs Mushaf ZIP](https://archive.org/download/1441-ai-hafs/1441-AI-hafs.zip).
+   Extract it and move or rename the enclosing artwork folder so that the 604
+   `.ai` files are directly inside `input/1441-AI-hafs/`. The first file should
+   be `input/1441-AI-hafs/001___Hafs39__DM.ai`.
+3. Open the `medinamushafanalyzer` folder in VS Code and use
+   **Terminal → Run Task → Mushaf Catalog: Full pipeline and serve**. To reopen
+   a catalog you already built, use **Mushaf Catalog: Serve catalog**.
 
-The catalog database lives at `output/catalog.sqlite`.
+The checkout includes the mark validation weights. The pipeline reads the
+AI artwork directly and writes the catalog to `output/catalog.sqlite`.
 
-[Open the catalog](http://127.0.0.1:8770/) · [Open the page viewer](http://127.0.0.1:8770/viewer.html) · [Command-line and validation tools](tools/README.md)
+[Open the catalog](http://127.0.0.1:8770/) · [Open the page viewer](http://127.0.0.1:8770/viewer.html) · [Command-line setup](tools/README.md#catalog) · [Contributing](CONTRIBUTING.md)
 
 
