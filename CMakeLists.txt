@@ -31,7 +31,6 @@ set(ALL_FILES   mainwindow.h mainwindow.cpp CustomOutputDev.h CustomOutputDev.cp
 constants.h aglyph.h aglyph.cpp afont.h afont.cpp pageanalysisresult.h pageanalysisresult.cpp quran.h quran.cpp
 shapeItem.h shapeitem.cpp quransearch.h quransearch.cpp "pathdelegate.h" worditem.h worditem.cpp segmentsubword.cpp lettersegmentationcache.cpp lettersegmentationcache.h
 letterforminspection.h bodycutpanel.h bodycutpanel.cpp
-test.natvis qt5.natvis
 )
 set(LIBRARIES  Qt5::Core  Qt5::CorePrivate Qt5::GuiPrivate Qt5::Xml Qt5::Widgets  PkgConfig::Poppler JPEG::JPEG PNG::PNG  ${OPENJPEG_LIBRARIES})
 
