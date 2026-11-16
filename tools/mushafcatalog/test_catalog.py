@@ -188,6 +188,7 @@ class CatalogTests(unittest.TestCase):
         self.assertNotIn('#5d7387',pending)
         self.assertIn('M2 4h1',pending)
         self.assertIn('#edf4fa',image(self.db,'letters',O0+','+O2,'match',dark=True))
+        self.assertIn('viewBox="-4 -4 14 12"',image(self.db,'letters',O0+','+O2,'match',marks=False))
         self.attach(self.bundle)
         focused = image(self.db,'letters',O0,'match',dark=True)
         self.assertIn('viewBox="-4 -4 14 14"',focused)
@@ -206,6 +207,8 @@ class CatalogTests(unittest.TestCase):
         self.assertIn('M2 4h1',with_marks)
         self.assertNotIn('M2 4h1',without_marks)
         self.assertIn('M3 1h2',without_marks)
+        self.assertIn('viewBox="-5 -4 15 12"',without_marks)
+        self.assertIn('viewBox="-4 -4 14 12"',image(self.db,'subwords',S1,'crop',marks=False))
         other_subword = image(self.db,'subwords',WID+'-s2','crop',marks=False)
         self.assertIn(other_subword.split(' d="')[1].split('"')[0],without_marks)
 
@@ -221,6 +224,9 @@ class CatalogTests(unittest.TestCase):
         params = dict(query, metric='kashidaRight')
         rows = search(self.db,params)['rows']
         self.assertEqual([r['metric_value'] for r in rows],[0,None,None])
+        for sort in ('largest','smallest'):
+            for offset,row in enumerate(rows):
+                self.assertEqual(search(self.db,dict(params,sort=sort,limit='1',offset=str(offset)))['rows'],[row])
         stats = search(self.db,params,True)
         self.assertEqual((stats['distribution'],stats['unmeasured']),([[0,1]],2))
         self.assertEqual(search(self.db,dict(params,min='0'))['total'],1)

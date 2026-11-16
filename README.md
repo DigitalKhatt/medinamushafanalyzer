@@ -19,6 +19,8 @@ This project is sponsored by [@tarteelAI](https://github.com/TarteelAI) [<img sr
 3. Open the `medinamushafanalyzer` folder in VS Code and use
    **Terminal → Run Task → Mushaf Catalog: Full pipeline and serve**. To reopen
    a catalog you already built, use **Mushaf Catalog: Serve catalog**.
+   Use **Mushaf Catalog: Serve local and LAN** and enter this computer's LAN
+   IPv4 address to open the catalog from another device on the same network.
 
 The checkout includes the mark validation weights. The pipeline reads the
 AI artwork directly and writes the catalog to `output/catalog.sqlite`.

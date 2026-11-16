@@ -418,7 +418,8 @@ def build(database, report, expected_manifest=None, overlay_db=None):
             db.execute('PRAGMA journal_mode=WAL')
         db.execute('PRAGMA foreign_keys=ON')
         db.executescript('BEGIN IMMEDIATE;\n'+sql+(VECTOR/'automatic/transcript_marks.sql').read_text()+
-                         (HERE/'schema.sql').read_text()+(HERE/'page_art.sql').read_text())
+                         (HERE/'schema.sql').read_text()+(HERE/'page_art.sql').read_text()+
+                         (HERE/'search_indexes.sql').read_text())
         upgrade_native_page_art(db)
         added_mark_letter = ensure_mark_letter_column(db)
         if not seed:

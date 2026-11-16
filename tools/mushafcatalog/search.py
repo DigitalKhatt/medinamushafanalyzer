@@ -5,7 +5,7 @@ import unicodedata
 from html import escape
 from math import hypot
 
-from store import INK_REF, META, meta, pack_runs, plain, report_ink, require, shape_class, unpack_runs
+from store import INK_REF, META, extent, meta, pack_runs, plain, report_ink, require, shape_class, unpack_runs
 from page_view import decode_vectors, mark_outlines, matching_part
 from automatic.common import mask_path
 
@@ -27,6 +27,9 @@ WORD_COVERAGE = """(SELECT CASE WHEN count(*)=0 THEN 'sign'
     ELSE 'partial' END FROM catalog_subwords s LEFT JOIN catalog_splits b ON b.subword_id=s.id
     WHERE s.word_id=w.id AND s.kind='text')"""
 SUB_COVERAGE = "CASE WHEN s.kind!='text' THEN 'sign' WHEN b.subword_id IS NULL THEN 'pending' ELSE 'segmented' END"
+LETTER_BODY_MATCH = " ON p.owner_id=o.id AND p.role='body'"
+LETTER_BODY_JOIN = ' LEFT JOIN catalog_parts p'+LETTER_BODY_MATCH
+LETTER_MEASUREMENTS_JOIN = ' LEFT JOIN catalog_measurements a ON a.owner_id=o.id'
 
 
 def facets(db):
@@ -86,7 +89,10 @@ def search(db, params, statistics=False):
     require(not slots or kind=='letters', 'A sequence is a letter search')
     require(params.get('match','') in ('','letter','exact','class'), 'Invalid letter matching mode')
     args, where = [], []
-    def condition(sql,*values):
+    owner_filters_only = kind=='letters' and len(slots)<=1
+    def condition(sql,*values,owner_filter=False):
+        nonlocal owner_filters_only
+        owner_filters_only = owner_filters_only and owner_filter
         where.append(sql)
         args.extend(values)
 
@@ -106,9 +112,8 @@ def search(db, params, statistics=False):
         base_offset = 'm.base_offset' if kind=='marks' else 'o.word_offset'
         extra += f',o.id owner_id,o.role owner_role,{base} base,o.form,o.shape_class,{base_offset} base_offset'
         if kind=='letters':
-            condition("o.role='letter'")
-            joined += " LEFT JOIN catalog_parts p ON p.owner_id=o.id AND p.role='body'"
-            joined += ' LEFT JOIN catalog_measurements a ON a.owner_id=o.id'
+            condition("o.role='letter'",owner_filter=True)
+            joined += LETTER_BODY_JOIN + LETTER_MEASUREMENTS_JOIN
             extra += ',a.quality,a.confidence'
             identifier, text, width, height, order = 'o.id','o.text','p.w','p.h','o.seq'
         elif kind=='parts':
@@ -133,9 +138,9 @@ def search(db, params, statistics=False):
                 masks.append(part)
             if params.get('match')=='class':
                 classes = sorted({shape_class(character,'initial'),shape_class(character,'isolated')})
-                condition(f"{alias}.shape_class IN ({','.join('?' for c in classes)})",*classes)
+                condition(f"{alias}.shape_class IN ({','.join('?' for c in classes)})",*classes,owner_filter=True)
             else:
-                condition(f'{alias}.character=?',character)
+                condition(f'{alias}.character=?',character,owner_filter=True)
             for mark in marks:
                 native_type = TYPED_MARK.get(mark)
                 col = 'expected_type' if native_type else 'source_character'
@@ -228,13 +233,13 @@ def search(db, params, statistics=False):
         condition('a.quality=?',params['quality'])
     if kind in ('letters','marks','parts'):
         for key,column in [('base',base),('class','o.shape_class'),('prev','o.prev_letter')]:
-            if params.get(key): condition(column+'=?',params[key])
+            if params.get(key): condition(column+'=?',params[key],owner_filter=True)
         last = f'o{len(slots)-1}' if len(slots)>1 else 'o'
-        if params.get('next'): condition(last+'.next_letter=?',params['next'])
+        if params.get('next'): condition(last+'.next_letter=?',params['next'],owner_filter=True)
         forms = list(dict.fromkeys((params.get('forms') or params.get('form') or '').split(',')))
         if forms!=['']:
             require(set(forms)<=set(FORMS),'Unknown joining form')
-            condition(f"{group_form} IN ({','.join('?' for _ in forms)})",*forms)
+            condition(f"{group_form} IN ({','.join('?' for _ in forms)})",*forms,owner_filter=True)
     if params.get('minConfidence'):
         require(kind in ('letters','marks'),'Confidence applies to letters or marks')
         cutoff = float(params['minConfidence'])
@@ -285,11 +290,26 @@ def search(db, params, statistics=False):
             value = float(params[k])
             require(0<=value<=100000,'Measurement outside search range')
             condition('('+measure+')'+operator+'?',value)
-    source = ' FROM '+joined+(' WHERE '+' AND '.join(where) if where else '')
+    filters = ' WHERE '+' AND '.join(where) if where else ''
+    source = ' FROM '+joined+filters
+    count_source = ' FROM catalog_owners o'+filters if owner_filters_only else source
+    unfiltered_letters = owner_filters_only and len(where)==1
+    connector_order = unfiltered_letters and metric in ('kashidaLeft','kashidaRight')
+    # The native import records the count with the owners in one transaction.
+    # Letter cuts and their measurements do not change that inventory.
+    info = meta(db,META) if unfiltered_letters else None
+    inventory_total = info.get('inventory',{}).get('letters') if info else None
     if statistics:
-        bins = db.execute('SELECT ('+measure+') v,count(*)'+source+' GROUP BY v ORDER BY v',args).fetchall()
-        return dict(metric=metric,unit='raster pixels',unmeasured=sum(n for v,n in bins if v is None),
-                    distribution=[[v,n] for v,n in bins if v is not None])
+        if connector_order:
+            bins = db.execute('SELECT '+measure+' v,count(*) FROM catalog_measurements a '
+                              'WHERE '+measure+' IS NOT NULL GROUP BY v ORDER BY v').fetchall()
+            total = inventory_total if inventory_total is not None else db.execute(
+                'SELECT count(*)'+count_source).fetchone()[0]
+            unmeasured = total - sum(n for _,n in bins)
+        else:
+            bins = db.execute('SELECT ('+measure+') v,count(*)'+source+' GROUP BY v ORDER BY v',args).fetchall()
+            unmeasured = sum(n for v,n in bins if v is None)
+        return dict(metric=metric,unit='raster pixels',unmeasured=unmeasured,distribution=[[v,n] for v,n in bins if v is not None])
     limit = number(params,'limit',24,1,1000)
     offset = number(params,'offset',0,0,3000000)
     sort = params.get('sort','location')
@@ -300,11 +320,42 @@ def search(db, params, statistics=False):
         order = f'{score} IS NULL,{score},'+order
     elif sort!='location':
         order = 'metric_value IS NULL,metric_value '+('DESC' if sort=='largest' else 'ASC')+','+order
-    total = db.execute('SELECT count(*)'+source,args).fetchone()[0]
+    # A single letter owner has one word and subword and at most one body and
+    # measurement. Filters on the owner alone can count without those joins.
+    total = inventory_total if inventory_total is not None else db.execute(
+        'SELECT count(*)'+count_source,args).fetchone()[0]
     columns = (identifier+' id,'+text+' text,w.id word_id,w.text word_text,w.page_id,w.line,w.ordinal word_number,'+
                coverage+' coverage,'+width+' width,'+height+' height,('+measure+') metric_value'+extra)
-    rows = [dict(r) for r in db.execute('SELECT '+columns+source+' ORDER BY '+order+' LIMIT ? OFFSET ?',args+[limit,offset])]
-    result = dict(kind=kind,total=total,limit=limit,offset=offset,rows=rows)
+    rows = None
+    if connector_order and sort in ('largest','smallest'):
+        # A length index can fill ordinary result pages directly. A page that
+        # reaches unmeasured letters uses the normal NULL-last ordering.
+        direction = 'DESC' if sort=='largest' else 'ASC'
+        ranked = ('SELECT o.id FROM catalog_measurements a CROSS JOIN catalog_owners o ON o.id=a.owner_id'
+                  +filters+' AND '+measure+' IS NOT NULL ORDER BY '+measure+' '+direction+',o.seq LIMIT ? OFFSET ?')
+        sql = 'SELECT '+columns+' FROM '+joined+' WHERE o.id IN ('+ranked+') ORDER BY '+order
+        measured = db.execute(sql,(limit,offset)).fetchall()
+        if len(measured)==min(limit,max(0,total-offset)):
+            rows = measured
+    if rows is None and owner_filters_only and (metric!='kashida' or sort in ('location','confidence')):
+        # Load word details and body metadata only for the ranked page of
+        # owners. The rank needs at most one extra lookup per owner.
+        rank_join = ''
+        if sort=='confidence':
+            rank_join = LETTER_MEASUREMENTS_JOIN
+        elif sort!='location':
+            rank_join = LETTER_BODY_JOIN if metric in ('width','height') else LETTER_MEASUREMENTS_JOIN
+            if metric in ('width','height') and db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='index' AND name='catalog_body_dimensions'").fetchone():
+                rank_join = ' LEFT JOIN catalog_parts p INDEXED BY catalog_body_dimensions'+LETTER_BODY_MATCH
+        rank_order = order.replace('metric_value',f'({measure})')
+        ranked = 'SELECT o.id FROM catalog_owners o'+rank_join+filters+' ORDER BY '+rank_order+' LIMIT ? OFFSET ?'
+        row_query = 'SELECT '+columns+' FROM '+joined+' WHERE o.id IN ('+ranked+') ORDER BY '+order
+        rows = db.execute(row_query,args+[limit,offset]).fetchall()
+    elif rows is None:
+        row_query = 'SELECT '+columns+source+' ORDER BY '+order+' LIMIT ? OFFSET ?'
+        rows = db.execute(row_query,args+[limit,offset]).fetchall()
+    result = dict(kind=kind,total=total,limit=limit,offset=offset,rows=[dict(r) for r in rows])
     if not total and metric in KASHIDA_METRICS and (params.get('min') or params.get('max')):
         recorded = db.execute('SELECT 1 FROM catalog_measurements WHERE kashida_left IS NOT NULL OR kashida_right IS NOT NULL LIMIT 1').fetchone()
         result['emptyMessage'] = ('No measured kashidas match these filters.' if recorded else
@@ -369,23 +420,30 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
             WHERE a.page_id=? AND a.source_sha=p.source_sha AND a.report_sha=c.report_sha''',(wid[:7],)).fetchone()
     vectors = decode_vectors(art[0] if art else None)
     raster_marks = set(vectors.get('rasterMarks', []))
-    layers = []
+    layers, crop_bounds = [], []
     body, mark, muted, connector, neighbour = (('#edf4fa','#ffc267','#5d7387','#72c7ff','#99aebf') if dark else
                                                 ('#244037','#ad542f','#c6cec4','#008fdf','#85978c'))
 
-    def layer(runs,color,outlines=()):
+    def layer(runs,color,outlines=(), *, box=None):
         if outlines:
             for outline in outlines:
                 d = escape(outline['d'],quote=True)
                 rule = escape(outline.get('fillRule','nonzero'),quote=True)
                 layers.append(f'<path fill="{color}" fill-rule="{rule}" d="{d}"/>')
         elif runs and not runs.startswith(INK_REF):
-            layers.append(f'<path fill="{color}" d="{mask_path(unpack_runs(runs),width)}"/>')
+            pixels = unpack_runs(runs)
+            layers.append(f'<path fill="{color}" d="{mask_path(pixels,width)}"/>')
+            if not marks and box is None:
+                box = extent(pixels,width)
+        else:
+            return
+        if box is not None and (not marks or context=='match'):
+            crop_bounds.append(box)
 
     def word_layer(color):
         if not marks:
-            for sid,runs in db.execute('SELECT id,runs FROM catalog_subwords WHERE word_id=? ORDER BY seq',(wid,)):
-                subword_layer(sid,runs,color)
+            for sub in db.execute('SELECT x,y,w,h,runs,id FROM catalog_subwords WHERE word_id=? ORDER BY seq',(wid,)):
+                subword_layer(sub[5],sub,color)
             return
         prefix = wid.split(':',1)[1]+'-p'
         outlines = [path for name,path in vectors['paths'].items()
@@ -396,30 +454,37 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
             for (runs,) in db.execute('SELECT runs FROM catalog_subwords WHERE word_id=?',(wid,)):
                 layer(runs,color)
 
-    def mark_layer(mark_id,ids,runs,color=mark):
+    def mark_layer(mark_id,ids,runs,color=mark, *, box=None):
         if marks and runs is not None:
-            layer(runs,color,mark_outlines(vectors,raster_marks,mark_id,ids))
+            layer(runs,color,mark_outlines(vectors,raster_marks,mark_id,ids),box=box)
 
-    def part_layer(owner,role,runs,color):
+    def part_layer(box,owner,role,runs,color):
         outline = matching_part(vectors,owner,role,runs)
-        layer(runs,color,[outline] if outline else [])
+        layer(runs,color,[outline] if outline else [],box=box)
 
-    def subword_layer(sid,runs,color):
+    def subword_layer(sid,sub,color):
         # A complete partition also covers repaired compound bodies. A single
         # source path ID may omit some of that ink.
-        parts = [(blob,matching_part(vectors,owner,role,blob)) for owner,role,blob in db.execute(
-            'SELECT owner_id,role,runs FROM catalog_parts WHERE subword_id=?',(sid,))]
-        if any(outline for _,outline in parts):
-            for blob,outline in parts:
-                layer(blob,color,[outline] if outline else [])
+        start = len(layers)
+        parts = [(r[:4],r[6],matching_part(vectors,*r[4:])) for r in db.execute(
+            'SELECT x,y,w,h,owner_id,role,runs FROM catalog_parts WHERE subword_id=?',(sid,))]
+        runs = sub[4]
+        if any(outline for _,_,outline in parts):
+            for box,blob,outline in parts:
+                layer(blob,color,[outline] if outline else [],box=box if not marks else None)
+        elif runs==b'':
+            bodies,_,groups = report_ink(db,sid[:7])
+            outlines = [vectors['paths'].get(i) for i in groups.get(sid,[])]
+            native_body = bodies.get(sid)
+            # Compact decorations use their stored extent. Pending letters
+            # and subwords recover their body-only extent from the source mask.
+            box = extent(native_body,width) if not marks and native_body else sub[:4]
+            layer(pack_runs(native_body) if native_body else None,color,outlines if all(outlines) else [],
+                  box=box if not marks else None)
         else:
-            if runs==b'':
-                bodies,_,groups = report_ink(db,sid[:7])
-                outlines = [vectors['paths'].get(i) for i in groups.get(sid,[])]
-                native_body = bodies.get(sid)
-                layer(pack_runs(native_body) if native_body else None,color,outlines if all(outlines) else [])
-            else:
-                layer(runs,color)
+            layer(runs,color)
+        if marks and context=='match' and len(layers)>start:
+            crop_bounds.append(sub[:4])
 
     if kind=='words':
         if identifier!=wid: raise KeyError('Unknown word')
@@ -439,10 +504,10 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
                 part = db.execute("""SELECT x,y,w,h,runs FROM catalog_parts
                     WHERE owner_id=? AND role='body'""",(owner,)).fetchone()
                 if part:
-                    part_layer(owner,'body',part[4],body)
+                    part_layer(part[:4],owner,'body',part[4],body)
                     bounds = [part[:4]]
                 else:
-                    subword_layer(sub[0],sub[5],muted)
+                    subword_layer(sub[0],sub[1:],muted)
                     bounds = [sub[1:5]]
                 for mid,ids,runs,mx,my,mw,mh in db.execute('''SELECT id,path_ids,runs,x,y,w,h FROM native_marks
                     WHERE (owner_id=? OR attached_letter_id=?) AND id!=? AND runs IS NOT NULL
@@ -487,7 +552,7 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
         part = db.execute('SELECT x,y,w,h,runs FROM catalog_parts WHERE owner_id=? AND role=?',(owner,role)).fetchone()
         if not separator or not part: raise KeyError('Unknown letter part')
         if context=='crop': x,y,w,h = part[:4]
-        part_layer(owner,role,part[4],body if role=='body' else connector)
+        part_layer(part[:4],owner,role,part[4],body if role=='body' else connector)
     else:
         if kind=='subwords':
             sid = identifier
@@ -500,49 +565,40 @@ def image(db, kind, identifier, context, *, pair=False, left=False, right=False,
         if not sub: raise KeyError('Unknown subword')
         if context=='crop': x,y,w,h = sub[:4]
         if kind=='subwords':
-            subword_layer(sid,sub[4],body)
+            subword_layer(sid,sub,body)
             for r in db.execute('SELECT id,path_ids,runs FROM native_marks WHERE subword_id=?',(sid,)): mark_layer(*r)
         else:
             # A complete-subword match owns the entire native body even when
             # individual cuts are pending. Never invent a cut for a partial run.
             complete = sub[5]==len(focus)
-            bounds = []
-
-            def draw(renderer, box, *args):
-                start = len(layers)
-                renderer(*args)
-                if context=='match' and len(layers)>start:
-                    bounds.append(box)
-
+            if context=='match':
+                x,y,w,h = sub[:4]
             if complete or context!='match':
-                draw(subword_layer,sub[:4],sid,sub[4],body if complete else muted)
+                subword_layer(sid,sub,body if complete else muted)
             if pair:
                 for r in db.execute("""SELECT p.x,p.y,p.w,p.h,p.owner_id,p.role,p.runs FROM catalog_parts p JOIN catalog_owners n ON n.id=p.owner_id
                        WHERE n.subword_id=? AND n.ordinal=? AND p.role='body'""",(sid,owners[-1][1]+1)):
-                    draw(part_layer,r[:4],*r[4:],neighbour)
+                    part_layer(r[:4],*r[4:],neighbour)
             if right:
                 for r in db.execute("SELECT x,y,w,h,owner_id,role,runs FROM catalog_parts WHERE subword_id=? AND next_owner_id=?",(sid,focus[0])):
-                    draw(part_layer,r[:4],*r[4:],connector)
+                    part_layer(r[:4],*r[4:],connector)
             letter_colors = (body, '#e4b0f4' if dark else '#84366d')
             for i,owner in enumerate(focus):
                 for bx,by,bw,bh,role,runs in db.execute('SELECT x,y,w,h,role,runs FROM catalog_parts WHERE owner_id=?',(owner,)):
                     if role=='body':
-                        draw(part_layer,(bx,by,bw,bh),owner,role,runs,letter_colors[i % 2])
+                        part_layer((bx,by,bw,bh),owner,role,runs,letter_colors[i % 2])
                     elif i<len(focus)-1 or left:
-                        draw(part_layer,(bx,by,bw,bh),owner,role,runs,connector)
+                        part_layer((bx,by,bw,bh),owner,role,runs,connector)
                 for r in db.execute('SELECT x,y,w,h,id,path_ids,runs FROM native_marks WHERE owner_id=? OR attached_letter_id=?',
                                     (owner,owner)):
-                    draw(mark_layer,r[:4],*r[4:])
-            if context=='match':
-                if bounds:
-                    x,y = min(b[0] for b in bounds),min(b[1] for b in bounds)
-                    w = max(bx+bw for bx,_,bw,_ in bounds)-x
-                    h = max(by+bh for _,by,_,bh in bounds)-y
-                else:
-                    x,y,w,h = sub[:4]
+                    mark_layer(*r[4:],box=r[:4])
     if context=='word' and kind!='words':
         foreground, layers = layers, []
         word_layer(muted)
         layers.extend(foreground)
+    if crop_bounds:
+        x,y = min(b[0] for b in crop_bounds),min(b[1] for b in crop_bounds)
+        w = max(bx+bw for bx,_,bw,_ in crop_bounds)-x
+        h = max(by+bh for _,by,_,bh in crop_bounds)-y
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x-5} {y-5} {max(1,w)+10} {max(1,h)+10}"'
             f' role="img"><title>{escape(identifier)}</title>'+''.join(layers)+'</svg>')

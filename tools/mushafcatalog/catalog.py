@@ -16,7 +16,12 @@ from store import DB, HERE, META, REPORT, ROOT, build, export_bodies, import_bod
 from page_view import page_svg
 
 
+class CatalogHTTPServer(ThreadingHTTPServer):
+    request_queue_size = 64
+
+
 def serve(database, port, host='127.0.0.1'):
+    require(host.strip(), 'Enter the catalog host address.')
     with closing(read(database)) as db:
         require(meta(db,META), 'Build the native catalog first.')
         require(any(row[1]=='source_sha' for row in db.execute('PRAGMA table_info(catalog_page_art)')),
@@ -25,6 +30,10 @@ def serve(database, port, host='127.0.0.1'):
               '/viewer.html':('viewer.html','text/html'), '/viewer.css':('viewer.css','text/css'),
               **{'/'+name:(name,'text/javascript') for name in ('catalog.js','result-grid.js','inspector.js','ui.js','viewer.js')}}
     class Handler(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+        disable_nagle_algorithm = True
+        timeout = 15
+
         def do_GET(self):
             try:
                 route = urlsplit(self.path)
@@ -68,7 +77,7 @@ def serve(database, port, host='127.0.0.1'):
                 self.send_error(HTTPStatus.BAD_REQUEST,str(exc))
             except sqlite3.Error as exc:
                 self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR,str(exc))
-    with ThreadingHTTPServer((host,port),Handler) as server:
+    with CatalogHTTPServer((host,port),Handler) as server:
         print(f'Mushaf Catalog at http://{host}:{server.server_port}/',flush=True)
         server.serve_forever()
 
@@ -123,6 +132,7 @@ def main():
     page_export.add_argument('file',type=Path)
     page_export.add_argument('--colored',action='store_true',help='Color each letter together with its marks')
     commands.add_parser('verify')
+    commands.add_parser('index-search',help='Add missing search indexes to an existing catalog')
     commands.add_parser('validate-medial-lam-height',help='Fail if any medial lām body is shorter than 5 page units or cannot be measured')
     commands.add_parser('compact-vectors',help='Remove stored catalog masks after verifying complete native vector coverage')
     replay = commands.add_parser('check-rebuild', help='Rebuild in a temporary empty database and compare all catalog rows and mask bytes')
@@ -178,6 +188,11 @@ def main():
         data = compact_catalog(args.db)
     elif args.command=='build':
         data = build(args.db,args.report,args.expected_manifest,args.restore_bodies_from)
+    elif args.command=='index-search':
+        with closing(sqlite3.connect(args.db.resolve().as_uri()+'?mode=rw',uri=True,timeout=120)) as db, db:
+            require(meta(db,META), 'Build the native catalog first.')
+            db.executescript('BEGIN IMMEDIATE;\n'+(HERE/'search_indexes.sql').read_text())
+            data = {'database':str(args.db.resolve()), 'searchIndexes':'ready'}
     elif args.command=='segment-letters':
         from segment_letters import segment
         selected = args.subwords_file.read_text().split() if args.subwords_file else None

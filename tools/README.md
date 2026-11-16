@@ -45,6 +45,9 @@ For an intentional change, give `fresh` a new `--report` path and pass the
 same path to `build`. Letter segmentation stores the native page contours,
 grouped surah titles, basmalas and ayah markers, and frame openings in the
 catalog. The viewer draws them directly.
+New catalogs include the search indexes. To add them to an existing catalog,
+run `python3 tools/mushafcatalog/catalog.py index-search`.
+
 Each letter-segmentation run writes `output/mushafcatalog/letter-segmentation.log`
 with page totals and the subword IDs, letter diagnostics, and cutter traces
 for unresolved cases. The viewer displays unresolved subwords as uncut

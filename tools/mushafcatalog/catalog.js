@@ -6,6 +6,7 @@ const form = $('filters'), names = {letters:'letters',marks:'marks',subwords:'su
 const group = $('forms'), formButtons = [...group.querySelectorAll('button')];
 const defaults = {match:'class',sort:'location',metric:'width',limit:'400'};
 const openingQuery = {kind:'letters',metric:'kashidaLeft',sort:'largest',context:'word',kleft:'1'};
+const facetFields = {expected:'expected',predicted:'predicted',quality:'qualities',ownerClass:'classes'};
 const limitOf = p => /^(max|[1-9]\d{0,5})$/.test(p.get('limit')||'') ? p.get('limit') : defaults.limit;
 const pageSize = p => limitOf(p)==='max' ? Infinity : Number(limitOf(p));
 const locationState = () => new URLSearchParams(location.search || openingQuery);
@@ -26,7 +27,8 @@ function navigate(p, replace=false) {
 }
 function setOptions(select, values, first, value='') {
   select.replaceChildren(new Option(first,''));
-  for (const s of values) select.add(new Option(s,s));
+  // A bookmarked filter can be applied while the catalog loads its full list.
+  for (const s of values ?? (value ? [value] : [])) select.add(new Option(s,s));
   select.value = value;
 }
 function restore(p, kind) {
@@ -35,7 +37,15 @@ function restore(p, kind) {
     node.hidden = !node.dataset.kinds.split(' ').includes(kind);
     for (const c of node.matches('input,select,button') ? [node] : node.querySelectorAll('input,select,button')) c.disabled = node.hidden;
   }
-  for (const c of form.querySelectorAll('[name]')) c.value = p.get(c.name) || defaults[c.name] || '';
+  for (const c of form.querySelectorAll('[name]')) {
+    const key = c.name==='ownerClass'?'class':c.name;
+    const value = p.get(key) || defaults[c.name] || '';
+    if (Object.hasOwn(facetFields,c.name)) {
+      setOptions(c,facets?.[facetFields[c.name]],c.options[0].text,value);
+    } else {
+      c.value = value;
+    }
+  }
   const letters = kind==='letters';
   $('char').classList.toggle('wide',!letters);
   $('char').dir = letters?'rtl':'auto';
@@ -46,9 +56,8 @@ function restore(p, kind) {
   if (letters && !p.has('match') && (p.has('sequence') || (p.has('q') && !/^page\d/.test(p.get('q')))))
     $('match').value='letter'; // existing exact-search bookmarks
   if ($('match').value==='') $('match').value=p.get('match')==='exact'?'letter':'class';
-  setOptions($('cls'),kind==='marks'?facets.expected:facets.classes,kind==='marks'?'any mark class':'any class',
+  setOptions($('cls'),kind==='marks'?facets?.expected:facets?.classes,kind==='marks'?'any mark class':'any class',
     p.get(kind==='marks'?'expected':'class') || '');
-  if (kind==='marks') form.elements.ownerClass.value = p.get('class') || '';
   const forms = (p.get('forms') || p.get('form') || '').split(',');
   formButtons.forEach(b=>b.setAttribute('aria-pressed',String(forms.includes(b.dataset.form))));
   $('unknownForm').checked=forms.includes('unknown');
@@ -290,8 +299,7 @@ async function loadPage(q,start) {
     if (query===q) $('cards').removeAttribute('aria-busy');
   }
 }
-function render() {
-  if (!facets)return;
+async function render() {
   const p=locationState(),kind=kindOf(p), params=new URLSearchParams(p);
   params.set('kind',kind);
   for (const k of ['word','focus','context','pair','kleft','kright','marks','limit','offset','stats']) params.delete(k);
@@ -318,28 +326,31 @@ function render() {
   });
   if (matchMedia('(max-width:760px)').matches) window.scrollTo(0,0);
   $('summary').textContent='Searching…';$('statsView').replaceChildren(el('p','Measuring…','hint'));
-  $('welcome').hidden=$('prev').disabled=$('next').disabled=true;
+  $('welcome').textContent='Searching…';$('welcome').hidden=false;
+  $('prev').disabled=$('next').disabled=true;
   showSelection(p);
-  loadPage(q,0);
+  await loadPage(q,0);
+  if (query!==q || q.failed) return;
   api('/api/statistics',params,q.controller.signal).then(data=>{
     if(query===q) distribution(data,data.unmeasured+data.distribution.reduce((sum,r)=>sum+r[1],0));
   }).catch(err=>{if(query===q) $('statsView').replaceChildren(el('p',err.message,'hint'));});
 }
 window.addEventListener('popstate',render);
 async function start() {
+  await render();
   try {
     facets=await api('/api/facets');
     const n=facets.inventory;
     $('overview').replaceChildren(...[[n.pages,'pages'],[n.words,'words'],[n.subwords,'letter-bearing subwords'],
       [n.letters,'letters'],[n.masks,'assigned ink masks'],[n.segmented,'subwords with body splits']].map(([v,k])=>kv(k,fmt(v))));
-    for (const [key,values] of [['expected',facets.expected],['predicted',facets.predicted],
-         ['quality',facets.qualities],['ownerClass',facets.classes]]) {
-      for (const value of values) form.elements[key].add(new Option(value,value));
+    for (const [name,field] of Object.entries(facetFields)) {
+      const select = form.elements[name];
+      setOptions(select,facets[field],select.options[0].text,select.value);
     }
-    render();
+    const cls = $('cls');
+    setOptions(cls,$('kind').value==='marks'?facets.expected:facets.classes,cls.options[0].text,cls.value);
   } catch(err) {
-    $('summary').textContent='Catalog unavailable';
-    $('welcome').hidden=false;$('welcome').textContent=err.message;
+    $('overview').replaceChildren(el('p',err.message,'hint'));
   }
 }
 start();
