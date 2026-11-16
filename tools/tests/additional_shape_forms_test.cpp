@@ -140,6 +140,7 @@ int main(int argc,char** argv) {
     for (const auto& at : {MeemJoin{285,11,1,30,false,1,"meem-init"}, MeemJoin{377,8,7,15,false,1,"meem-init"},
                           MeemJoin{415,8,3,16,false},
                           MeemJoin{82,3,2,48,true}, MeemJoin{406,2,4,28,true}, MeemJoin{442,5,11,28,true},
+                          MeemJoin{38,13,5,5,false,1,"meem-init",true},
                           MeemJoin{350,4,7,8,false,1,"meem-init",true},
                           MeemJoin{402,2,5,10,false,3,"meem-init",true}}) {
         PageAnalysisResult sample;

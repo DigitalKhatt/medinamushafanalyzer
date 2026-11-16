@@ -167,6 +167,7 @@
         },
         "counter": {
           "normalValley": true,
+          "valleyWalkWidths": 0.35,
           "normalNeck": true
         },
         "boundaries": {

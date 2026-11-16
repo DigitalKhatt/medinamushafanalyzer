@@ -642,9 +642,17 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 }
             }
             result.push_back({.formId = id, .exit = exit, .landmarks = {crest},
-                              .counters = std::move(counters), .minimumExitAtTurn = exitAtTurn,
+                              .counters = counters, .minimumExitAtTurn = exitAtTurn,
                               .minimumExit = loopLimit, .rimExitLimit = minimum});
         }
+        const double walk = cuts.value("counter").toObject().value("valleyWalkWidths").toDouble() * penWidth;
+        // A short continuation of the same flank can supply a normal just
+        // past the shoulder when the preferred section pinches the connector.
+        if (walk > 0 && evidence->initialNeck &&
+            cutInitialCounterBody(source, *evidence->initialNeck, shapeSettings(form, "counter"), walk) &&
+            matchesBoundaryBody(source, form, source.res, true))
+            result.push_back({.formId = id, .exit = source.res, .landmarks = {*source.xSorted.begin()},
+                              .counters = std::move(counters), .alternateAnchor = true});
     } else if (shape == "stacked-counters") {
         const auto evidence = recognizedSharedShape(source, body);
         const auto policy = cuts.value("pair").toObject();

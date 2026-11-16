@@ -728,7 +728,8 @@ struct InitialCounterBody {
 std::optional<InitialCounterBody> recognizeInitialCounterBody(const InkOutline &outline,
         const std::vector<CounterHole>& holes, const QJsonObject& settings);
 
-bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &body, const QJsonObject &settings);
+bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &body, const QJsonObject &settings,
+                           double valleyWalk = 0);
 
 // Initial feh and qaf share a loop suspended above their outgoing stroke.
 // Its own counter identifies the head; its outer left extremum locates the

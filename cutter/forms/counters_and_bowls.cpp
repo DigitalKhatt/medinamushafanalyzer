@@ -1233,7 +1233,8 @@ std::optional<InitialCounterBody> recognizeInitialCounterBody(const InkOutline &
     return result;
 }
 
-bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &body, const QJsonObject &settings) {
+bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &body, const QJsonObject &settings,
+                           double valleyWalk) {
     const auto &ink = context.transformedPath;
     const auto &counter = body.counter.box;
     const double radius = settings.value("maxNeckDistance").toDouble(1.5) * counter.height();
@@ -1245,34 +1246,27 @@ bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &bod
     };
     std::optional<Stretching> best;
     double nearest = radius;
-    for (const auto &corner : body.valleys) {
-        const auto p = corner.point;
-        const double distance = QLineF(p, counter.bottomLeft()).length();
-        if (distance >= nearest)
-            continue;
-        const auto hits = FindInterections(ink, QLineF(p, QPointF(p.x(), context.bbox.top() - 1)), true);
-        for (const auto& top : hits) {
-            if (top.point.y() >= p.y() || !interiorChord(ink, top, corner)) continue;
-            Stretching cut{};
-            cut.topBaseLine = top;
-            cut.bottomBaseLine = corner;
-            best = cut;
-            nearest = distance;
-            break;
-        }
-    }
-    if (!best && settings.value("normalValley").toBool()) {
+    if (settings.value("normalValley").toBool()) {
         // Find the opposite flank from the valley, then use both edges to orient the cut.
         const bool forward = context.orientation == Orientation::ClockWise;
+        const int count = valleyWalk > 0 ? baseContourCurves(ink).size() : 0;
         for (const auto &valley : body.valleys) {
             const double distance = QLineF(valley.point, counter.bottomLeft()).length();
             if (distance >= nearest) continue;
+            auto anchor = valley;
+            if (valleyWalk > 0) {
+                auto limit = valley;
+                limit.time += forward ? count : -count;
+                QPointF tangent;
+                if (!advanceOnContour(ink, valley, limit, forward, valleyWalk, anchor, tangent)) continue;
+            }
             Stretching cut{};
-            if (!contourNormalCut(context, valley, forward, false, cut, true) ||
+            if (!contourNormalCut(context, anchor, forward, false, cut, true) ||
                 cut.bottomBaseLine.point.x() > counter.left()) continue;
             std::swap(cut.topBaseLine, cut.bottomBaseLine);
             auto normal = cut;
-            if (anchoredStrokeNormalCut(context, normal, forward) && normal.topBaseLine.point.x() <= counter.left() &&
+            if (valleyWalk == 0 && anchoredStrokeNormalCut(context, normal, forward) &&
+                normal.topBaseLine.point.x() <= counter.left() &&
                 retainsCounter(normal)) {
                 cut = normal;
             } else if (!retainsCounter(cut)) {
@@ -1281,8 +1275,24 @@ bool cutInitialCounterBody(SearchContext &context, const InitialCounterBody &bod
             best = cut;
             nearest = distance;
         }
+    } else {
+        for (const auto& valley : body.valleys) {
+            const auto p = valley.point;
+            const double distance = QLineF(p, counter.bottomLeft()).length();
+            if (distance >= nearest) continue;
+            const auto hits = FindInterections(ink, QLineF(p, QPointF(p.x(), context.bbox.top() - 1)), true);
+            for (const auto& top : hits) {
+                if (top.point.y() >= p.y() || !interiorChord(ink, top, valley)) continue;
+                Stretching cut{};
+                cut.topBaseLine = top;
+                cut.bottomBaseLine = valley;
+                best = cut;
+                nearest = distance;
+                break;
+            }
+        }
     }
-    if (!best && settings.value("normalNeck").toBool()) {
+    if (!best && valleyWalk == 0 && settings.value("normalNeck").toBool()) {
         double closest = radius;
         for (const auto &corner : body.normalAnchors) {
             const double distance = QLineF(corner.point, counter.bottomLeft()).length();

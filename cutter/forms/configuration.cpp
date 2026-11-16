@@ -1025,9 +1025,13 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": entryBridge needs a fixed final counter junction and a positive width in counter heights";
         cutKeys << "entryBridge";
     }
-    const auto normalValley = cuts.value("counter").toObject().value("normalValley");
+    const auto counterCut = cuts.value("counter").toObject();
+    const auto normalValley = counterCut.value("normalValley");
     if (!normalValley.isUndefined() && (shape != "counter-neck" || phase != "initial" || !normalValley.isBool()))
         return id + ": normalValley must be a boolean on an initial counter-neck cut";
+    if (const auto walk = counterCut.value("valleyWalkWidths"); !walk.isUndefined() &&
+        (!normalValley.toBool() || !positive(walk)))
+        return id + ": valleyWalkWidths needs a normal valley cut and a positive stroke-width distance";
     for (auto it = body.begin(); it != body.end(); ++it)
         if (!bodyKeys.contains(it.key()))
             return id + ": unknown body setting " + it.key();
@@ -1115,7 +1119,7 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         if (form.contains(old))
             return id + ": declared geometry belongs in body / cuts, not " + old;
     const QStringList projectionKeys{
-        "normalNeck", "normalValley", "normalCut", "trimExitToNormal", "offset", "baselineOffset", "sideOffset", "entryBelowCounter",
+        "normalNeck", "normalValley", "valleyWalkWidths", "normalCut", "trimExitToNormal", "offset", "baselineOffset", "sideOffset", "entryBelowCounter",
         "required",   "strokeOffsetX", "bottomProbe",      "oppositeCorner", "normalOffset", "normalOffsetTolerance",
         "penWidth",   "strokeSource",  "walkNormalOffset", "anchorSide",     "visibleFrom",  "maxProjectionInset", "maxChordToRun",
         "returningFoot", "floorExit", "snapOppositeToOrigin", "allowUnshiftedEntry", "normalWalkBack", "normalFrom",
