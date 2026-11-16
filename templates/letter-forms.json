@@ -162,6 +162,9 @@
         }
       },
       "cuts": {
+        "rimNormal": {
+          "exit": 0.105
+        },
         "counter": {
           "normalValley": true,
           "normalNeck": true
@@ -2405,6 +2408,9 @@
         "counters": 1
       },
       "cuts": {
+        "rimNormal": {
+          "exit": 0.27
+        },
         "loop": {
           "sideOffset": 0.5,
           "baselineOffset": 0.3,
@@ -4429,6 +4435,9 @@
         "counters": 1
       },
       "cuts": {
+        "rimNormal": {
+          "entry": 0.25
+        },
         "entryRim": {
           "minRiseWidths": 2.5,
           "maxSlope": 0.15
@@ -5794,6 +5803,9 @@
         }
       },
       "cuts": {
+        "rimNormal": {
+          "entry": 0.2
+        },
         "entryRim": {
           "minRiseWidths": 2.5,
           "maxSlope": 0.15
@@ -6807,6 +6819,9 @@
         }
       },
       "cuts": {
+        "rimNormal": {
+          "entry": 0.2
+        },
         "entryRim": {
           "minRiseWidths": 2.5,
           "maxSlope": 0.15

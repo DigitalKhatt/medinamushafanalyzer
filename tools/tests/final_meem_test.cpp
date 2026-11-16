@@ -167,5 +167,25 @@ int main(int argc, char** argv) {
               "The final meem section missed the shoulder or changed the connector topology");
     }
 
+    {
+        QFile fixture("pages/page179.dat");
+        check(fixture.open(QIODevice::ReadOnly), "Missing stacked heh–meem fixture");
+        PageAnalysisResult stacked;
+        QDataStream input(&fixture);
+        input >> stacked.page;
+        check(stacked.segmentSubword(178, 7, 8, 1, nullptr, true), "Stacked heh–meem remains partial");
+        const auto& word = stacked.page.lines[7].words[8];
+        const auto& sub = word.wordResultInfo.subWords[1];
+        check(sub.baseGlyphs.size() == 2 && sub.joins.size() == 1 &&
+              sub.kashidaPaths.size() == 1 && sub.kashidaPaths.front().isEmpty(),
+              "The stacked heh and meem should share one cut");
+        const auto shape = word.bodyShape(sub);
+        const auto meem = shape.transform.map(sub.baseGlyphs.back().path).translated(shape.pos);
+        const auto& cut = *sub.joins.begin();
+        check(sectionLine(cut).length() < 1.35 && toSubpaths(meem).size() == 2 &&
+              meem.contains(QPointF(52.34, 279.68)) && coversOriginalInk(word, sub),
+              "The cut must leave the right rim and closed eye with the meem");
+    }
+
     qInfo("Final meem passed: own valley/corner 4.7975/16, retained loop/counter/tail, no lam ascender, independence from neighboring landmarks, scale/translation invariance, four bodies/three spans and deterministic masks.");
 }

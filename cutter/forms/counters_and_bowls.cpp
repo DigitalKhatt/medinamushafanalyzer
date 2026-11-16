@@ -365,6 +365,81 @@ bool needsCounterRim(const QLineF& entry, const QJsonObject& policy, double penW
            std::abs(entry.dx()) <= policy.value("maxSlope").toDouble() * rise;
 }
 
+std::optional<Stretching> counterShoulderNormal(SearchContext& context, const QPainterPath& eye,
+        const Stretching& section, bool entry, double clearanceRatio, double penWidth) {
+    if (clearanceRatio <= 0 || penWidth <= 0 || section.counterEntry.pathIndex > 0) return {};
+    const auto chord = sectionLine(section);
+    const double width = chord.length();
+    const double threshold = clearanceRatio * width;
+    const QRectF envelope = eye.boundingRect().adjusted(-threshold, -threshold, threshold, threshold);
+    const QRectF bounds = QRectF(chord.p1(), chord.p2()).normalized();
+    if (bounds.left() > envelope.right() || bounds.right() < envelope.left() ||
+        bounds.top() > envelope.bottom() || bounds.bottom() < envelope.top()) return {};
+
+    constexpr double scale = 64;
+    const auto polygon = eye.toFillPolygon(QTransform::fromScale(scale, scale));
+    const auto clearance = [&](const QLineF& cut) {
+        const auto delta = cut.p2() - cut.p1();
+        const double lengthSquared = QPointF::dotProduct(delta, delta);
+        double distance = std::numeric_limits<double>::infinity();
+        for (const auto& scaled : polygon) {
+            const auto point = scaled / scale;
+            const double t = std::clamp(QPointF::dotProduct(point - cut.p1(), delta) / lengthSquared, 0., 1.);
+            distance = std::min(distance, QLineF(point, cut.pointAt(t)).length());
+        }
+        return distance;
+    };
+    const double originalClearance = clearance(chord);
+    if (originalClearance >= threshold) return {};
+
+    // For a long cut through the side of a loop, the counter rim can
+    // identify the actual attachment directly.
+    if (entry) {
+        const auto rims = counterRimEntryCuts(context, eye.boundingRect(), section);
+        if (!rims.empty()) return rims.front();
+    }
+
+    const auto side = getJoinTime(section, context.orientation);
+    const auto& ink = context.transformedPath;
+    const auto curves = baseContourCurves(ink);
+    const int count = static_cast<int>(curves.size());
+    if (!count) return {};
+
+    std::optional<Stretching> best;
+    double nearest = 1.6 * penWidth;
+    const auto consider = [&](const PathExtrema& flank, bool forward) {
+        Stretching candidate{};
+        if (!contourNormalCut(context, flank, forward, false, candidate) ||
+            candidate.bottomBaseLine.pathIndex != 0) return;
+        if (candidate.topBaseLine.point.y() > candidate.bottomBaseLine.point.y())
+            std::swap(candidate.topBaseLine, candidate.bottomBaseLine);
+        const auto normal = sectionLine(candidate);
+        const double movement = QLineF(normal.center(), chord.center()).length();
+        if (movement >= nearest || normal.length() < .45 * penWidth ||
+            normal.length() > std::min(1.65 * penWidth, 1.08 * width) ||
+            clearance(normal) < std::max(.35 * penWidth, originalClearance + .12 * penWidth)) return;
+        best = candidate;
+        nearest = movement;
+    };
+
+    // Depart from the two ends of the existing section along the joining
+    // stroke. A small bounded walk covers rounded transitions as well as
+    // cuts which can be turned in place at a sharp shoulder.
+    for (const auto* flank : {&section.topBaseLine, &section.bottomBaseLine}) {
+        const bool forward = entry == (side.startAtLeft == (flank->time == side.minTime));
+        consider(*flank, forward);
+        auto limit = *flank;
+        limit.time += forward ? count : -count;
+        for (double distance : {.15, .35, .65, .9, 1.25}) {
+            PathExtrema point;
+            QPointF tangent;
+            if (advanceOnContour(ink, *flank, limit, forward, distance * penWidth, point, tangent))
+                consider(point, forward);
+        }
+    }
+    return best;
+}
+
 // An entry projected through the outside of a counter can keep the hole
 // while losing the rounded foot. Use the source rim below the hole to
 // identify the foot and the inward shoulder where it meets the join.

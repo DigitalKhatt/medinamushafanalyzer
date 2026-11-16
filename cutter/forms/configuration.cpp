@@ -807,6 +807,16 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": entryRim requires a counter entry and positive minRiseWidths and maxSlope";
         cutKeys << "entryRim";
     }
+    if (cuts.contains("rimNormal")) {
+        const auto rim = cuts.value("rimNormal").toObject();
+        if (rim.isEmpty() || !QStringList{"counter-neck", "counter-outline", "counter-loop"}.contains(shape))
+            return id + ": rimNormal requires a counter body and a clearance ratio";
+        for (auto it = rim.begin(); it != rim.end(); ++it)
+            if (!positive(it.value()) || it.value().toDouble() >= 1 ||
+                !((it.key() == "entry" && phase != "initial") || (it.key() == "exit" && phase != "final")))
+                return id + ": invalid rimNormal clearance";
+        cutKeys << "rimNormal";
+    }
     if (phase == "initial" && (shape == "contour-route" || shape == "tooth-cluster") &&
         cuts.contains("minConnectorWidths")) {
         const auto length = cuts.value("minConnectorWidths");

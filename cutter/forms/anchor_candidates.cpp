@@ -1527,6 +1527,30 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         for (const auto& sender : sources) allowed.append(sender.toString());
         for (auto& candidate : result) candidate.connectorStrokeWidthAfter = allowed;
     }
+    const auto rimNormal = cuts.value("rimNormal").toObject();
+    if (!rimNormal.isEmpty()) {
+        for (auto& candidate : result) {
+            if (candidate.counters.size() != 1) continue;
+            const auto& eye = source.subPaths[candidate.counters.front()];
+            if (candidate.entry && !candidate.requiresSharedEntry && !candidate.retainsCounterRim) {
+                const auto normal = counterShoulderNormal(source, eye, *candidate.entry, true,
+                    rimNormal.value("entry").toDouble(), penWidth);
+                if (normal && (!candidate.exit || orderedSections(*normal, *candidate.exit, source.orientation)) &&
+                    retainsLandmarks(candidate, &*normal, candidate.exit ? &*candidate.exit : nullptr, source.orientation)) {
+                    candidate.entry = normal;
+                    candidate.fixedEntryJunction = true;
+                    candidate.sharesRimEntry = true;
+                }
+            }
+            if (candidate.exit && !candidate.requiresSharedExit) {
+                const auto normal = counterShoulderNormal(source, eye, *candidate.exit, false,
+                    rimNormal.value("exit").toDouble(), penWidth);
+                if (normal && (!candidate.entry || orderedSections(*candidate.entry, *normal, source.orientation)) &&
+                    retainsLandmarks(candidate, candidate.entry ? &*candidate.entry : nullptr, &*normal, source.orientation))
+                    candidate.exit = normal;
+            }
+        }
+    }
     if (inspectingForm) for (const auto& candidate : result) {
         for (const auto& mark : candidate.landmarks) inspectLandmark("Body landmark", mark);
         if (candidate.entry) inspectCandidate("Entry anchor", *candidate.entry);

@@ -705,6 +705,8 @@ std::vector<Stretching> counterRimEntryCuts(SearchContext &context, const QRectF
                                            const Stretching &entry);
 
 bool needsCounterRim(const QLineF& entry, const QJsonObject& policy, double penWidth);
+std::optional<Stretching> counterShoulderNormal(SearchContext& context, const QPainterPath& eye,
+        const Stretching& section, bool entry, double clearanceRatio, double penWidth);
 
 bool projectCounterEntry(SearchContext& context, const CounterCornerEvidence& entry,
         const QJsonObject& policy, double x, double y, Stretching& cut,
