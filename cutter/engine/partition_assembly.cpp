@@ -194,6 +194,7 @@ bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub)
     std::optional<QPainterPath> boundary;
     std::optional<QPainterPath> preciseInk;
     std::vector<QPainterPath> preciseShapes;
+    const auto detail = QTransform::fromScale(64, 64);
     std::vector<const uchar*> scan(images.size());
     for (int y = 0; y < size.height(); ++y) {
         for (size_t i = 0; i < images.size(); ++i)
@@ -205,24 +206,21 @@ bool coversOriginalInk(const Word& word, const WordResultInfo::SubWordInfo& sub)
                 owners += row[x] != 0;
             if (owners == int(line[x] != 0))
                 continue;
-            const auto probe = inverse.map(QPointF(x + .5, y + .5));
+              const auto probe = inverse.map(QPointF(x + .5, y + .5));
             int actual = 0;
             for (const auto& path : shapes)
                 actual += path.contains(probe);
             if (actual == int(ink.contains(probe))) continue;
-            if (cutGeometryMemo && cutGeometryMemo->preciseGeometry) {
-                // A subdivided cubic and its original can flatten differently.
-                // Retest at finer precision before treating it as extra or missing ink.
-                const auto detail = QTransform::fromScale(64, 64);
-                if (!preciseInk) {
-                    preciseInk = detail.map(ink);
-                    for (const auto& path : shapes) preciseShapes.push_back(detail.map(path));
-                }
-                const auto point = detail.map(probe);
-                const auto count = std::ranges::count_if(preciseShapes,
-                    [&](const auto& path) { return path.contains(point); });
-                if (count == int(preciseInk->contains(point))) continue;
+            // Subdividing a cubic changes Qt's flattened representation.
+            // Check disputed samples against the same finer outline in every pass.
+            if (!preciseInk) {
+                preciseInk = detail.map(ink);
+                for (const auto& path : shapes) preciseShapes.push_back(detail.map(path));
             }
+            const auto point = detail.map(probe);
+            const auto count = std::ranges::count_if(preciseShapes,
+                [&](const auto& path) { return path.contains(point); });
+            if (count == int(preciseInk->contains(point))) continue;
             if (actual > 1) return false;
             if (!boundary) {
                 QPainterPathStroker stroke;

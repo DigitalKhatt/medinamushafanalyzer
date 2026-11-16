@@ -511,20 +511,6 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 landmarks.push_back(*source.xSorted.rbegin());
                 const auto entry = source.res;
                 const bool fixedEntry = cuts.value("fixEntryJunction").toBool();
-                if (cuts.value("turnBoundaries").toObject().value("right") == "stem-foot") {
-                    const QLineF chord(entry.topBaseLine.point, entry.bottomBaseLine.point);
-                    const double width = chord.length();
-                    if (width >= .25 * penWidth && width <= 2.7 * penWidth && std::abs(chord.dy()) >= .72 * width) {
-                        auto turn = strokeFlankTurn(source, entry.bottomBaseLine, width, -1, false, 43, 1.0);
-                        if (turn) {
-                            std::swap(turn->topBaseLine, turn->bottomBaseLine);
-                            if (turn->referenceWidth <= 1.65 * width && cutPrecedes(entry, *turn, source.orientation) &&
-                                matchesBoundaryBody(source, form, *turn, false))
-                                result.push_back({.formId = id, .entry = *turn, .landmarks = landmarks,
-                                    .stemFootSkipAfter = cuts.value("skipEntryTurnAfter").toString()});
-                        }
-                    }
-                }
                 result.push_back({.formId = id, .entry = source.res, .landmarks = bodyWitness(entry, landmarks),
                                   .fixedEntryJunction = fixedEntry,
                                   .sharesFinalEntry = continuation && form.value("sharedBoundary").toBool() &&

@@ -166,7 +166,7 @@ static QString invalidTurnBoundaries(const QJsonValue& value, const QString& id,
         const bool entry = it.key() == "right";
         if ((entry ? phase == "initial" : it.key() != "left" || phase == "final") ||
             (it.value() != "trim" && (!entry ||
-                (it.value() != "descender" && it.value() != "stem" && it.value() != "stem-foot"))))
+                (it.value() != "descender" && it.value() != "stem"))))
             return id + ": invalid contour turn policy for this boundary";
     }
     return {};
@@ -762,11 +762,6 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": restoreStackedExit requires a stacked stem, two template references and positive height limits";
         cutKeys << "restoreStackedExit";
     }
-    if (const auto value = cuts.value("skipEntryTurnAfter"); !value.isUndefined()) {
-        if (value.toString().isEmpty() || !cuts.value("turnBoundaries").toObject().contains("right"))
-            return id + ": skipEntryTurnAfter needs preceding letters and an entry turn";
-        cutKeys << "skipEntryTurnAfter";
-    }
     if (const auto value = cuts.value("reorientEntry"); !value.isUndefined()) {
         const auto reorient = value.toObject();
         if (phase != "final" || !positive(reorient.value("minHeight")) ||
@@ -780,18 +775,6 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             if (!valid) return id + ": invalid reorientEntry setting " + it.key();
         }
         cutKeys << "reorientEntry";
-    }
-    if (const auto value = cuts.value("detachedEntry"); !value.isUndefined()) {
-        const auto detached = value.toObject();
-        const auto arm = namedLetterForm(config, detached.value("template").toString());
-        const auto armBody = formDescription(config, arm, "body");
-        const auto letters = form.value("current").toString(), covered = arm.value("current").toString();
-        if (phase != "final" || detached.size() != 3 || detached.value("after").toString().isEmpty() ||
-            !positive(detached.value("maxMatchedWidth")) || armBody.value("shape") != "component-arm" ||
-            armBody.value("arm").toObject().value("singleStroke").toObject().isEmpty() ||
-            !std::ranges::all_of(letters, [&](QChar letter) { return covered.contains(letter); }))
-            return id + ": detachedEntry needs a single-stroke component template, preceding letters and a positive width limit";
-        cutKeys << "detachedEntry";
     }
     if (shape == "descending-stem" || shape == "terminal-fork") {
         const auto stem = body.value("stem").toObject(), policy = cuts.value("stem").toObject();

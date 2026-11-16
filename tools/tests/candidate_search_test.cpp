@@ -372,9 +372,14 @@ static void checkFixedAnchors(const QJsonObject& config) {
         check(page.segmentSubword(258, 4, 0, 2, &font, true, &config), "Alif shaft ownership did not assemble");
         const auto& word = page.page.lines[4].words[0];
         const auto& sub = word.wordResultInfo.subWords[2];
-        check(sub.letterDiagnostics.last().toObject().value("template") == "alef-return-fina" &&
+        check(sub.letterDiagnostics.last().toObject().value("template") == "alef-fina" &&
               sub.baseGlyphs.size() == 3 && coversOriginalInk(word, sub),
-              "Upright alif candidate sliced the shaft off the final body");
+              "Alif did not retain the shaft under the upright stem template");
+        const auto shape = word.bodyShape(sub);
+        const auto source = shape.transform.map(shape.path);
+        const auto alif = shape.transform.map(sub.baseGlyphs.back().path);
+        check(std::abs(alif.boundingRect().top() - source.boundingRect().top()) < 1e-5,
+              "Another part took the top of the alif shaft");
     }
     struct RehJunction { int page, line, word, subword, connectors; double lowerCorner; };
     for (const auto& f : {RehJunction{16, 3, 1, 2, 3, 29},

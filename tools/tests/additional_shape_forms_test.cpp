@@ -33,7 +33,7 @@ int main(int argc,char** argv) {
     };
     const Case cases[]={{1,2,1,1,"seen-compact-medi"},
         {4,12,4,1,"beh-tooth-medi"},{3,6,2,1,"seen-medi"},
-        {5,14,3,1,"feh-descending-init"},{4,11,6,1,"alef-return-fina"},
+        {5,14,3,1,"feh-descending-init"},{4,11,6,1,"alef-tapered-arm-fina"},
         {19,4,2,2,"kaf-bent-neck-medi"},
         {11,6,2,2,"reh-hook-fina"},{5,15,2,1,"ain-fina"},
         {251,11,4,2,"qaf-fina",9,21},{4,5,1,3,"qaf-fina",2,14},
@@ -84,7 +84,7 @@ int main(int argc,char** argv) {
             check(tip!=c.timeSorted.end() && masks[1].contains(tip->point+QPointF(0,.03)) &&
                   !masks[2].contains(tip->point+QPointF(0,.03)),"First tooth was skipped and assigned as a connector");
         }
-        if (QString(at.form)=="alef-return-fina")
+        if (QString(at.form)=="alef-tapered-arm-fina")
             check(sub.kashidaPaths.back().isEmpty(),"Folded ligature return was classified as kashida");
         if (QString(at.form)=="feh-descending-init") {
             check(toSubpaths(sub.baseGlyphs.front().path).size()==2,"Feh lost its own counter");
@@ -116,7 +116,7 @@ int main(int argc,char** argv) {
 
         // New route-based final shapes use only the outline, even if a previous
         // letter's text, cut and stroke-width hint are replaced.
-        if (QString(at.form)=="ain-fina" || QString(at.form)=="alef-return-fina" ||
+        if (QString(at.form)=="ain-fina" ||
             QString(at.form)=="reh-hook-fina" || QString(at.form)=="yeh-return-fina") {
             QJsonObject form; for (const auto& v:config["final"].toArray())
                 if (v.toObject()["id"]==at.form) form=v.toObject();

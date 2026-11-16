@@ -6484,50 +6484,6 @@
       }
     },
     {
-      "id": "alef-return-fina",
-      "priorityWithinPass": 4,
-      "continuationPriority": 0,
-      "current": "اآأإٱ",
-      "tightJoin": true,
-      "sharedBoundary": true,
-      "sharedBoundaryWith": "لك",
-      "body": {
-        "shape": "contour-route",
-        "route": {
-          "start": "left",
-          "traversal": "down",
-          "top": [
-            "up",
-            "down",
-            "up"
-          ]
-        },
-        "features": {
-          "minHeight": 3,
-          "maxWidthToHeight": 1.2
-        },
-        "counters": 0
-      },
-      "cuts": {
-        "skipEntryTurnAfter": "ل",
-        "detachedEntry": {
-          "template": "alef-detached-fina",
-          "after": "ل",
-          "maxMatchedWidth": 1.5
-        },
-        "turnBoundaries": {
-          "right": "stem-foot"
-        },
-        "route": {
-          "bottomProbe": "normal"
-        },
-        "boundaries": {
-          "right": "contour-route",
-          "left": "free"
-        }
-      }
-    },
-    {
       "id": "alef-detached-fina",
       "priorityWithinPass": 1,
       "anchorPass": "assembly",

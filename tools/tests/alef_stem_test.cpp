@@ -29,6 +29,25 @@ static bool same(const Stretching& a, const Stretching& b, const QTransform& map
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
+    {
+        QFile fixture("pages/page318.dat");
+        check(fixture.open(QIODevice::ReadOnly), "Missing qaf–alef turn fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&fixture);
+        stream >> page.page;
+        check(page.segmentSubword(317, 6, 5, 0, nullptr, true), "Qaf–alef remains partial");
+        const auto& word = page.page.lines[6].words[5];
+        const auto& sub = word.wordResultInfo.subWords[0];
+        check(sub.matchedTemplates == QStringList{"qaf-init", "alef-fina"} &&
+              sub.baseGlyphs.size() == 2 && sub.kashidaPaths.size() == 1 && !sub.kashidaPaths.front().isEmpty(),
+              "Qaf–alef turned into a shared cut");
+        const auto& turn = sub.kashidaCuts.front().second;
+        check(std::abs(turn.dx() + turn.dy()) < 1e-5 && coversOriginalInk(word, sub),
+              "The 45-degree cut must pass the ordinary ink-coverage check");
+        auto missingConnector = sub;
+        missingConnector.kashidaPaths.front() = {};
+        check(!coversOriginalInk(word, missingConnector), "Coverage accepted genuinely missing connector ink");
+    }
     const auto rootsAre = [](double a, double b, double c, double d, std::vector<double> expected,
                              RootSearch search = RootSearch::Standard) {
         std::array<double, 3> storage;
