@@ -166,5 +166,42 @@ int main(int argc, char** argv) {
           QLineF(hahSubword.kashidaCuts.front().first.p1(), hahSource.res.topBaseLine.point).length() < 1e-5 &&
           QLineF(hahSubword.kashidaCuts.front().first.p2(), hahSource.res.bottomBaseLine.point).length() < 1e-5,
           "Ḥāʾ–kāf moved the cut away from ḥāʾ’s own boundary");
+
+    QFile turnsFile("pages/page89.dat");
+    check(turnsFile.open(QIODevice::ReadOnly), "Two-sided kāf turn fixture missing");
+    PageAnalysisResult turns;
+    QDataStream turnsStream(&turnsFile); turnsStream >> turns.page;
+    check(turns.segmentSubword(88, 11, 1, 0, nullptr, true, &config), "Two-sided kāf turn did not assemble");
+    const auto& turnsWord = turns.page.lines[11].words[1];
+    const auto& turnsSubword = turnsWord.wordResultInfo.subWords.front();
+    check(turnsSubword.kashidaCuts.size() == 2 && turnsSubword.kashidaPaths.size() == 2 &&
+          !turnsSubword.kashidaPaths.front().isEmpty() && !turnsSubword.kashidaPaths.back().isEmpty(),
+          "Kāf turns removed an adjacent connector");
+    const auto rightTurn = turnsSubword.kashidaCuts.front().second;
+    const auto leftTurn = turnsSubword.kashidaCuts.back().first;
+    check(std::abs(rightTurn.dx() + rightTurn.dy()) < 1e-5 &&
+          std::abs(leftTurn.dx() - leftTurn.dy()) < 1e-5 &&
+          rightTurn.length() > .1 && leftTurn.length() > .1 &&
+          coversOriginalInk(turnsWord, turnsSubword), "Kāf missed an entry or exit turn");
+
+    struct FlankFixture { int page, line, word, subword, entryJoin; double entry, exit; };
+    for (const auto& at : {FlankFixture{8, 12, 8, 1, 3, 40.4364, 5.19098},
+                           FlankFixture{27, 11, 7, 2, 0, 26.8867, 4.18924},
+                           FlankFixture{29, 4, 6, 1, 0, 36.3448, 9.97914}}) {
+        QFile file(QString("pages/page%1.dat").arg(at.page));
+        check(file.open(QIODevice::ReadOnly), "Rounded kāf flank fixture missing");
+        PageAnalysisResult rounded;
+        QDataStream stream(&file); stream >> rounded.page;
+        check(rounded.segmentSubword(at.page-1, at.line-1, at.word-1, at.subword-1, nullptr, true, &config),
+              "Rounded kāf flank did not assemble");
+        const auto& word = rounded.page.lines[at.line-1].words[at.word-1];
+        const auto& sub = word.wordResultInfo.subWords[at.subword-1];
+        check(sub.joins.size() == size_t(at.entryJoin+2) && sub.kashidaPaths.size() == sub.joins.size() &&
+              !sub.kashidaPaths[at.entryJoin].isEmpty() && !sub.kashidaPaths.back().isEmpty(),
+              "Rounded kāf lost an adjacent connector");
+        check(std::abs(std::next(sub.joins.begin(), at.entryJoin)->topLeft.time - at.entry) < .001 &&
+              std::abs(sub.joins.rbegin()->topRight.time - at.exit) < .001 && coversOriginalInk(word, sub),
+              "Rounded kāf missed its bend or changed the left turn");
+    }
     qInfo("Zigzag medial kaf passed: intrinsic routes, normal exit, preserved counter, independent geometry, scale, determinism and conserved ink.");
 }

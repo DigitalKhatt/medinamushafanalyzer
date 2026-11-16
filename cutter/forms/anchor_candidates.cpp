@@ -1077,6 +1077,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         const auto evidence = recognizedSharedShape(source, body);
         const auto route = body.value("routes").toObject();
         const auto policy = cuts.value("routes").toObject();
+        const auto turns = cuts.value("preferredTurns").toObject();
         QStringList overlappingSenders;
         if (tryEntryTurn || continuation) {
             const auto sender = cuts.value("shareOverlappingEntryAfter");
@@ -1153,6 +1154,48 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                     if (!body.minimumExit && !body.exitLimit) {
                         body.minimumExit = insetLimit(source, body, cuts.value("minimumExitWalk").toDouble() * penWidth, false);
                         body.minimumExitBefore = cuts.value("minimumExitBefore").toString();
+                    }
+                    if (!turns.isEmpty()) {
+                        auto preferred = body;
+                        const auto applyTurn = [&](const char* side, bool entry) {
+                            const auto angle = turns.value(side);
+                            if (!angle.isDouble() || (entry ? body.requiresSharedEntry : body.requiresSharedExit))
+                                return false;
+                            auto& section = entry ? preferred.entry : preferred.exit;
+                            const auto& flank = entry ? candidate.right : candidate.left;
+                            if (const auto turn = preferredFlankTurn(source, *section, candidate.anchor,
+                                    entry, angle.toDouble(), penWidth, flank ? &*flank : nullptr)) {
+                                const auto side = getJoinTime(*turn, source.orientation);
+                                const auto owns = [&](double time) {
+                                    return entry ? side.isLeft(time) : side.isRight(time);
+                                };
+                                if (!owns(candidate.anchor.time) ||
+                                    !std::all_of(candidate.retained.begin(), candidate.retained.end(), owns))
+                                    return false;
+                                auto& minimum = entry ? preferred.minimumEntry : preferred.minimumExit;
+                                const bool expanded = owns(section->topBaseLine.time) &&
+                                    owns(section->bottomBaseLine.time);
+                                if (expanded && !minimum) minimum = section;
+                                if (!expanded) {
+                                    if (minimum && (!owns(minimum->topBaseLine.time) ||
+                                                    !owns(minimum->bottomBaseLine.time)))
+                                        minimum.reset();
+                                    // A limit inherited from the projected cap
+                                    // follows its corrected position. Other
+                                    // defining landmarks keep their ownership.
+                                    auto& limit = entry ? preferred.entryLimit : preferred.exitLimit;
+                                    if (limit && (limit->time == section->topBaseLine.time ||
+                                                  limit->time == section->bottomBaseLine.time))
+                                        limit = turn->topBaseLine;
+                                }
+                                section = turn;
+                                return true;
+                            }
+                            return false;
+                        };
+                        const bool movedEntry = applyTurn("right", true);
+                        const bool movedExit = applyTurn("left", false);
+                        if (movedEntry || movedExit) result.push_back(std::move(preferred));
                     }
                     result.push_back(std::move(body));
                 }

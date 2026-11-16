@@ -324,7 +324,7 @@ std::optional<Stretching> strokeFlankTurn(const SearchContext& context, const Pa
 // along the inward normal at that point.
 bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
                         double angle, double stroke, Stretching& cut,
-                        const PathExtrema* crest, int traversal, bool oppositeFlank) {
+                        const PathExtrema* crest, int traversal, bool oppositeFlank, int horizontal) {
     const auto start = crest ? crest->time : std::prev(context.xSorted.end())->time;
     const auto curves = baseContourCurves(context.transformedPath);
     if (curves.empty()) return false;
@@ -353,7 +353,7 @@ bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
         };
         const auto offset = [&](double t) {
             const auto v = tangent(t);
-            return target.x() * v.y() - target.y() * v.x();
+            return target.x() * v.y() - target.y() * horizontal * v.x();
         };
         const double a = std::max(0.0, low - i);
         const double b = std::min(1.0, high - i);
@@ -372,10 +372,11 @@ bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
                 const double t = (steep + shallow) / 2;
                 const auto v = tangent(t);
                 const double length = std::hypot(v.x(), v.y());
-                if (v.x() > 0 && v.y() > 0 && length > 1e-8) {
+                if (horizontal * v.x() > 0 && v.y() > 0 && length > 1e-8) {
                     const PathExtrema outer{0, curveIndex + t, curve.pointAt(t), false, false};
                     const bool invertNormal = (crest != nullptr) != oppositeFlank;
-                    const QPointF normal = (invertNormal ? -1 : 1) * QPointF(v.y() / length, -v.x() / length);
+                    const QPointF normal = (invertNormal ? -1 : 1) * QPointF(horizontal * v.y() / length,
+                                                                           -horizontal * v.x() / length);
                     const auto hits = FindInterections(context.transformedPath,
                         QLineF(outer.point, outer.point + normal * (3 * stroke)), true);
                     for (auto hit = hits.rbegin(); hit != hits.rend(); ++hit) {
@@ -392,6 +393,113 @@ bool alefTurnCut(const SearchContext& context, const PathExtrema& limit,
         }
     }
     return false;
+}
+
+static std::optional<Stretching> turnFromRouteFork(const SearchContext& context, const SavedContourRoute& route,
+        const Stretching& cap, double angle, double width, int horizontal, int curves) {
+    auto end = route.topEnd;
+    if (!end.isY || end.isSharp || route.anchor.time != end.time ||
+        QLineF(end.point, cap.topBaseLine.point).length() > .25 * width) return {};
+    const bool forward = route.topPrevious;
+    const auto& fork = route.topBefore;
+    if (fork.time == end.time) return {};
+    if ((end.time > fork.time) != forward) end.time += forward ? curves : -curves;
+    PathExtrema start;
+    QPointF tangent;
+    // Measure the descending flank after the small curved junction at the
+    // fork. The low point bounds the walk without supplying a cut.
+    if (!advanceOnContour(context.transformedPath, fork, end, forward, width, start, tangent))
+        return {};
+    if (!forward) tangent = -tangent;
+    const double run = horizontal * tangent.x();
+    if (run <= 0 || tangent.y() <= 0) return {};
+    const double approachAngle = std::atan2(tangent.y(), run) * 180 / M_PI;
+    if (approachAngle < angle / 3) return {};
+
+    // Measure flattening relative to the same fork's descending stroke.
+    // Crossing the absolute angle can happen before the foot begins turning.
+    const double turnAngle = std::min(angle, approachAngle / 2);
+    Stretching turn{};
+    if (!alefTurnCut(context, end, turnAngle, width, turn, &start, forward ? 1 : -1,
+                     end.point.y() > cap.bottomBaseLine.point.y(), horizontal))
+        return {};
+    if (QLineF(sectionLine(turn).center(), sectionLine(cap).center()).length() > 4 * width)
+        return {};
+    return turn;
+}
+
+std::optional<Stretching> preferredFlankTurn(const SearchContext& context, const Stretching& limit,
+        const PathExtrema& bodyAnchor, bool entry, double angle, double penWidth, const SavedContourRoute* route) {
+    const auto side = getJoinTime(limit, context.orientation);
+    const auto minimum = sectionLine(limit);
+    const double width = std::max(penWidth, minimum.length());
+    const int horizontal = entry ? 1 : -1;
+    const auto& top = limit.topBaseLine;
+    const auto& bottom = limit.bottomBaseLine;
+    const int curves = static_cast<int>(baseContourCurves(context.transformedPath).size());
+    const auto sectionWidth = [&](const Stretching& cut) {
+        const double length = sectionLine(cut).length();
+        return length >= .4 * width && length <= 1.8 * width;
+    };
+    const auto fix = [](Stretching cut) {
+        cut.fixedRightBoundary = cut.fixedLeftBoundary = true;
+        cut.referenceWidth = sectionLine(cut).length();
+        return cut;
+    };
+    if (route) {
+        if (auto turn = turnFromRouteFork(context, *route, limit, angle, width, horizontal, curves)) {
+            orientSection(context, *turn, bodyAnchor.time, entry);
+            const bool inward = entry ? orderedSections(limit, *turn, context.orientation)
+                                      : orderedSections(*turn, limit, context.orientation);
+            if (inward && sectionWidth(*turn)) return fix(*turn);
+        }
+    }
+    const double slope = std::tan(angle * M_PI / 180);
+    const bool topOutward = ((top.time < bottom.time) == side.startAtLeft) == entry;
+    std::optional<Stretching> preferred;
+    double nearest = std::numeric_limits<double>::infinity();
+    for (const auto* flank : {&bottom, &top}) {
+        const auto& other = flank == &top ? bottom : top;
+        const bool forward = (flank == &top) == topOutward;
+        auto bound = *flank;
+        bound.time += forward ? curves : -curves;
+        PathExtrema end;
+        QPointF tangent;
+        // The original cap must be on the descending flank. Starting on a
+        // flat connector could find the next letter's turn instead.
+        PathExtrema initial;
+        if (!advanceOnContour(context.transformedPath, *flank, bound, forward, .2 * width, initial, tangent))
+            continue;
+        const auto step = initial.point - flank->point;
+        if (step.y() <= slope * std::abs(step.x())) continue;
+        if (!advanceOnContour(context.transformedPath, *flank, bound, forward, 4 * width, end, tangent))
+            continue;
+        // Bound the walk by the first low point of the same descending
+        // flank so the search cannot start down a second stroke.
+        const auto timeAhead = [&](double time) {
+            const double delta = forward ? time - flank->time : flank->time - time;
+            return delta < 0 ? delta + curves : delta;
+        };
+        for (const auto& point : context.ySorted) {
+            if (!point.isY || point.point.y() <= initial.point.y() ||
+                timeAhead(point.time) <= timeAhead(initial.time) ||
+                timeAhead(point.time) >= timeAhead(end.time)) continue;
+            end = point;
+        }
+        Stretching turn{};
+        if (!alefTurnCut(context, end, angle, width, turn, flank, forward ? 1 : -1,
+                         flank->point.y() >= other.point.y(), horizontal)) continue;
+        orientSection(context, turn, bodyAnchor.time, entry);
+        const bool outward = entry ? orderedSections(turn, limit, context.orientation)
+                                   : orderedSections(limit, turn, context.orientation);
+        const auto chord = sectionLine(turn);
+        if (!outward || !sectionWidth(turn)) continue;
+        const double advance = QLineF(chord.center(), minimum.center()).length();
+        if (advance >= nearest) continue;
+        nearest = advance;
+        preferred = fix(turn);
+    }
+    return preferred;
 }
 
 std::vector<ContourEntry> descendingRouteEntries(SearchContext& context, const SavedContourRoute& route,

@@ -957,6 +957,16 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             })) return id + ": shareOverlappingEntryAfter needs a medial paired route and sending templates";
         cutKeys << "shareOverlappingEntryAfter";
     }
+    if (const auto value = cuts.value("preferredTurns"); !value.isUndefined()) {
+        const auto turns = value.toObject();
+        if (phase != "medial" || shape != "paired-route" || turns.isEmpty())
+            return id + ": preferredTurns requires a medial paired route";
+        for (auto it = turns.begin(); it != turns.end(); ++it)
+            if ((it.key() != "right" && it.key() != "left") || !it.value().isDouble() ||
+                !(it.value().toDouble() > 0 && it.value().toDouble() < 90))
+                return id + ": preferredTurns needs a boundary and an angle between 0 and 90 degrees";
+        cutKeys << "preferredTurns";
+    }
     if (phase == "final" && (shape == "contour-route" || shape == "open-bowl")) {
         cutKeys << "junction";
         if (cuts.contains("junction")) {

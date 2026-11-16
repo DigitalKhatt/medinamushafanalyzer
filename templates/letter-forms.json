@@ -3003,6 +3003,10 @@
         }
       },
       "cuts": {
+        "preferredTurns": {
+          "right": 45,
+          "left": 45
+        },
         "routes": {
           "right": {
             "bottomProbe": "down",
@@ -3995,6 +3999,10 @@
         "counters": 0
       },
       "cuts": {
+        "preferredTurns": {
+          "right": 45,
+          "left": 45
+        },
         "routes": {
           "right": {
             "bottomProbe": "corner",
@@ -4104,6 +4112,10 @@
         "counters": 0
       },
       "cuts": {
+        "preferredTurns": {
+          "right": 45,
+          "left": 45
+        },
         "acceptCounterRim": true,
         "shareOverlappingEntryAfter": ["hah-open-init", "hah-stacked-medi"],
         "turnBoundaries": {
@@ -4221,6 +4233,10 @@
         "counters": 0
       },
       "cuts": {
+        "preferredTurns": {
+          "right": 45,
+          "left": 45
+        },
         "turnBoundaries": {
           "right": "descender"
         },
@@ -5084,6 +5100,10 @@
         }
       },
       "cuts": {
+        "preferredTurns": {
+          "right": 45,
+          "left": 45
+        },
         "routes": {
           "right": {
             "bottomProbe": "down",
