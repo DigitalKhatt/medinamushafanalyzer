@@ -1451,6 +1451,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             result.back().sharesIncoming = cuts.value("tightJoin") == "shared-boundary";
             result.back().sharesLoopNeck = cuts.value("shareLoopNeck").toBool();
             auto& candidate = result.back();
+            candidate.prefersOwnExit = cuts.value("preferOwnExit").toBool();
             candidate.minimumEntry = insetLimit(source, candidate, cuts.value("minimumEntryWalk").toDouble() * penWidth, true);
             candidate.minimumEntryAfterForm = cuts.value("minimumEntryAfterForm").toString();
         }

@@ -2788,6 +2788,7 @@
         "minimumEntryWalk": 0.45,
         "minimumEntryAfterForm": "hah-stacked-medi",
         "shareLoopNeck": true,
+        "preferOwnExit": true,
         "turnBoundaries": {
           "left": "trim",
           "right": "trim"

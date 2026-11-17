@@ -558,6 +558,11 @@ static QString validateToothShape(const QJsonObject& form, const QString& phase)
             return id + ": shareLoopNeck requires a medial tooth";
         policyKeys << "shareLoopNeck";
     }
+    if (cuts.contains("preferOwnExit")) {
+        if (phase != "medial" || !cuts.value("preferOwnExit").isBool())
+            return id + ": preferOwnExit requires a medial tooth";
+        policyKeys << "preferOwnExit";
+    }
     policyKeys += pair ? QStringList{"leftOffset", "rightOffset", "normalOffsetTolerance"} :
                          QStringList{"flankMode", "flankOffset", "maxSectionWidth"};
     for (auto key = cuts.begin(); key != cuts.end(); ++key)
