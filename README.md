@@ -28,4 +28,13 @@ AI artwork directly and writes the catalog to `output/catalog.sqlite`.
 
 [Open the catalog](http://127.0.0.1:8770/) · [Open the page viewer](http://127.0.0.1:8770/viewer.html) · [Command-line setup](tools/README.md#catalog) · [Contributing](CONTRIBUTING.md)
 
+## License
 
+The project's software and documentation are available under the [MIT License](LICENSE).
+So you can use, modify, and share them for free, including commercially.
+
+The catalog and page viewer use the 1441 Hafs Illustrator artwork published by
+the King Fahd Quran Complex. The Complex permits free use of the digital edition
+in websites, software, and publishing inside and outside Saudi Arabia. Printing
+Mushaf copies in Saudi Arabia and importing them for commercial sale are subject
+to Saudi restrictions. [Published artwork usage terms (archived)](https://web.archive.org/web/20250123095851/https://dm.qurancomplex.gov.sa/rights/)
