@@ -2224,6 +2224,9 @@
         "boundaries": {
           "left": "route-left",
           "right": "route-right"
+        },
+        "preferredTurns": {
+          "right": 20
         }
       },
       "sharedFoldWithFinal": "م",
@@ -3855,7 +3858,14 @@
       "cuts": {
         "routes": {
           "right": {
-            "bottomProbe": "normal"
+            "bottomProbe": "corner",
+            "oppositeCorner": {
+              "minX": 0.15,
+              "maxX": 1.0,
+              "minY": -0.1,
+              "maxY": 0.85,
+              "maxDistance": 1.15
+            }
           },
           "left": {
             "bottomProbe": "down"
@@ -4819,7 +4829,7 @@
               1.15
             ],
             "top": [
-              0.55,
+              0.34,
               1.55
             ],
             "right": [
@@ -4844,11 +4854,11 @@
             ],
             "y": [
               -1.15,
-              -0.3
+              -0.28
             ],
             "width": [
-              0.45,
-              1.2
+              0.23,
+              0.44
             ]
           },
           "exit": {
@@ -4870,7 +4880,9 @@
           "left": "outline-exit",
           "right": "outline-entry"
         }
-      }
+      },
+      "sharedEntry": true,
+      "ligatureAfter": "ل"
     },
     {
       "id": "feh-descending-rim-medi",

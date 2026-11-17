@@ -486,7 +486,10 @@ int main(int argc, char** argv) {
                            ReviewedJoin{456, 1, 8, 3, 0, 8.0687, 17},
                            ReviewedJoin{510, 1, 5, 1, 4, 7.77689, 17},
                            ReviewedJoin{521, 1, 8, 1, 0, 40, 30},
-                           ReviewedJoin{539, 13, 7, 1, 1, 5.731, 15}}) {
+                           ReviewedJoin{539, 13, 7, 1, 1, 5.731, 15},
+                           ReviewedJoin{600, 13, 1, 2, 0, 27, 20.0089},
+                           ReviewedJoin{251, 1, 10, 1, 0, 5, 28.2499},
+                           ReviewedJoin{71, 13, 1, 3, 0, 37, 27.5098}}) {
         QFile fixture(QString("pages/page%1.dat").arg(at.page));
         check(fixture.open(QIODevice::ReadOnly), "Missing reviewed join fixture");
         PageAnalysisResult reviewed;
@@ -502,6 +505,20 @@ int main(int argc, char** argv) {
               std::abs(cut.bottomBaseLine.time - at.lower) < .001 && sub.kashidaPaths[at.join].isEmpty(),
               "The shared cut moved off the reviewed attachment");
     }
+
+    QFile tailFile("pages/page75.dat");
+    check(tailFile.open(QIODevice::ReadOnly), "Missing medial heh right-tail fixture");
+    PageAnalysisResult tailPage;
+    QDataStream tailStream(&tailFile);
+    tailStream >> tailPage.page;
+    check(tailPage.segmentSubword(74, 3, 8, 0, nullptr, true, &config),
+          "Medial heh with a right tail did not match");
+    const auto& tail = tailPage.page.lines[3].words[8].wordResultInfo.subWords[0];
+    check(tail.joins.size() > 4 && tail.kashidaPaths.size() > 4 && !tail.kashidaPaths[4].isEmpty(),
+          "The right tail absorbed the preceding connector");
+    const auto& tailEntry = *std::next(tail.joins.begin(), 4);
+    check(std::abs(tailEntry.topLeft.time - 62.3763) < .001 && std::abs(tailEntry.bottomLeft.time - 12.865) < .001,
+          "The entry cut left the medial heh tail outside its body");
 
     qInfo("Native letter-form checks passed: schema rejection, 307 subwords, seven reviewed controls, nine lam-alef ligatures, three leaning medial lams, fixed ain/ligature/meem anchors and missing-body coverage.");
 }

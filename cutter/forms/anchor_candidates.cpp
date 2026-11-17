@@ -783,7 +783,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                                                entry ? chord(*entry) : QLineF{}, exit ? chord(*exit) : QLineF{})) continue;
                     result.push_back({.formId = id, .entry = entry, .exit = exit,
                                       .landmarks = position == 1 ? QVector<PathExtrema>{} : QVector<PathExtrema>{tip},
-                                      .counters = counters, .requiresSharedExit = sharedExit != nullptr,
+                                      .counters = counters, .usesSharedEntry = form.value("sharedEntry").toBool(),
+                                      .requiresSharedExit = sharedExit != nullptr,
                                       .requiredExitTemplate = form.value("requiresExitTemplate").toString()});
                 }
         }
