@@ -320,20 +320,20 @@ static void keepLowerLip(const SearchContext& source, AnchoredBody& body, const 
     body.minimumExit = normalAtLimit(source, *limit, lips.lowerForward, lips.upper, false);
 }
 
-static bool setHookEntry(const SearchContext& source, AnchoredBody& body, const OpenMouthBody& mouth,
-                         const Stretching& cut, double penWidth) {
+static bool setHookEntry(const SearchContext& source, AnchoredBody& body, const MouthLips& lips,
+                         const PathExtrema& nose, const Stretching& cut, double penWidth) {
     const auto before = getJoinTime(*body.entry, source.orientation);
     const auto after = getJoinTime(*body.exit, source.orientation);
-    if (!before.isLeft(mouth.nose.time) ||
-        !before.isStrictLeft(mouth.lips.notch.time) || !before.isStrictLeft(mouth.lips.upper.time) ||
-        !after.isStrictRight(mouth.nose.time) || !after.isStrictRight(mouth.lips.notch.time) ||
-        !after.isStrictRight(mouth.lips.upper.time) || !orderedSections(cut, *body.exit, source.orientation) ||
+    if (!before.isLeft(nose.time) ||
+        !before.isStrictLeft(lips.notch.time) || !before.isStrictLeft(lips.upper.time) ||
+        !after.isStrictRight(nose.time) || !after.isStrictRight(lips.notch.time) ||
+        !after.isStrictRight(lips.upper.time) || !orderedSections(cut, *body.exit, source.orientation) ||
         !retainsLandmarks(body, &cut, &*body.exit, source.orientation)) return false;
 
     const auto& previous = *body.entry;
     if (QLineF(previous.topBaseLine.point, cut.topBaseLine.point).length() > .1 * penWidth ||
         QLineF(previous.bottomBaseLine.point, cut.bottomBaseLine.point).length() > .1 * penWidth) body.entry = cut;
-    body.landmarks.append(mouth.nose);
+    body.landmarks.append(nose);
     body.minimumEntry.reset();
     body.entryLimit.reset();
     body.usesSharedEntry = false;
@@ -934,8 +934,9 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             for (const auto& head : evidence->mouths) {
                 const auto& lips = head.lips;
                 const double distance = cuts.value("minimumExitWidths").toDouble() * penWidth;
-                const auto hook = ownAttachment.isEmpty() && entryHookTurn.isDouble()
-                    ? mouthHookJunction(source, head, entryHookTurn.toDouble(), penWidth) : std::nullopt;
+                const auto hooks = ownAttachment.isEmpty() && entryHookTurn.isDouble()
+                    ? mouthHookJunctions(source, head, entryHookTurn.toDouble(), penWidth)
+                    : std::vector<std::pair<PathExtrema, Stretching>>{};
                 for (const auto& [entry, exit] : cutOpenMouths(source, {head}, shapeSettings(form, "mouth"))) {
                     AnchoredBody candidate{.formId = id, .entry = entry, .exit = exit,
                         .landmarks = {lips.notch, lips.upper},
@@ -943,7 +944,9 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                     if (continuation || !ownAttachment.isEmpty()) keepLowerLip(source, candidate, lips, distance);
                     if (candidate.minimumExit && !retainsLandmarks(candidate, &entry, &exit, source.orientation))
                         candidate.exit = candidate.minimumExit;
-                    if (hook && setHookEntry(source, candidate, head, *hook, penWidth)) {
+                    if (std::any_of(hooks.begin(), hooks.end(), [&](const auto& hook) {
+                            return setHookEntry(source, candidate, lips, hook.first, hook.second, penWidth);
+                        })) {
                         const auto pieces = cutRegions(source.transformedPath, {}, {*candidate.entry, *candidate.exit},
                                                        source.orientation, true);
                         if (pieces.size() == 3 && toSubpaths(pieces[1].path).size() == 1)
@@ -1139,13 +1142,23 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 overlappingSenders.append(id.toString());
         }
         const bool atUpperAttachment = form.contains("upperAttachment");
-        std::vector<std::pair<OpenMouthBody, Stretching>> hooks;
-        if (!atUpperAttachment && entryHookTurn.isDouble()) {
-            const auto mouths = recognizedSharedShape(source,
+        struct MouthBoundaries {
+            MouthLips lips;
+            std::vector<std::pair<PathExtrema, Stretching>> hooks;
+            std::optional<Stretching> exit;
+        };
+        const bool exitAtLip = cuts.value("exitAtLip").toBool();
+        std::vector<MouthBoundaries> mouths;
+        if (!atUpperAttachment && (entryHookTurn.isDouble() || exitAtLip)) {
+            const auto recognized = recognizedSharedShape(source,
                 QJsonObject{{"shape", "returning-lips"}, {"mouth", body.value("mouth")}});
-            for (const auto& mouth : mouths->mouths)
-                if (const auto hook = mouthHookJunction(source, mouth, entryHookTurn.toDouble(), penWidth))
-                    hooks.emplace_back(mouth, *hook);
+            for (const auto& mouth : recognized->mouths) {
+                MouthBoundaries boundaries{mouth.lips, {}, {}};
+                if (entryHookTurn.isDouble())
+                    boundaries.hooks = mouthHookJunctions(source, mouth, entryHookTurn.toDouble(), penWidth);
+                if (exitAtLip) boundaries.exit = mouthLipExit(source, mouth.lips);
+                if (!boundaries.hooks.empty() || boundaries.exit) mouths.push_back(std::move(boundaries));
+            }
         }
         // The two-corner seam belongs to the returning-lips body, which
         // verifies both lips before accepting it.
@@ -1181,11 +1194,27 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                                       .requiresSharedEntry = atUpperAttachment || attachment,
                                       .requiresSharedExit = sharedExit != nullptr,
                                       .requiresSharedSource = !atUpperAttachment && attachment};
-                    if (!body.requiresSharedEntry)
-                        for (const auto& [mouth, hook] : hooks)
-                            if (setHookEntry(source, body, mouth, hook, penWidth)) break;
+                    for (const auto& mouth : mouths) {
+                        const bool entrySet = !body.requiresSharedEntry && std::any_of(
+                            mouth.hooks.begin(), mouth.hooks.end(), [&](const auto& hook) {
+                                return setHookEntry(source, body, mouth.lips, hook.first, hook.second, penWidth);
+                            });
+                        const auto entrySide = getJoinTime(*body.entry, source.orientation);
+                        const auto exitSide = getJoinTime(exit, source.orientation);
+                        const bool exitSet = !sharedExit && mouth.exit &&
+                            entrySide.isStrictLeft(mouth.lips.upper.time) &&
+                            exitSide.isStrictRight(mouth.lips.upper.time) &&
+                            orderedSections(*body.entry, *mouth.exit, source.orientation) &&
+                            orderedSections(*mouth.exit, exit, source.orientation) &&
+                            retainsLandmarks(body, &*body.entry, &*mouth.exit, source.orientation) &&
+                            std::all_of(candidate.retained.begin(), candidate.retained.end(), [&](double time) {
+                                return getJoinTime(*mouth.exit, source.orientation).isRight(time);
+                            });
+                        if (exitSet) body.exit = mouth.exit;
+                        if (entrySet || exitSet) break;
+                    }
                     if (form.contains("bodyCounters")) {
-                        const auto pieces = cutRegions(source.transformedPath, {}, {*body.entry, exit},
+                        const auto pieces = cutRegions(source.transformedPath, {}, {*body.entry, *body.exit},
                                                        source.orientation, true);
                         if (pieces.size() != 3 || toSubpaths(pieces[1].path).size() - 1 !=
                             form.value("bodyCounters").toInt()) continue;

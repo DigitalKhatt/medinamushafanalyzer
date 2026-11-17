@@ -941,6 +941,11 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": entryHookTurn requires a medial return and an angle between 0 and 90 degrees";
         cutKeys << "entryHookTurn";
     }
+    if (const auto exit = cuts.value("exitAtLip"); !exit.isUndefined()) {
+        if (phase != "medial" || shape != "paired-route" || !exit.isBool())
+            return id + ": exitAtLip requires a medial paired route";
+        cutKeys << "exitAtLip";
+    }
     if (const auto sender = cuts.value("shareOverlappingEntryAfter"); !sender.isUndefined()) {
         const auto senders = sender.isString() ? QJsonArray{sender} : sender.toArray();
         if (phase != "medial" || shape != "paired-route" || senders.isEmpty() ||
@@ -1252,7 +1257,10 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
                 return id + ": pen lift needs a side and component forms";
         } else if (mode == "overhanging-head") {
             const auto bend = policy.value("entryBendReach");
-            if ((!bend.isUndefined() && !positive(bend)) || policy.size() != 3 + int(!bend.isUndefined()) ||
+            const auto angle = policy.value("entryBendAngle");
+            if ((!bend.isUndefined() && !positive(bend)) ||
+                (!angle.isUndefined() && (!positive(bend) || !positive(angle) || angle.toDouble() >= 90)) ||
+                policy.size() != 3 + int(!bend.isUndefined()) + int(!angle.isUndefined()) ||
                 !(policy.value("maxGap").toDouble() > 0) ||
                 !(policy.value("maxEntryToHead").toDouble() > 0) || parts.contains("forms"))
                 return id + ": invalid overhanging head policy";

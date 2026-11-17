@@ -753,42 +753,73 @@ std::vector<OpenMouthBody> recognizeOpenMouths(const InkOutline &outline, const 
     return bodies;
 }
 
-std::optional<Stretching> mouthHookJunction(const SearchContext& context, const OpenMouthBody& body,
-                                           double angle, double penWidth) {
-    const auto nose = context.timeSorted.find(body.nose);
-    if (nose == context.timeSorted.end()) return {};
+std::optional<Stretching> descendingHookSection(const SearchContext& context, const PathExtrema& start,
+                                                bool forward, double angle, double penWidth) {
+    const auto origin = context.timeSorted.find(start);
+    if (origin == context.timeSorted.end()) return {};
     const auto& ink = context.transformedPath;
-    const int period = baseContourCurves(ink).size();
-    const auto leaves = [&](const PathExtrema& point) { return point.point - nose->point; };
-    for (const bool forward : {true, false}) {
-        const auto step = forward ? &SearchContext::prev : &SearchContext::next;
-        PathExtrema bound = *nose, sample;
-        bound.time += forward ? period : -period;
-        QPointF tangent;
-        if (!advanceOnContour(ink, *nose, bound, forward, .6 * penWidth, sample, tangent)) continue;
-        const auto descent = leaves(sample);
-        if (descent.y() < .5 * penWidth || std::abs(descent.x()) > .3 * penWidth) continue;
-
-        // The outward branch descends away from the head. Its first low point
-        // bounds the turn, before the connector rises toward another letter.
-        auto low = nose;
-        for (auto next = (context.*step)(low); next != nose; next = (context.*step)(low)) {
-            const auto rise = leaves(*next);
-            if (next->point.y() < low->point.y() - 1e-6 || rise.y() > 4.5 * penWidth ||
-                std::abs(rise.x()) > 5 * penWidth) break;
-            low = next;
-        }
-        if (leaves(*low).y() < penWidth) continue;
-        Stretching junction{};
-        if (!alefTurnCut(context, *low, angle, penWidth, junction, &*nose, forward ? 1 : -1)) continue;
-        orientSection(context, junction, body.nose.time, true);
-        const auto side = getJoinTime(junction, context.orientation);
-        const auto section = sectionLine(junction);
-        if (side.isStrictLeft(body.lips.notch.time) && side.isStrictLeft(body.lips.upper.time) &&
-            section.length() >= .5 * penWidth && section.length() <= 2 * penWidth &&
-            section.center().y() > nose->point.y() + .6 * penWidth) return junction;
+    const auto step = forward ? &SearchContext::prev : &SearchContext::next;
+    auto low = origin;
+    // The first low point bounds the turn before the connector rises again.
+    for (auto next = (context.*step)(low); next != origin; next = (context.*step)(low)) {
+        const auto delta = next->point - start.point;
+        if (next->point.y() < low->point.y() - 1e-6 || delta.y() > 4.5 * penWidth ||
+            std::abs(delta.x()) > 5 * penWidth) break;
+        low = next;
     }
-    return {};
+    if (low->point.y() - start.point.y() < penWidth) return {};
+    auto bound = *low;
+    const int period = baseContourCurves(ink).size();
+    if ((bound.time > start.time) != forward) bound.time += forward ? period : -period;
+    PathExtrema sample;
+    QPointF tangent;
+    if (!advanceOnContour(ink, start, bound, forward, .6 * penWidth, sample, tangent)) return {};
+    const auto descent = sample.point - start.point;
+    if (descent.y() < .5 * penWidth || std::abs(descent.x()) > .3 * penWidth) return {};
+
+    Stretching junction{};
+    if (!alefTurnCut(context, *low, angle, penWidth, junction, &start, forward ? 1 : -1)) return {};
+    const auto section = sectionLine(junction);
+    if (section.length() < .5 * penWidth || section.length() > 2 * penWidth ||
+        section.center().y() <= start.point.y() + .6 * penWidth) return {};
+    return junction;
+}
+
+std::vector<std::pair<PathExtrema, Stretching>>
+mouthHookJunctions(const SearchContext& context, const OpenMouthBody& body, double angle, double penWidth) {
+    std::vector<std::pair<PathExtrema, Stretching>> result;
+    const auto add = [&](const PathExtrema& nose) {
+        for (const bool forward : {true, false}) {
+            auto junction = descendingHookSection(context, nose, forward, angle, penWidth);
+            if (!junction) continue;
+            orientSection(context, *junction, nose.time, true);
+            const auto side = getJoinTime(*junction, context.orientation);
+            if (side.isStrictLeft(body.lips.notch.time) && side.isStrictLeft(body.lips.upper.time))
+                result.emplace_back(nose, *junction);
+        }
+    };
+    add(body.nose);
+    const double span = body.lips.notch.point.x() - body.lips.upper.point.x();
+    for (const auto& corner : body.entryCorners) {
+        const auto delta = corner.point - body.lips.notch.point;
+        if (corner.time != body.nose.time && corner.isX && delta.x() >= .28 * span &&
+            delta.x() <= span && std::abs(delta.y()) <= 1.4)
+            add(corner);
+    }
+    return result;
+}
+
+std::optional<Stretching> mouthLipExit(SearchContext& context, const MouthLips& lips) {
+    const auto& [notch, upper, lower, forward] = lips;
+    if (lower.point.x() >= upper.point.x()) return {};
+    Stretching projected{};
+    // Project the upper lip onto the lower stroke before its connector valley.
+    if (!medialChordAt(context, upper.point.x(), notch.point.y() + 1.5, 3, projected) ||
+        !strokeNormalCut(context, projected) ||
+        upper.point.x() - lower.point.x() < .75 * projected.referenceWidth) return {};
+    orientSection(context, projected, notch.time, false);
+    if (!getJoinTime(projected, context.orientation).isStrictLeft(lower.time)) return {};
+    return projected;
 }
 
 // The page assembler can reuse the same intrinsic lip inventory independently
@@ -805,18 +836,8 @@ cutOpenMouths(SearchContext &ctx, const std::vector<OpenMouthBody> &bodies, cons
         const auto &nose = body.nose;
         const double span = notch.point.x() - upper.point.x();
         std::vector<Stretching> lefts = cornerSections(ctx, lower);
-        if (form.value("projectExit").toBool() && lower.point.x() < upper.point.x()) {
-            Stretching projected{};
-            // The lower edge can keep descending along the connector, so
-            // its valley is farther left than the mouth itself.
-            if (medialChordAt(ctx, upper.point.x(), notch.point.y() + 1.5, 3, projected) &&
-                strokeNormalCut(ctx, projected) &&
-                upper.point.x() - lower.point.x() >= .75 * projected.referenceWidth) {
-                orientSection(ctx, projected, notch.time, false);
-                if (getJoinTime(projected, ctx.orientation).isStrictLeft(lower.time))
-                    lefts.insert(lefts.begin(), projected);
-            }
-        }
+        if (form.value("projectExit").toBool())
+            if (const auto projected = mouthLipExit(ctx, body.lips)) lefts.insert(lefts.begin(), *projected);
         std::vector<std::pair<double, Stretching>> rights;
         for (const auto &corner : body.entryCorners) {
             const auto d = corner.point - notch.point;

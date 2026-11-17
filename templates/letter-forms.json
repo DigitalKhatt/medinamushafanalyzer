@@ -4487,7 +4487,8 @@
           "mode": "overhanging-head",
           "maxGap": 0.8,
           "maxEntryToHead": 1.1,
-          "entryBendReach": 0.8
+          "entryBendReach": 0.8,
+          "entryBendAngle": 11.2
         },
         "boundaries": {
           "left": "component-form",
@@ -5060,6 +5061,7 @@
       },
       "cuts": {
         "entryHookTurn": 11.2,
+        "exitAtLip": true,
         "routes": {
           "right": {
             "bottomProbe": "down",

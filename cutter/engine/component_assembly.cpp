@@ -233,7 +233,7 @@ bool assembleDetachedTerminalArm(const Word& word, WordResultInfo::SubWordInfo& 
 }
 
 static std::optional<Stretching> attachmentEntryAtBend(const QPainterPath& ink,
-        const QRectF& head, double reach) {
+        const QRectF& head, double reach, double angle, double penWidth) {
     if (reach <= 0) return {};
     WordResultInfo::SubWordInfo geometry;
     OutlineSearchCache outline;
@@ -248,13 +248,21 @@ static std::optional<Stretching> attachmentEntryAtBend(const QPainterPath& ink,
     for (const auto advance : {&SearchContext::prev, &SearchContext::next}) {
         const auto crest = (source.*advance)(tip);
         if (crest->point.y() >= tip->point.y()) continue;
+        const bool forward = advance == &SearchContext::prev;
+        if (angle > 0) {
+            auto entry = descendingHookSection(source, *crest, forward, angle, penWidth);
+            if (entry && std::abs(sectionLine(*entry).center().x() - head.right()) <= reach) {
+                orientSection(source, *entry, tip->time, true);
+                return entry;
+            }
+        }
         const auto bend = (source.*advance)(crest);
         const auto beyond = (source.*advance)(bend);
         if (!bend->isY || bend->point.x() <= crest->point.x() || bend->point.y() <= crest->point.y() ||
             beyond->point.x() <= bend->point.x() || beyond->point.y() >= bend->point.y() ||
             std::abs(bend->point.x() - head.right()) > reach) continue;
         Stretching entry{};
-        if (!contourNormalCut(source, *bend, advance == &SearchContext::prev, false, entry) ||
+        if (!contourNormalCut(source, *bend, forward, false, entry) ||
             entry.bottomBaseLine.point.y() <= bend->point.y()) continue;
         orientSection(source, entry, tip->time, true);
         return entry;
@@ -314,8 +322,10 @@ static bool assembleHeadComponents(const Word& word, WordResultInfo::SubWordInfo
             !compileAnchorForms(continuation, continuationForms).isEmpty()) return std::move(local);
         const std::array priorities{AnchorPriority{forms, standardForms},
             AnchorPriority{continuation, continuationForms, AnchorPass::Continuation}};
+        const double penWidth = config.value("strokeWidth").toDouble(1);
         const auto attachment = head ? attachmentEntryAtBend(world(component.ink), head->boundingRect(),
-            settings.value("entryBendReach").toDouble() * config.value("strokeWidth").toDouble(1)) : std::nullopt;
+            settings.value("entryBendReach").toDouble() * penWidth,
+            settings.value("entryBendAngle").toDouble(), penWidth) : std::nullopt;
         const auto accepts = [&](const WordResultInfo::SubWordInfo& partition) {
             if (!head) return true;
             const auto stub = world(partition.baseGlyphs.back().path);

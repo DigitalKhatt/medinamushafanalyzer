@@ -1292,8 +1292,13 @@ struct OpenMouthBody {
 
 std::vector<OpenMouthBody> recognizeOpenMouths(const InkOutline &outline, const QJsonObject &form);
 
-std::optional<Stretching> mouthHookJunction(const SearchContext& context, const OpenMouthBody& body,
-                                           double angle, double penWidth);
+std::optional<Stretching> descendingHookSection(const SearchContext& context, const PathExtrema& start,
+                                                bool forward, double angle, double penWidth);
+
+std::vector<std::pair<PathExtrema, Stretching>>
+mouthHookJunctions(const SearchContext& context, const OpenMouthBody& body, double angle, double penWidth);
+
+std::optional<Stretching> mouthLipExit(SearchContext& context, const MouthLips& lips);
 
 std::vector<MouthLips> mouthLips(SearchContext &ctx, const QJsonObject &form);
 
