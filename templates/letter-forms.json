@@ -104,7 +104,7 @@
         "route": {
           "bottomProbe": "normal",
           "anchorSide": "bottom",
-          "walkNormalOffset": 0.8
+          "walkNormalOffset": 0.45
         },
         "boundaries": {
           "right": "free",
@@ -1111,7 +1111,7 @@
           "sectionInset": 6,
           "maxRiseLeftOfCounter": 5,
           "exitRim": {
-            "maxDistance": 2,
+            "maxDistance": 1.5,
             "minCornerAngle": 110
           }
         }
@@ -1615,8 +1615,17 @@
           "traversal": "down",
           "topTraversal": "forward",
           "top": [
-            "down",
-            "right"
+            {
+              "direction": "down",
+              "end": {
+                "xMinimum": true
+              }
+            },
+            {
+              "direction": "right",
+              "immediate": true,
+              "minY": 0
+            }
           ],
           "topUseStepEnd": true
         },

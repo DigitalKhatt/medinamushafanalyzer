@@ -779,7 +779,13 @@ std::optional<Stretching> descendingHookSection(const SearchContext& context, co
 
     Stretching junction{};
     if (!alefTurnCut(context, *low, angle, penWidth, junction, &start, forward ? 1 : -1)) return {};
-    const auto section = sectionLine(junction);
+    auto section = sectionLine(junction);
+    // On a wide turn the nearly horizontal tangent can lie well into the
+    // connector. Take the earlier bend while the flank is still turning.
+    if (angle < 22.5 && section.center().x() - start.point.x() > 2 * penWidth) {
+        if (!alefTurnCut(context, *low, 22.5, penWidth, junction, &start, forward ? 1 : -1)) return {};
+        section = sectionLine(junction);
+    }
     if (section.length() < .5 * penWidth || section.length() > 2 * penWidth ||
         section.center().y() <= start.point.y() + .6 * penWidth) return {};
     return junction;
@@ -799,15 +805,21 @@ mouthHookJunctions(const SearchContext& context, const OpenMouthBody& body, doub
         }
     };
     add(body.nose);
+    const auto noseCount = result.size();
     const double span = body.lips.notch.point.x() - body.lips.upper.point.x();
-    // A wide mouth can still have a short overhang above its hook.
-    const double minNoseRun = std::min(.28 * span, .75 * penWidth);
+    // The hook can start at a corner under a short overhang. Its descending
+    // flank and the retained lips identify it even without an x extremum.
     for (const auto& corner : body.entryCorners) {
         const auto delta = corner.point - body.lips.notch.point;
-        if (corner.time != body.nose.time && corner.isX && delta.x() >= minNoseRun &&
+        if (corner.time != body.nose.time && delta.x() > 0 &&
             delta.x() <= span && std::abs(delta.y()) <= 1.4)
             add(corner);
     }
+    // A marked nose gives stronger evidence than the start of a smooth flank.
+    const double minNoseRun = std::min(.28 * span, .75 * penWidth);
+    std::stable_partition(result.begin() + noseCount, result.end(), [&](const auto& hook) {
+        return hook.first.isX && hook.first.point.x() - body.lips.notch.point.x() >= minNoseRun;
+    });
     return result;
 }
 

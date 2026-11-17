@@ -1175,6 +1175,7 @@ struct AnchoredBody {
     QStringList connectorStrokeWidthAfter;
     bool keepsEntryJunction = false;
     bool keepsExitHollow = false;
+    bool prefersOwnExit = false;
     bool sharesExitAtCorners = false;
     bool sharesIncoming = false;
     bool usesSharedEntry = false;

@@ -504,7 +504,7 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
         !leavesEntryClearance(exit, entry, source.orientation, tightTolerance) &&
         hasShortConnector(source, exit, entry);
     const bool useFixedJunction = !requiredConnector && sharesDeclaredFixedEntry(source, sending, receiving, penWidth);
-    if (!preserveHollow &&
+    const bool shareAtEntry = !preserveHollow &&
         (useFixedJunction || sharesRim ||
         sharesCornerExit(sending, entry, source.orientation, tightTolerance) ||
         canUseReceivingEntry(sending, receiving, source.orientation, preceding, penWidth) ||
@@ -513,7 +513,13 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
         (!receiving.requiresSharedEntry &&
             fitsDeclaredSharedEntry(sending, receiving, source, last, penWidth)) ||
         (terminal &&
-            (sharesFinalFold || sharesTightEntry(sending, receiving, tightTolerance))))) {
+            (sharesFinalFold || sharesTightEntry(sending, receiving, tightTolerance))));
+    // Optional sharing must not swallow a connector past the head's exit.
+    // A seam explicitly required by a ligature or folded return still wins.
+    const bool requiresSeam = sending.requiresSharedExit || receiving.requiresSharedEntry ||
+        receiving.requiresDeclaredReturn || sharesFinalFold || useFixedJunction;
+    if (shareAtEntry && (!sending.prefersOwnExit || requiresSeam ||
+                         !hasShortConnector(source, exit, entry))) {
         if (!retainsLandmarks(sending, sending.entry ? &*sending.entry : nullptr, &entry, source.orientation))
             return {};
         if (receiving.prefersTightIncoming && !sending.counters.isEmpty() && !sending.entry &&

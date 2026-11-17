@@ -1093,7 +1093,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             for (const auto& head : evidence->openHeads)
                 for (const auto& [entry, exit] : cutOpenHeads(source, {head}, policy))
                     result.push_back({.formId = id, .entry = entry, .exit = exit,
-                                      .landmarks = {head.crest, head.rightEdge, head.leftEdge}});
+                                      .landmarks = {head.crest, head.rightEdge, head.leftEdge},
+                                      .prefersOwnExit = true});
         }
         std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
             return Stretching::cmpbyx{}(*a.entry, *b.entry);
