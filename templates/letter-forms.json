@@ -3269,6 +3269,12 @@
             "minY": -0.35,
             "maxY": 0.55
           },
+          "shoulder": {
+            "minX": -4.5,
+            "maxX": -1.6,
+            "minY": 0.1,
+            "maxY": 1.1
+          },
           "footCorner": {
             "minX": -0.45,
             "maxX": 0.35,
@@ -3316,8 +3322,8 @@
           "oppositeCorner": {
             "minX": -2.6,
             "maxX": -1.6,
-            "minY": -0.1,
-            "maxY": 0.1
+            "minY": -0.2,
+            "maxY": 0.2
           }
         }
       },

@@ -378,6 +378,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         const auto settings = form.value("_upperAttachment").toObject();
         for (auto seam : upperAttachmentSections(source, settings, UpperAttachmentMode::Original)) {
             const QLineF section(seam.topBaseLine.point, seam.bottomBaseLine.point);
+            const bool atStemShoulder = seam.topBaseLine.isSharp &&
+                settings.value("stemFoot").toObject().contains("shoulder");
             // Find the crest of the upper piece. Another letter's
             // ascender can be taller than the stacked tooth.
             const double maxCrestY = section.y1() - attachment.value("minRise").toDouble();
@@ -396,8 +398,9 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 // The upper pen shape can double back. Check the descending
                 // arm near the attachment, below that turn.
                 // The owned crest can be lower than a later letter's ascender.
-                const bool preferred = (continuation || it == source.ySorted.rbegin()) &&
-                    std::abs(bounds.top() - crest.point.y()) <= 1e-5 &&
+                const bool preferred = (atStemShoulder ||
+                    ((continuation || it == source.ySorted.rbegin()) &&
+                     std::abs(bounds.top() - crest.point.y()) <= 1e-5)) &&
                     singleHorizontalStroke(stroke, bounds, bounds.top() + .85 * bounds.height());
                 if (!preferred && (!singleHorizontalStroke(stroke, bounds, bounds.top() + .90 * bounds.height()) ||
                     !singleHorizontalStroke(stroke, bounds, bounds.top() + .95 * bounds.height()))) continue;

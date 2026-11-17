@@ -494,6 +494,8 @@ int main(int argc, char** argv) {
                            ReviewedJoin{71, 13, 1, 3, 0, 37.4653, 27},
                            ReviewedJoin{23, 12, 6, 3, 0, 34.5094, 24},
                            ReviewedJoin{96, 14, 7, 3, 0, 35.4539, 25},
+                           ReviewedJoin{409, 5, 10, 1, 0, 3, 26},
+                           ReviewedJoin{156, 12, 1, 2, 0, 5, 27},
                            ReviewedJoin{600, 13, 1, 2, 1, 29, 16.7334, true},
                            ReviewedJoin{44, 9, 8, 1, 3, 12.2629, 23, true},
                            ReviewedJoin{336, 3, 6, 2, 1, 25.2285, 6, true},

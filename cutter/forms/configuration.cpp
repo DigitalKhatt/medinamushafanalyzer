@@ -2149,11 +2149,13 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                 if (attachment.contains("stemFoot")) {
                     const auto foot = attachment.value("stemFoot").toObject();
                     const auto stem = namedLetterForm(config, foot.value("template").toString());
-                    if (sharedBody.value("shape") != "returning-lips" || foot.size() != 2 + int(foot.contains("footCorner")) ||
+                    if (sharedBody.value("shape") != "returning-lips" ||
+                        foot.size() != 2 + int(foot.contains("footCorner")) + int(foot.contains("shoulder")) ||
                         formDescription(config, stem, "body").value("shape") != "descending-stem")
                         return id + ": stemFoot needs a returning lip and a descending stem template";
                     measurements.append(foot.value("crest").toObject());
                     if (foot.contains("footCorner")) measurements.append(foot.value("footCorner").toObject());
+                    if (foot.contains("shoulder")) measurements.append(foot.value("shoulder").toObject());
                 } else {
                     if (right.value("bottomProbe") != "left" || right.value("anchorSide") != "bottom")
                         return id + ": upperAttachment needs a leftward probe";

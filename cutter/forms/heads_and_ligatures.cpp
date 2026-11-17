@@ -176,9 +176,16 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
         const auto& left = leftIsTop ? stem->topBaseLine : stem->bottomBaseLine;
         const auto& right = leftIsTop ? stem->bottomBaseLine : stem->topBaseLine;
         const auto stemSide = getJoinTime(*stem, context.orientation);
+        const auto towardHead = [&](const PathExtrema& point) {
+            const bool advances = stemSide.startAtLeft != (point.time == stemSide.minTime);
+            auto next = advances ? context.prev(context.timeSorted.lower_bound(point))
+                                 : context.timeSorted.upper_bound(point);
+            return next == context.timeSorted.end() ? context.timeSorted.begin() : next;
+        };
         const auto bounds = foot.value("crest").toObject();
+        const auto shoulderBounds = foot.value("shoulder").toObject();
         const auto seamAt = [&](const PathExtrema& edge) -> std::vector<Stretching> {
-            const PathExtrema* crest = nullptr;
+            const PathExtrema* attachment = nullptr;
             double closest = std::numeric_limits<double>::infinity();
             for (auto at = context.timeSorted.begin(); at != context.timeSorted.end(); ++at) {
                 if (!at->isY || at->isSharp || !stemSide.isStrictLeft(at->time) ||
@@ -186,13 +193,22 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
                     !matchesOffset(bounds, at->point - left.point)) continue;
                 const double distance = QLineF(left.point, at->point).length();
                 if (distance < closest && interiorChord(context.transformedPath, *at, edge)) {
-                    crest = &*at;
+                    attachment = &*at;
                     closest = distance;
                 }
             }
-            if (!crest) return {};
+            // A sharp shoulder can connect directly to the foot of the
+            // stem. Follow the left flank to the next contour landmark.
+            if (!attachment && !shoulderBounds.isEmpty() && (edge.isSharp || edge.isX)) {
+                const auto shoulder = towardHead(left);
+                if (shoulder->isSharp && stemSide.isStrictLeft(shoulder->time) &&
+                    matchesOffset(shoulderBounds, shoulder->point - left.point) &&
+                    interiorChord(context.transformedPath, *shoulder, edge))
+                    attachment = &*shoulder;
+            }
+            if (!attachment) return {};
             Stretching seam{};
-            seam.topBaseLine = seam.topLeft = seam.topRight = *crest;
+            seam.topBaseLine = seam.topLeft = seam.topRight = *attachment;
             seam.bottomBaseLine = seam.bottomLeft = seam.bottomRight = edge;
             return {seam};
         };
@@ -202,10 +218,7 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
         if (!sections.empty() || cornerBounds.isEmpty() || right.isSharp) return sections;
         // The projection can end just above the corner where the shaft
         // meets the lip. Use the next point on that same contour flank.
-        const bool advances = stemSide.startAtLeft != (right.time == stemSide.minTime);
-        auto corner = advances ? context.prev(context.timeSorted.lower_bound(right))
-                               : context.timeSorted.upper_bound(right);
-        if (corner == context.timeSorted.end()) corner = context.timeSorted.begin();
+        const auto corner = towardHead(right);
         if ((corner->isSharp || corner->isX) && stemSide.isStrictLeft(corner->time) &&
             matchesOffset(cornerBounds, corner->point - right.point))
             return seamAt(*corner);
