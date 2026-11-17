@@ -177,24 +177,39 @@ std::vector<Stretching> upperAttachmentSections(SearchContext& context, const QJ
         const auto& right = leftIsTop ? stem->bottomBaseLine : stem->topBaseLine;
         const auto stemSide = getJoinTime(*stem, context.orientation);
         const auto bounds = foot.value("crest").toObject();
-        const PathExtrema* crest = nullptr;
-        double closest = std::numeric_limits<double>::infinity();
-        for (auto at = context.timeSorted.begin(); at != context.timeSorted.end(); ++at) {
-            if (!at->isY || at->isSharp || !stemSide.isStrictLeft(at->time) ||
-                at->point.y() >= context.prev(at)->point.y() || at->point.y() >= context.next(at)->point.y() ||
-                !matchesOffset(bounds, at->point - left.point)) continue;
-            const double distance = QLineF(left.point, at->point).length();
-            if (distance < closest && interiorChord(context.transformedPath, *at, right)) {
-                crest = &*at;
-                closest = distance;
+        const auto seamAt = [&](const PathExtrema& edge) -> std::vector<Stretching> {
+            const PathExtrema* crest = nullptr;
+            double closest = std::numeric_limits<double>::infinity();
+            for (auto at = context.timeSorted.begin(); at != context.timeSorted.end(); ++at) {
+                if (!at->isY || at->isSharp || !stemSide.isStrictLeft(at->time) ||
+                    at->point.y() >= context.prev(at)->point.y() || at->point.y() >= context.next(at)->point.y() ||
+                    !matchesOffset(bounds, at->point - left.point)) continue;
+                const double distance = QLineF(left.point, at->point).length();
+                if (distance < closest && interiorChord(context.transformedPath, *at, edge)) {
+                    crest = &*at;
+                    closest = distance;
+                }
             }
-        }
-        if (!crest) return {};
+            if (!crest) return {};
+            Stretching seam{};
+            seam.topBaseLine = seam.topLeft = seam.topRight = *crest;
+            seam.bottomBaseLine = seam.bottomLeft = seam.bottomRight = edge;
+            return {seam};
+        };
 
-        Stretching seam{};
-        seam.topBaseLine = seam.topLeft = seam.topRight = *crest;
-        seam.bottomBaseLine = seam.bottomLeft = seam.bottomRight = right;
-        return {seam};
+        auto sections = seamAt(right);
+        const auto cornerBounds = foot.value("footCorner").toObject();
+        if (!sections.empty() || cornerBounds.isEmpty() || right.isSharp) return sections;
+        // The projection can end just above the corner where the shaft
+        // meets the lip. Use the next point on that same contour flank.
+        const bool advances = stemSide.startAtLeft != (right.time == stemSide.minTime);
+        auto corner = advances ? context.prev(context.timeSorted.lower_bound(right))
+                               : context.timeSorted.upper_bound(right);
+        if (corner == context.timeSorted.end()) corner = context.timeSorted.begin();
+        if ((corner->isSharp || corner->isX) && stemSide.isStrictLeft(corner->time) &&
+            matchesOffset(cornerBounds, corner->point - right.point))
+            return seamAt(*corner);
+        return {};
     }
 
     const auto head = settings.value("headFlank").toObject();

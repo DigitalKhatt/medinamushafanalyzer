@@ -891,9 +891,11 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         cutKeys << "sharedEntryAtFeet";
     }
     if (const auto attachment = cuts.value("sharedEntryAtAttachment"); !attachment.isUndefined()) {
-        const auto partner = namedLetterForm(config, attachment.toString());
+        const auto partners = attachment.isString() ? QJsonArray{attachment} : attachment.toArray();
         if (phase != "medial" || (shape != "returning-lips" && shape != "paired-route") ||
-            !partner.value("upperAttachment").isObject())
+            partners.isEmpty() || std::any_of(partners.begin(), partners.end(), [&](const auto& partner) {
+                return !namedLetterForm(config, partner.toString()).value("upperAttachment").isObject();
+            }))
             return id + ": sharedEntryAtAttachment needs a medial return and a declared upper attachment";
         cutKeys << "sharedEntryAtAttachment";
     }
@@ -2130,10 +2132,11 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                 if (attachment.contains("stemFoot")) {
                     const auto foot = attachment.value("stemFoot").toObject();
                     const auto stem = namedLetterForm(config, foot.value("template").toString());
-                    if (sharedBody.value("shape") != "returning-lips" || foot.size() != 2 ||
+                    if (sharedBody.value("shape") != "returning-lips" || foot.size() != 2 + int(foot.contains("footCorner")) ||
                         formDescription(config, stem, "body").value("shape") != "descending-stem")
                         return id + ": stemFoot needs a returning lip and a descending stem template";
                     measurements.append(foot.value("crest").toObject());
+                    if (foot.contains("footCorner")) measurements.append(foot.value("footCorner").toObject());
                 } else {
                     if (right.value("bottomProbe") != "left" || right.value("anchorSide") != "bottom")
                         return id + ": upperAttachment needs a leftward probe";

@@ -233,12 +233,17 @@ QString compileAnchorForms(const QJsonObject& config, AnchorForms& forms, bool s
                 const auto inherit = declaration.value("body").toObject().value("inherit").toString();
                 if (!inherit.isEmpty()) {
                     const auto parent = namedLetterForm(config, inherit);
-                    form.insert("_sharedAttachment", attachmentSettings(parent));
+                    form.insert("_sharedAttachments", QJsonArray{attachmentSettings(parent)});
                 }
             }
-            const auto incoming = form.value("cuts").toObject().value("sharedEntryAtAttachment").toString();
-            if (!incoming.isEmpty())
-                form.insert("_sharedAttachment", attachmentSettings(namedLetterForm(config, incoming)));
+            const auto incoming = cuts.value("sharedEntryAtAttachment");
+            if (!incoming.isUndefined()) {
+                QJsonArray attachments;
+                const auto partners = incoming.isString() ? QJsonArray{incoming} : incoming.toArray();
+                for (const auto& partner : partners)
+                    attachments.append(attachmentSettings(namedLetterForm(config, partner.toString())));
+                form.insert("_sharedAttachments", attachments);
+            }
             const auto outgoing = form.value("cuts").toObject().value("sharedExitAtAttachment").toObject();
             if (!outgoing.isEmpty())
                 form.insert("_upperAttachment", attachmentSettings(namedLetterForm(config, outgoing.value("template").toString())));
@@ -327,6 +332,14 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     source.nextIter = std::next(source.xSorted.begin());
     const auto routeCut = cuts.value("route").toObject();
     const auto turn = routeCut.value("descendingTurn");
+    const auto sharedAttachments = [&](UpperAttachmentMode mode) {
+        std::vector<Stretching> sections;
+        for (const auto& settings : form.value("_sharedAttachments").toArray()) {
+            const auto attachmentCuts = upperAttachmentSections(source, settings.toObject(), mode);
+            sections.insert(sections.end(), attachmentCuts.begin(), attachmentCuts.end());
+        }
+        return sections;
+    };
     if (shape == "contour-route" && position == 2 && turn.isDouble()) {
         const auto evidence = recognizedSharedShape(source, body);
         if (!evidence->route) return result;
@@ -894,9 +907,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
         if (shape == "returning-lips") {
             const auto ownAttachment = form.value("upperAttachment").toObject();
             const auto ownSections = upperAttachmentSections(source, ownAttachment);
-            const auto shared = form.value("_sharedAttachment").toObject();
-            const auto attachments = upperAttachmentSections(source, shared, UpperAttachmentMode::Original);
-            const auto normalAttachments = upperAttachmentSections(source, shared, UpperAttachmentMode::ArmNormal);
+            const auto attachments = sharedAttachments(UpperAttachmentMode::Original);
+            const auto normalAttachments = sharedAttachments(UpperAttachmentMode::ArmNormal);
             for (const auto& head : evidence->mouths) {
                 const auto& lips = head.lips;
                 const double distance = cuts.value("minimumExitWidths").toDouble() * penWidth;
@@ -1095,11 +1107,11 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 overlappingSenders.append(id.toString());
         }
         const bool atUpperAttachment = form.contains("upperAttachment");
-        const auto attachmentShape = (atUpperAttachment ? form.value("upperAttachment")
-                                                       : form.value("_sharedAttachment")).toObject();
         // The two-corner seam belongs to the returning-lips body, which
         // verifies both lips before accepting it.
-        const auto sharedSections = upperAttachmentSections(source, attachmentShape, UpperAttachmentMode::Probes);
+        const auto sharedSections = atUpperAttachment
+            ? upperAttachmentSections(source, form.value("upperAttachment").toObject(), UpperAttachmentMode::Probes)
+            : sharedAttachments(UpperAttachmentMode::Probes);
         const double lipDistance = cuts.value("minimumExitWidths").toDouble() * penWidth;
         const auto lips = continuation && lipDistance > 0 ? mouthLips(source, body.value("mouth").toObject())
                                                          : std::vector<MouthLips>{};

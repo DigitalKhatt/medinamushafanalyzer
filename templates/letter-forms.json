@@ -339,7 +339,8 @@
           "right": "free",
           "left": "shared-section"
         }
-      }
+      },
+      "preferSharedAttachment": true
     },
     {
       "id": "lam-hah-stacked-init",
@@ -3253,10 +3254,16 @@
         "stemFoot": {
           "template": "lam-hah-stacked-init",
           "crest": {
-            "minX": -2.5,
+            "minX": -3.2,
             "maxX": -0.25,
             "minY": -0.35,
             "maxY": 0.55
+          },
+          "footCorner": {
+            "minX": -0.45,
+            "maxX": 0.35,
+            "minY": -0.03,
+            "maxY": 1.1
           }
         }
       },
@@ -3750,7 +3757,10 @@
         "counters": 0
       },
       "cuts": {
-        "sharedEntryAtAttachment": "hah-stacked-medi",
+        "sharedEntryAtAttachment": [
+          "hah-stacked-medi",
+          "hah-sloped-attachment-medi"
+        ],
         "minimumExitWalk": 1.5,
         "minimumExitBefore": "قوؤ",
         "routes": {

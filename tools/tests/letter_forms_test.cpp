@@ -489,7 +489,9 @@ int main(int argc, char** argv) {
                            ReviewedJoin{539, 13, 7, 1, 1, 5.731, 15},
                            ReviewedJoin{600, 13, 1, 2, 0, 27, 20.0089},
                            ReviewedJoin{251, 1, 10, 1, 0, 5, 28.2499},
-                           ReviewedJoin{71, 13, 1, 3, 0, 37, 27.5098}}) {
+                           ReviewedJoin{71, 13, 1, 3, 0, 37.4653, 27},
+                           ReviewedJoin{23, 12, 6, 3, 0, 34.5094, 24},
+                           ReviewedJoin{96, 14, 7, 3, 0, 35.4539, 25}}) {
         QFile fixture(QString("pages/page%1.dat").arg(at.page));
         check(fixture.open(QIODevice::ReadOnly), "Missing reviewed join fixture");
         PageAnalysisResult reviewed;
