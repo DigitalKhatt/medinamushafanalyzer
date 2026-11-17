@@ -1904,24 +1904,27 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
     const double period = baseContourCurves(ink).size();
     const double sample = .25 * width;
     const double reach = 2.5 * width;
-    const auto section = [&](const PathExtrema &anchor, bool forward, double tangentSample = 0)
-            -> std::optional<Stretching> {
-        if (anchor.point.x() >= foot.point.x() || !outside.isStrictLeft(anchor.time)) return {};
-        Stretching cut{};
-        if (!contourNormalCut(context, anchor, forward, false, cut, true, tangentSample)) return {};
-        std::swap(cut.topBaseLine, cut.bottomBaseLine);
+    const auto retainsFeet = [&](const Stretching &cut) {
         if (cut.referenceWidth > std::min(maxWidth, innerWidth) ||
-            cut.topBaseLine.point.y() < body.upper.box.bottom() || !outside.isStrictLeft(cut.topBaseLine.time) ||
-            !getJoinTime(cut, context.orientation).isStrictLeft(exitTip->time)) return {};
-        const auto pieces = cutRegions(context.transformedPath, {}, {right, cut}, context.orientation, true);
-        if (pieces.size() != 3) return {};
+            cut.topBaseLine.point.y() < body.upper.box.bottom() ||
+            !getJoinTime(cut, context.orientation).isStrictLeft(exitTip->time)) return false;
+        const auto pieces = cutRegions(ink, {}, {right, cut}, context.orientation, true);
+        if (pieces.size() != 3) return false;
         const auto contours = toSubpaths(pieces[1].path);
         const auto retains = [&](const QRectF &counter) {
             return std::any_of(contours.begin(), contours.end(), [&](const auto &outline) {
                 return outline.boundingRect() == counter;
             });
         };
-        if (!retains(body.upper.box) || !retains(body.lower.box)) return {};
+        return retains(body.upper.box) && retains(body.lower.box);
+    };
+    const auto section = [&](const PathExtrema &anchor, bool forward, double tangentSample = 0)
+            -> std::optional<Stretching> {
+        if (anchor.point.x() >= foot.point.x() || !outside.isStrictLeft(anchor.time)) return {};
+        Stretching cut{};
+        if (!contourNormalCut(context, anchor, forward, false, cut, true, tangentSample)) return {};
+        std::swap(cut.topBaseLine, cut.bottomBaseLine);
+        if (!outside.isStrictLeft(cut.topBaseLine.time) || !retainsFeet(cut)) return {};
         return cut;
     };
     const auto outerStep = [&](const PathExtrema &point, bool forward) {
@@ -1985,6 +1988,23 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
         }
     }
     if (stepExit) return stepExit;
+    if (needsNarrowing) {
+        // A short vertical step has two corners. The corner on its side
+        // can give a broad chord. Use the end facing the connector before
+        // walking farther along the baseline.
+        std::optional<Stretching> shoulder;
+        for (const auto &corner : body.left) {
+            const auto delta = corner.anchor.point - foot.point;
+            if (!corner.hasFoot || delta.y() >= 0 || delta.y() < -.5 * width ||
+                std::abs(delta.x()) > .25 * width || -corner.tangent.x() <= std::abs(corner.tangent.y()))
+                continue;
+            if (auto cut = counterFootCut(ink, body, corner, true);
+                cut && cut->referenceWidth >= .5 * width && retainsFeet(*cut) &&
+                (!shoulder || cut->bottomBaseLine.point.y() > shoulder->bottomBaseLine.point.y()))
+                shoulder = cut;
+        }
+        if (shoulder) return shoulder;
+    }
     if (cornerExit) return cornerExit;
     if (roundedExit) return roundedExit;
     if (!needsNarrowing) return {};

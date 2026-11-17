@@ -478,6 +478,7 @@ int main(int argc, char** argv) {
     struct ReviewedJoin {
         int page, line, word, subword, join;
         double upper, lower;
+        bool connector = false;
     };
     for (const auto& at : {ReviewedJoin{225, 9, 8, 1, 3, 24, 34},
                            ReviewedJoin{274, 6, 2, 2, 0, 30, 19},
@@ -491,21 +492,30 @@ int main(int argc, char** argv) {
                            ReviewedJoin{251, 1, 10, 1, 0, 5, 28.2499},
                            ReviewedJoin{71, 13, 1, 3, 0, 37.4653, 27},
                            ReviewedJoin{23, 12, 6, 3, 0, 34.5094, 24},
-                           ReviewedJoin{96, 14, 7, 3, 0, 35.4539, 25}}) {
+                           ReviewedJoin{96, 14, 7, 3, 0, 35.4539, 25},
+                           ReviewedJoin{600, 13, 1, 2, 1, 29, 16.7334, true},
+                           ReviewedJoin{44, 9, 8, 1, 3, 12.2629, 23, true},
+                           ReviewedJoin{336, 3, 6, 2, 1, 25.2285, 6, true},
+                           ReviewedJoin{251, 1, 10, 1, 1, 7, 22.6594, true},
+                           ReviewedJoin{270, 9, 4, 1, 1, 7.32264, 17.0499, true},
+                           ReviewedJoin{525, 14, 10, 1, 1, 5.62427, 34.0882, true},
+                           ReviewedJoin{102, 12, 2, 2, 1, 5.80054, 22.2675, true}}) {
         QFile fixture(QString("pages/page%1.dat").arg(at.page));
         check(fixture.open(QIODevice::ReadOnly), "Missing reviewed join fixture");
         PageAnalysisResult reviewed;
         QDataStream input(&fixture);
         input >> reviewed.page;
         check(reviewed.segmentSubword(at.page - 1, at.line - 1, at.word - 1, at.subword - 1, nullptr, true),
-              "Reviewed stacked or final join did not match");
+              "Reviewed join did not match");
         const auto& sub = reviewed.page.lines[at.line - 1].words[at.word - 1].wordResultInfo.subWords[at.subword - 1];
         check(sub.joins.size() > size_t(at.join) && sub.kashidaPaths.size() > size_t(at.join),
               "Reviewed join is missing");
         const auto& cut = *std::next(sub.joins.begin(), at.join);
-        check(std::abs(cut.topBaseLine.time - at.upper) < .001 &&
-              std::abs(cut.bottomBaseLine.time - at.lower) < .001 && sub.kashidaPaths[at.join].isEmpty(),
-              "The shared cut moved off the reviewed attachment");
+        const auto& upper = at.connector ? cut.topRight : cut.topBaseLine;
+        const auto& lower = at.connector ? cut.bottomRight : cut.bottomBaseLine;
+        check(std::abs(upper.time - at.upper) < .001 && std::abs(lower.time - at.lower) < .001 &&
+              sub.kashidaPaths[at.join].isEmpty() != at.connector,
+              "The cut or connector moved off the reviewed attachment");
     }
 
     QFile tailFile("pages/page75.dat");

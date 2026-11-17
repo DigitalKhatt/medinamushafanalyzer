@@ -767,10 +767,17 @@ cutOpenMouths(SearchContext &ctx, const std::vector<OpenMouthBody> &bodies, cons
         const auto &nose = body.nose;
         const double span = notch.point.x() - upper.point.x();
         std::vector<Stretching> lefts = cornerSections(ctx, lower);
-        if (form.value("projectExit").toBool() && notch.point.x() - lower.point.x() > 1.3 * span) {
+        if (form.value("projectExit").toBool() && lower.point.x() < upper.point.x()) {
             Stretching projected{};
-            if (medialChordAt(ctx, upper.point.x() - .25, notch.point.y() + 1.5, 3, projected))
-                lefts.insert(lefts.begin(), projected);
+            // The lower edge can keep descending along the connector, so
+            // its valley is farther left than the mouth itself.
+            if (medialChordAt(ctx, upper.point.x(), notch.point.y() + 1.5, 3, projected) &&
+                strokeNormalCut(ctx, projected) &&
+                upper.point.x() - lower.point.x() >= .75 * projected.referenceWidth) {
+                orientSection(ctx, projected, notch.time, false);
+                if (getJoinTime(projected, ctx.orientation).isStrictLeft(lower.time))
+                    lefts.insert(lefts.begin(), projected);
+            }
         }
         std::vector<std::pair<double, Stretching>> rights;
         for (const auto &corner : body.entryCorners) {
