@@ -1032,6 +1032,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 }
             }
         } else if (shape == "inclined-blade") {
+            const auto angle = cuts.value("preferredTurns").toObject().value("right");
+            const bool useDescender = cuts.value("turnBoundaries").toObject().value("right") == "descender";
             for (const auto& blade : evidence->blades) {
                 const auto limit = walkBoundaryLimit(source, blade.fork, blade.fork, blade.forward,
                     continuation ? cuts.value("minimumEntryWidths").toDouble() * penWidth : 0);
@@ -1051,16 +1053,24 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                         result.push_back(std::move(candidate));
                         return true;
                     };
+                    auto turn = useDescender && (continuation || tryEntryTurn)
+                        ? descenderEntry(source, entry, penWidth) : std::nullopt;
+                    // Use the steeper bend when the main descender stops at
+                    // the fork without finding its shallow turn.
+                    if (!turn && angle.isDouble()) {
+                        turn = strokeFlankTurn(source, entry.topBaseLine, blade.width, 1, true, angle.toDouble(), .4);
+                        if (turn) {
+                            orientSection(source, *turn, blade.tip.time, true);
+                            if (!orderedSections(*turn, entry, source.orientation)) turn.reset();
+                        }
+                    }
                     if (continuation) {
                         // The fork fixes the body limit. The template picks its
                         // preferred section before testing any neighboring body.
-                        const auto turn = cuts.value("turnBoundaries").toObject().value("right") == "descender"
-                            ? descenderEntry(source, entry, penWidth) : std::nullopt;
                         if (add(turn.value_or(entry))) break;
                         continue;
                     }
-                    if (tryEntryTurn && cuts.value("turnBoundaries").toObject().value("right") == "descender")
-                        if (const auto turn = descenderEntry(source, entry, penWidth)) add(*turn);
+                    if (turn) add(*turn);
                     if (tryEntryTurn && !form.value("fixedAnchorsEnding").toString().isEmpty()) continue;
                     add(entry);
                 }

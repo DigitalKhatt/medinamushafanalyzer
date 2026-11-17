@@ -520,6 +520,8 @@ int main(int argc, char** argv) {
                            ReviewedJoin{520, 7, 2, 2, 1, 20.9286, 42.7089, true, true},
                            ReviewedJoin{2, 8, 2, 2, 3, 45.2927, 93.7482, true, true},
                            ReviewedJoin{453, 10, 4, 2, 1, 9.64133, 18.3362, true},
+                           ReviewedJoin{550, 14, 3, 4, 0, 30.315, 21.7068, true, true},
+                           ReviewedJoin{571, 5, 10, 3, 0, 28.295, 19.6758, true, true},
                            ReviewedJoin{203, 7, 8, 1, 1, 5.37563, 8.37166, true, true},
                            ReviewedJoin{181, 8, 5, 2, 1, 12.6173, 37.6313, true}}) {
         QFile fixture(QString("pages/page%1.dat").arg(at.page));

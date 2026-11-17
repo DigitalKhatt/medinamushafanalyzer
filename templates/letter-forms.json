@@ -4389,6 +4389,9 @@
       "cuts": {
         "minimumEntryWidths": 1,
         "sharedEntryAfter": "جحخ",
+        "preferredTurns": {
+          "right": 45
+        },
         "turnBoundaries": {
           "right": "descender"
         },

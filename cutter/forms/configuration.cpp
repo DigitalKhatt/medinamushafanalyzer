@@ -957,10 +957,11 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
     }
     if (const auto value = cuts.value("preferredTurns"); !value.isUndefined()) {
         const auto turns = value.toObject();
-        if (phase != "medial" || (shape != "paired-route" && shape != "counter-attachment") || turns.isEmpty())
-            return id + ": preferredTurns requires a medial paired route or counter attachment";
+        if (phase != "medial" || (shape != "paired-route" && shape != "counter-attachment" &&
+                                  shape != "inclined-blade") || turns.isEmpty())
+            return id + ": preferredTurns requires a medial paired route, counter attachment or blade";
         for (auto it = turns.begin(); it != turns.end(); ++it)
-            if ((it.key() != "right" && (it.key() != "left" || shape == "counter-attachment")) || !it.value().isDouble() ||
+            if ((it.key() != "right" && (it.key() != "left" || shape != "paired-route")) || !it.value().isDouble() ||
                 !(it.value().toDouble() > 0 && it.value().toDouble() < 90))
                 return id + ": preferredTurns needs a boundary and an angle between 0 and 90 degrees";
         cutKeys << "preferredTurns";
