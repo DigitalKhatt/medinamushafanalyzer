@@ -484,6 +484,7 @@ int main(int argc, char** argv) {
     for (const auto& at : {ReviewedJoin{225, 9, 8, 1, 3, 24, 34},
                            ReviewedJoin{274, 6, 2, 2, 0, 30, 19},
                            ReviewedJoin{274, 6, 7, 2, 2, 33.9905, 45},
+                           ReviewedJoin{336, 3, 4, 1, 2, 1.52731, 12},
                            ReviewedJoin{357, 12, 6, 2, 2, 28.3481, 35},
                            ReviewedJoin{456, 1, 8, 3, 0, 8.0687, 17},
                            ReviewedJoin{510, 1, 5, 1, 4, 7.77689, 17},

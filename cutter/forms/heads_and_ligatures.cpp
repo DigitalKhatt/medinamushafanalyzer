@@ -432,8 +432,14 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
     auto crest = upper;
     std::optional<PathExtrema> shoulderCorner;
     auto point = firstAfter(upper, upperIncreases);
+    const bool cornerPair = allowOblique && upper.isSharp && lower.isSharp;
     for (; side.isStrictRight(point->time); point = advance(point, upperIncreases)) {
-        if (point->point.y() > crest.point.y() + 1e-5) break;
+        if (point->point.y() > crest.point.y() + 1e-5) {
+            // The sharp junction can be followed by a tiny dip in the same flank.
+            if (cornerPair && point == first && point->point.y() - upper.point.y() < .05 * span &&
+                QLineF(upper.point, point->point).length() < span) continue;
+            break;
+        }
         if (point->isSharp && point->point.y() < lower.point.y()) shoulderCorner = *point;
         if (point->point.y() < crest.point.y()) crest = *point;
     }
@@ -446,16 +452,14 @@ std::optional<Stretching> cutAfterEntryCrest(SearchContext& ctx, Stretching cut,
     // A short cut across two inner corners can sit below a broad hook.
     // The first turn beyond the crest then lines up with the lower corner
     // even though the crest itself is farther to the left.
-    const bool reversedCorners = allowOblique && upper.isSharp && lower.isSharp &&
-        upper.point.y() > lower.point.y() && shoulderCorner &&
-        QLineF(upper.point, lower.point).length() < .24 * depth;
-    const bool shortCornerSeam = allowOblique && upper.isSharp && lower.isSharp &&
-        (QLineF(upper.point, lower.point).length() < .1 * depth || reversedCorners);
+    const bool reversedCorners = cornerPair && upper.point.y() > lower.point.y() && shoulderCorner &&
+        span < .24 * depth;
+    const bool shortCornerSeam = cornerPair && (span < .1 * depth || reversedCorners);
     const bool alignedShoulder = shortCornerSeam &&
         std::abs(point->point.x() - lower.point.x()) < .08 * depth;
     // The contour endpoints at a thin, oblique corner seam can be slightly
     // reversed in page y. Their contour order still identifies both flanks.
-    if (depth <= 0 || rise < (shortCornerSeam ? .25 : .27) * depth ||
+    if (depth <= 0 || rise < (shortCornerSeam ? .24 : .27) * depth ||
         (!shortCornerSeam && upper.point.y() > lower.point.y() + 1e-5) ||
         (std::abs(crest.point.x() - lower.point.x()) > .24 * depth && !alignedShoulder)) return {};
 
