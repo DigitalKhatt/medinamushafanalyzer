@@ -1,8 +1,9 @@
 # Medina Mushaf Catalog
 
-Build and browse a searchable catalog of the 1441 Hafs edition. The native
-analyzer supplies word, letter, dot, and mark assignments. The catalog serves
+Build and browse a searchable catalog of the 1441 Hafs edition. The analyzer supplies word, letter, dot, and mark assignments. The catalog serves
 search results and regenerates pages with individual letter colors.
+
+![Quick tour of the Medina Mushaf Catalog, showing shape-class search, word inspection, mark search, the longest kashidas, medial tooth pairs, and the color-coded page viewer](docs/catalog-search.gif)
 
 This project is sponsored by [@tarteelAI](https://github.com/TarteelAI) [<img src="https://assets-global.website-files.com/6167e862f6dfba5084eb5554/61680717c50ec79defcdb062_logo-group.svg">](https://www.tarteel.ai/)
 
