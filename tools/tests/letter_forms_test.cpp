@@ -437,6 +437,25 @@ int main(int argc, char** argv) {
           !raised.kashidaPaths.back().isEmpty() && raised.joins.rbegin()->bottomLeft.time == 7,
           "The raised reh lost its crest or the genuine incoming connector");
 
+    for (const auto& location : {std::array{52, 13, 6}, std::array{112, 9, 4}}) {
+        const auto [number, line, word] = location;
+        QFile file(QString("pages/page%1.dat").arg(number));
+        check(file.open(QIODevice::ReadOnly), "Missing final ṭāʾ junction fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        check(page.segmentSubword(number - 1, line - 1, word - 1, 1, nullptr, true, &config),
+              "Final ṭāʾ bowl junction did not segment");
+        const auto& sub = page.page.lines[line - 1].words[word - 1].wordResultInfo.subWords[1];
+        check(sub.letterDiagnostics.last().toObject().value("template") == "sad-tah-fina" &&
+              !sub.kashidaPaths.empty() && !sub.kashidaPaths.back().isEmpty(),
+              "Final ṭāʾ swallowed the connector before its bowl");
+        const auto cut = sub.kashidaCuts.back().second;
+        const auto bounds = sub.baseGlyphs.back().path.boundingRect();
+        check(bounds.width() < bounds.height() && std::abs(cut.dx()) < .25 * std::abs(cut.dy()),
+              "Final ṭāʾ entry moved away from the bowl junction or along the stroke");
+    }
+
     struct ReviewedJoin {
         int page, line, word, subword, join;
         double upper, lower;

@@ -5976,45 +5976,37 @@
     },
     {
       "id": "sad-tah-fina",
+      "anchorOverrides": {
+        "continuation": {
+          "sharedFixedEntryAfter": [
+            "seen-init"
+          ]
+        }
+      },
       "priorityWithinPass": 4,
       "continuationPriority": 0,
       "current": "صضطظ",
       "body": {
-        "shape": "profile-neck",
-        "neck": {
-          "lookback": 14,
-          "previousOffset": 1,
-          "minX": 3,
-          "maxX": 6.5,
-          "minY": 1,
-          "maxY": 2,
-          "topCheck": false,
-          "neighbors": [
-            {
-              "to": "topLeft",
-              "minX": 0,
-              "maxY": 0,
-              "from": "top"
-            },
-            {
-              "to": "topRight",
-              "minX": 0,
-              "maxY": 0,
-              "from": "top"
-            }
-          ]
+        "shape": "counter-neck",
+        "counter": {
+          "entryCorner": {
+            "placement": "bowl-junction",
+            "maxDistance": 2.1
+          }
         },
-        "profile": {
-          "centerCrossings": 4
-        }
+        "counters": 1
       },
       "cuts": {
-        "probe": {
-          "offsetX": 1.5
+        "fixEntryJunction": true,
+        "counter": {
+          "entryCorner": {
+            "normalCut": true,
+            "required": true
+          }
         },
         "boundaries": {
           "left": "free",
-          "right": "lower-probe"
+          "right": "counter-neck"
         }
       }
     },
@@ -6653,43 +6645,6 @@
         "counters": 1
       },
       "cuts": {
-        "counter": {
-          "entryCorner": {
-            "normalCut": true
-          },
-          "offset": 0.4,
-          "baselineOffset": 0.2
-        },
-        "boundaries": {
-          "left": "free",
-          "right": "counter-neck"
-        }
-      }
-    },
-    {
-      "id": "tah-diagonal-fina",
-      "anchorOverrides": {
-        "continuation": {
-          "sharedFixedEntryAfter": [
-            "seen-init"
-          ]
-        }
-      },
-      "priorityWithinPass": 6,
-      "continuationPriority": 2,
-      "current": "طظ",
-      "tightJoin": true,
-      "body": {
-        "shape": "counter-neck",
-        "counter": {
-          "entryCorner": {
-            "maxDistance": 2.1
-          }
-        },
-        "counters": 1
-      },
-      "cuts": {
-        "fixEntryJunction": true,
         "counter": {
           "entryCorner": {
             "normalCut": true

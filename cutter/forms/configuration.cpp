@@ -1877,8 +1877,12 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                 const auto corner = cornerValue.toObject();
                 const auto placement = corner.value("placement");
                 if (!placement.isUndefined() && (!placement.isString() ||
-                    !QStringList{"upper", "top-right", "right-corner-pair"}.contains(placement.toString())))
-                    return id + ": " + side + ".placement must be upper, top-right or right-corner-pair";
+                    !QStringList{"upper", "top-right", "right-corner-pair", "bowl-junction"}.contains(placement.toString())))
+                    return id + ": " + side + ".placement must be upper, top-right, right-corner-pair or bowl-junction";
+                if (placement == "bowl-junction" && (QString(phase) != "final" || QString(side) != "entryCorner" ||
+                    sharedBody.value("shape") != "counter-neck" || !corner.value("normalCut").toBool() ||
+                    !corner.value("required").toBool()))
+                    return id + ": bowl-junction needs a final counter neck and a required normal cut";
                 if (QString(side) == "exitCorner" && (!placement.isUndefined() && placement != "upper"))
                     return id + ": exitCorner.placement supports upper or the default lower neck";
                 const auto offset = corner.value("strokeOffsetX");

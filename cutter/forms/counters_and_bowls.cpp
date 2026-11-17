@@ -1008,7 +1008,8 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
         return result;
     result.maxDistance = settings.value("maxDistance").toDouble(1.5) * counter.height();
     result.upper = settings.value("placement") == "upper";
-    result.top = settings.value("placement") == "top-right";
+    result.bowlJunction = settings.value("placement") == "bowl-junction";
+    result.top = settings.value("placement") == "top-right" || result.bowlJunction;
     result.paired = settings.value("placement") == "right-corner-pair";
     result.upperLimit = counter.top() + settings.value("maxCounterY").toDouble() * counter.height();
     WordResultInfo::SubWordInfo empty;
@@ -1022,14 +1023,37 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
     const bool sampleValley = settings.value("sampleValley").toBool();
     for (auto at = geometry.timeSorted.begin(); at != geometry.timeSorted.end(); ++at) {
         const auto p = at->point;
-        const double distance =
-            QLineF(p, result.upper || result.top ? counter.topRight() : counter.bottomRight()).length();
+        const auto origin = result.upper || (result.top && !result.bowlJunction) ? counter.topRight() : counter.bottomRight();
+        const double distance = QLineF(p, origin).length();
         if (distance >= result.maxDistance)
             continue;
         const bool rounded = minRoundedAngle > 0 && !at->isSharp && at->isY && p.y() >= counter.bottom();
         if (!at->isSharp && !(result.top && at->isY) && !rounded)
             continue;
         CounterCornerBody body{*at, {}, distance, {}};
+        if (result.bowlJunction) {
+            const double height = counter.height();
+            if (p.x() < counter.center().x() || p.y() < counter.center().y()) continue;
+            const double sample = .3 * height;
+            PathExtrema before, after;
+            auto limit = *at;
+            QPointF tangent;
+            limit.time -= count;
+            if (!advanceOnContour(outline.ink, *at, limit, false, sample, before, tangent)) continue;
+            limit.time = at->time + count;
+            if (!advanceOnContour(outline.ink, *at, limit, true, sample, after, tangent)) continue;
+            const auto a = before.point - p, b = after.point - p;
+            // The rim rises into the bowl while the other flank leaves toward the incoming stroke.
+            const auto rim = a.y() < b.y() ? a : b;
+            const auto join = a.y() < b.y() ? b : a;
+            if (join.x() < .7 * sample || std::abs(join.y()) > .65 * join.x() ||
+                rim.x() < -.25 * sample || rim.y() > -.45 * sample || join.y() - rim.y() < .25 * sample)
+                continue;
+            body.tangent = join;
+            body.sampled = !at->isSharp;
+            result.corners.push_back(std::move(body));
+            continue;
+        }
         if (result.paired) {
             if (p.x() < counter.center().x() || p.y() < counter.bottom() || p.x() >= geometry.prev(at)->point.x() ||
                 p.x() >= geometry.next(at)->point.x())
@@ -1155,7 +1179,8 @@ static bool cutCounterCorners(SearchContext &context, const CounterCornerEvidenc
         double width = reach;
         for (const auto& hit : hits) {
             const double d = QLineF(p, hit.point).length();
-            if (d < width && (evidence.top ? hit.point.y() > p.y() : hit.point.y() < p.y()) &&
+            if (d < width && (!evidence.bowlJunction || (hit.pathIndex == 0 && d <= 1.5 * counter.height())) &&
+                (evidence.top ? hit.point.y() > p.y() : hit.point.y() < p.y()) &&
                 interiorChord(ink, hit, corner)) {
                 top = hit;
                 width = d;
