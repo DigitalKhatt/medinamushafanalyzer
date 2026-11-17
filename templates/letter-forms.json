@@ -695,6 +695,7 @@
         }
       },
       "cuts": {
+        "preferFlankExit": true,
         "minimumExitAtFlank": true,
         "minimumExitBefore": "سش",
         "flankExitAngle": 20,
@@ -768,6 +769,7 @@
         }
       },
       "cuts": {
+        "preferFlankExit": true,
         "flankExitAngle": 20,
         "route": {
           "bottomProbe": "normal"
@@ -796,7 +798,7 @@
       },
       "cuts": {
         "preferFlankExit": true,
-        "flankExitAngle": 20,
+        "flankExitAngle": 45,
         "turnBoundaries": {
           "left": "trim"
         },

@@ -453,13 +453,20 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                                           .footExitCandidate = true});
                 }
                 if (cuts.value("preferFlankExit").toBool()) {
+                    const bool narrowCrossStroke = original.length() < .65 * penWidth &&
+                        std::abs(original.dy()) < .15 * original.length();
                     for (const auto& exit : declaredFlankExits(source, body, cuts, penWidth)) {
-                        const QLineF shorter(exit.topBaseLine.point, exit.bottomBaseLine.point);
-                        // Use a flank exit to reclaim a connector. Sub-stroke
-                        // shifts at the foot belong to the contour route.
-                        if (shorter.center().x() - original.center().x() < shorter.length() ||
-                            !cutPrecedes(exit, projected, source.orientation) ||
-                            !matchesBoundaryBody(source, form, exit, true)) continue;
+                        const auto turn = sectionLine(exit);
+                        const double shift = turn.center().x() - original.center().x();
+                        const bool trimsConnector = shift >= turn.length() &&
+                            cutPrecedes(exit, projected, source.orientation);
+                        // A thin cross-section above the foot slices the shaft.
+                        // Keep the whole tooth if its turn is close and wider.
+                        const bool restoresFoot = narrowCrossStroke && shift < 0 && shift > -1.5 * penWidth &&
+                            turn.length() > original.length() + .2 * penWidth &&
+                            cutPrecedes(projected, exit, source.orientation);
+                        if (!(trimsConnector || restoresFoot) || !matchesBoundaryBody(source, form, exit, true))
+                            continue;
                         result.push_back({.formId = id, .exit = exit, .landmarks = {*source.xSorted.begin()}});
                     }
                 }

@@ -508,6 +508,24 @@ std::vector<Stretching> declaredFlankExits(SearchContext& context, const QJsonOb
     inspectLandmark("Outer turn", outer);
 
     std::vector<Stretching> exits;
+    if (outer.isSharp && outer.time == route.topBefore.time && route.anchor.isY && !route.anchor.isSharp) {
+        // A sharp turn at the right edge can lead directly into the foot.
+        // Step onto the outgoing flank to keep the corner in the body.
+        auto limit = route.topEnd;
+        const bool forward = route.topPrevious;
+        if ((limit.time > outer.time) != forward)
+            limit.time += (forward ? 1 : -1) * int(baseContourCurves(context.transformedPath).size());
+        PathExtrema flank;
+        QPointF tangent;
+        Stretching exit{};
+        if (advanceOnContour(context.transformedPath, outer, limit, forward, .15 * stroke, flank, tangent) &&
+            contourNormalCut(context, flank, forward, false, exit) &&
+            exit.referenceWidth >= .45 * stroke && exit.referenceWidth <= 1.8 * stroke) {
+            orientSection(context, exit, outer.time, false);
+            if (getJoinTime(exit, context.orientation).isStrictRight(crest.time))
+                exits.push_back(exit);
+        }
+    }
     for (const auto& start : {crest, outer}) {
         auto section = strokeFlankTurn(context, start, stroke, -1, true, angle.toDouble(), .5);
         if (!section) continue;
