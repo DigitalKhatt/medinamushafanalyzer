@@ -753,6 +753,44 @@ std::vector<OpenMouthBody> recognizeOpenMouths(const InkOutline &outline, const 
     return bodies;
 }
 
+std::optional<Stretching> mouthHookJunction(const SearchContext& context, const OpenMouthBody& body,
+                                           double angle, double penWidth) {
+    const auto nose = context.timeSorted.find(body.nose);
+    if (nose == context.timeSorted.end()) return {};
+    const auto& ink = context.transformedPath;
+    const int period = baseContourCurves(ink).size();
+    const auto leaves = [&](const PathExtrema& point) { return point.point - nose->point; };
+    for (const bool forward : {true, false}) {
+        const auto step = forward ? &SearchContext::prev : &SearchContext::next;
+        PathExtrema bound = *nose, sample;
+        bound.time += forward ? period : -period;
+        QPointF tangent;
+        if (!advanceOnContour(ink, *nose, bound, forward, .6 * penWidth, sample, tangent)) continue;
+        const auto descent = leaves(sample);
+        if (descent.y() < .5 * penWidth || std::abs(descent.x()) > .3 * penWidth) continue;
+
+        // The outward branch descends away from the head. Its first low point
+        // bounds the turn, before the connector rises toward another letter.
+        auto low = nose;
+        for (auto next = (context.*step)(low); next != nose; next = (context.*step)(low)) {
+            const auto rise = leaves(*next);
+            if (next->point.y() < low->point.y() - 1e-6 || rise.y() > 4.5 * penWidth ||
+                std::abs(rise.x()) > 5 * penWidth) break;
+            low = next;
+        }
+        if (leaves(*low).y() < penWidth) continue;
+        Stretching junction{};
+        if (!alefTurnCut(context, *low, angle, penWidth, junction, &*nose, forward ? 1 : -1)) continue;
+        orientSection(context, junction, body.nose.time, true);
+        const auto side = getJoinTime(junction, context.orientation);
+        const auto section = sectionLine(junction);
+        if (side.isStrictLeft(body.lips.notch.time) && side.isStrictLeft(body.lips.upper.time) &&
+            section.length() >= .5 * penWidth && section.length() <= 2 * penWidth &&
+            section.center().y() > nose->point.y() + .6 * penWidth) return junction;
+    }
+    return {};
+}
+
 // The page assembler can reuse the same intrinsic lip inventory independently
 // of which mouth currently lies between its neighboring cuts.
 std::vector<MouthLips> mouthLips(SearchContext &ctx, const QJsonObject &form) {

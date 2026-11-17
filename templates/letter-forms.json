@@ -3198,6 +3198,7 @@
         "counters": 0
       },
       "cuts": {
+        "entryHookTurn": 11.2,
         "minimumExitBefore": "ن",
         "minimumExitWalk": 0.5,
         "routes": {
@@ -3483,6 +3484,7 @@
         "counters": 0
       },
       "cuts": {
+        "entryHookTurn": 11.2,
         "minimumExitWalk": 1.5,
         "minimumExitBefore": "قوؤبتثك",
         "routes": {
@@ -3606,6 +3608,7 @@
         "counters": 0
       },
       "cuts": {
+        "entryHookTurn": 11.2,
         "routes": {
           "right": {
             "bottomProbe": "down",
@@ -3983,6 +3986,7 @@
         "counters": 0
       },
       "cuts": {
+        "entryHookTurn": 11.2,
         "sharedEntryAtAttachment": "hah-stacked-medi",
         "minimumExitWidths": 2,
         "mouth": {
@@ -5055,6 +5059,7 @@
         "counters": 0
       },
       "cuts": {
+        "entryHookTurn": 11.2,
         "routes": {
           "right": {
             "bottomProbe": "down",

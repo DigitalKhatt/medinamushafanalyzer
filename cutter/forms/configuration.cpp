@@ -935,6 +935,12 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
             return id + ": fixEntryJunction requires a final counter neck or contour route";
         cutKeys << "fixEntryJunction";
     }
+    if (const auto turn = cuts.value("entryHookTurn"); !turn.isUndefined()) {
+        if (phase != "medial" || (shape != "returning-lips" && shape != "paired-route") ||
+            !turn.isDouble() || !(turn.toDouble() > 0 && turn.toDouble() < 90))
+            return id + ": entryHookTurn requires a medial return and an angle between 0 and 90 degrees";
+        cutKeys << "entryHookTurn";
+    }
     if (const auto sender = cuts.value("shareOverlappingEntryAfter"); !sender.isUndefined()) {
         const auto senders = sender.isString() ? QJsonArray{sender} : sender.toArray();
         if (phase != "medial" || shape != "paired-route" || senders.isEmpty() ||

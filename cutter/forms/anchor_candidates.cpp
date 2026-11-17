@@ -320,6 +320,27 @@ static void keepLowerLip(const SearchContext& source, AnchoredBody& body, const 
     body.minimumExit = normalAtLimit(source, *limit, lips.lowerForward, lips.upper, false);
 }
 
+static bool setHookEntry(const SearchContext& source, AnchoredBody& body, const OpenMouthBody& mouth,
+                         const Stretching& cut, double penWidth) {
+    const auto before = getJoinTime(*body.entry, source.orientation);
+    const auto after = getJoinTime(*body.exit, source.orientation);
+    if (!before.isLeft(mouth.nose.time) ||
+        !before.isStrictLeft(mouth.lips.notch.time) || !before.isStrictLeft(mouth.lips.upper.time) ||
+        !after.isStrictRight(mouth.nose.time) || !after.isStrictRight(mouth.lips.notch.time) ||
+        !after.isStrictRight(mouth.lips.upper.time) || !orderedSections(cut, *body.exit, source.orientation) ||
+        !retainsLandmarks(body, &cut, &*body.exit, source.orientation)) return false;
+
+    const auto& previous = *body.entry;
+    if (QLineF(previous.topBaseLine.point, cut.topBaseLine.point).length() > .1 * penWidth ||
+        QLineF(previous.bottomBaseLine.point, cut.bottomBaseLine.point).length() > .1 * penWidth) body.entry = cut;
+    body.landmarks.append(mouth.nose);
+    body.minimumEntry.reset();
+    body.entryLimit.reset();
+    body.usesSharedEntry = false;
+    body.fixedEntryJunction = true;
+    return true;
+}
+
 std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObject& form, size_t position,
                                         double penWidth, bool tryEntryTurn, const Stretching* sharedExit, AnchorPass pass) {
     const auto id = form.value("id").toString();
@@ -332,6 +353,7 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     source.nextIter = std::next(source.xSorted.begin());
     const auto routeCut = cuts.value("route").toObject();
     const auto turn = routeCut.value("descendingTurn");
+    const auto entryHookTurn = cuts.value("entryHookTurn");
     const auto sharedAttachments = [&](UpperAttachmentMode mode) {
         std::vector<Stretching> sections;
         for (const auto& settings : form.value("_sharedAttachments").toArray()) {
@@ -912,6 +934,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             for (const auto& head : evidence->mouths) {
                 const auto& lips = head.lips;
                 const double distance = cuts.value("minimumExitWidths").toDouble() * penWidth;
+                const auto hook = ownAttachment.isEmpty() && entryHookTurn.isDouble()
+                    ? mouthHookJunction(source, head, entryHookTurn.toDouble(), penWidth) : std::nullopt;
                 for (const auto& [entry, exit] : cutOpenMouths(source, {head}, shapeSettings(form, "mouth"))) {
                     AnchoredBody candidate{.formId = id, .entry = entry, .exit = exit,
                         .landmarks = {lips.notch, lips.upper},
@@ -919,6 +943,14 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                     if (continuation || !ownAttachment.isEmpty()) keepLowerLip(source, candidate, lips, distance);
                     if (candidate.minimumExit && !retainsLandmarks(candidate, &entry, &exit, source.orientation))
                         candidate.exit = candidate.minimumExit;
+                    if (hook && setHookEntry(source, candidate, head, *hook, penWidth)) {
+                        const auto pieces = cutRegions(source.transformedPath, {}, {*candidate.entry, *candidate.exit},
+                                                       source.orientation, true);
+                        if (pieces.size() == 3 && toSubpaths(pieces[1].path).size() == 1)
+                            result.push_back(std::move(candidate));
+                        if (continuation) break;
+                        continue;
+                    }
                     if (!ownAttachment.isEmpty()) {
                         for (auto seam : ownSections) {
                             orientSection(source, seam, lips.upper.time, true);
@@ -1107,6 +1139,14 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 overlappingSenders.append(id.toString());
         }
         const bool atUpperAttachment = form.contains("upperAttachment");
+        std::vector<std::pair<OpenMouthBody, Stretching>> hooks;
+        if (!atUpperAttachment && entryHookTurn.isDouble()) {
+            const auto mouths = recognizedSharedShape(source,
+                QJsonObject{{"shape", "returning-lips"}, {"mouth", body.value("mouth")}});
+            for (const auto& mouth : mouths->mouths)
+                if (const auto hook = mouthHookJunction(source, mouth, entryHookTurn.toDouble(), penWidth))
+                    hooks.emplace_back(mouth, *hook);
+        }
         // The two-corner seam belongs to the returning-lips body, which
         // verifies both lips before accepting it.
         const auto sharedSections = atUpperAttachment
@@ -1133,12 +1173,6 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                         entries.insert(entries.begin(), {*turn, false});
                 }
                 for (const auto& [section, attachment] : entries) {
-                    if (form.contains("bodyCounters")) {
-                        const auto pieces = cutRegions(source.transformedPath, {}, {section, exit},
-                                                       source.orientation, true);
-                        if (pieces.size() != 3 || toSubpaths(pieces[1].path).size() - 1 !=
-                            form.value("bodyCounters").toInt()) continue;
-                    }
                     AnchoredBody body{.formId = id, .entry = section, .exit = exit, .landmarks = {candidate.anchor},
                                       .sharesExitAtCorners = cuts.value("sharedExit") == "receiving-corners",
                                       .usesSharedEntry = form.value("sharedEntry").toBool(),
@@ -1147,9 +1181,19 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                                       .requiresSharedEntry = atUpperAttachment || attachment,
                                       .requiresSharedExit = sharedExit != nullptr,
                                       .requiresSharedSource = !atUpperAttachment && attachment};
+                    if (!body.requiresSharedEntry)
+                        for (const auto& [mouth, hook] : hooks)
+                            if (setHookEntry(source, body, mouth, hook, penWidth)) break;
+                    if (form.contains("bodyCounters")) {
+                        const auto pieces = cutRegions(source.transformedPath, {}, {*body.entry, exit},
+                                                       source.orientation, true);
+                        if (pieces.size() != 3 || toSubpaths(pieces[1].path).size() - 1 !=
+                            form.value("bodyCounters").toInt()) continue;
+                    }
                     if (cuts.value("turnBoundaries").toObject().value("right") == "descender")
                         body.entryLimit = section.topBaseLine;
-                    body.minimumEntry = insetLimit(source, body, cuts.value("minimumEntryWalk").toDouble() * penWidth, true);
+                    if (!body.fixedEntryJunction)
+                        body.minimumEntry = insetLimit(source, body, cuts.value("minimumEntryWalk").toDouble() * penWidth, true);
                     if (!lips.empty() && body.requiresSharedEntry && !body.requiresSharedExit) {
                         const auto entrySide = getJoinTime(section, source.orientation);
                         const auto exitSide = getJoinTime(exit, source.orientation);

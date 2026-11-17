@@ -479,6 +479,7 @@ int main(int argc, char** argv) {
         int page, line, word, subword, join;
         double upper, lower;
         bool connector = false;
+        bool receiving = false;
     };
     for (const auto& at : {ReviewedJoin{225, 9, 8, 1, 3, 24, 34},
                            ReviewedJoin{274, 6, 2, 2, 0, 30, 19},
@@ -499,7 +500,9 @@ int main(int argc, char** argv) {
                            ReviewedJoin{251, 1, 10, 1, 1, 7, 22.6594, true},
                            ReviewedJoin{270, 9, 4, 1, 1, 7.32264, 17.0499, true},
                            ReviewedJoin{525, 14, 10, 1, 1, 5.62427, 34.0882, true},
-                           ReviewedJoin{102, 12, 2, 2, 1, 5.80054, 22.2675, true}}) {
+                           ReviewedJoin{102, 12, 2, 2, 1, 5.80054, 22.2675, true},
+                           ReviewedJoin{577, 10, 3, 1, 2, 15.9391, 43.0918, true, true},
+                           ReviewedJoin{577, 10, 3, 1, 3, 31.4382, 40.1465, true}}) {
         QFile fixture(QString("pages/page%1.dat").arg(at.page));
         check(fixture.open(QIODevice::ReadOnly), "Missing reviewed join fixture");
         PageAnalysisResult reviewed;
@@ -511,8 +514,8 @@ int main(int argc, char** argv) {
         check(sub.joins.size() > size_t(at.join) && sub.kashidaPaths.size() > size_t(at.join),
               "Reviewed join is missing");
         const auto& cut = *std::next(sub.joins.begin(), at.join);
-        const auto& upper = at.connector ? cut.topRight : cut.topBaseLine;
-        const auto& lower = at.connector ? cut.bottomRight : cut.bottomBaseLine;
+        const auto& upper = at.receiving ? cut.topLeft : at.connector ? cut.topRight : cut.topBaseLine;
+        const auto& lower = at.receiving ? cut.bottomLeft : at.connector ? cut.bottomRight : cut.bottomBaseLine;
         check(std::abs(upper.time - at.upper) < .001 && std::abs(lower.time - at.lower) < .001 &&
               sub.kashidaPaths[at.join].isEmpty() != at.connector,
               "The cut or connector moved off the reviewed attachment");
