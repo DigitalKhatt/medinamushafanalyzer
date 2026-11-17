@@ -833,10 +833,21 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 result.push_back({.formId = id, .exit = exit, .landmarks = {*source.xSorted.begin()},
                                   .requiresSharedExit = true, .sharedCounterReceiver = receiver});
             } else {
-                for (const auto& entry : loopShoulderCuts(source, loop->box, loop->shoulders,
-                        policy.value("shoulder").toObject(), exit.topBaseLine.time, false))
+                const auto angle = cuts.value("preferredTurns").toObject().value("right");
+                const auto entries = loopShoulderCuts(source, loop->box, loop->shoulders,
+                    policy.value("shoulder").toObject(), exit.topBaseLine.time, false);
+                const auto add = [&](const Stretching& entry, std::optional<Stretching> minimum = {}) {
                     result.push_back({.formId = id, .entry = entry, .exit = exit,
-                                      .requiresSharedExit = true, .sharedCounterReceiver = receiver});
+                                      .requiresSharedExit = true, .sharedCounterReceiver = receiver,
+                                      .minimumEntry = minimum});
+                };
+                if (angle.isDouble())
+                    for (const auto& entry : entries)
+                        if (const auto turn = preferredFlankTurn(source, entry, exit.topBaseLine,
+                                                                true, angle.toDouble(), penWidth))
+                            add(*turn, entry);
+                for (const auto& entry : entries)
+                    add(entry);
             }
         }
     } else if (position == 2 && shape == "profile-neck") {

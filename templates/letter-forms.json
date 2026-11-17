@@ -4309,6 +4309,9 @@
         }
       },
       "cuts": {
+        "preferredTurns": {
+          "right": 20
+        },
         "attachment": {
           "letters": "اأإآٱل",
           "maxBridgeRatio": 1,

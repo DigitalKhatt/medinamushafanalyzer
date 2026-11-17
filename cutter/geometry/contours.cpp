@@ -423,18 +423,37 @@ static std::optional<Stretching> turnFromRouteFork(const SearchContext& context,
     if (!end.isY || end.isSharp || route.anchor.time != end.time ||
         QLineF(end.point, cap.topBaseLine.point).length() > .25 * width) return {};
     const bool forward = route.topPrevious;
-    const auto& fork = route.topBefore;
+    auto fork = route.topBefore;
     if (fork.time == end.time) return {};
-    if ((end.time > fork.time) != forward) end.time += forward ? curves : -curves;
     PathExtrema start;
     QPointF tangent;
     // Measure the descending flank after the small curved junction at the
     // fork. The low point bounds the walk without supplying a cut.
-    if (!advanceOnContour(context.transformedPath, fork, end, forward, width, start, tangent))
-        return {};
-    if (!forward) tangent = -tangent;
+    const auto sampleDescent = [&] {
+        end.time = route.topEnd.time;
+        if ((end.time > fork.time) != forward) end.time += forward ? curves : -curves;
+        if (!advanceOnContour(context.transformedPath, fork, end, forward, width, start, tangent))
+            return false;
+        if (!forward) tangent = -tangent;
+        return horizontal * tangent.x() > 0 && tangent.y() > 0;
+    };
+    if (!sampleDescent()) {
+        // The route can include an upper return that runs in the opposite
+        // direction. Only the last descending flank leads to this low point.
+        const auto first = context.timeSorted.find(route.topBefore);
+        auto at = context.timeSorted.find(route.topEnd);
+        if (at == context.timeSorted.end() || first == context.timeSorted.end()) return {};
+        const auto towardBody = forward ? &SearchContext::next : &SearchContext::prev;
+        while (at != first) {
+            const auto next = (context.*towardBody)(at);
+            const auto step = at->point - next->point;
+            if (horizontal * step.x() <= 0 || step.y() <= 0) break;
+            at = next;
+        }
+        fork = *at;
+        if (fork.time == route.topEnd.time || !sampleDescent()) return {};
+    }
     const double run = horizontal * tangent.x();
-    if (run <= 0 || tangent.y() <= 0) return {};
     const double approachAngle = std::atan2(tangent.y(), run) * 180 / M_PI;
     if (approachAngle < angle / 3) return {};
 

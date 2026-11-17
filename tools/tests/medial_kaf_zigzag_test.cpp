@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
     struct FlankFixture { int page, line, word, subword, entryJoin; double entry, exit; };
     for (const auto& at : {FlankFixture{8, 12, 8, 1, 3, 40.4364, 5.19098},
                            FlankFixture{27, 11, 7, 2, 0, 26.8867, 4.18924},
-                           FlankFixture{29, 4, 6, 1, 0, 36.3448, 9.97914}}) {
+                           FlankFixture{29, 4, 6, 1, 0, 36.3448, 9.16779}}) {
         QFile file(QString("pages/page%1.dat").arg(at.page));
         check(file.open(QIODevice::ReadOnly), "Rounded kāf flank fixture missing");
         PageAnalysisResult rounded;
@@ -202,6 +202,32 @@ int main(int argc, char** argv) {
         check(std::abs(std::next(sub.joins.begin(), at.entryJoin)->topLeft.time - at.entry) < .001 &&
               std::abs(sub.joins.rbegin()->topRight.time - at.exit) < .001 && coversOriginalInk(word, sub),
               "Rounded kāf missed its bend or changed the left turn");
+    }
+    struct EntryTurnFixture {
+        int page, line, word, subword, join;
+        const char* form;
+        double upperTime, lowerTime;
+    };
+    for (const auto& at : {
+             EntryTurnFixture{149, 6, 6, 2, 1, "kaf-fork-medi", 41.0496, 21.8788},
+             EntryTurnFixture{280, 4, 2, 1, 0, "kaf-fork-ascender-medi", 24.2836, 11.3439}}) {
+        QFile file(QString("pages/page%1.dat").arg(at.page));
+        check(file.open(QIODevice::ReadOnly), "Missing kāf entry turn fixture");
+        PageAnalysisResult analysis;
+        QDataStream stream(&file);
+        stream >> analysis.page;
+        analysis.resolveWordBoundaries(at.page, &font);
+        check(analysis.segmentSubword(at.page - 1, at.line - 1, at.word - 1, at.subword - 1, &font, true, &config),
+              "Medial kāf entry turn did not assemble");
+        const auto& word = analysis.page.lines[at.line - 1].words[at.word - 1];
+        const auto& sub = word.wordResultInfo.subWords[at.subword - 1];
+        check(sub.joins.size() > size_t(at.join) && !sub.kashidaPaths[at.join].isEmpty() &&
+              sub.letterDiagnostics.at(at.join + 1).toObject().value("template") == at.form &&
+              coversOriginalInk(word, sub), "Medial kāf turn changed the body form or lost connecting ink");
+        const auto& entry = *std::next(sub.joins.begin(), at.join);
+        check(std::abs(entry.topLeft.time - at.upperTime) < .001 &&
+              std::abs(entry.bottomLeft.time - at.lowerTime) < .001,
+              "Medial kāf entry stopped away from the turn");
     }
     qInfo("Zigzag medial kaf passed: intrinsic routes, normal exit, preserved counter, independent geometry, scale, determinism and conserved ink.");
 }
