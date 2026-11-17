@@ -73,10 +73,11 @@ QString invalidWalkSettings(const QJsonObject& route, const QString& location) {
     if (route.contains("penWidth")) {
         const auto width = route.value("penWidth");
         const auto probe = route.value("bottomProbe").toString();
+        const bool strokeWalk = probe == "walk-stroke-normal" || probe == "walk-stroke-up" || probe == "down-stroke";
         if (!width.isDouble() || !std::isfinite(width.toDouble()) || width.toDouble() <= 0 ||
             route.contains("strokeSource") ||
-            (probe != "walk-stroke-normal" && probe != "walk-stroke-up" && probe != "down-stroke"))
-            return location + ": penWidth requires a stroke-walk probe and a positive width in page units";
+            (!strokeWalk && !route.value("descendingTurn").isDouble()))
+            return location + ": penWidth requires a stroke walk or descending turn and a positive width in page units";
     }
     if (route.contains("visibleFrom") && (route.value("bottom").toArray().isEmpty() || route.contains("bottomProbe") ||
         !QStringList{"top", "bottom"}.contains(route.value("visibleFrom").toString())))

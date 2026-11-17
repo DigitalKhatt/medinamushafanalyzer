@@ -6393,6 +6393,13 @@
                 "sharp": true,
                 "xExtremum": true
               }
+            },
+            {
+              "direction": "right",
+              "minY": 0,
+              "end": {
+                "yExtremum": true
+              }
             }
           ]
         },
@@ -6407,7 +6414,7 @@
           "probeEntry": true
         },
         "route": {
-          "bottomProbe": "walk-stroke-normal",
+          "descendingTurn": 11.2,
           "penWidth": 0.5
         },
         "boundaries": {

@@ -13,6 +13,8 @@ static QByteArray readFixture(const QString& name) {
     return file.readAll();
 }
 
+constexpr double hookTurnAngle = 11.2;
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
@@ -35,7 +37,9 @@ int main(int argc, char** argv) {
         auto rule = value.toObject();
         if (rule.value("id") != "hah-fina") continue;
         rule = shapeSettings(rule, "route");
-        check(rule.value("penWidth").toDouble() == 0.5, "Use the manuscript's pen width in page units");
+        check(rule.value("penWidth").toDouble() == 0.5 &&
+              rule.value("descendingTurn").toDouble() == hookTurnAngle,
+              "The route should use the manuscript pen width and cut where the hook levels out");
         for (const auto& invalid : QJsonArray{0, -0.5, "half"}) {
             rule.insert("penWidth", invalid);
             check(!invalidWalkSettings(rule, "hah-fina").isEmpty(), "Invalid pen width accepted");
@@ -92,16 +96,24 @@ int main(int argc, char** argv) {
         }
         check(!sub.kashidaPaths.back().isEmpty(), "Ordinary connector was lost");
         const auto curves = baseContourCurves(ink);
-        const auto& flank = curves.at(f.corner);
         const auto bottom = join.bottomLeft;
-        const double t = bottom.time - f.corner;
-        check(t > 0 && t < 1 && std::abs(flank.getSubRange(0, t).length(0.001) - 0.5) < 0.001,
-              "Final cut must be half a page unit along the descending flank");
-        const auto tangent = flank.pointAt(t + 1e-5) - flank.pointAt(t - 1e-5);
+        const auto corner = curves.at(f.corner).pt1();
+        check(bottom.point.y() > corner.y() + 0.5 && bottom.point.x() > corner.x(),
+              "Final cut stopped before the hook entered the connector");
+        const int segment = int(std::floor(bottom.time));
+        const auto& flank = curves.at(segment);
+        const double t = bottom.time - segment;
         const auto chord = join.topLeft.point - bottom.point;
-        check(std::abs(QPointF::dotProduct(tangent, chord)) <
-              1e-4 * std::hypot(tangent.x(), tangent.y()) * std::hypot(chord.x(), chord.y()),
-              "Final cut must cross the descending stroke along its normal");
+        const double angle = std::atan2(std::abs(chord.x()), std::abs(chord.y())) * 180 / M_PI;
+        if (std::abs(angle - hookTurnAngle) >= 0.001)
+            qFatal("Page %d: final cut reached %.3f degrees at contour time %.5f instead of the declared turn",
+                   f.page, angle, bottom.time);
+        if (t > 1e-5 && t < 1 - 1e-5) {
+            const auto tangent = flank.pointAt(t + 1e-5) - flank.pointAt(t - 1e-5);
+            check(std::abs(QPointF::dotProduct(tangent, chord)) <
+                  1e-4 * std::hypot(tangent.x(), tangent.y()) * std::hypot(chord.x(), chord.y()),
+                  "Final cut must cross the descending stroke along its normal");
+        }
         if (f.page == 25) {
             auto preview = config;
             auto finals = preview.value("final").toArray();
@@ -109,15 +121,15 @@ int main(int argc, char** argv) {
                 auto rule = finals[i].toObject();
                 if (rule.value("id") != "hah-fina") continue;
                 auto cuts=rule.value("cuts").toObject(), route=cuts.value("route").toObject();
-                route.insert("penWidth", 0.25); cuts.insert("route",route); rule.insert("cuts",cuts);
+                route.insert("descendingTurn", 30); cuts.insert("route",route); rule.insert("cuts",cuts);
                 finals[i] = rule;
             }
             preview.insert("final", finals);
             check(analysis.segmentSubword(f.page - 1, f.line - 1, f.word - 1, f.subword - 1, &font, true, &preview),
-                  "Pen-width preview failed");
-            const double changedT = sub.joins.rbegin()->bottomLeft.time - f.corner;
-            check(changedT > 0 && changedT < t && std::abs(flank.getSubRange(0, changedT).length(0.001) - 0.25) < 0.001,
-                  "Preview must use the configured pen width");
+                  "Turn-angle preview failed");
+            const auto changed = sub.joins.rbegin()->bottomLeft;
+            check(changed.point.x() < bottom.point.x() && changed.point.y() < bottom.point.y(),
+                  "A steeper turn angle should move the cut toward the start of the hook");
         }
     }
 }
