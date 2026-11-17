@@ -992,12 +992,45 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
                 }
             }
         } else if (shape == "enclosed-lips") {
-            for (const auto& head : evidence->enclosedLips)
-                for (const auto& [entry, exit] : cutEnclosedLips(source, {head}, cuts.value("head").toObject(), false))
-                    for (size_t i = 1; i < source.subPaths.size(); ++i)
-                        if (source.subPaths[i].boundingRect() == head.counter)
-                            result.push_back({.formId = id, .entry = entry, .exit = exit,
-                                              .landmarks = {head.nose}, .counters = {i}});
+            for (const auto& head : evidence->enclosedLips) {
+                std::vector<Stretching> hooks;
+                if (entryHookTurn.isDouble()) {
+                    for (const auto& corner : head.corners[0])
+                        for (const bool forward : {true, false})
+                            if (auto section = descendingHookSection(source, corner, forward,
+                                                                    entryHookTurn.toDouble(), penWidth)) {
+                                orientSection(source, *section, head.nose.time, true);
+                                hooks.push_back(*section);
+                            }
+                }
+                for (const auto& [entry, exit] : cutEnclosedLips(source, {head}, cuts.value("head").toObject(), false)) {
+                    for (size_t i = 1; i < source.subPaths.size(); ++i) {
+                        if (source.subPaths[i].boundingRect() != head.counter) continue;
+                        AnchoredBody candidate{.formId = id, .entry = entry, .exit = exit,
+                                               .landmarks = {head.nose}, .counters = {i}};
+                        double nearest = std::numeric_limits<double>::infinity();
+                        for (const auto& hook : hooks) {
+                            const auto side = getJoinTime(hook, source.orientation);
+                            // Keep both flanks of the recognized head and only extend its entry.
+                            if (!side.isStrictLeft(entry.topBaseLine.time) ||
+                                !side.isStrictLeft(entry.bottomBaseLine.time) ||
+                                !orderedSections(hook, exit, source.orientation) ||
+                                !retainsLandmarks(candidate, &hook, &exit, source.orientation)) continue;
+                            const double distance = QLineF(entry.topBaseLine.point, hook.topBaseLine.point).length() +
+                                                    QLineF(entry.bottomBaseLine.point, hook.bottomBaseLine.point).length();
+                            if (distance >= nearest) continue;
+                            const auto parts = cutRegions(source.transformedPath, {}, {hook, exit}, source.orientation, true);
+                            if (parts.size() != 3) continue;
+                            const auto paths = toSubpaths(parts[1].path);
+                            if (paths.size() != 2 || paths[1].boundingRect() != head.counter) continue;
+                            nearest = distance;
+                            candidate.entry = hook;
+                            candidate.fixedEntryJunction = true;
+                        }
+                        result.push_back(std::move(candidate));
+                    }
+                }
+            }
         } else if (shape == "inclined-blade") {
             for (const auto& blade : evidence->blades) {
                 const auto limit = walkBoundaryLimit(source, blade.fork, blade.fork, blade.forward,

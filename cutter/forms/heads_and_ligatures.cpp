@@ -800,9 +800,11 @@ mouthHookJunctions(const SearchContext& context, const OpenMouthBody& body, doub
     };
     add(body.nose);
     const double span = body.lips.notch.point.x() - body.lips.upper.point.x();
+    // A wide mouth can still have a short overhang above its hook.
+    const double minNoseRun = std::min(.28 * span, .75 * penWidth);
     for (const auto& corner : body.entryCorners) {
         const auto delta = corner.point - body.lips.notch.point;
-        if (corner.time != body.nose.time && corner.isX && delta.x() >= .28 * span &&
+        if (corner.time != body.nose.time && corner.isX && delta.x() >= minNoseRun &&
             delta.x() <= span && std::abs(delta.y()) <= 1.4)
             add(corner);
     }

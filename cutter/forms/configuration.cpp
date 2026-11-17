@@ -936,9 +936,10 @@ static QString validateSharedShape(const QJsonObject& config, const QJsonObject&
         cutKeys << "fixEntryJunction";
     }
     if (const auto turn = cuts.value("entryHookTurn"); !turn.isUndefined()) {
-        if (phase != "medial" || (shape != "returning-lips" && shape != "paired-route") ||
+        if (phase != "medial" || (shape != "returning-lips" && shape != "enclosed-lips" && shape != "paired-route") ||
             !turn.isDouble() || !(turn.toDouble() > 0 && turn.toDouble() < 90))
             return id + ": entryHookTurn requires a medial return and an angle between 0 and 90 degrees";
+        if (shape == "paired-route") bodyKeys << "mouth";
         cutKeys << "entryHookTurn";
     }
     if (const auto exit = cuts.value("exitAtLip"); !exit.isUndefined()) {

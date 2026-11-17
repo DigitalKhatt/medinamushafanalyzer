@@ -3442,6 +3442,9 @@
       "tightJoin": true,
       "body": {
         "shape": "paired-route",
+        "mouth": {
+          "maxLipRun": 22
+        },
         "routes": {
           "anchor": {
             "xExtremum": true,
@@ -3803,6 +3806,7 @@
         "counters": 1
       },
       "cuts": {
+        "entryHookTurn": 11.2,
         "head": {
           "maxSectionWidth": 1.5
         },

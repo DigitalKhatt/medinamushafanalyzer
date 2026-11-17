@@ -505,6 +505,13 @@ int main(int argc, char** argv) {
                            ReviewedJoin{577, 10, 3, 1, 3, 31.4382, 40.1465, true},
                            ReviewedJoin{604, 15, 2, 2, 0, 6.88482, 44.2408, true, true},
                            ReviewedJoin{47, 11, 2, 1, 0, 15.9718, 9.99506, true, true},
+                           ReviewedJoin{510, 3, 1, 2, 1, 10.3577, 44.1965, true, true},
+                           ReviewedJoin{448, 6, 10, 1, 0, 36.0441, 15.958, true, true},
+                           ReviewedJoin{239, 6, 7, 2, 1, 18.5467, 38.5916, true, true},
+                           ReviewedJoin{384, 14, 10, 2, 1, 32.2184, 5.52118, true, true},
+                           ReviewedJoin{355, 11, 4, 2, 3, 23.4877, 44.2947, true, true},
+                           ReviewedJoin{403, 11, 6, 2, 0, 29.7339, 12.2077, true, true},
+                           ReviewedJoin{452, 9, 4, 2, 1, 10.0846, 67.08, true, true},
                            ReviewedJoin{203, 7, 8, 1, 1, 5.37563, 8.37166, true, true},
                            ReviewedJoin{181, 8, 5, 2, 1, 12.6173, 37.6313, true}}) {
         QFile fixture(QString("pages/page%1.dat").arg(at.page));
