@@ -104,7 +104,7 @@
         "route": {
           "bottomProbe": "normal",
           "anchorSide": "bottom",
-          "walkNormalOffset": 0.45
+          "walkNormalOffset": 0.05
         },
         "boundaries": {
           "right": "free",
