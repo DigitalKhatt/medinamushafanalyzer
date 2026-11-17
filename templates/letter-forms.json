@@ -2791,7 +2791,7 @@
         "preferOwnExit": true,
         "balancedBend": {
           "walkWidths": 0.5,
-          "maxAsymmetryWidths": 0.25
+          "maxAsymmetryWidths": 0.40
         },
         "turnBoundaries": {
           "left": "trim",
