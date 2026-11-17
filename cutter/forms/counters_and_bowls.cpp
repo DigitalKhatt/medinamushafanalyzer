@@ -1891,21 +1891,24 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
         const Stretching &right, const Stretching &inner, double width, double maxWidthRatio) {
     const double innerWidth = QLineF(inner.topBaseLine.point, inner.bottomBaseLine.point).length();
     const double maxWidth = maxWidthRatio * width;
-    if (width <= 0 || (innerWidth <= maxWidth && inner.topBaseLine.point.y() >= body.upper.box.bottom()))
-        return {};
+    if (width <= 0 || context.timeSorted.empty()) return {};
+    const bool needsNarrowing = innerWidth > maxWidth || inner.topBaseLine.point.y() < body.upper.box.bottom();
     const auto &foot = inner.bottomBaseLine;
-    if (context.timeSorted.empty()) return {};
     const auto at = context.timeSorted.lower_bound(foot);
     const auto outside = getJoinTime(inner, context.orientation);
     const auto exitTip = std::find_if(context.xSorted.rbegin(), context.xSorted.rend(), [&](const auto &point) {
         return outside.isStrictLeft(point.time);
     });
     if (exitTip == context.xSorted.rend()) return {};
+    const auto &ink = context.transformedPath;
+    const double period = baseContourCurves(ink).size();
+    const double sample = .25 * width;
     const double reach = 2.5 * width;
-    const auto section = [&](const PathExtrema &anchor, bool forward) -> std::optional<Stretching> {
+    const auto section = [&](const PathExtrema &anchor, bool forward, double tangentSample = 0)
+            -> std::optional<Stretching> {
         if (anchor.point.x() >= foot.point.x() || !outside.isStrictLeft(anchor.time)) return {};
         Stretching cut{};
-        if (!contourNormalCut(context, anchor, forward, false, cut, true)) return {};
+        if (!contourNormalCut(context, anchor, forward, false, cut, true, tangentSample)) return {};
         std::swap(cut.topBaseLine, cut.bottomBaseLine);
         if (cut.referenceWidth > std::min(maxWidth, innerWidth) ||
             cut.topBaseLine.point.y() < body.upper.box.bottom() || !outside.isStrictLeft(cut.topBaseLine.time) ||
@@ -1921,7 +1924,27 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
         if (!retains(body.upper.box) || !retains(body.lower.box)) return {};
         return cut;
     };
-    std::optional<Stretching> roundedExit;
+    const auto outerStep = [&](const PathExtrema &point, bool forward) {
+        if (point.point.y() > foot.point.y() - .12 * width ||
+            point.point.y() < body.upper.box.bottom() ||
+            (!point.isSharp && !point.isX && std::abs(point.time - std::round(point.time)) > 1e-6))
+            return false;
+        auto limit = point;
+        limit.time += forward ? period : -period;
+        PathExtrema out, in;
+        QPointF tangent;
+        if (!advanceOnContour(ink, point, limit, forward, sample, out, tangent)) return false;
+        limit.time = point.time + (forward ? -period : period);
+        if (!advanceOnContour(ink, point, limit, !forward, sample, in, tangent)) return false;
+        const auto join = out.point - point.point;
+        const auto drop = in.point - point.point;
+        const auto turn = forward ? inwardTurnAngle(-drop, join, context.orientation)
+                                  : inwardTurnAngle(-join, drop, context.orientation);
+        return join.x() < -.7 * sample && std::abs(join.y()) < .6 * sample &&
+               drop.y() > .7 * sample && std::abs(drop.x()) < .6 * sample && turn > 30;
+    };
+
+    std::optional<Stretching> stepExit, cornerExit, roundedExit;
     for (bool forward : {false, true}) {
         const auto step = forward ? &SearchContext::prev : &SearchContext::next;
         // The inner end of a projected cut can lie between two extrema.
@@ -1933,33 +1956,43 @@ static std::optional<Stretching> stackedPairExit(SearchContext &context, const S
             next = (context.*step)(at);
         auto point = foot.point;
         double walked = 0;
-        for (size_t i = 0; i < context.timeSorted.size() && walked < reach; ++i) {
+        const double stepReach = 3 * width;
+        for (size_t i = 0; i < context.timeSorted.size() && walked < stepReach; ++i) {
             if (!outside.isStrictLeft(next->time) ||
                 next->point.x() > foot.point.x() + .1 * width) break;
             walked += QLineF(point, next->point).length();
-            if (walked > reach) break;
+            if (walked > stepReach) break;
+            // Keep the step even when the inner cut already fits the width.
+            if (outerStep(*next, forward))
+                if (auto cut = section(*next, forward, next->isSharp ? 0 : sample);
+                    cut && cut->referenceWidth >= .5 * width &&
+                    (!stepExit || cut->referenceWidth < stepExit->referenceWidth))
+                    stepExit = cut;
+
             // A narrow section can occur on the foot before its outer
             // corner. Keep walking to a recognized corner on this flank.
             const bool footCorner = std::any_of(body.left.begin(), body.left.end(), [&](const auto &corner) {
                 return corner.anchor.time == next->time;
             });
-            if (footCorner || !roundedExit) {
+            if (needsNarrowing && walked <= reach && !cornerExit && (footCorner || !roundedExit)) {
                 if (auto cut = section(*next, forward)) {
-                    if (footCorner) return cut;
-                    roundedExit = cut;
+                    if (footCorner) cornerExit = cut;
+                    else roundedExit = cut;
                 }
             }
             point = next->point;
             next = (context.*step)(next);
         }
     }
+    if (stepExit) return stepExit;
+    if (cornerExit) return cornerExit;
     if (roundedExit) return roundedExit;
+    if (!needsNarrowing) return {};
     // A smooth heel can reach the joining stroke between recorded extrema.
-    const auto curves = baseContourCurves(context.transformedPath).size();
     for (double distance = .25 * width; distance <= reach; distance += .25 * width) {
         for (bool forward : {false, true}) {
             auto limit = foot;
-            limit.time += forward ? double(curves) : -double(curves);
+            limit.time += forward ? period : -period;
             PathExtrema point;
             QPointF tangent;
             if (advanceOnContour(context.transformedPath, foot, limit, forward, distance, point, tangent)) {

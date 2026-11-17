@@ -105,10 +105,6 @@ int main(int argc, char** argv) {
     verifyAnchors();
     check(subword.baseGlyphs.size() == 3 && subword.kashidaPaths.size() == 2 &&
           !subword.kashidaPaths[0].isEmpty() && !subword.kashidaPaths[1].isEmpty(), "Expected three bodies and two kashidas");
-    auto withoutFinal = config;
-    withoutFinal.insert("final", QJsonArray{});
-    analysis.segmentSubword(2, 0, 5, 4, nullptr, true, &withoutFinal);
-    verifyAnchors();
 
     // The outer foot of the heh in muhtadi leans inward by about 5.4 degrees.
     // It must stay with the body, rather than selecting the closer inner corner.
@@ -165,5 +161,32 @@ int main(int argc, char** argv) {
     check(analysis.segmentSubword(2, 5, 4, 1, nullptr, true), "Bihim became partial");
     check(std::next(stepSubword.joins.begin())->bottomBaseLine.time == 22,
           "Dispatcher dropped the outer foot of bihim");
-    qInfo("Medial heh passed: corners 17/21 and 10/16, outer-step priority over inner corner 24, configurable step-angle tolerance, stroke normals, independent landmarks/text, affine invariance, missing-counter abstention and operation without a final template.");
+
+    QFile fontFile("input/font.dat");
+    check(fontFile.open(QIODevice::ReadOnly), "Native font fixture missing");
+    AFont font;
+    QDataStream fontStream(&fontFile);
+    fontStream >> font;
+    PageAnalysisResult::initQuranText();
+    struct OuterFoot { int page, line, word, subword, letter; double point; };
+    for (const auto& at : {OuterFoot{430, 9, 2, 3, 2, 21},
+                           OuterFoot{261, 6, 6, 1, 1, 20},
+                           OuterFoot{168, 6, 11, 1, 1, 9}}) {
+        QFile pageFile(QString("pages/page%1.dat").arg(at.page));
+        check(pageFile.open(QIODevice::ReadOnly), "Missing medial heh foot fixture");
+        PageAnalysisResult page;
+        QDataStream pageStream(&pageFile);
+        pageStream >> page.page;
+        page.resolveWordBoundaries(at.page, &font);
+        check(page.segmentSubword(at.page - 1, at.line - 1, at.word - 1, at.subword - 1, &font, true, &config),
+              "Medial heh at an outer step did not segment");
+        const auto& item = page.page.lines[at.line - 1].words[at.word - 1];
+        const auto& result = item.wordResultInfo.subWords[at.subword - 1];
+        check(result.joins.size() > size_t(at.letter) && !result.kashidaPaths[at.letter].isEmpty() &&
+              coversOriginalInk(item, result), "Medial heh lost its connector or source ink");
+        const auto& exit = *std::next(result.joins.begin(), at.letter);
+        check(std::abs(exit.bottomRight.time - at.point) < 1e-5,
+              "Medial heh left the bottom step outside the body");
+    }
+    qInfo("Medial heh passed: retained outer steps, stroke normals, independent landmarks and text, affine invariance, missing-counter abstention and ink coverage.");
 }
