@@ -24,9 +24,10 @@ static SearchContext geometry(QPainterPath path, WordResultInfo::SubWordInfo& du
     return context;
 }
 
-static bool same(const Stretching& expected, const Stretching& actual, const QTransform& mapping = {}) {
-    return QLineF(mapping.map(expected.topBaseLine.point), actual.topBaseLine.point).length() < 1e-4 &&
-        QLineF(mapping.map(expected.bottomBaseLine.point), actual.bottomBaseLine.point).length() < 1e-4;
+static bool same(const Stretching& expected, const Stretching& actual, const QTransform& mapping = {},
+                 double tolerance = 1e-4) {
+    return QLineF(mapping.map(expected.topBaseLine.point), actual.topBaseLine.point).length() < tolerance &&
+        QLineF(mapping.map(expected.bottomBaseLine.point), actual.bottomBaseLine.point).length() < tolerance;
 }
 
 static std::vector<std::pair<Stretching, Stretching>> medialToothBoundaries(
@@ -85,9 +86,12 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     Q_INIT_RESOURCE(application);
     const auto config = PageAnalysisResult::letterForms();
-    QJsonObject settings;
-    for (const auto& value : config.value("medial").toArray())
-        if (value.toObject().value("id") == "beh-tooth-medi") settings = value.toObject();
+    const auto settings = resolvedLetterForm(config, "beh-tooth-medi");
+    const auto scaledSettings = [&](double scale) {
+        auto scaledConfig = config;
+        scaledConfig.insert("strokeWidth", scale * config.value("strokeWidth").toDouble());
+        return resolvedLetterForm(scaledConfig, "beh-tooth-medi");
+    };
     check(!settings.isEmpty() && !settings.value("body").toObject().contains("maxExitDistance"), "Tooth still uses the neighboring exit distance");
     QFile file("pages/page3.dat");
     check(file.open(QIODevice::ReadOnly), "Page 3 cache is required");
@@ -151,12 +155,14 @@ int main(int argc, char** argv) {
     const auto independent = medialToothBoundaries(context, settings);
     check(independent.size() == pairs.size() && same(right, independent[index].first) && same(left, independent[index].second),
           "Neighboring landmarks or transcript changed the tooth proposal");
+    // The Bézier arc-length walk integrates to a tolerance of .001 page units.
+    constexpr double walkTolerance = .001;
     for (double scale : {0.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(source), dummy);
-        const auto proposed = medialToothBoundaries(scaled, settings);
+        const auto proposed = medialToothBoundaries(scaled, scaledSettings(scale));
         check(std::any_of(proposed.begin(), proposed.end(), [&](const auto& pair) {
-                  return same(right, pair.first, mapping) && same(left, pair.second, mapping);
+                  return same(right, pair.first, mapping, walkTolerance) && same(left, pair.second, mapping, walkTolerance);
               }),
               "Tooth proposal is not scale/translation invariant");
     }
@@ -208,9 +214,9 @@ int main(int argc, char** argv) {
     for (double scale : {.7, 1.6}) {
         const QTransform mapping(scale, 0, 0, scale, 37, -21);
         auto scaled = geometry(mapping.map(laterInk), dummy);
-        const auto result = declaredToothBoundaries(scaled, settings);
-        check(result.size() == 1 && same(*broad.front().right, *result.front().right, mapping) &&
-              same(broad.front().left, result.front().left, mapping),
+        const auto result = declaredToothBoundaries(scaled, scaledSettings(scale));
+        check(result.size() == 1 && same(*broad.front().right, *result.front().right, mapping, walkTolerance) &&
+              same(broad.front().left, result.front().left, mapping, walkTolerance),
               "Rounded tooth changed under scale/translation");
     }
     check(later.segmentSubword(599, 2, 8, 1, nullptr, true) && laterSub.baseGlyphs.size() == 3 &&

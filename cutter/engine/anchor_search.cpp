@@ -470,6 +470,21 @@ std::optional<JoinSections> resolveJoin(SearchContext& source, const AnchoredBod
     if (!fitsAnchorGap(sending, receiving, source.orientation, penWidth, continuation)) return {};
     if (const auto* flank = exitBeforeFollowingTooth(sending, receiving, source.orientation, following))
         return JoinSections{*flank, entry, false, false, {}};
+    // When a loop exit overlaps the next tooth, give the tooth its entry
+    // as long as the loop keeps its own turn and counter.
+    if (!requiredConnector && sending.minimumExitAtTurn && sending.minimumExit && receiving.sharesIncoming &&
+        canResolveOverlappingAnchors(sending, receiving, source.orientation, following)) {
+        if (const auto seam = resolveOverlap(source, sending, receiving, following, true);
+            seam && sameSection(*seam, entry)) {
+            const auto pieces = cutRegions(source.transformedPath, {}, {*seam}, source.orientation, true);
+            if (pieces.size() == 2) {
+                const auto outlines = toSubpaths(pieces.front().path);
+                if (std::ranges::all_of(sending.counters, [&](size_t counter) {
+                        return outlines.contains(source.subPaths[counter]);
+                    })) return JoinSections{*seam, *seam, true, true, {}};
+            }
+        }
+    }
     const bool sharedCounter = !terminal &&
         sharesCounterSection(exit, receiving, source.orientation);
     if (sharedCounter) entry = exit;

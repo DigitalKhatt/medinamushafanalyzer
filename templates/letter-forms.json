@@ -2789,6 +2789,10 @@
         "minimumEntryAfterForm": "hah-stacked-medi",
         "shareLoopNeck": true,
         "preferOwnExit": true,
+        "balancedBend": {
+          "walkWidths": 0.5,
+          "maxAsymmetryWidths": 0.25
+        },
         "turnBoundaries": {
           "left": "trim",
           "right": "trim"

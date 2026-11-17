@@ -1156,12 +1156,63 @@ static bool retainsTooth(const SearchContext& context, const Stretching& cut, QP
         pieces[0].path.contains(tip + .95 * (bend - tip));
 }
 
-// Only this stage places the normal sections and chooses an accepted pair of
-// boundaries. Candidate order and all offsets retain the previous geometry.
+static bool fitsToothSections(SearchContext& context, const PathExtrema& tip, const PathExtrema& bend,
+        const Stretching& left, const Stretching* right) {
+    if (right) {
+        const auto region = getJoinTime(*right, context.orientation);
+        if (!region.isStrictLeft(left.topBaseLine.time) || !region.isStrictLeft(left.bottomBaseLine.time)) return false;
+    }
+    const auto cuts = right ? std::vector{*right, left} : std::vector{left};
+    const auto pieces = cutRegions(context.transformedPath, {}, cuts, context.orientation, true);
+    if (pieces.size() != cuts.size() + 1) return false;
+    const auto& body = pieces[right ? 1 : 0].path;
+    const auto bounds = body.boundingRect();
+    if (bounds.isEmpty() || (right && toSubpaths(body).size() != 1)) return false;
+    const auto box = bounds.adjusted(-1e-6, -1e-6, 1e-6, 1e-6);
+    return box.contains(tip.point) && box.contains(bend.point) &&
+           body.contains(tip.point + .05 * (bend.point - tip.point)) &&
+           body.contains(tip.point + .95 * (bend.point - tip.point));
+}
+
+static std::optional<std::pair<Stretching, Stretching>> toothBendSections(const SearchContext& context,
+        const PathExtrema& bend, double distance, double symmetryTolerance) {
+    const auto& ink = context.transformedPath;
+    const int period = int(baseContourCurves(ink).size());
+    std::array<Stretching, 2> sections{};
+    for (size_t side = 0; side < sections.size(); ++side) {
+        const bool forward = side == 0;
+        auto limit = bend;
+        limit.time += forward ? period : -period;
+        PathExtrema foot;
+        QPointF tangent;
+        auto& cut = sections[side];
+        if (!advanceOnContour(ink, bend, limit, forward, distance, foot, tangent) ||
+            !contourNormalCut(context, foot, forward, false, cut)) return {};
+        std::swap(cut.topBaseLine, cut.bottomBaseLine);
+        if (cut.topBaseLine.point.y() >= foot.point.y() || !anchoredStrokeNormalCut(context, cut, forward)) return {};
+    }
+    if (sections[0].bottomBaseLine.point.x() < sections[1].bottomBaseLine.point.x())
+        std::swap(sections[0], sections[1]);
+    if (sections[0].bottomBaseLine.point.x() <= bend.point.x() ||
+        sections[1].bottomBaseLine.point.x() >= bend.point.x()) return {};
+    const auto symmetric = [&](const QPointF& right, const QPointF& left) {
+        const QPointF reflected(2 * bend.point.x() - right.x(), right.y());
+        return QLineF(reflected, left).length() <= symmetryTolerance;
+    };
+    if (!symmetric(sections[0].topBaseLine.point, sections[1].topBaseLine.point) ||
+        !symmetric(sections[0].bottomBaseLine.point, sections[1].bottomBaseLine.point)) return {};
+    return std::pair{sections[0], sections[1]};
+}
+
+// Place the paired normals after the body has supplied its tip and bend.
 std::vector<ToothBody> cutToothBodies(SearchContext& context,
         const std::vector<ToothBodyEvidence>& bodies, const QJsonObject& settings, bool bothSides) {
     const auto& ink = context.transformedPath;
     const double rightOffset = settings.value("rightOffset").toDouble(.5);
+    const double globalWidth = settings.value("_strokeWidth").toDouble();
+    const auto balanced = settings.value("balancedBend").toObject();
+    const double bendWalk = balanced.value("walkWidths").toDouble() * globalWidth;
+    const double symmetryTolerance = balanced.value("maxAsymmetryWidths").toDouble() * globalWidth;
     std::vector<ToothBody> results;
     const auto adjacent = [&](auto point, auto advance) {
         auto next = (context.*advance)(point);
@@ -1226,6 +1277,17 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
             }
             const auto& profile = footEntry ? pair.entryScale : pair.localScale;
             if (!profile) continue;
+            // An angular bend or an independently recognized baseline
+            // entry supplies its own directional attachment.
+            if (bothSides && bendWalk > 0 && !inner.isSharp && !rightTurn) {
+                if (const auto sections = toothBendSections(context, inner, bendWalk, symmetryTolerance);
+                    sections && onFlank(sections->first.topBaseLine, rightFlank) &&
+                    onFlank(sections->second.topBaseLine, leftFlank) &&
+                    fitsToothSections(context, evidence.tip, inner, sections->second, &sections->first)) {
+                    results.push_back({evidence.tip, inner, sections->second, sections->first});
+                    break;
+                }
+            }
             const double stroke = profile->stroke;
             const auto& hits = profile->flankSamples;
             Stretching right{}, left{};
@@ -1378,21 +1440,7 @@ std::vector<ToothBody> cutToothBodies(SearchContext& context,
             }
             bool accepted = false;
             for (const auto& proposal : rightOptions) {
-                const auto rightTime = getJoinTime(proposal, context.orientation);
-                if (bothSides && (!rightTime.isStrictLeft(left.topBaseLine.time) ||
-                    !rightTime.isStrictLeft(left.bottomBaseLine.time))) continue;
-                const std::vector<Stretching> cuts = bothSides ? std::vector{proposal, left} : std::vector{left};
-                const auto pieces = cutRegions(ink, {}, cuts, context.orientation, true);
-                const int bodyIndex = bothSides ? 1 : 0;
-                if (pieces.size() != cuts.size() + 1 || pieces[bodyIndex].path.boundingRect().isEmpty()) continue;
-                const auto& bodyPath = pieces[bodyIndex].path;
-                // An open tooth has no counter. A loop crest can satisfy the
-                // same tip/bend distances, but belongs to a loop-shaped body.
-                if (bothSides && toSubpaths(bodyPath).size() != 1) continue;
-                const auto body = bodyPath.boundingRect().adjusted(-1e-6, -1e-6, 1e-6, 1e-6);
-                if (!body.contains(tip) || !body.contains(inner.point) ||
-                    !bodyPath.contains(tip + .05 * (inner.point - tip)) ||
-                    !bodyPath.contains(tip + .95 * (inner.point - tip))) continue;
+                if (!fitsToothSections(context, evidence.tip, inner, left, bothSides ? &proposal : nullptr)) continue;
                 results.push_back({evidence.tip, inner, left, bothSides ? std::optional{proposal} : std::nullopt});
                 accepted = true;
                 break;

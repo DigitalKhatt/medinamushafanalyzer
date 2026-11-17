@@ -230,6 +230,7 @@ QJsonObject resolvedBodyForm(const QJsonObject& config, QJsonObject form) {
             tail.insert("strokeWidth", config.value("strokeWidth"));
             cuts.insert("tail", tail);
         }
+        if (cuts.contains("balancedBend")) cuts.insert("_strokeWidth", config.value("strokeWidth"));
         form.insert("body", body);
         form.insert("cuts", cuts);
     }
@@ -543,6 +544,13 @@ static QString validateToothShape(const QJsonObject& form, const QString& phase)
                 return id + ": cuts.baselineEntry supports turnAngle and minTurnRun";
     }
     QStringList policyKeys{"boundaries", "offsetUnit", "tightJoin", "baselineEntry", "turnBoundaries"};
+    if (cuts.contains("balancedBend")) {
+        const auto bend = cuts.value("balancedBend").toObject();
+        if (!pair || bend.size() != 2 || !positive(bend.value("walkWidths")) ||
+            !positive(bend.value("maxAsymmetryWidths")) || !positive(cuts.value("_strokeWidth")))
+            return id + ": balancedBend needs a tooth pair, walkWidths, maxAsymmetryWidths and a global strokeWidth";
+        policyKeys << "balancedBend" << "_strokeWidth";
+    }
     if (cuts.contains("minimumEntryWalk")) {
         if (!positive(cuts.value("minimumEntryWalk")))
             return id + ": minimumEntryWalk needs a positive distance";

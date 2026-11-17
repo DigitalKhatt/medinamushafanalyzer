@@ -80,10 +80,11 @@ def compare_page(db, pid, folder, targets):
         altered = {k:[f for f in FIELDS if a.get(k,{}).get(f)!=b.get(k,{}).get(f)]
                    for k in a.keys()|b.keys()}
         altered = {k:v for k,v in altered.items() if v or (k in a)!=(k in b)}
+        current_labels = {p['owner']:p.get('variant') for p in result.get('parts', []) if p['role']=='body'}
         if complete:
-            labels = [{'owner': p['owner'], 'before': prior_labels[p['owner']], 'after': p.get('variant')}
-                      for p in result['parts'] if p['role']=='body'
-                      and p['owner'] in prior_labels and prior_labels[p['owner']] != p.get('variant')]
+            labels = [{'owner': owner, 'before': prior_labels[owner], 'after': variant}
+                      for owner, variant in current_labels.items()
+                      if owner in prior_labels and prior_labels[owner] != variant]
             if labels:
                 label_changes.append(dict(id=sid, geometryChanged=bool(altered), labels=labels))
         if not altered:
@@ -94,8 +95,10 @@ def compare_page(db, pid, folder, targets):
                                         producer='cut-review', parts=result.get('parts', [])))
             except ValueError as error:
                 issues.append(dict(id=sid, issue='invalid-partition', error=str(error)))
+        templates = [dict(owner=o['id'], before=prior_labels.get(o['id']), after=current_labels.get(o['id']))
+                     for o in owners[sid]]
         changes.append(dict(id=sid, text=spec['text'], status=result['status'], changedParts=altered,
-                            owners=owners[sid], before=a, after=b))
+                            owners=owners[sid], before=a, after=b, templates=templates))
     return changes, label_changes, issues
 
 
@@ -156,6 +159,7 @@ def review_crop(parts, changed, viewbox):
 
 def render_report(folder, report):
     cards = []
+    template_sequences, changed_body_sets = Counter(), Counter()
     for change in report['changes']:
         parts = list(change['before'].values()) + list(change['after'].values())
         points = [(x,y) for p in parts for _,xy in outline_commands(p['d'])
@@ -180,7 +184,25 @@ def render_report(folder, report):
             k.endswith('/kashida') for k in change['before'])
         raster_changed = any('ink' in fields for fields in changed.values())
         caption = f'<p>Connector count {connector_count:+d}</p>' if connector_count else ''
+        sequence = body_set = ''
+        if templates := change.get('templates'):
+            changed_bodies = {key.removesuffix('/body') for key, fields in changed.items()
+                              if key.endswith('/body') and ('d' in fields or 'fillRule' in fields)}
+            sequence = ' → '.join(t['after'] or 'Unknown' for t in templates)
+            body_set = ', '.join(sorted({t['after'] or 'Unknown' for t in templates
+                                         if t['owner'] in changed_bodies})) or 'No body outline changes'
+            template_sequences[sequence] += 1
+            changed_body_sets[body_set] += 1
+            trace = []
+            for template in templates:
+                before_name, after_name = template['before'] or 'Unknown', template['after'] or 'Unknown'
+                name = after_name if before_name == after_name else f'{before_name} → {after_name}'
+                tag = 'strong' if template['owner'] in changed_bodies else 'span'
+                trace.append(f'<{tag} title="{escape(template["owner"])}">{escape(name)}</{tag}>')
+            caption += (f'<details class="template-details"><summary>Changed bodies · {escape(body_set)}</summary>'
+                        '<p>'+' · '.join(trace)+'</p></details>')
         cards.append(f'<article data-id="{sid}" data-connectors="{int(bool(connector_count))}" '
+                     f'data-template-sequence="{escape(sequence)}" data-changed-bodies="{escape(body_set)}" '
                      f'data-raster="{int(raster_changed)}"><h2>{sid} · <bdi dir="rtl">{escape(change["text"])}</bdi></h2>'
                      +caption+
                      '<div class="pair">'+''.join(panels)+'</div></article>')
@@ -199,26 +221,52 @@ def render_report(folder, report):
             'Partition checks are local geometry calls, not distinct complete subword segmentations.</p>'
             '<table><thead><tr><th>Template</th><th>Requests</th><th>Built</th><th>Reused</th>'
             '<th>Generated cut pairs</th><th>Partition checks</th></tr></thead><tbody>'+rows+'</tbody></table></details>')
+    def template_filter(element_id, label, groups):
+        options = ''.join(f'<option value="{escape(group)}">{escape(group)} ({count:,})</option>'
+                          for group, count in sorted(groups.items(), key=lambda item: (-item[1], item[0])))
+        return (f'<label>{label}<select id="{element_id}" onchange="filterCuts()">'
+                '<option value="">All</option>'+options+'</select></label>')
+    template_filters = ''
+    if template_sequences:
+        template_filters = (
+            template_filter('changed-bodies', 'Changed body templates', changed_body_sets) +
+            template_filter('template-sequence', 'Subword template sequence', template_sequences) +
+            '<p>Group by the templates of the bodies whose outlines moved, or by the full sequence in reading order.</p>')
     html = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cutter changes</title><style>body{font:15px system-ui;margin:24px;background:#f3f5f7;color:#20323e}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px}article{background:white;padding:14px;border:1px solid #d2dae0;border-radius:8px}
 h2{font-size:16px}h3{font-size:13px;margin:4px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 svg,.pair img{width:100%;height:190px;object-fit:contain}
+select{max-width:100%;font:inherit;padding:6px}.template-details{font-size:13px;overflow-wrap:anywhere;margin-bottom:8px}
+.template-details summary{cursor:pointer}.template-details strong{color:#057f91}
+.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:8px}.filters label{display:grid;gap:4px;min-width:0}
+.filters p{flex-basis:100%;margin:0}.filters input{max-width:100%;box-sizing:border-box}
 pre{white-space:pre-wrap}input{padding:10px;width:300px}table{border-collapse:collapse}th,td{text-align:left;padding:6px 12px;border-bottom:1px solid #d2dae0}@media(max-width:500px){.grid{grid-template-columns:1fr}}</style>
 <h1>Cutter changes</h1><p>__SUMMARY__</p><p>Teal marks changed bodies, gray marks unchanged bodies, and gold marks kashidas. Pink lines show cuts at shared joins and at both ends of a kashida. Dashed pink lines show where the two body outlines have slightly different boundaries. Click an image to enlarge.</p>
 __DIAGNOSTICS__
-<input id="subword" placeholder="Filter by subword ID" oninput="filterCuts()">
-<label>Changes <select id="change-type" onchange="filterCuts()">
+<div class="filters"><label>Subword ID<input id="subword" oninput="filterCuts()"></label>
+<label>Changes<select id="change-type" onchange="filterCuts()">
 <option value="">All cuts</option><option value="raster">Pixel ownership</option>
 <option value="connectors">Connector count</option></select></label>
+__TEMPLATE_FILTERS__</div><p id="filter-count" role="status"></p>
 __CANDIDATES__<details><summary>Verification and timing</summary><pre>__JSON__</pre></details><main class="grid">__CARDS__</main>
 <script>
+const cards = document.querySelectorAll('.grid > article');
 function filterCuts() {
   const id = document.getElementById('subword').value.trim();
   const type = document.getElementById('change-type').value;
-  for (const card of document.querySelectorAll('article'))
-    card.hidden = !card.dataset.id.includes(id) || (type && card.dataset[type] !== '1');
+  const sequence = document.getElementById('template-sequence')?.value;
+  const bodies = document.getElementById('changed-bodies')?.value;
+  let visible = 0;
+  for (const card of cards) {
+    card.hidden = !card.dataset.id.includes(id) || (type && card.dataset[type] !== '1') ||
+      (sequence && card.dataset.templateSequence !== sequence) || (bodies && card.dataset.changedBodies !== bodies);
+    if (!card.hidden) visible++;
+  }
+  document.getElementById('filter-count').textContent =
+    visible.toLocaleString() + ' of ' + cards.length.toLocaleString() + ' subwords shown';
 }
+filterCuts();
 </script></html>'''
     unresolved = sum(issue['issue']=='unresolved' for issue in report['issues'])
     changed = sum(change['status']=='template' for change in report['changes'])
@@ -228,6 +276,7 @@ function filterCuts() {
         f"{unresolved} unresolved · {failures} validation issues"))
         .replace('__JSON__',escape(json.dumps(summary,ensure_ascii=False,indent=2)))
         .replace('__DIAGNOSTICS__',diagnostics)
+        .replace('__TEMPLATE_FILTERS__',template_filters)
         .replace('__CANDIDATES__',candidates)
         .replace('__CARDS__',''.join(cards)))
 
