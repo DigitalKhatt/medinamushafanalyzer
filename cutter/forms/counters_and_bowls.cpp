@@ -1009,7 +1009,9 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
     result.maxDistance = settings.value("maxDistance").toDouble(1.5) * counter.height();
     result.upper = settings.value("placement") == "upper";
     result.bowlJunction = settings.value("placement") == "bowl-junction";
-    result.top = settings.value("placement") == "top-right" || result.bowlJunction;
+    result.shaftFoot = settings.value("placement") == "shaft-foot";
+    const bool upperJunction = result.bowlJunction || result.shaftFoot;
+    result.top = settings.value("placement") == "top-right" || upperJunction;
     result.paired = settings.value("placement") == "right-corner-pair";
     result.upperLimit = counter.top() + settings.value("maxCounterY").toDouble() * counter.height();
     WordResultInfo::SubWordInfo empty;
@@ -1021,9 +1023,9 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
     const double minStepAngle = settings.value("minStepAngle").toDouble();
     const double minRoundedAngle = settings.value("minRoundedAngle").toDouble();
     const bool sampleValley = settings.value("sampleValley").toBool();
+    const auto origin = result.upper || (result.top && !upperJunction) ? counter.topRight() : counter.bottomRight();
     for (auto at = geometry.timeSorted.begin(); at != geometry.timeSorted.end(); ++at) {
         const auto p = at->point;
-        const auto origin = result.upper || (result.top && !result.bowlJunction) ? counter.topRight() : counter.bottomRight();
         const double distance = QLineF(p, origin).length();
         if (distance >= result.maxDistance)
             continue;
@@ -1031,7 +1033,7 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
         if (!at->isSharp && !(result.top && at->isY) && !rounded)
             continue;
         CounterCornerBody body{*at, {}, distance, {}};
-        if (result.bowlJunction) {
+        if (upperJunction) {
             const double height = counter.height();
             if (p.x() < counter.center().x() || p.y() < counter.center().y()) continue;
             const double sample = .3 * height;
@@ -1044,11 +1046,21 @@ CounterCornerEvidence recognizeCounterCorners(const InkOutline &outline, const Q
             if (!advanceOnContour(outline.ink, *at, limit, true, sample, after, tangent)) continue;
             const auto a = before.point - p, b = after.point - p;
             // The rim rises into the bowl while the other flank leaves toward the incoming stroke.
-            const auto rim = a.y() < b.y() ? a : b;
-            const auto join = a.y() < b.y() ? b : a;
+            const bool risesForward = b.y() < a.y();
+            const auto rim = risesForward ? b : a;
+            const auto join = risesForward ? a : b;
             if (join.x() < .7 * sample || std::abs(join.y()) > .65 * join.x() ||
-                rim.x() < -.25 * sample || rim.y() > -.45 * sample || join.y() - rim.y() < .25 * sample)
+                (!result.shaftFoot && rim.x() < -.25 * sample) ||
+                rim.y() > -.45 * sample || join.y() - rim.y() < .25 * sample)
                 continue;
+            if (result.shaftFoot) {
+                // The taller flank must continue up this shaft past the bowl.
+                PathExtrema shaft;
+                limit.time = at->time + (risesForward ? count : -count);
+                if (!advanceOnContour(outline.ink, *at, limit, risesForward, 2 * height, shaft, tangent) ||
+                    p.y() - shaft.point.y() < 1.5 * height || std::abs(shaft.point.x() - p.x()) > height)
+                    continue;
+            }
             body.tangent = join;
             body.sampled = !at->isSharp;
             result.corners.push_back(std::move(body));
@@ -1179,7 +1191,8 @@ static bool cutCounterCorners(SearchContext &context, const CounterCornerEvidenc
         double width = reach;
         for (const auto& hit : hits) {
             const double d = QLineF(p, hit.point).length();
-            if (d < width && (!evidence.bowlJunction || (hit.pathIndex == 0 && d <= 1.5 * counter.height())) &&
+            if (d < width && (!(evidence.bowlJunction || evidence.shaftFoot) ||
+                (hit.pathIndex == 0 && d <= 1.5 * counter.height())) &&
                 (evidence.top ? hit.point.y() > p.y() : hit.point.y() < p.y()) &&
                 interiorChord(ink, hit, corner)) {
                 top = hit;

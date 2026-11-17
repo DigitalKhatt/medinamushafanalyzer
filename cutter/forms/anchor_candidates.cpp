@@ -663,6 +663,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
     } else if (shape == "counter-loop") {
         const auto evidence = recognizedSharedShape(source, body);
         const auto settings = shapeSettings(form, "loop");
+        const bool bowlEntry = position == 1 && settings.value("entryCorner").toObject().value("placement") == "bowl-junction";
+        const bool shaftExit = position == 1 && settings.value("exitCorner").toObject().value("placement") == "shaft-foot";
         const auto rimPolicy = cuts.value("entryRim").toObject();
         auto loops = evidence->loops;
         std::stable_sort(loops.begin(), loops.end(), [](const auto& a, const auto& b) {
@@ -711,7 +713,8 @@ std::vector<AnchoredBody> anchoredBodies(SearchContext& source, const QJsonObjec
             result.push_back({.formId = id,
                               .entry = position == 1 ? std::optional{sections->first} : std::nullopt,
                               .exit = sections->second,
-                              .counters = std::move(counters)});
+                              .counters = std::move(counters), .fixedEntryJunction = bowlEntry,
+                              .keepsExitHollow = shaftExit});
             if (continuation && position == 1 &&
                 form.value("sharedEntry").toBool())
                 result.back().usesSharedEntry = true;

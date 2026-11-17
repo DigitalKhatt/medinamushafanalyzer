@@ -1877,14 +1877,19 @@ QString PageAnalysisResult::prepareLetterForms(QJsonObject& draft) {
                 const auto corner = cornerValue.toObject();
                 const auto placement = corner.value("placement");
                 if (!placement.isUndefined() && (!placement.isString() ||
-                    !QStringList{"upper", "top-right", "right-corner-pair", "bowl-junction"}.contains(placement.toString())))
-                    return id + ": " + side + ".placement must be upper, top-right, right-corner-pair or bowl-junction";
-                if (placement == "bowl-junction" && (QString(phase) != "final" || QString(side) != "entryCorner" ||
-                    sharedBody.value("shape") != "counter-neck" || !corner.value("normalCut").toBool() ||
-                    !corner.value("required").toBool()))
-                    return id + ": bowl-junction needs a final counter neck and a required normal cut";
-                if (QString(side) == "exitCorner" && (!placement.isUndefined() && placement != "upper"))
-                    return id + ": exitCorner.placement supports upper or the default lower neck";
+                    !QStringList{"upper", "top-right", "right-corner-pair", "bowl-junction", "shaft-foot"}.contains(placement.toString())))
+                    return id + ": invalid " + side + ".placement";
+                const auto shape = sharedBody.value("shape");
+                const bool medialLoop = QString(phase) == "medial" && shape == "counter-loop";
+                const bool exit = QString(side) == "exitCorner";
+                const bool requiredNormal = corner.value("normalCut").toBool() && corner.value("required").toBool();
+                if (placement == "bowl-junction" && (exit || !requiredNormal ||
+                    !(medialLoop || (QString(phase) == "final" && shape == "counter-neck"))))
+                    return id + ": bowl-junction needs a required normal entry on a medial loop or final counter neck";
+                if (placement == "shaft-foot" && (!exit || !medialLoop || !requiredNormal))
+                    return id + ": shaft-foot needs a required normal exit on a medial loop";
+                if (exit && !placement.isUndefined() && placement != "upper" && placement != "shaft-foot")
+                    return id + ": exitCorner.placement supports upper, shaft-foot or the default lower neck";
                 const auto offset = corner.value("strokeOffsetX");
                 if (!offset.isUndefined() && (placement != "right-corner-pair" || !offset.isDouble() ||
                     !std::isfinite(offset.toDouble())))

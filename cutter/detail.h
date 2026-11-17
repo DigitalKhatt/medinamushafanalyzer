@@ -694,7 +694,7 @@ struct CounterCornerBody {
 struct CounterCornerEvidence {
     QRectF counter;
     double maxDistance = 0, upperLimit = 0;
-    bool upper = false, top = false, paired = false, bowlJunction = false;
+    bool upper = false, top = false, paired = false, bowlJunction = false, shaftFoot = false;
     std::vector<CounterCornerBody> corners;
 };
 

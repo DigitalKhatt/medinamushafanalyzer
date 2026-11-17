@@ -456,6 +456,25 @@ int main(int argc, char** argv) {
               "Final ṭāʾ entry moved away from the bowl junction or along the stroke");
     }
 
+    struct MedialTahJoin { int page, line, word, subword; double entryX, exitX; };
+    for (const auto& at : {MedialTahJoin{175, 13, 10, 1, 77.1573, 70.5763},
+                           MedialTahJoin{496, 13, 5, 2, 224.829, 219.565}}) {
+        QFile file(QString("pages/page%1.dat").arg(at.page));
+        check(file.open(QIODevice::ReadOnly), "Missing medial ṭāʾ junction fixture");
+        PageAnalysisResult page;
+        QDataStream stream(&file);
+        stream >> page.page;
+        check(page.segmentSubword(at.page - 1, at.line - 1, at.word - 1, at.subword - 1, nullptr, true, &config),
+              "Medial ṭāʾ bowl and shaft anchors did not segment");
+        const auto& sub = page.page.lines[at.line - 1].words[at.word - 1].wordResultInfo.subWords[at.subword - 1];
+        check(sub.letterDiagnostics.at(2).toObject().value("template") == "tah-loop-corner-medi" &&
+              sub.kashidaPaths.size() > 2 && !sub.kashidaPaths[1].isEmpty() && !sub.kashidaPaths[2].isEmpty(),
+              "Medial ṭāʾ absorbed a connector");
+        check(std::abs(sub.kashidaCuts[1].second.x1() - at.entryX) < .03 &&
+              std::abs(sub.kashidaCuts[2].first.x1() - at.exitX) < .03,
+              "Medial ṭāʾ cut moved away from the bowl hollow or shaft foot");
+    }
+
     struct ReviewedJoin {
         int page, line, word, subword, join;
         double upper, lower;

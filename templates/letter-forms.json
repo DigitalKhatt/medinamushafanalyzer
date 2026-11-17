@@ -2912,6 +2912,41 @@
       }
     },
     {
+      "id": "tah-loop-corner-medi",
+      "current": "طظ",
+      "body": {
+        "shape": "counter-loop",
+        "loop": {
+          "minAspect": 1.1,
+          "entryCorner": {
+            "placement": "bowl-junction",
+            "maxDistance": 2.1
+          },
+          "exitCorner": {
+            "placement": "shaft-foot",
+            "maxDistance": 2.1
+          }
+        },
+        "counters": 1
+      },
+      "cuts": {
+        "loop": {
+          "entryCorner": {
+            "normalCut": true,
+            "required": true
+          },
+          "exitCorner": {
+            "normalCut": true,
+            "required": true
+          }
+        },
+        "boundaries": {
+          "right": "loop-entry",
+          "left": "loop-exit"
+        }
+      }
+    },
+    {
       "id": "tah-loop-medi",
       "current": "طظ",
       "body": {
@@ -4547,35 +4582,6 @@
           "exitTooth": {
             "leftOffset": 0.45
           }
-        },
-        "boundaries": {
-          "right": "loop-entry",
-          "left": "loop-exit"
-        }
-      }
-    },
-    {
-      "id": "tah-loop-corner-medi",
-      "priorityWithinPass": 2,
-      "current": "طظ",
-      "body": {
-        "shape": "counter-loop",
-        "loop": {
-          "minAspect": 1.15,
-          "entryCorner": {
-            "maxDistance": 2
-          },
-          "exitCorner": {
-            "maxDistance": 2
-          }
-        },
-        "counters": 1
-      },
-      "cuts": {
-        "loop": {
-          "sideOffset": 0.35,
-          "baselineOffset": 0.2,
-          "normalCut": true
         },
         "boundaries": {
           "right": "loop-entry",
